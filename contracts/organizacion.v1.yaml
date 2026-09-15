@@ -1,0 +1,1343 @@
+openapi: 3.1.0
+info:
+  title: Quality360 · Servicio de Organización y seguimiento
+  version: 1.0.0
+  license:
+    name: Uso académico · Capstone Duoc UC
+    identifier: LicenseRef-Capstone-Duoc-UC
+  description: |
+    API interna del servicio dueño de usuarios, roles, supervisión, células,
+    sprints, HDU, historial y auditoría (D9). No se publica fuera de la red
+    interna; el portal llega a través del gateway.
+
+    **Consumidores**
+    - Gateway: reenvía con el token del usuario (`sesionSupabase`) las rutas
+      de igual nombre de `gateway.v1.yaml` y compone `/v1/inicio/*` con
+      `/v1/resumenes/*`.
+    - Certificaciones e Impedimentos: resuelven acceso con `/v1/interno/*` y
+      el token propagado. Nunca leen el esquema `organizacion`.
+    - Integraciones: carga semilla con `credencialServicio` en
+      `/v1/interno/carga/*` y en las operaciones que declaran `SERVICIO` en
+      `x-roles`.
+
+    **Reglas que aplica en cada solicitud**
+    - Identidad desde el token verificado (`sub`); rol y `activo` desde su base
+      de datos, nunca desde el token (D4). Usuario inactivo o sin registro →
+      403 `ACCESO_DENEGADO`.
+    - Ámbito de HDU: el Analista QA ve las HDU con `analistaId` igual a su id;
+      el QE, aquellas donde es responsable o cuyo analista supervisa hoy; el
+      Administrador, todas. Fuera de ámbito → 403 (D12).
+    - Toda escritura audita valor anterior, nuevo, actor y fecha en la misma
+      transacción (E1-B12, E2-B04). No hay borrados físicos.
+
+    Las operaciones compartidas con el gateway tienen el mismo cuerpo,
+    respuesta y códigos, salvo 429 y 503 `SERVICIO_NO_DISPONIBLE`, que solo
+    emite el gateway. Convenciones: `comun.v1.yaml`.
+servers:
+  - url: http://organizacion:3001
+    description: Red interna de Docker Compose
+  - url: http://localhost:3001
+    description: Desarrollo local
+security:
+  - sesionSupabase: []
+tags:
+  - name: Salud
+    description: Estado del proceso.
+  - name: Sesión
+    description: Perfil del usuario autenticado.
+  - name: Acceso interno
+    description: Resolución de rol, estado activo y ámbito para otros servicios.
+  - name: Resúmenes
+    description: Fuentes de los bloques de `/v1/inicio/*` del gateway.
+  - name: Equipo
+    description: Analistas supervisados y asignables.
+  - name: Usuarios
+    description: Administración de usuarios y roles.
+  - name: Supervisión
+    description: Relación QE–analista y su historial.
+  - name: Auditoría
+    description: Registro de cambios.
+  - name: Catálogos
+    description: Células y sprints.
+  - name: HDU
+    description: Historias de usuario, estados, asignación e historial.
+  - name: Carga semilla
+    description: Altas idempotentes para Integraciones con credencial de servicio.
+
+x-hdu-transversal: [E1-B02#1, E1-B07#3, E1-B11#1]
+
+paths:
+  /health:
+    get:
+      operationId: obtenerSaludOrganizacion
+      tags: [Salud]
+      summary: Estado del servicio
+      security: []
+      x-roles: [PUBLICO]
+      x-hdu: []
+      responses:
+        '200':
+          description: El proceso responde.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Salud'
+        '500':
+          $ref: '#/components/responses/ErrorInterno'
+
+  /v1/me:
+    get:
+      operationId: obtenerPerfil
+      tags: [Sesión]
+      summary: Perfil del usuario autenticado
+      description: Rol leído de la base en cada solicitud. Usuario inactivo o sin registro → 403.
+      x-roles: [ADMINISTRADOR, QE, ANALISTA_QA]
+      x-hdu: [E1-F11#3, E1-B01#2, E1-B10#1, E1-B10#2, E1-B10#3]
+      responses:
+        '200':
+          description: Perfil vigente.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Perfil'
+        '401':
+          $ref: '#/components/responses/NoAutenticado'
+        '403':
+          $ref: '#/components/responses/AccesoDenegado'
+        '500':
+          $ref: '#/components/responses/ErrorInterno'
+
+  /v1/interno/acceso:
+    get:
+      operationId: resolverAcceso
+      tags: [Acceso interno]
+      summary: Rol vigente, estado activo y ámbito del usuario del token
+      description: |
+        Implementación remota de `ResolutorDeAcceso` (`packages/auth-nest`)
+        para Certificaciones e Impedimentos. Responde 200 también si el
+        usuario está inactivo (`activo: false`) para que el guard del llamador
+        lo deniegue. Sin caché: refleja desactivaciones y cambios de rol en la
+        siguiente solicitud. Usuario sin registro en Organización → 403.
+      x-roles: [ADMINISTRADOR, QE, ANALISTA_QA]
+      x-hdu: [E1-B02#2, E1-B02#3]
+      responses:
+        '200':
+          description: Resolución de acceso.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ResolucionAcceso'
+        '401':
+          $ref: '#/components/responses/NoAutenticado'
+        '403':
+          $ref: '#/components/responses/AccesoDenegado'
+        '500':
+          $ref: '#/components/responses/ErrorInterno'
+
+  /v1/interno/hdu/{id}/acceso:
+    parameters:
+      - $ref: '#/components/parameters/HduIdPath'
+    get:
+      operationId: resolverAccesoHdu
+      tags: [Acceso interno]
+      summary: ¿Puede el usuario del token acceder a esta HDU?
+      description: |
+        Aplica el ámbito de HDU. Responde 200 con `permitido: false` si está
+        fuera de ámbito o no existe, para no revelar existencia. Usuario
+        inactivo o sin registro → 403.
+      x-roles: [ADMINISTRADOR, QE, ANALISTA_QA]
+      x-hdu: [E2-F04#2, E2-B03#1, E2-B03#2, E2-B03#3]
+      responses:
+        '200':
+          description: Resolución de acceso a la HDU.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AccesoHdu'
+        '401':
+          $ref: '#/components/responses/NoAutenticado'
+        '403':
+          $ref: '#/components/responses/AccesoDenegado'
+        '500':
+          $ref: '#/components/responses/ErrorInterno'
+
+  /v1/resumenes/qe/equipo:
+    get:
+      operationId: resumenEquipoQe
+      tags: [Resúmenes]
+      summary: Cantidad de analistas vigentes del QE autenticado
+      description: Fuente del bloque `equipo` de `GET /v1/inicio/qe`. 0 solo si la consulta terminó bien sin relaciones vigentes.
+      x-roles: [QE]
+      x-hdu: [E1-F03#1, E1-F03#2, E1-B03#1, E1-B03#2]
+      responses:
+        '200':
+          description: Resumen del equipo.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ResumenEquipoQe'
+        '401':
+          $ref: '#/components/responses/NoAutenticado'
+        '403':
+          $ref: '#/components/responses/AccesoDenegado'
+        '500':
+          $ref: '#/components/responses/ErrorInterno'
+
+  /v1/resumenes/qe/hdu:
+    get:
+      operationId: resumenHduQe
+      tags: [Resúmenes]
+      summary: HDU en el ámbito del QE autenticado
+      description: Fuente del bloque `hdu` de `GET /v1/inicio/qe`. Cuenta solo HDU autorizadas del QE (E1-B03#1).
+      x-roles: [QE]
+      x-hdu: [E1-F03#1, E1-F03#2, E1-B03#1, E1-B03#2, E1-B03#3]
+      responses:
+        '200':
+          description: Conteo de HDU por estado.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ResumenHduQe'
+        '401':
+          $ref: '#/components/responses/NoAutenticado'
+        '403':
+          $ref: '#/components/responses/AccesoDenegado'
+        '500':
+          $ref: '#/components/responses/ErrorInterno'
+
+  /v1/resumenes/qa/supervisor:
+    get:
+      operationId: resumenSupervisorQa
+      tags: [Resúmenes]
+      summary: QE vigente del analista
+      description: |
+        Fuente del bloque `supervisor` de `GET /v1/inicio/qa`. `supervisor: null`
+        explícito si no tiene QE vigente (E1-B05#2). Analista QA: solo su propio
+        id (otro → 403, E1-B05#3). Administrador: `analistaId` obligatorio (400
+        si falta; 404 si no es Analista QA).
+      x-roles: [ANALISTA_QA, ADMINISTRADOR]
+      x-hdu: [E1-F06#1, E1-F06#2, E1-B05#1, E1-B05#2, E1-B05#3]
+      parameters:
+        - $ref: '#/components/parameters/AnalistaIdQuery'
+      responses:
+        '200':
+          description: Supervisor vigente o `null`.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ResumenSupervisorQa'
+        '400':
+          $ref: '#/components/responses/Validacion'
+        '401':
+          $ref: '#/components/responses/NoAutenticado'
+        '403':
+          $ref: '#/components/responses/AccesoDenegado'
+        '404':
+          $ref: '#/components/responses/NoEncontrado'
+        '500':
+          $ref: '#/components/responses/ErrorInterno'
+
+  /v1/resumenes/qa/hdu:
+    get:
+      operationId: resumenHduQa
+      tags: [Resúmenes]
+      summary: HDU asignadas al analista
+      description: Fuente del bloque `hdu` de `GET /v1/inicio/qa`. Mismo ámbito y parámetros que `/v1/resumenes/qa/supervisor`.
+      x-roles: [ANALISTA_QA, ADMINISTRADOR]
+      x-hdu: [E1-F06#1, E1-F06#3, E1-B05#1, E1-B05#3]
+      parameters:
+        - $ref: '#/components/parameters/AnalistaIdQuery'
+      responses:
+        '200':
+          description: Conteo de HDU asignadas por estado.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ResumenHduQa'
+        '400':
+          $ref: '#/components/responses/Validacion'
+        '401':
+          $ref: '#/components/responses/NoAutenticado'
+        '403':
+          $ref: '#/components/responses/AccesoDenegado'
+        '404':
+          $ref: '#/components/responses/NoEncontrado'
+        '500':
+          $ref: '#/components/responses/ErrorInterno'
+
+  /v1/resumenes/admin/usuarios:
+    get:
+      operationId: resumenUsuariosAdmin
+      tags: [Resúmenes]
+      summary: Totales de usuarios por estado y rol
+      description: Fuente del bloque `usuarios` de `GET /v1/inicio/admin`. Sin caché (E1-B06#3).
+      x-roles: [ADMINISTRADOR]
+      x-hdu: [E1-F08#1, E1-B06#1, E1-B06#2, E1-B06#3]
+      responses:
+        '200':
+          description: Resumen de usuarios.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ResumenUsuariosAdmin'
+        '401':
+          $ref: '#/components/responses/NoAutenticado'
+        '403':
+          $ref: '#/components/responses/AccesoDenegado'
+        '500':
+          $ref: '#/components/responses/ErrorInterno'
+
+  /v1/resumenes/admin/supervision:
+    get:
+      operationId: resumenSupervisionAdmin
+      tags: [Resúmenes]
+      summary: Totales de relaciones de supervisión
+      description: Fuente del bloque `supervision` de `GET /v1/inicio/admin`. Sin caché.
+      x-roles: [ADMINISTRADOR]
+      x-hdu: [E1-F08#1, E1-B06#1, E1-B06#2]
+      responses:
+        '200':
+          description: Resumen de supervisión.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ResumenSupervisionAdmin'
+        '401':
+          $ref: '#/components/responses/NoAutenticado'
+        '403':
+          $ref: '#/components/responses/AccesoDenegado'
+        '500':
+          $ref: '#/components/responses/ErrorInterno'
+
+  /v1/qe/analistas:
+    get:
+      operationId: listarAnalistasSupervisados
+      tags: [Equipo]
+      summary: Analistas con supervisión vigente de un QE
+      description: Igual que en el gateway. QE solo su equipo (`qeId` ajeno → 403); Administrador con `qeId` obligatorio.
+      x-roles: [QE, ADMINISTRADOR]
+      x-hdu: [E1-F04#1, E1-F04#2, E1-F04#3, E1-B02#3, E1-B04#1, E1-B04#2, E1-B04#3]
+      parameters:
+        - name: qeId
+          in: query
+          required: false
+          schema:
+            $ref: '#/components/schemas/Uuid'
+      responses:
+        '200':
+          description: Equipo vigente.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EquipoQe'
+        '400':
+          $ref: '#/components/responses/Validacion'
+        '401':
+          $ref: '#/components/responses/NoAutenticado'
+        '403':
+          $ref: '#/components/responses/AccesoDenegado'
+        '404':
+          $ref: '#/components/responses/NoEncontrado'
+        '500':
+          $ref: '#/components/responses/ErrorInterno'
+
+  /v1/qe/analistas-asignables:
+    get:
+      operationId: listarAnalistasAsignables
+      tags: [Equipo]
+      summary: Analistas que el usuario puede asignar a una HDU
+      description: QE, analistas activos de su equipo vigente; Administrador, todos los analistas activos.
+      x-roles: [QE, ADMINISTRADOR]
+      x-hdu: [E2-F02#1, E2-F02#2]
+      responses:
+        '200':
+          description: Analistas asignables.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ListaAnalistasAsignables'
+        '401':
+          $ref: '#/components/responses/NoAutenticado'
+        '403':
+          $ref: '#/components/responses/AccesoDenegado'
+        '500':
+          $ref: '#/components/responses/ErrorInterno'
+
+  /v1/usuarios:
+    get:
+      operationId: listarUsuarios
+      tags: [Usuarios]
+      summary: Listar y buscar usuarios
+      description: Igual que en el gateway. Orden por `nombre`; `q` busca en nombre o correo sin distinguir mayúsculas.
+      x-roles: [ADMINISTRADOR]
+      x-hdu: [E1-F09#1, E1-F10#1]
+      parameters:
+        - name: q
+          in: query
+          required: false
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 120
+        - name: rol
+          in: query
+          required: false
+          schema:
+            $ref: '#/components/schemas/Rol'
+        - name: activo
+          in: query
+          required: false
+          schema:
+            type: boolean
+        - $ref: '#/components/parameters/Pagina'
+        - $ref: '#/components/parameters/TamanoPagina'
+      responses:
+        '200':
+          description: Página de usuarios.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginaUsuarios'
+        '400':
+          $ref: '#/components/responses/Validacion'
+        '401':
+          $ref: '#/components/responses/NoAutenticado'
+        '403':
+          $ref: '#/components/responses/AccesoDenegado'
+        '500':
+          $ref: '#/components/responses/ErrorInterno'
+    post:
+      operationId: crearUsuario
+      tags: [Usuarios]
+      summary: Registrar un usuario
+      description: |
+        Orden: esquema (400) → correo único (409) → cuenta en Supabase Auth con
+        `auth.admin.inviteUserByEmail` → registro con `id = sub` y auditoría
+        `CREAR_USUARIO` en una transacción. Si falla el registro local tras
+        crear la cuenta, se elimina la cuenta creada (compensación).
+      x-roles: [ADMINISTRADOR]
+      x-hdu: [E1-F09#2, E1-B06#3, E1-B07#1, E1-B12#1]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/NuevoUsuario'
+      responses:
+        '201':
+          description: Usuario creado y activo.
+          headers:
+            Location:
+              description: '`/v1/usuarios/{id}`'
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Usuario'
+        '400':
+          $ref: '#/components/responses/Validacion'
+        '401':
+          $ref: '#/components/responses/NoAutenticado'
+        '403':
+          $ref: '#/components/responses/AccesoDenegado'
+        '409':
+          description: Correo duplicado.
+          x-codigos: [CORREO_DUPLICADO]
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          $ref: '#/components/responses/ErrorInterno'
+        '503':
+          $ref: '#/components/responses/ProveedorIdentidadNoDisponible'
+
+  /v1/usuarios/{id}:
+    parameters:
+      - $ref: '#/components/parameters/UsuarioIdPath'
+    patch:
+      operationId: actualizarUsuario
+      tags: [Usuarios]
+      summary: Actualizar datos o estado de acceso de un usuario
+      description: Mismas reglas que en el gateway (correo coordinado con Supabase Auth, último administrador, QE con analistas vigentes, auditoría sin secretos).
+      x-roles: [ADMINISTRADOR]
+      x-hdu: [E1-F09#3, E1-B07#2, E1-B07#3, E1-B12#1, E1-B12#3]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ActualizacionUsuario'
+      responses:
+        '200':
+          description: Usuario actualizado.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Usuario'
+        '400':
+          $ref: '#/components/responses/Validacion'
+        '401':
+          $ref: '#/components/responses/NoAutenticado'
+        '403':
+          $ref: '#/components/responses/AccesoDenegado'
+        '404':
+          $ref: '#/components/responses/NoEncontrado'
+        '409':
+          description: Conflicto con el estado actual.
+          x-codigos: [CORREO_DUPLICADO, ULTIMO_ADMINISTRADOR, RELACIONES_INCOMPATIBLES]
+          content:
+            application/json:
+              schema:
+                anyOf:
+                  - $ref: '#/components/schemas/ErrorRelacionesIncompatibles'
+                  - $ref: '#/components/schemas/Error'
+        '500':
+          $ref: '#/components/responses/ErrorInterno'
+        '503':
+          $ref: '#/components/responses/ProveedorIdentidadNoDisponible'
+
+  /v1/usuarios/{id}/rol:
+    parameters:
+      - $ref: '#/components/parameters/UsuarioIdPath'
+    put:
+      operationId: cambiarRolUsuario
+      tags: [Usuarios]
+      summary: Asignar o cambiar el rol de un usuario
+      description: Mismas reglas que en el gateway (catálogo cerrado, último administrador, relaciones de supervisión incompatibles).
+      x-roles: [ADMINISTRADOR]
+      x-hdu: [E1-F09#3, E1-F11#2, E1-B08#1, E1-B08#2, E1-B08#3, E1-B12#1]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CambioRol'
+      responses:
+        '200':
+          description: Rol vigente del usuario.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Usuario'
+        '400':
+          $ref: '#/components/responses/Validacion'
+        '401':
+          $ref: '#/components/responses/NoAutenticado'
+        '403':
+          $ref: '#/components/responses/AccesoDenegado'
+        '404':
+          $ref: '#/components/responses/NoEncontrado'
+        '409':
+          description: Último administrador o relaciones incompatibles.
+          x-codigos: [ULTIMO_ADMINISTRADOR, RELACIONES_INCOMPATIBLES]
+          content:
+            application/json:
+              schema:
+                anyOf:
+                  - $ref: '#/components/schemas/ErrorRelacionesIncompatibles'
+                  - $ref: '#/components/schemas/Error'
+        '500':
+          $ref: '#/components/responses/ErrorInterno'
+
+  /v1/analistas/{id}/supervisor:
+    parameters:
+      - $ref: '#/components/parameters/AnalistaIdPath'
+    put:
+      operationId: asignarSupervisor
+      tags: [Supervisión]
+      summary: Asignar o cambiar el QE supervisor de un analista
+      description: |
+        Mismas reglas que en el gateway. Implementación obligatoria: cierre de
+        la relación anterior y alta de la nueva en una transacción, respaldadas
+        por un índice único parcial sobre `analista_id WHERE hasta IS NULL`.
+        La semilla la usa con `credencialServicio`.
+      x-roles: [ADMINISTRADOR, SERVICIO]
+      x-hdu: [E1-F10#1, E1-F10#2, E1-B09#1, E1-B09#2, E1-B09#3, E1-B12#1, E1-B12#2]
+      security:
+        - sesionSupabase: []
+        - credencialServicio: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AsignacionSupervisor'
+      responses:
+        '200':
+          description: Relación vigente y, si hubo cambio, la anterior finalizada.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ResultadoCambioSupervision'
+        '400':
+          $ref: '#/components/responses/Validacion'
+        '401':
+          $ref: '#/components/responses/NoAutenticado'
+        '403':
+          $ref: '#/components/responses/AccesoDenegado'
+        '404':
+          $ref: '#/components/responses/NoEncontrado'
+        '422':
+          description: Roles o estados incompatibles, o falta el motivo.
+          x-codigos: [SUPERVISION_INVALIDA, MOTIVO_REQUERIDO]
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          $ref: '#/components/responses/ErrorInterno'
+
+  /v1/analistas/{id}/supervision/historial:
+    parameters:
+      - $ref: '#/components/parameters/AnalistaIdPath'
+    get:
+      operationId: obtenerHistorialSupervision
+      tags: [Supervisión]
+      summary: Historial de supervisores de un analista
+      description: Relaciones vigente y finalizadas con fechas y motivos, en orden cronológico.
+      x-roles: [ADMINISTRADOR]
+      x-hdu: [E1-F10#3, E1-B12#2]
+      responses:
+        '200':
+          description: Historial.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HistorialSupervision'
+        '401':
+          $ref: '#/components/responses/NoAutenticado'
+        '403':
+          $ref: '#/components/responses/AccesoDenegado'
+        '404':
+          $ref: '#/components/responses/NoEncontrado'
+        '500':
+          $ref: '#/components/responses/ErrorInterno'
+
+  /v1/auditoria:
+    get:
+      operationId: listarAuditoria
+      tags: [Auditoría]
+      summary: Consultar registros de auditoría
+      description: Más recientes primero. Nunca incluye contraseñas ni tokens.
+      x-roles: [ADMINISTRADOR]
+      x-hdu: [E1-B12#1, E1-B12#2, E1-B12#3, E2-B04#1, E2-B04#2]
+      parameters:
+        - name: entidad
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [USUARIO, SUPERVISION, HDU]
+        - name: entidadId
+          in: query
+          required: false
+          schema:
+            $ref: '#/components/schemas/Uuid'
+        - name: desde
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date-time
+        - name: hasta
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date-time
+        - $ref: '#/components/parameters/Pagina'
+        - $ref: '#/components/parameters/TamanoPagina'
+      responses:
+        '200':
+          description: Página de registros.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginaAuditoria'
+        '400':
+          $ref: '#/components/responses/Validacion'
+        '401':
+          $ref: '#/components/responses/NoAutenticado'
+        '403':
+          $ref: '#/components/responses/AccesoDenegado'
+        '500':
+          $ref: '#/components/responses/ErrorInterno'
+
+  /v1/catalogos/celulas:
+    get:
+      operationId: listarCelulas
+      tags: [Catálogos]
+      summary: Células
+      x-roles: [ADMINISTRADOR, QE, ANALISTA_QA]
+      x-hdu: [E2-F01#1, E2-F03#1]
+      responses:
+        '200':
+          description: Células ordenadas por nombre.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ListaCelulas'
+        '401':
+          $ref: '#/components/responses/NoAutenticado'
+        '403':
+          $ref: '#/components/responses/AccesoDenegado'
+        '500':
+          $ref: '#/components/responses/ErrorInterno'
+
+  /v1/catalogos/sprints:
+    get:
+      operationId: listarSprints
+      tags: [Catálogos]
+      summary: Sprints
+      x-roles: [ADMINISTRADOR, QE, ANALISTA_QA]
+      x-hdu: [E2-F01#1, E2-F03#1]
+      responses:
+        '200':
+          description: Sprints ordenados por fecha de inicio.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ListaSprints'
+        '401':
+          $ref: '#/components/responses/NoAutenticado'
+        '403':
+          $ref: '#/components/responses/AccesoDenegado'
+        '500':
+          $ref: '#/components/responses/ErrorInterno'
+
+  /v1/hdu:
+    get:
+      operationId: listarHdu
+      tags: [HDU]
+      summary: Listar HDU del ámbito del usuario
+      description: Ámbito por rol aplicado antes de los filtros, igual que en el gateway (E2-B03).
+      x-roles: [ADMINISTRADOR, QE, ANALISTA_QA]
+      x-hdu: [E2-F03#1, E2-F03#2, E2-F03#3, E2-B03#1, E2-B03#2, E2-B03#3]
+      parameters:
+        - name: celulaId
+          in: query
+          required: false
+          schema:
+            $ref: '#/components/schemas/Uuid'
+        - name: sprintId
+          in: query
+          required: false
+          schema:
+            $ref: '#/components/schemas/Uuid'
+        - name: estado
+          in: query
+          required: false
+          schema:
+            $ref: '#/components/schemas/EstadoHdu'
+        - $ref: '#/components/parameters/Pagina'
+        - $ref: '#/components/parameters/TamanoPagina'
+      responses:
+        '200':
+          description: Página de HDU del ámbito.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginaHdu'
+        '400':
+          $ref: '#/components/responses/Validacion'
+        '401':
+          $ref: '#/components/responses/NoAutenticado'
+        '403':
+          $ref: '#/components/responses/AccesoDenegado'
+        '500':
+          $ref: '#/components/responses/ErrorInterno'
+    post:
+      operationId: crearHdu
+      tags: [HDU]
+      summary: Registrar una HDU
+      description: Mismas reglas que en el gateway. Código único con índice sobre `lower(codigo)`.
+      x-roles: [QE]
+      x-hdu: [E2-F01#1, E2-F01#2, E2-F01#3, E2-B01#1, E2-B01#2, E2-B01#3]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/NuevaHdu'
+      responses:
+        '201':
+          description: HDU creada en `PENDIENTE`.
+          headers:
+            Location:
+              description: '`/v1/hdu/{id}`'
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HduDetalleBase'
+        '400':
+          $ref: '#/components/responses/Validacion'
+        '401':
+          $ref: '#/components/responses/NoAutenticado'
+        '403':
+          $ref: '#/components/responses/AccesoDenegado'
+        '409':
+          description: Código duplicado.
+          x-codigos: [CODIGO_HDU_DUPLICADO]
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '422':
+          description: Célula o sprint inexistentes.
+          x-codigos: [CATALOGO_INVALIDO]
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          $ref: '#/components/responses/ErrorInterno'
+
+  /v1/hdu/{id}:
+    parameters:
+      - $ref: '#/components/parameters/HduIdPath'
+    get:
+      operationId: obtenerHdu
+      tags: [HDU]
+      summary: Detalle de una HDU (sin checklist)
+      description: Fuera de ámbito, o inexistente para QE y Analista QA, → 403. Inexistente para Administrador → 404. El gateway agrega el bloque `checklist`.
+      x-roles: [ADMINISTRADOR, QE, ANALISTA_QA]
+      x-hdu: [E1-B02#2, E2-F04#1, E2-F04#2, E2-B03#1, E2-B03#2]
+      responses:
+        '200':
+          description: Detalle de la HDU.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HduDetalleBase'
+        '401':
+          $ref: '#/components/responses/NoAutenticado'
+        '403':
+          $ref: '#/components/responses/AccesoDenegado'
+        '404':
+          $ref: '#/components/responses/NoEncontrado'
+        '500':
+          $ref: '#/components/responses/ErrorInterno'
+
+  /v1/hdu/{id}/analista:
+    parameters:
+      - $ref: '#/components/parameters/HduIdPath'
+    put:
+      operationId: asignarAnalistaHdu
+      tags: [HDU]
+      summary: Asignar o reasignar el analista de una HDU
+      description: |
+        Mismas reglas que en el gateway. Con `credencialServicio` se valida
+        el equipo del QE responsable de la HDU, como si asignara ese QE.
+      x-roles: [QE, ADMINISTRADOR, SERVICIO]
+      x-hdu: [E2-F02#1, E2-F02#2, E2-F02#3, E2-B04#2]
+      security:
+        - sesionSupabase: []
+        - credencialServicio: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AsignacionAnalista'
+      responses:
+        '200':
+          description: Resultado de la asignación.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ResultadoAsignacion'
+        '400':
+          $ref: '#/components/responses/Validacion'
+        '401':
+          $ref: '#/components/responses/NoAutenticado'
+        '403':
+          $ref: '#/components/responses/AccesoDenegado'
+        '404':
+          $ref: '#/components/responses/NoEncontrado'
+        '409':
+          description: La HDU está cerrada.
+          x-codigos: [HDU_CERRADA]
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '422':
+          description: Analista no válido, fuera del equipo, o falta el motivo.
+          x-codigos: [ANALISTA_INVALIDO, ANALISTA_FUERA_DE_EQUIPO, MOTIVO_REQUERIDO]
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          $ref: '#/components/responses/ErrorInterno'
+
+  /v1/hdu/{id}/estado:
+    parameters:
+      - $ref: '#/components/parameters/HduIdPath'
+    post:
+      operationId: cambiarEstadoHdu
+      tags: [HDU]
+      summary: Cambiar el estado de una HDU
+      description: |
+        Mismas reglas que en el gateway. Para `CERRADA` llama a
+        `GET /v1/hdu/{id}/checklist` de Certificaciones propagando
+        `Authorization` y `x-trace-id`, con 2 s de tiempo límite
+        (`CERTIFICACIONES_TIMEOUT_MS`). Con `credencialServicio` no puede pedir
+        `CERRADA`.
+      x-roles: [ADMINISTRADOR, QE, ANALISTA_QA, SERVICIO]
+      x-hdu: [E2-F04#3, E2-B02#1, E2-B02#2, E2-B02#3, E2-B04#1]
+      security:
+        - sesionSupabase: []
+        - credencialServicio: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SolicitudCambioEstado'
+      responses:
+        '200':
+          description: Transición aceptada.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ResultadoCambioEstado'
+        '400':
+          $ref: '#/components/responses/Validacion'
+        '401':
+          $ref: '#/components/responses/NoAutenticado'
+        '403':
+          $ref: '#/components/responses/AccesoDenegado'
+        '404':
+          $ref: '#/components/responses/NoEncontrado'
+        '409':
+          description: Transición inválida o cierre rechazado.
+          x-codigos: [TRANSICION_INVALIDA, CHECKLIST_INCOMPLETO, CHECKLIST_NO_DISPONIBLE]
+          content:
+            application/json:
+              schema:
+                anyOf:
+                  - $ref: '#/components/schemas/ErrorTransicionInvalida'
+                  - $ref: '#/components/schemas/ErrorCierreRechazado'
+        '500':
+          $ref: '#/components/responses/ErrorInterno'
+
+  /v1/hdu/{id}/historial:
+    parameters:
+      - $ref: '#/components/parameters/HduIdPath'
+    get:
+      operationId: obtenerHistorialHdu
+      tags: [HDU]
+      summary: Historial de estados y asignaciones de una HDU
+      description: Mismo acceso que el detalle. Orden cronológico ascendente.
+      x-roles: [ADMINISTRADOR, QE, ANALISTA_QA]
+      x-hdu: [E2-B04#1, E2-B04#2, E2-B04#3]
+      responses:
+        '200':
+          description: Historial.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HistorialHdu'
+        '401':
+          $ref: '#/components/responses/NoAutenticado'
+        '403':
+          $ref: '#/components/responses/AccesoDenegado'
+        '404':
+          $ref: '#/components/responses/NoEncontrado'
+        '500':
+          $ref: '#/components/responses/ErrorInterno'
+
+  /v1/interno/carga/usuarios:
+    post:
+      operationId: cargarUsuario
+      tags: [Carga semilla]
+      summary: Alta idempotente de un usuario de demo
+      description: |
+        Idempotente por correo: si existe responde 200 con `creado: false` y
+        no cambia nada, ni la contraseña. Si no existe, crea la cuenta en
+        Supabase Auth con `contrasenaInicial` y correo confirmado, y el
+        registro con `activo` según el cuerpo. Soporta las condiciones previas
+        de la semilla; no cubre escenarios por sí misma.
+      x-roles: [SERVICIO]
+      x-hdu: []
+      security:
+        - credencialServicio: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CargaUsuario'
+      responses:
+        '200':
+          description: Ya existía; sin cambios.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ResultadoCargaUsuario'
+        '201':
+          description: Creado.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ResultadoCargaUsuario'
+        '400':
+          $ref: '#/components/responses/Validacion'
+        '401':
+          $ref: '#/components/responses/NoAutenticado'
+        '403':
+          $ref: '#/components/responses/AccesoDenegado'
+        '500':
+          $ref: '#/components/responses/ErrorInterno'
+        '503':
+          $ref: '#/components/responses/ProveedorIdentidadNoDisponible'
+
+  /v1/interno/carga/celulas:
+    post:
+      operationId: cargarCelula
+      tags: [Carga semilla]
+      summary: Alta idempotente de una célula
+      description: Idempotente por nombre, sin distinguir mayúsculas.
+      x-roles: [SERVICIO]
+      x-hdu: []
+      security:
+        - credencialServicio: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CargaCelula'
+      responses:
+        '200':
+          description: Ya existía.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ResultadoCargaCelula'
+        '201':
+          description: Creada.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ResultadoCargaCelula'
+        '400':
+          $ref: '#/components/responses/Validacion'
+        '401':
+          $ref: '#/components/responses/NoAutenticado'
+        '403':
+          $ref: '#/components/responses/AccesoDenegado'
+        '500':
+          $ref: '#/components/responses/ErrorInterno'
+
+  /v1/interno/carga/sprints:
+    post:
+      operationId: cargarSprint
+      tags: [Carga semilla]
+      summary: Alta idempotente de un sprint
+      description: Idempotente por nombre, sin distinguir mayúsculas. `fin` anterior a `inicio` → 400.
+      x-roles: [SERVICIO]
+      x-hdu: []
+      security:
+        - credencialServicio: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CargaSprint'
+      responses:
+        '200':
+          description: Ya existía.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ResultadoCargaSprint'
+        '201':
+          description: Creado.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ResultadoCargaSprint'
+        '400':
+          $ref: '#/components/responses/Validacion'
+        '401':
+          $ref: '#/components/responses/NoAutenticado'
+        '403':
+          $ref: '#/components/responses/AccesoDenegado'
+        '500':
+          $ref: '#/components/responses/ErrorInterno'
+
+  /v1/interno/carga/hdu:
+    post:
+      operationId: cargarHdu
+      tags: [Carga semilla]
+      summary: Alta idempotente de una HDU con su QE responsable
+      description: |
+        Idempotente por código: si existe responde 200 con `creado: false` y no
+        cambia nada. Crea en `PENDIENTE` sin analista; la semilla asigna
+        analista y avanza estados con las operaciones normales.
+      x-roles: [SERVICIO]
+      x-hdu: []
+      security:
+        - credencialServicio: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CargaHdu'
+      responses:
+        '200':
+          description: Ya existía.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ResultadoCargaHdu'
+        '201':
+          description: Creada.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ResultadoCargaHdu'
+        '400':
+          $ref: '#/components/responses/Validacion'
+        '401':
+          $ref: '#/components/responses/NoAutenticado'
+        '403':
+          $ref: '#/components/responses/AccesoDenegado'
+        '422':
+          description: Célula o sprint inexistentes, o QE responsable no válido.
+          x-codigos: [CATALOGO_INVALIDO, QE_INVALIDO]
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          $ref: '#/components/responses/ErrorInterno'
+
+components:
+  securitySchemes:
+    sesionSupabase:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: Access token de Supabase Auth del usuario, propagado por el gateway o por otro servicio.
+    credencialServicio:
+      type: apiKey
+      in: header
+      name: X-Q360-Servicio-Token
+      description: |
+        Credencial de servicio a servicio (ADR 0007). Cada servicio llamador
+        tiene su propio secreto en `.env`; en esta corrida solo
+        `integraciones`. El actor auditado es `{tipo: SERVICIO, id:
+        integraciones}`. El gateway descarta esta cabecera si llega desde
+        afuera. Las rutas `/v1/interno/carga/*` responden 403 si
+        `PERMITIR_CARGA_SEMILLA` no es `true`.
+
+  parameters:
+    AnalistaIdQuery:
+      name: analistaId
+      in: query
+      required: false
+      description: Opcional para Analista QA (solo su propio id); obligatorio para Administrador.
+      schema:
+        $ref: './comun.v1.yaml#/components/schemas/Uuid'
+    Pagina: {$ref: './comun.v1.yaml#/components/parameters/Pagina'}
+    TamanoPagina: {$ref: './comun.v1.yaml#/components/parameters/TamanoPagina'}
+    UsuarioIdPath: {$ref: './comun.v1.yaml#/components/parameters/UsuarioIdPath'}
+    AnalistaIdPath: {$ref: './comun.v1.yaml#/components/parameters/AnalistaIdPath'}
+    HduIdPath: {$ref: './comun.v1.yaml#/components/parameters/HduIdPath'}
+
+  schemas:
+    Salud:
+      type: object
+      required: [estado]
+      additionalProperties: false
+      properties:
+        estado:
+          type: string
+          const: ok
+    ResolucionAcceso:
+      type: object
+      required: [usuarioId, rol, activo, ambito]
+      additionalProperties: false
+      properties:
+        usuarioId:
+          $ref: './comun.v1.yaml#/components/schemas/Uuid'
+        rol:
+          $ref: './comun.v1.yaml#/components/schemas/Rol'
+        activo:
+          type: boolean
+        ambito:
+          type: object
+          required: [qeSupervisorId, analistasSupervisadosIds]
+          additionalProperties: false
+          properties:
+            qeSupervisorId:
+              description: QE vigente si el rol es `ANALISTA_QA`; si no, `null`.
+              oneOf:
+                - $ref: './comun.v1.yaml#/components/schemas/Uuid'
+                - type: 'null'
+            analistasSupervisadosIds:
+              type: array
+              description: Analistas vigentes si el rol es `QE`; si no, vacío.
+              items:
+                $ref: './comun.v1.yaml#/components/schemas/Uuid'
+
+    CargaUsuario:
+      type: object
+      required: [nombre, correo, rol, contrasenaInicial]
+      additionalProperties: false
+      properties:
+        nombre:
+          type: string
+          minLength: 1
+          maxLength: 120
+        correo:
+          type: string
+          format: email
+          maxLength: 254
+        rol:
+          $ref: './comun.v1.yaml#/components/schemas/Rol'
+        activo:
+          type: boolean
+          default: true
+        contrasenaInicial:
+          type: string
+          writeOnly: true
+          minLength: 12
+          maxLength: 72
+          description: Solo para cuentas de demo locales. Se envía a Supabase Auth y nunca se guarda ni se audita.
+    ResultadoCargaUsuario:
+      type: object
+      required: [creado, usuario]
+      additionalProperties: false
+      properties:
+        creado:
+          type: boolean
+        usuario:
+          $ref: './comun.v1.yaml#/components/schemas/Usuario'
+    CargaCelula:
+      type: object
+      required: [nombre]
+      additionalProperties: false
+      properties:
+        nombre:
+          type: string
+          minLength: 1
+          maxLength: 80
+    ResultadoCargaCelula:
+      type: object
+      required: [creado, celula]
+      additionalProperties: false
+      properties:
+        creado:
+          type: boolean
+        celula:
+          $ref: './comun.v1.yaml#/components/schemas/CatalogoRef'
+    CargaSprint:
+      type: object
+      required: [nombre, inicio, fin]
+      additionalProperties: false
+      properties:
+        nombre:
+          type: string
+          minLength: 1
+          maxLength: 80
+        inicio:
+          $ref: './comun.v1.yaml#/components/schemas/Fecha'
+        fin:
+          $ref: './comun.v1.yaml#/components/schemas/Fecha'
+          description: Igual o posterior a `inicio`; si no, 400.
+    ResultadoCargaSprint:
+      type: object
+      required: [creado, sprint]
+      additionalProperties: false
+      properties:
+        creado:
+          type: boolean
+        sprint:
+          $ref: './comun.v1.yaml#/components/schemas/Sprint'
+    CargaHdu:
+      type: object
+      required: [codigo, titulo, celulaId, sprintId, prioridad, qeResponsableId]
+      additionalProperties: false
+      properties:
+        codigo:
+          type: string
+          minLength: 1
+          maxLength: 40
+          pattern: '^[A-Za-z0-9][A-Za-z0-9._-]*$'
+        titulo:
+          type: string
+          minLength: 1
+          maxLength: 200
+        celulaId:
+          $ref: './comun.v1.yaml#/components/schemas/Uuid'
+        sprintId:
+          $ref: './comun.v1.yaml#/components/schemas/Uuid'
+        prioridad:
+          $ref: './comun.v1.yaml#/components/schemas/PrioridadHdu'
+        qeResponsableId:
+          $ref: './comun.v1.yaml#/components/schemas/Uuid'
+    ResultadoCargaHdu:
+      type: object
+      required: [creado, hdu]
+      additionalProperties: false
+      properties:
+        creado:
+          type: boolean
+        hdu:
+          $ref: './comun.v1.yaml#/components/schemas/HduDetalleBase'
+
+    # Alias de esquemas comunes
+    Uuid: {$ref: './comun.v1.yaml#/components/schemas/Uuid'}
+    Rol: {$ref: './comun.v1.yaml#/components/schemas/Rol'}
+    EstadoHdu: {$ref: './comun.v1.yaml#/components/schemas/EstadoHdu'}
+    Error: {$ref: './comun.v1.yaml#/components/schemas/Error'}
+    ErrorTransicionInvalida: {$ref: './comun.v1.yaml#/components/schemas/ErrorTransicionInvalida'}
+    ErrorCierreRechazado: {$ref: './comun.v1.yaml#/components/schemas/ErrorCierreRechazado'}
+    ErrorRelacionesIncompatibles: {$ref: './comun.v1.yaml#/components/schemas/ErrorRelacionesIncompatibles'}
+    Perfil: {$ref: './comun.v1.yaml#/components/schemas/Perfil'}
+    AccesoHdu: {$ref: './comun.v1.yaml#/components/schemas/AccesoHdu'}
+    ResumenEquipoQe: {$ref: './comun.v1.yaml#/components/schemas/ResumenEquipoQe'}
+    ResumenHduQe: {$ref: './comun.v1.yaml#/components/schemas/ResumenHduQe'}
+    ResumenSupervisorQa: {$ref: './comun.v1.yaml#/components/schemas/ResumenSupervisorQa'}
+    ResumenHduQa: {$ref: './comun.v1.yaml#/components/schemas/ResumenHduQa'}
+    ResumenUsuariosAdmin: {$ref: './comun.v1.yaml#/components/schemas/ResumenUsuariosAdmin'}
+    ResumenSupervisionAdmin: {$ref: './comun.v1.yaml#/components/schemas/ResumenSupervisionAdmin'}
+    EquipoQe: {$ref: './comun.v1.yaml#/components/schemas/EquipoQe'}
+    ListaAnalistasAsignables: {$ref: './comun.v1.yaml#/components/schemas/ListaAnalistasAsignables'}
+    Usuario: {$ref: './comun.v1.yaml#/components/schemas/Usuario'}
+    PaginaUsuarios: {$ref: './comun.v1.yaml#/components/schemas/PaginaUsuarios'}
+    NuevoUsuario: {$ref: './comun.v1.yaml#/components/schemas/NuevoUsuario'}
+    ActualizacionUsuario: {$ref: './comun.v1.yaml#/components/schemas/ActualizacionUsuario'}
+    CambioRol: {$ref: './comun.v1.yaml#/components/schemas/CambioRol'}
+    AsignacionSupervisor: {$ref: './comun.v1.yaml#/components/schemas/AsignacionSupervisor'}
+    ResultadoCambioSupervision: {$ref: './comun.v1.yaml#/components/schemas/ResultadoCambioSupervision'}
+    HistorialSupervision: {$ref: './comun.v1.yaml#/components/schemas/HistorialSupervision'}
+    PaginaAuditoria: {$ref: './comun.v1.yaml#/components/schemas/PaginaAuditoria'}
+    ListaCelulas: {$ref: './comun.v1.yaml#/components/schemas/ListaCelulas'}
+    ListaSprints: {$ref: './comun.v1.yaml#/components/schemas/ListaSprints'}
+    PaginaHdu: {$ref: './comun.v1.yaml#/components/schemas/PaginaHdu'}
+    NuevaHdu: {$ref: './comun.v1.yaml#/components/schemas/NuevaHdu'}
+    HduDetalleBase: {$ref: './comun.v1.yaml#/components/schemas/HduDetalleBase'}
+    AsignacionAnalista: {$ref: './comun.v1.yaml#/components/schemas/AsignacionAnalista'}
+    ResultadoAsignacion: {$ref: './comun.v1.yaml#/components/schemas/ResultadoAsignacion'}
+    SolicitudCambioEstado: {$ref: './comun.v1.yaml#/components/schemas/SolicitudCambioEstado'}
+    ResultadoCambioEstado: {$ref: './comun.v1.yaml#/components/schemas/ResultadoCambioEstado'}
+    HistorialHdu: {$ref: './comun.v1.yaml#/components/schemas/HistorialHdu'}
+
+  responses:
+    Validacion: {$ref: './comun.v1.yaml#/components/responses/Validacion'}
+    NoAutenticado: {$ref: './comun.v1.yaml#/components/responses/NoAutenticado'}
+    AccesoDenegado: {$ref: './comun.v1.yaml#/components/responses/AccesoDenegado'}
+    NoEncontrado: {$ref: './comun.v1.yaml#/components/responses/NoEncontrado'}
+    ErrorInterno: {$ref: './comun.v1.yaml#/components/responses/ErrorInterno'}
+    ProveedorIdentidadNoDisponible: {$ref: './comun.v1.yaml#/components/responses/ProveedorIdentidadNoDisponible'}

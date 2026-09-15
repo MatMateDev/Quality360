@@ -1,0 +1,112 @@
+openapi: 3.1.0
+info:
+  title: Quality360 · Servicio de Certificaciones
+  version: 1.0.0
+  license:
+    name: Uso académico · Capstone Duoc UC
+    identifier: LicenseRef-Capstone-Duoc-UC
+  description: |
+    API interna de Certificaciones. La consumen el gateway (bloque `checklist`
+    de `GET /v1/hdu/{id}`) y Organización (verificación de cierre, D11). No se
+    publica fuera de la red interna.
+
+    **Esta corrida (E1 y E2).** El checklist de entregables llega con E3.
+    Después de autenticar la sesión, `GET /v1/hdu/{hduId}/checklist` responde
+    siempre 503 `CAPACIDAD_NO_DISPONIBLE`. Quien lo consume debe tratarlo como
+    fuente indisponible: el gateway marca el bloque `indisponible` y
+    Organización rechaza el cierre con 409 `CHECKLIST_NO_DISPONIBLE`.
+
+    **Desde E3.** Antes de responder, valida el acceso del usuario a la HDU
+    con `GET /v1/interno/hdu/{id}/acceso` de Organización (nunca con su
+    esquema) y responde 403 si no tiene acceso.
+servers:
+  - url: http://certificaciones:3002
+    description: Red interna de Docker Compose
+  - url: http://localhost:3002
+    description: Desarrollo local
+security:
+  - sesionSupabase: []
+tags:
+  - name: Salud
+    description: Estado del proceso.
+  - name: Checklist
+    description: Avance del checklist de entregables de una HDU.
+
+paths:
+  /health:
+    get:
+      operationId: obtenerSaludCertificaciones
+      tags: [Salud]
+      summary: Estado del servicio
+      security: []
+      x-roles: [PUBLICO]
+      x-hdu: []
+      responses:
+        '200':
+          description: El proceso responde.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [estado]
+                additionalProperties: false
+                properties:
+                  estado:
+                    type: string
+                    const: ok
+        '500':
+          $ref: './comun.v1.yaml#/components/responses/ErrorInterno'
+
+  /v1/hdu/{hduId}/checklist:
+    get:
+      operationId: obtenerResumenChecklist
+      tags: [Checklist]
+      summary: Resumen del checklist de una HDU
+      description: |
+        Propaga `Authorization` y `x-trace-id` del llamador. En esta corrida:
+        401 si la sesión no es válida; en cualquier otro caso, 503
+        `CAPACIDAD_NO_DISPONIBLE`. La respuesta 200 queda reservada para E3.
+      x-roles: [ADMINISTRADOR, QE, ANALISTA_QA]
+      x-hdu: [E2-F04#1, E2-B02#3]
+      parameters:
+        - name: hduId
+          in: path
+          required: true
+          schema:
+            $ref: './comun.v1.yaml#/components/schemas/Uuid'
+      responses:
+        '200':
+          description: Reservado para E3. Resumen del checklist.
+          content:
+            application/json:
+              schema:
+                $ref: './comun.v1.yaml#/components/schemas/ResumenChecklist'
+        '401':
+          $ref: './comun.v1.yaml#/components/responses/NoAutenticado'
+        '403':
+          $ref: './comun.v1.yaml#/components/responses/AccesoDenegado'
+        '500':
+          $ref: './comun.v1.yaml#/components/responses/ErrorInterno'
+        '503':
+          description: La capacidad de checklist aún no está habilitada (E3).
+          x-codigos: [CAPACIDAD_NO_DISPONIBLE]
+          headers:
+            x-trace-id:
+              $ref: './comun.v1.yaml#/components/headers/XTraceId'
+          content:
+            application/json:
+              schema:
+                $ref: './comun.v1.yaml#/components/schemas/Error'
+              example:
+                codigo: CAPACIDAD_NO_DISPONIBLE
+                mensaje: Esta capacidad aún no está disponible.
+                traceId: 4bf92f3577b34da6a3ce929d0e0e4736
+                detalles: []
+
+components:
+  securitySchemes:
+    sesionSupabase:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: Access token de Supabase Auth propagado por el llamador.

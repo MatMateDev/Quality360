@@ -1,0 +1,42 @@
+# Validación de contratos: npm run contracts:lint
+extends:
+  - recommended
+
+# output: contrato sin $ref externos (npm run contracts:bundle)
+# x-openapi-ts.output: tipos TypeScript (npm run contracts:types)
+# contracts/dist no se versiona
+apis:
+  gateway@v1:
+    root: contracts/gateway.v1.yaml
+    output: contracts/dist/gateway.v1.yaml
+    x-openapi-ts:
+      output: contracts/dist/types/gateway.v1.d.ts
+  organizacion@v1:
+    root: contracts/organizacion.v1.yaml
+    output: contracts/dist/organizacion.v1.yaml
+    x-openapi-ts:
+      output: contracts/dist/types/organizacion.v1.d.ts
+  certificaciones@v1:
+    root: contracts/certificaciones.v1.yaml
+    output: contracts/dist/certificaciones.v1.yaml
+    x-openapi-ts:
+      output: contracts/dist/types/certificaciones.v1.d.ts
+
+rules:
+  rule/operacion-declara-roles:
+    subject:
+      type: Operation
+      property: x-roles
+    assertions:
+      defined: true
+      nonEmpty: true
+    message: Cada operación declara los roles permitidos en `x-roles`.
+    severity: error
+  rule/operacion-declara-escenarios:
+    subject:
+      type: Operation
+      property: x-hdu
+    assertions:
+      defined: true
+    message: Cada operación declara los escenarios del backlog que cubre en `x-hdu` (lista vacía solo en operaciones técnicas).
+    severity: error

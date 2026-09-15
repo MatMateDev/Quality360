@@ -1,13 +1,29 @@
 {
-  "name": "plataforma-qa",
+  "name": "quality360",
   "private": true,
   "version": "0.0.0",
   "type": "module",
+  "workspaces": [
+    "apps/*",
+    "packages/*",
+    "services/*"
+  ],
+  "engines": {
+    "node": ">=24",
+    "npm": ">=11"
+  },
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "lint": "oxlint",
-    "preview": "vite preview"
+    "lint": "oxlint src",
+    "preview": "vite preview",
+    "contracts:lint": "npx --yes @redocly/cli@2.53.2 lint",
+    "contracts:check": "node contracts/scripts/verificar-cobertura.mjs",
+    "contracts:bundle": "npx --yes @redocly/cli@2.53.2 bundle",
+    "contracts:types": "npx --yes openapi-typescript@7.13.0",
+    "ws:lint": "npm run lint --workspaces --if-present",
+    "ws:test": "npm run test --workspaces --if-present",
+    "ws:build": "npm run build --workspaces --if-present"
   },
   "dependencies": {
     "react": "^19.2.8",

@@ -1,0 +1,17 @@
+# This file instructs Redocly's linter to ignore the rules contained for specific parts of your API.
+# See https://redocly.com/docs/cli/ for more information.
+contracts/gateway.v1.yaml:
+  no-server-example.com:
+    - '#/servers/0/url'
+  operation-4xx-response:
+    - '#/paths/~1health/get/responses'
+contracts/organizacion.v1.yaml:
+  no-server-example.com:
+    - '#/servers/1/url'
+  operation-4xx-response:
+    - '#/paths/~1health/get/responses'
+contracts/certificaciones.v1.yaml:
+  no-server-example.com:
+    - '#/servers/1/url'
+  operation-4xx-response:
+    - '#/paths/~1health/get/responses'

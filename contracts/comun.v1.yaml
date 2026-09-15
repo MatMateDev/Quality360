@@ -1,0 +1,1117 @@
+openapi: 3.1.0
+info:
+  title: Quality360 · Componentes comunes
+  version: 1.0.0
+  license:
+    name: Uso académico · Capstone Duoc UC
+    identifier: LicenseRef-Capstone-Duoc-UC
+  description: |
+    Esquemas, respuestas y parámetros compartidos por `gateway.v1.yaml`,
+    `organizacion.v1.yaml` y `certificaciones.v1.yaml`. No es un contrato
+    desplegable: se referencia con `$ref: './comun.v1.yaml#/...'`.
+
+    ## Convenciones (ADR 0007)
+
+    - JSON en UTF-8, nombres de campo en camelCase, fechas ISO 8601 en UTC.
+    - Toda respuesta lleva la cabecera `x-trace-id`. Si la solicitud trae
+      `x-trace-id`, se propaga; si no, el gateway genera uno. El mismo valor va
+      en `Error.traceId`.
+    - Los cuerpos de solicitud rechazan campos desconocidos (400 `VALIDACION`).
+    - Paginación: `pagina` desde 1 y `tamanoPagina` de 1 a 100 (20 por
+      defecto). La respuesta trae `items`, `total`, `pagina` y `tamanoPagina`.
+    - Una lista vacía o un conteo 0 solo significan «consulta exitosa sin
+      registros». Una fuente caída nunca se traduce en 0 ni en `[]`: se informa
+      con un error o con un bloque `indisponible`.
+    - Cada respuesta de error declara en `x-codigos` los valores posibles de
+      `Error.codigo`.
+
+    ## Estados HTTP
+
+    | Estado | Uso |
+    | --- | --- |
+    | 400 | `VALIDACION`: esquema, obligatorios, formato o valor fuera de catálogo. `detalles[]` indica cada campo. |
+    | 401 | `NO_AUTENTICADO` (sin token o token inválido) o `SESION_EXPIRADA` (token vencido). |
+    | 403 | `ACCESO_DENEGADO`: rol no permitido, usuario inactivo o recurso fuera del ámbito. Mensaje genérico (D12). |
+    | 404 | `NO_ENCONTRADO`: solo en recursos administrativos. Para QE y Analista QA, una HDU inexistente responde 403 igual que una fuera de ámbito. |
+    | 409 | Conflicto con el estado actual: duplicados, transición inválida, cierre rechazado, último administrador, relaciones incompatibles. |
+    | 422 | Regla de negocio sobre datos bien formados: motivo requerido, supervisión inválida, analista fuera del equipo, catálogo inexistente. |
+    | 429 | `DEMASIADAS_SOLICITUDES` (límite de tasa del gateway). |
+    | 500 | `ERROR_INTERNO`. |
+    | 503 | `SERVICIO_NO_DISPONIBLE`, `PROVEEDOR_IDENTIDAD_NO_DISPONIBLE` o `CAPACIDAD_NO_DISPONIBLE`. |
+
+paths: {}
+
+components:
+  schemas:
+    # ------------------------------------------------------------------ base
+    Uuid:
+      type: string
+      format: uuid
+      examples: ['5b0c2f0e-8f1e-4c47-9a57-3a0f5d1e2b11']
+    FechaHora:
+      type: string
+      format: date-time
+      description: Instante en UTC, ISO 8601.
+      examples: ['2026-09-15T14:30:00Z']
+    Fecha:
+      type: string
+      format: date
+      examples: ['2026-09-01']
+    Rol:
+      type: string
+      description: Catálogo cerrado de roles. Un rol por usuario. El rol vigente se lee siempre desde Organización, nunca desde el token (D4).
+      enum: [ADMINISTRADOR, QE, ANALISTA_QA]
+    EstadoHdu:
+      type: string
+      description: |
+        Estados de HDU (D10). Solo se avanza un paso; `CERRADA` es terminal.
+
+        | Desde | Transiciones permitidas |
+        | --- | --- |
+        | `PENDIENTE` | `DISENO_PRUEBAS` |
+        | `DISENO_PRUEBAS` | `EN_EJECUCION` |
+        | `EN_EJECUCION` | `PENDIENTE_CIERRE` |
+        | `PENDIENTE_CIERRE` | `CERRADA`, `EN_EJECUCION` (reapertura) |
+        | `CERRADA` | ninguna |
+
+        Pasar a `CERRADA` exige el checklist completo según Certificaciones (D11).
+      enum: [PENDIENTE, DISENO_PRUEBAS, EN_EJECUCION, PENDIENTE_CIERRE, CERRADA]
+      x-transiciones:
+        PENDIENTE: [DISENO_PRUEBAS]
+        DISENO_PRUEBAS: [EN_EJECUCION]
+        EN_EJECUCION: [PENDIENTE_CIERRE]
+        PENDIENTE_CIERRE: [CERRADA, EN_EJECUCION]
+        CERRADA: []
+    PrioridadHdu:
+      type: string
+      enum: [BAJA, MEDIA, ALTA, CRITICA]
+
+    # --------------------------------------------------------------- errores
+    CodigoError:
+      type: string
+      description: |
+        | Código | Estado | Mensaje de referencia |
+        | --- | --- | --- |
+        | `VALIDACION` | 400 | Los datos enviados no son válidos. |
+        | `NO_AUTENTICADO` | 401 | Debes iniciar sesión. |
+        | `SESION_EXPIRADA` | 401 | Tu sesión expiró. Inicia sesión nuevamente. |
+        | `ACCESO_DENEGADO` | 403 | No tienes acceso a este recurso. |
+        | `NO_ENCONTRADO` | 404 | El recurso solicitado no existe. |
+        | `CORREO_DUPLICADO` | 409 | Ya existe un usuario con ese correo. |
+        | `CODIGO_HDU_DUPLICADO` | 409 | Ya existe una HDU con ese identificador. |
+        | `ULTIMO_ADMINISTRADOR` | 409 | La plataforma debe conservar al menos un administrador activo. |
+        | `RELACIONES_INCOMPATIBLES` | 409 | Resuelve las relaciones de supervisión antes de continuar. |
+        | `TRANSICION_INVALIDA` | 409 | La HDU no puede pasar a ese estado. |
+        | `CHECKLIST_INCOMPLETO` | 409 | No se puede cerrar la HDU: el checklist de entregables está incompleto. |
+        | `CHECKLIST_NO_DISPONIBLE` | 409 | No se puede cerrar la HDU: el checklist de entregables no está disponible para verificarse. |
+        | `HDU_CERRADA` | 409 | La HDU está cerrada y no admite cambios. |
+        | `MOTIVO_REQUERIDO` | 422 | Indica el motivo del cambio. |
+        | `SUPERVISION_INVALIDA` | 422 | El supervisor debe ser QE y el supervisado Analista QA, ambos activos. |
+        | `ANALISTA_INVALIDO` | 422 | El analista debe tener rol Analista QA y estar activo. |
+        | `ANALISTA_FUERA_DE_EQUIPO` | 422 | El analista no pertenece al equipo vigente del QE responsable. |
+        | `QE_INVALIDO` | 422 | El QE responsable debe tener rol QE y estar activo. |
+        | `CATALOGO_INVALIDO` | 422 | La célula o el sprint indicados no existen. |
+        | `DEMASIADAS_SOLICITUDES` | 429 | Demasiadas solicitudes. Intenta más tarde. |
+        | `ERROR_INTERNO` | 500 | Ocurrió un error inesperado. |
+        | `SERVICIO_NO_DISPONIBLE` | 503 | El servicio no está disponible. Intenta nuevamente. |
+        | `PROVEEDOR_IDENTIDAD_NO_DISPONIBLE` | 503 | No fue posible coordinar el cambio con el proveedor de identidad. |
+        | `CAPACIDAD_NO_DISPONIBLE` | 503 | Esta capacidad aún no está disponible. |
+      enum:
+        - VALIDACION
+        - NO_AUTENTICADO
+        - SESION_EXPIRADA
+        - ACCESO_DENEGADO
+        - NO_ENCONTRADO
+        - CORREO_DUPLICADO
+        - CODIGO_HDU_DUPLICADO
+        - ULTIMO_ADMINISTRADOR
+        - RELACIONES_INCOMPATIBLES
+        - TRANSICION_INVALIDA
+        - CHECKLIST_INCOMPLETO
+        - CHECKLIST_NO_DISPONIBLE
+        - HDU_CERRADA
+        - MOTIVO_REQUERIDO
+        - SUPERVISION_INVALIDA
+        - ANALISTA_INVALIDO
+        - ANALISTA_FUERA_DE_EQUIPO
+        - QE_INVALIDO
+        - CATALOGO_INVALIDO
+        - DEMASIADAS_SOLICITUDES
+        - ERROR_INTERNO
+        - SERVICIO_NO_DISPONIBLE
+        - PROVEEDOR_IDENTIDAD_NO_DISPONIBLE
+        - CAPACIDAD_NO_DISPONIBLE
+    DetalleError:
+      type: object
+      required: [campo, codigo, mensaje]
+      additionalProperties: false
+      properties:
+        campo:
+          type: string
+          description: Campo del cuerpo (`correo`), del query (`query.estado`) o de la ruta (`path.id`).
+          examples: [correo]
+        codigo:
+          type: string
+          enum: [REQUERIDO, FORMATO_INVALIDO, LONGITUD_INVALIDA, VALOR_NO_PERMITIDO, DUPLICADO, NO_EXISTE, NO_PERMITIDO]
+        mensaje:
+          type: string
+          examples: [El correo es obligatorio.]
+    Error:
+      type: object
+      description: Esquema de error común a todos los contratos.
+      required: [codigo, mensaje, traceId, detalles]
+      properties:
+        codigo:
+          $ref: '#/components/schemas/CodigoError'
+        mensaje:
+          type: string
+          description: Texto para mostrar al usuario. Nunca revela si un correo existe ni detalles internos.
+        traceId:
+          type: string
+          description: Igual a la cabecera `x-trace-id` de la respuesta.
+          examples: ['4bf92f3577b34da6a3ce929d0e0e4736']
+        detalles:
+          type: array
+          description: Errores por campo. Vacío cuando no aplica.
+          items:
+            $ref: '#/components/schemas/DetalleError'
+    ErrorTransicionInvalida:
+      description: 409 `TRANSICION_INVALIDA`. Lista las transiciones permitidas desde el estado actual (E2-B02#2).
+      allOf:
+        - $ref: '#/components/schemas/Error'
+        - type: object
+          required: [estadoActual, estadoSolicitado, transicionesPermitidas]
+          properties:
+            estadoActual:
+              $ref: '#/components/schemas/EstadoHdu'
+            estadoSolicitado:
+              $ref: '#/components/schemas/EstadoHdu'
+            transicionesPermitidas:
+              type: array
+              items:
+                $ref: '#/components/schemas/EstadoHdu'
+    ErrorCierreRechazado:
+      description: 409 `CHECKLIST_INCOMPLETO` o `CHECKLIST_NO_DISPONIBLE` al solicitar `CERRADA` (E2-B02#3, D11).
+      allOf:
+        - $ref: '#/components/schemas/Error'
+        - type: object
+          required: [checklist]
+          properties:
+            checklist:
+              $ref: '#/components/schemas/BloqueChecklist'
+    ErrorRelacionesIncompatibles:
+      description: 409 `RELACIONES_INCOMPATIBLES`. Indica qué relaciones de supervisión resolver primero (E1-B08#3).
+      allOf:
+        - $ref: '#/components/schemas/Error'
+        - type: object
+          required: [relaciones]
+          properties:
+            relaciones:
+              type: object
+              required: [analistasVigentes, supervisorVigente]
+              properties:
+                analistasVigentes:
+                  type: array
+                  description: Analistas que el QE supervisa hoy y que deben reasignarse.
+                  items:
+                    $ref: '#/components/schemas/UsuarioResumen'
+                supervisorVigente:
+                  description: QE vigente del analista, que debe cambiarse antes de dejar el rol Analista QA.
+                  oneOf:
+                    - $ref: '#/components/schemas/UsuarioResumen'
+                    - type: 'null'
+
+    # ------------------------------------------------- bloques de composición
+    FuenteDatos:
+      type: string
+      description: Capacidad que alimenta un bloque compuesto.
+      enum: [organizacion.usuarios, organizacion.supervision, organizacion.hdu, certificaciones.checklist]
+    EstadoBloque:
+      type: string
+      enum: [ok, indisponible]
+    BloqueCompuesto:
+      type: object
+      description: |
+        Forma general de un bloque compuesto por el gateway. `datos` existe
+        solo con `estado: ok`. Con `indisponible` no hay `datos`: el portal
+        muestra «no disponible», nunca 0. Cada bloque concreto la especializa
+        como unión discriminada por `estado`.
+      required: [fuente, estado]
+      properties:
+        fuente:
+          $ref: '#/components/schemas/FuenteDatos'
+        estado:
+          $ref: '#/components/schemas/EstadoBloque'
+        datos:
+          description: Presente solo si `estado` es `ok`.
+    BloqueIndisponible:
+      type: object
+      required: [fuente, estado]
+      additionalProperties: false
+      properties:
+        fuente:
+          $ref: '#/components/schemas/FuenteDatos'
+        estado:
+          type: string
+          const: indisponible
+    BloqueChecklist:
+      oneOf:
+        - type: object
+          required: [fuente, estado, datos]
+          additionalProperties: false
+          properties:
+            fuente:
+              type: string
+              const: certificaciones.checklist
+            estado:
+              type: string
+              const: ok
+            datos:
+              $ref: '#/components/schemas/ResumenChecklist'
+        - $ref: '#/components/schemas/BloqueIndisponible'
+    ResumenChecklist:
+      type: object
+      description: Avance del checklist de entregables de una HDU. Lo entrega Certificaciones a partir de E3.
+      required: [hduId, totalEntregables, completados, porcentajeCumplimiento, completo]
+      additionalProperties: false
+      properties:
+        hduId:
+          $ref: '#/components/schemas/Uuid'
+        totalEntregables:
+          type: integer
+          minimum: 0
+          examples: [10]
+        completados:
+          type: integer
+          minimum: 0
+        porcentajeCumplimiento:
+          type: number
+          minimum: 0
+          maximum: 100
+        completo:
+          type: boolean
+          description: Verdadero si todos los entregables aplicables están completos y aprobados.
+
+    # ------------------------------------------------------ actores y usuarios
+    Actor:
+      type: object
+      description: Quien ejecutó un cambio. Un servicio aparece solo en cargas semilla.
+      required: [tipo, id, nombre]
+      additionalProperties: false
+      properties:
+        tipo:
+          type: string
+          enum: [USUARIO, SERVICIO]
+        id:
+          type: string
+          description: UUID del usuario, o nombre del servicio (`integraciones`).
+        nombre:
+          type: string
+    UsuarioResumen:
+      type: object
+      required: [id, nombre, correo]
+      additionalProperties: false
+      properties:
+        id:
+          $ref: '#/components/schemas/Uuid'
+        nombre:
+          type: string
+          examples: [Camila Rojas]
+        correo:
+          type: string
+          format: email
+          examples: [camila.rojas@quality360.local]
+    Perfil:
+      type: object
+      description: Datos mínimos del usuario autenticado (E1-B10). Sin contraseñas, tokens ni metadatos del proveedor.
+      required: [id, nombre, correo, rol]
+      additionalProperties: false
+      properties:
+        id:
+          $ref: '#/components/schemas/Uuid'
+        nombre:
+          type: string
+        correo:
+          type: string
+          format: email
+        rol:
+          $ref: '#/components/schemas/Rol'
+    Usuario:
+      type: object
+      required: [id, nombre, correo, rol, activo, supervisorVigente, analistasVigentes, creadoEn, actualizadoEn]
+      additionalProperties: false
+      properties:
+        id:
+          $ref: '#/components/schemas/Uuid'
+        nombre:
+          type: string
+        correo:
+          type: string
+          format: email
+        rol:
+          $ref: '#/components/schemas/Rol'
+        activo:
+          type: boolean
+        supervisorVigente:
+          description: QE vigente. Solo aplica a `ANALISTA_QA`; `null` si no tiene o si el rol es otro.
+          oneOf:
+            - $ref: '#/components/schemas/UsuarioResumen'
+            - type: 'null'
+        analistasVigentes:
+          type: integer
+          minimum: 0
+          description: Analistas que supervisa hoy. Solo aplica a `QE`; 0 para otros roles.
+        creadoEn:
+          $ref: '#/components/schemas/FechaHora'
+        actualizadoEn:
+          $ref: '#/components/schemas/FechaHora'
+    PaginaUsuarios:
+      type: object
+      required: [items, total, pagina, tamanoPagina]
+      additionalProperties: false
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/Usuario'
+        total:
+          type: integer
+          minimum: 0
+        pagina:
+          type: integer
+          minimum: 1
+        tamanoPagina:
+          type: integer
+          minimum: 1
+          maximum: 100
+    NuevoUsuario:
+      type: object
+      required: [nombre, correo, rol]
+      additionalProperties: false
+      properties:
+        nombre:
+          type: string
+          minLength: 1
+          maxLength: 120
+          description: Se recortan espacios; vacío tras recortar es `REQUERIDO`.
+        correo:
+          type: string
+          format: email
+          maxLength: 254
+          description: Se normaliza a minúsculas. Único sin distinguir mayúsculas.
+        rol:
+          $ref: '#/components/schemas/Rol'
+    ActualizacionUsuario:
+      type: object
+      description: Cambia datos o estado de acceso. El rol se cambia con `PUT /v1/usuarios/{id}/rol`.
+      minProperties: 1
+      additionalProperties: false
+      properties:
+        nombre:
+          type: string
+          minLength: 1
+          maxLength: 120
+        correo:
+          type: string
+          format: email
+          maxLength: 254
+          description: El `id` no cambia; Organización actualiza el correo también en Supabase Auth (E1-B07#2).
+        activo:
+          type: boolean
+          description: '`false` desactiva: el usuario pierde acceso en su siguiente solicitud aunque su token siga vigente. No borra historial.'
+    CambioRol:
+      type: object
+      required: [rol]
+      additionalProperties: false
+      properties:
+        rol:
+          $ref: '#/components/schemas/Rol'
+
+    # ------------------------------------------------------------ supervisión
+    AsignacionSupervisor:
+      type: object
+      required: [qeId]
+      additionalProperties: false
+      properties:
+        qeId:
+          $ref: '#/components/schemas/Uuid'
+        motivo:
+          type: string
+          minLength: 3
+          maxLength: 500
+          description: Obligatorio si el analista ya tiene un QE vigente distinto (422 `MOTIVO_REQUERIDO`).
+    RelacionSupervision:
+      type: object
+      required: [id, analista, qe, desde, hasta, motivo, registradoPor]
+      additionalProperties: false
+      properties:
+        id:
+          $ref: '#/components/schemas/Uuid'
+        analista:
+          $ref: '#/components/schemas/UsuarioResumen'
+        qe:
+          $ref: '#/components/schemas/UsuarioResumen'
+        desde:
+          $ref: '#/components/schemas/FechaHora'
+        hasta:
+          description: '`null` mientras la relación está vigente.'
+          oneOf:
+            - $ref: '#/components/schemas/FechaHora'
+            - type: 'null'
+        motivo:
+          description: Motivo con que se creó esta relación al reemplazar a la anterior. `null` en la primera asignación.
+          oneOf:
+            - type: string
+            - type: 'null'
+        registradoPor:
+          $ref: '#/components/schemas/Actor'
+    ResultadoCambioSupervision:
+      type: object
+      required: [cambio, vigente, anterior]
+      additionalProperties: false
+      properties:
+        cambio:
+          type: boolean
+          description: '`false` si el QE indicado ya era el vigente; entonces no se registra historial ni auditoría.'
+        vigente:
+          $ref: '#/components/schemas/RelacionSupervision'
+        anterior:
+          description: Relación finalizada en la misma transacción (`hasta` informado), o `null`.
+          oneOf:
+            - $ref: '#/components/schemas/RelacionSupervision'
+            - type: 'null'
+    HistorialSupervision:
+      type: object
+      required: [analista, items]
+      additionalProperties: false
+      properties:
+        analista:
+          $ref: '#/components/schemas/UsuarioResumen'
+        items:
+          type: array
+          description: Relaciones en orden cronológico ascendente por `desde`; la vigente es la última.
+          items:
+            $ref: '#/components/schemas/RelacionSupervision'
+    AnalistaSupervisado:
+      type: object
+      required: [id, nombre, correo, activo, supervisadoDesde]
+      additionalProperties: false
+      properties:
+        id:
+          $ref: '#/components/schemas/Uuid'
+        nombre:
+          type: string
+        correo:
+          type: string
+          format: email
+        activo:
+          type: boolean
+        supervisadoDesde:
+          $ref: '#/components/schemas/FechaHora'
+    EquipoQe:
+      type: object
+      required: [qe, items, total]
+      additionalProperties: false
+      properties:
+        qe:
+          $ref: '#/components/schemas/UsuarioResumen'
+        items:
+          type: array
+          description: Solo relaciones vigentes (`hasta` nulo), ordenadas por nombre.
+          items:
+            $ref: '#/components/schemas/AnalistaSupervisado'
+        total:
+          type: integer
+          minimum: 0
+    ListaAnalistasAsignables:
+      type: object
+      required: [items]
+      additionalProperties: false
+      properties:
+        items:
+          type: array
+          description: Analistas activos seleccionables, ordenados por nombre.
+          items:
+            $ref: '#/components/schemas/UsuarioResumen'
+
+    # --------------------------------------------------------------- resúmenes
+    ConteoPorEstado:
+      type: object
+      required: [PENDIENTE, DISENO_PRUEBAS, EN_EJECUCION, PENDIENTE_CIERRE, CERRADA]
+      additionalProperties: false
+      properties:
+        PENDIENTE: {type: integer, minimum: 0}
+        DISENO_PRUEBAS: {type: integer, minimum: 0}
+        EN_EJECUCION: {type: integer, minimum: 0}
+        PENDIENTE_CIERRE: {type: integer, minimum: 0}
+        CERRADA: {type: integer, minimum: 0}
+    ResumenEquipoQe:
+      type: object
+      required: [analistasVigentes]
+      additionalProperties: false
+      properties:
+        analistasVigentes:
+          type: integer
+          minimum: 0
+    ResumenHduQe:
+      type: object
+      required: [hduEnAmbito, porEstado]
+      additionalProperties: false
+      properties:
+        hduEnAmbito:
+          type: integer
+          minimum: 0
+          description: HDU donde el QE es responsable o cuyo analista supervisa hoy.
+        porEstado:
+          $ref: '#/components/schemas/ConteoPorEstado'
+    ResumenSupervisorQa:
+      type: object
+      required: [supervisor]
+      additionalProperties: false
+      properties:
+        supervisor:
+          description: QE vigente, o `null` explícito si no tiene (E1-B05#2).
+          oneOf:
+            - $ref: '#/components/schemas/UsuarioResumen'
+            - type: 'null'
+    ResumenHduQa:
+      type: object
+      required: [hduAsignadas, porEstado]
+      additionalProperties: false
+      properties:
+        hduAsignadas:
+          type: integer
+          minimum: 0
+        porEstado:
+          $ref: '#/components/schemas/ConteoPorEstado'
+    ResumenUsuariosAdmin:
+      type: object
+      required: [total, activos, inactivos, porRol]
+      additionalProperties: false
+      properties:
+        total: {type: integer, minimum: 0}
+        activos: {type: integer, minimum: 0}
+        inactivos: {type: integer, minimum: 0}
+        porRol:
+          type: object
+          required: [ADMINISTRADOR, QE, ANALISTA_QA]
+          additionalProperties: false
+          properties:
+            ADMINISTRADOR: {type: integer, minimum: 0}
+            QE: {type: integer, minimum: 0}
+            ANALISTA_QA: {type: integer, minimum: 0}
+    ResumenSupervisionAdmin:
+      type: object
+      required: [relacionesVigentes, analistasSinSupervisor, qeSinAnalistas]
+      additionalProperties: false
+      properties:
+        relacionesVigentes: {type: integer, minimum: 0}
+        analistasSinSupervisor:
+          type: integer
+          minimum: 0
+          description: Analistas activos sin QE vigente.
+        qeSinAnalistas:
+          type: integer
+          minimum: 0
+          description: QE activos sin analistas vigentes.
+
+    # -------------------------------------------------------------- catálogos
+    CatalogoRef:
+      type: object
+      required: [id, nombre]
+      additionalProperties: false
+      properties:
+        id:
+          $ref: '#/components/schemas/Uuid'
+        nombre:
+          type: string
+    ListaCelulas:
+      type: object
+      required: [items]
+      additionalProperties: false
+      properties:
+        items:
+          type: array
+          description: Ordenadas por nombre.
+          items:
+            $ref: '#/components/schemas/CatalogoRef'
+    Sprint:
+      type: object
+      required: [id, nombre, inicio, fin]
+      additionalProperties: false
+      properties:
+        id:
+          $ref: '#/components/schemas/Uuid'
+        nombre:
+          type: string
+          examples: [Sprint 2026-18]
+        inicio:
+          $ref: '#/components/schemas/Fecha'
+        fin:
+          $ref: '#/components/schemas/Fecha'
+    ListaSprints:
+      type: object
+      required: [items]
+      additionalProperties: false
+      properties:
+        items:
+          type: array
+          description: Ordenados por `inicio` ascendente.
+          items:
+            $ref: '#/components/schemas/Sprint'
+
+    # -------------------------------------------------------------------- HDU
+    HduResumen:
+      type: object
+      required: [id, codigo, titulo, celula, sprint, prioridad, estado, estadoActualizadoEn, qeResponsable, analista, creadoEn]
+      properties:
+        id:
+          $ref: '#/components/schemas/Uuid'
+        codigo:
+          type: string
+          examples: [PAGOS-1042]
+        titulo:
+          type: string
+        celula:
+          $ref: '#/components/schemas/CatalogoRef'
+        sprint:
+          $ref: '#/components/schemas/CatalogoRef'
+        prioridad:
+          $ref: '#/components/schemas/PrioridadHdu'
+        estado:
+          $ref: '#/components/schemas/EstadoHdu'
+        estadoActualizadoEn:
+          $ref: '#/components/schemas/FechaHora'
+        qeResponsable:
+          $ref: '#/components/schemas/UsuarioResumen'
+        analista:
+          description: Analista QA asignado, o `null` si la HDU no tiene.
+          oneOf:
+            - $ref: '#/components/schemas/UsuarioResumen'
+            - type: 'null'
+        creadoEn:
+          $ref: '#/components/schemas/FechaHora'
+    PermisosHdu:
+      type: object
+      description: Acciones que el usuario autenticado puede ejecutar sobre la HDU. Orienta la interfaz; el servicio vuelve a validar.
+      required: [cambiarEstado, asignarAnalista]
+      additionalProperties: false
+      properties:
+        cambiarEstado:
+          type: boolean
+        asignarAnalista:
+          type: boolean
+    HduDetalleBase:
+      description: Detalle de HDU según Organización, sin datos de otros servicios.
+      allOf:
+        - $ref: '#/components/schemas/HduResumen'
+        - type: object
+          required: [creadoPor, transicionesPermitidas, permisos]
+          properties:
+            creadoPor:
+              $ref: '#/components/schemas/Actor'
+            transicionesPermitidas:
+              type: array
+              description: Estados a los que puede pasar desde el actual (D10). Vacío si `CERRADA` o si el usuario no puede cambiar el estado.
+              items:
+                $ref: '#/components/schemas/EstadoHdu'
+            permisos:
+              $ref: '#/components/schemas/PermisosHdu'
+    PaginaHdu:
+      type: object
+      required: [items, total, pagina, tamanoPagina]
+      additionalProperties: false
+      properties:
+        items:
+          type: array
+          description: Ordenadas por `creadoEn` descendente.
+          items:
+            $ref: '#/components/schemas/HduResumen'
+        total:
+          type: integer
+          minimum: 0
+        pagina:
+          type: integer
+          minimum: 1
+        tamanoPagina:
+          type: integer
+          minimum: 1
+          maximum: 100
+    NuevaHdu:
+      type: object
+      required: [codigo, titulo, celulaId, sprintId, prioridad]
+      additionalProperties: false
+      properties:
+        codigo:
+          type: string
+          minLength: 1
+          maxLength: 40
+          pattern: '^[A-Za-z0-9][A-Za-z0-9._-]*$'
+          description: Identificador de la HDU. Único sin distinguir mayúsculas; se guarda tal como llega, sin espacios.
+        titulo:
+          type: string
+          minLength: 1
+          maxLength: 200
+        celulaId:
+          $ref: '#/components/schemas/Uuid'
+        sprintId:
+          $ref: '#/components/schemas/Uuid'
+        prioridad:
+          $ref: '#/components/schemas/PrioridadHdu'
+    AsignacionAnalista:
+      type: object
+      required: [analistaId]
+      additionalProperties: false
+      properties:
+        analistaId:
+          $ref: '#/components/schemas/Uuid'
+        motivo:
+          type: string
+          minLength: 3
+          maxLength: 500
+          description: Obligatorio si la HDU ya tiene otro analista (422 `MOTIVO_REQUERIDO`).
+    ResultadoAsignacion:
+      type: object
+      required: [cambio, hdu, analistaAnterior, analistaNuevo, motivo, fecha, actor]
+      additionalProperties: false
+      properties:
+        cambio:
+          type: boolean
+          description: '`false` si el analista indicado ya estaba asignado; no se registra historial.'
+        hdu:
+          $ref: '#/components/schemas/HduResumen'
+        analistaAnterior:
+          oneOf:
+            - $ref: '#/components/schemas/UsuarioResumen'
+            - type: 'null'
+        analistaNuevo:
+          $ref: '#/components/schemas/UsuarioResumen'
+        motivo:
+          oneOf:
+            - type: string
+            - type: 'null'
+        fecha:
+          $ref: '#/components/schemas/FechaHora'
+        actor:
+          $ref: '#/components/schemas/Actor'
+    SolicitudCambioEstado:
+      type: object
+      required: [estado]
+      additionalProperties: false
+      properties:
+        estado:
+          $ref: '#/components/schemas/EstadoHdu'
+    ResultadoCambioEstado:
+      type: object
+      required: [hdu, estadoAnterior, estadoNuevo, fecha, actor, transicionesPermitidas]
+      additionalProperties: false
+      properties:
+        hdu:
+          $ref: '#/components/schemas/HduResumen'
+        estadoAnterior:
+          $ref: '#/components/schemas/EstadoHdu'
+        estadoNuevo:
+          $ref: '#/components/schemas/EstadoHdu'
+        fecha:
+          $ref: '#/components/schemas/FechaHora'
+          description: Igual a `hdu.estadoActualizadoEn` (E2-F04#3).
+        actor:
+          $ref: '#/components/schemas/Actor'
+        transicionesPermitidas:
+          type: array
+          description: Transiciones desde el nuevo estado.
+          items:
+            $ref: '#/components/schemas/EstadoHdu'
+    EventoEstadoHdu:
+      type: object
+      required: [tipo, fecha, actor, estadoAnterior, estadoNuevo]
+      additionalProperties: false
+      properties:
+        tipo:
+          type: string
+          const: ESTADO
+        fecha:
+          $ref: '#/components/schemas/FechaHora'
+        actor:
+          $ref: '#/components/schemas/Actor'
+        estadoAnterior:
+          description: '`null` en el evento de creación (estado inicial `PENDIENTE`).'
+          oneOf:
+            - $ref: '#/components/schemas/EstadoHdu'
+            - type: 'null'
+        estadoNuevo:
+          $ref: '#/components/schemas/EstadoHdu'
+    EventoAsignacionHdu:
+      type: object
+      required: [tipo, fecha, actor, analistaAnterior, analistaNuevo, motivo]
+      additionalProperties: false
+      properties:
+        tipo:
+          type: string
+          const: ASIGNACION
+        fecha:
+          $ref: '#/components/schemas/FechaHora'
+        actor:
+          $ref: '#/components/schemas/Actor'
+        analistaAnterior:
+          oneOf:
+            - $ref: '#/components/schemas/UsuarioResumen'
+            - type: 'null'
+        analistaNuevo:
+          $ref: '#/components/schemas/UsuarioResumen'
+        motivo:
+          oneOf:
+            - type: string
+            - type: 'null'
+    EventoHistorialHdu:
+      oneOf:
+        - $ref: '#/components/schemas/EventoEstadoHdu'
+        - $ref: '#/components/schemas/EventoAsignacionHdu'
+      discriminator:
+        propertyName: tipo
+        mapping:
+          ESTADO: '#/components/schemas/EventoEstadoHdu'
+          ASIGNACION: '#/components/schemas/EventoAsignacionHdu'
+    HistorialHdu:
+      type: object
+      required: [hduId, items]
+      additionalProperties: false
+      properties:
+        hduId:
+          $ref: '#/components/schemas/Uuid'
+        items:
+          type: array
+          description: Cambios de estado y de asignación en orden cronológico ascendente por `fecha` (E2-B04#3). El primero es la creación.
+          items:
+            $ref: '#/components/schemas/EventoHistorialHdu'
+    AccesoHdu:
+      type: object
+      description: Resolución de acceso del usuario autenticado a una HDU, para otros servicios (E3 en adelante).
+      required: [hduId, permitido, relacion]
+      additionalProperties: false
+      properties:
+        hduId:
+          $ref: '#/components/schemas/Uuid'
+        permitido:
+          type: boolean
+        relacion:
+          description: Motivo del acceso, o `null` si no se permite.
+          oneOf:
+            - type: string
+              enum: [ADMINISTRADOR, QE_RESPONSABLE, QE_SUPERVISOR_DEL_ANALISTA, ANALISTA_ASIGNADO]
+            - type: 'null'
+
+    # -------------------------------------------------------------- auditoría
+    RegistroAuditoria:
+      type: object
+      description: Cambio auditado (E1-B12, E2-B04). `antes` y `despues` nunca incluyen contraseñas ni tokens.
+      required: [id, fecha, actor, entidad, entidadId, accion, antes, despues, motivo]
+      additionalProperties: false
+      properties:
+        id:
+          $ref: '#/components/schemas/Uuid'
+        fecha:
+          $ref: '#/components/schemas/FechaHora'
+        actor:
+          $ref: '#/components/schemas/Actor'
+        entidad:
+          type: string
+          enum: [USUARIO, SUPERVISION, HDU]
+        entidadId:
+          $ref: '#/components/schemas/Uuid'
+        accion:
+          type: string
+          enum: [CREAR_USUARIO, ACTUALIZAR_USUARIO, ACTIVAR_USUARIO, DESACTIVAR_USUARIO, CAMBIAR_ROL, ASIGNAR_SUPERVISOR, CAMBIAR_SUPERVISOR, CREAR_HDU, CAMBIAR_ESTADO_HDU, ASIGNAR_ANALISTA, REASIGNAR_ANALISTA]
+        antes:
+          description: Campos relevantes antes del cambio; `null` en creaciones.
+          oneOf:
+            - type: object
+            - type: 'null'
+        despues:
+          oneOf:
+            - type: object
+            - type: 'null'
+        motivo:
+          oneOf:
+            - type: string
+            - type: 'null'
+    PaginaAuditoria:
+      type: object
+      required: [items, total, pagina, tamanoPagina]
+      additionalProperties: false
+      properties:
+        items:
+          type: array
+          description: Ordenados por `fecha` descendente.
+          items:
+            $ref: '#/components/schemas/RegistroAuditoria'
+        total:
+          type: integer
+          minimum: 0
+        pagina:
+          type: integer
+          minimum: 1
+        tamanoPagina:
+          type: integer
+          minimum: 1
+          maximum: 100
+
+  headers:
+    XTraceId:
+      description: Identificador de traza de la solicitud.
+      schema:
+        type: string
+    RetryAfter:
+      description: Segundos que conviene esperar antes de reintentar.
+      schema:
+        type: integer
+        minimum: 1
+
+  parameters:
+    Pagina:
+      name: pagina
+      in: query
+      required: false
+      schema:
+        type: integer
+        minimum: 1
+        default: 1
+    TamanoPagina:
+      name: tamanoPagina
+      in: query
+      required: false
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 100
+        default: 20
+    UsuarioIdPath:
+      name: id
+      in: path
+      required: true
+      description: UUID del usuario (igual al `sub` de Supabase Auth).
+      schema:
+        $ref: '#/components/schemas/Uuid'
+    AnalistaIdPath:
+      name: id
+      in: path
+      required: true
+      description: UUID del Analista QA.
+      schema:
+        $ref: '#/components/schemas/Uuid'
+    HduIdPath:
+      name: id
+      in: path
+      required: true
+      description: UUID de la HDU.
+      schema:
+        $ref: '#/components/schemas/Uuid'
+    XTraceIdSolicitud:
+      name: x-trace-id
+      in: header
+      required: false
+      description: Traza entrante; si falta, se genera.
+      schema:
+        type: string
+
+  responses:
+    Validacion:
+      description: Datos inválidos. `detalles[]` indica cada campo.
+      x-codigos: [VALIDACION]
+      headers:
+        x-trace-id:
+          $ref: '#/components/headers/XTraceId'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            codigo: VALIDACION
+            mensaje: Los datos enviados no son válidos.
+            traceId: 4bf92f3577b34da6a3ce929d0e0e4736
+            detalles:
+              - campo: correo
+                codigo: REQUERIDO
+                mensaje: El correo es obligatorio.
+    NoAutenticado:
+      description: Sin sesión válida (`NO_AUTENTICADO`) o sesión vencida (`SESION_EXPIRADA`).
+      x-codigos: [NO_AUTENTICADO, SESION_EXPIRADA]
+      headers:
+        x-trace-id:
+          $ref: '#/components/headers/XTraceId'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            codigo: SESION_EXPIRADA
+            mensaje: Tu sesión expiró. Inicia sesión nuevamente.
+            traceId: 4bf92f3577b34da6a3ce929d0e0e4736
+            detalles: []
+    AccesoDenegado:
+      description: Rol no permitido, usuario inactivo o recurso fuera del ámbito. Mensaje genérico (D12).
+      x-codigos: [ACCESO_DENEGADO]
+      headers:
+        x-trace-id:
+          $ref: '#/components/headers/XTraceId'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            codigo: ACCESO_DENEGADO
+            mensaje: No tienes acceso a este recurso.
+            traceId: 4bf92f3577b34da6a3ce929d0e0e4736
+            detalles: []
+    NoEncontrado:
+      description: El recurso no existe.
+      x-codigos: [NO_ENCONTRADO]
+      headers:
+        x-trace-id:
+          $ref: '#/components/headers/XTraceId'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    DemasiadasSolicitudes:
+      description: Límite de tasa excedido.
+      x-codigos: [DEMASIADAS_SOLICITUDES]
+      headers:
+        x-trace-id:
+          $ref: '#/components/headers/XTraceId'
+        Retry-After:
+          $ref: '#/components/headers/RetryAfter'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    ErrorInterno:
+      description: Error inesperado.
+      x-codigos: [ERROR_INTERNO]
+      headers:
+        x-trace-id:
+          $ref: '#/components/headers/XTraceId'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    ServicioNoDisponible:
+      description: El servicio de destino no respondió dentro del tiempo límite o está caído.
+      x-codigos: [SERVICIO_NO_DISPONIBLE]
+      headers:
+        x-trace-id:
+          $ref: '#/components/headers/XTraceId'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    ProveedorIdentidadNoDisponible:
+      description: Supabase Auth no confirmó el cambio. No se aplicó nada.
+      x-codigos: [PROVEEDOR_IDENTIDAD_NO_DISPONIBLE]
+      headers:
+        x-trace-id:
+          $ref: '#/components/headers/XTraceId'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
