@@ -1,0 +1,129 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://quality360.local/seed/mvp/esquema.json",
+  "title": "Quality360 · Semilla MVP (E1/E2)",
+  "description": "Estructura que valida infrastructure/seed/mvp/datos.json antes de cargarlo. Usa 'clave' como identificador local (no se envía a la API) para referenciar usuarios, células, sprints y HDU dentro del mismo archivo.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["contrasenaDemo", "usuarios", "celulas", "sprints", "hdu", "supervisiones", "asignacionesAnalista", "estadosHdu"],
+  "properties": {
+    "contrasenaDemo": {
+      "type": "string",
+      "minLength": 12,
+      "maxLength": 72,
+      "description": "Contraseña común para todas las cuentas de demo (solo local). Se usa cuando el usuario no trae su propia contrasenaInicial."
+    },
+    "usuarios": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["clave", "nombre", "correo", "rol"],
+        "properties": {
+          "clave": { "type": "string", "pattern": "^[a-z][a-z0-9-]*$" },
+          "nombre": { "type": "string", "minLength": 1, "maxLength": 120 },
+          "correo": { "type": "string", "format": "email", "pattern": "^[^@]+@quality360\\.local$", "maxLength": 254 },
+          "rol": { "enum": ["ADMINISTRADOR", "QE", "ANALISTA_QA"] },
+          "activo": { "type": "boolean", "default": true },
+          "contrasenaInicial": { "type": "string", "minLength": 12, "maxLength": 72 }
+        }
+      }
+    },
+    "celulas": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["clave", "nombre"],
+        "properties": {
+          "clave": { "type": "string", "pattern": "^[a-z][a-z0-9-]*$" },
+          "nombre": { "type": "string", "minLength": 1, "maxLength": 80 }
+        }
+      }
+    },
+    "sprints": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["clave", "nombre", "inicio", "fin"],
+        "properties": {
+          "clave": { "type": "string", "pattern": "^[a-z][a-z0-9-]*$" },
+          "nombre": { "type": "string", "minLength": 1, "maxLength": 80 },
+          "inicio": { "type": "string", "format": "date" },
+          "fin": { "type": "string", "format": "date" }
+        }
+      }
+    },
+    "hdu": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["clave", "codigo", "titulo", "celula", "sprint", "prioridad", "qeResponsable"],
+        "properties": {
+          "clave": { "type": "string", "pattern": "^[a-z][a-z0-9-]*$" },
+          "codigo": { "type": "string", "minLength": 1, "maxLength": 40, "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$" },
+          "titulo": { "type": "string", "minLength": 1, "maxLength": 200 },
+          "celula": { "type": "string", "description": "clave de una célula" },
+          "sprint": { "type": "string", "description": "clave de un sprint" },
+          "prioridad": { "enum": ["BAJA", "MEDIA", "ALTA", "CRITICA"] },
+          "qeResponsable": { "type": "string", "description": "clave de un usuario con rol QE" }
+        }
+      }
+    },
+    "supervisiones": {
+      "type": "array",
+      "description": "Historial deseado de supervisión por analista, en orden cronológico. Un solo elemento = asignación directa; dos o más = reasignación con motivo desde el segundo elemento.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["analista", "historial"],
+        "properties": {
+          "analista": { "type": "string", "description": "clave de un usuario con rol ANALISTA_QA" },
+          "historial": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["qe"],
+              "properties": {
+                "qe": { "type": "string", "description": "clave de un usuario con rol QE" },
+                "motivo": { "type": "string", "minLength": 3, "maxLength": 500 }
+              }
+            }
+          }
+        }
+      }
+    },
+    "asignacionesAnalista": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["hdu", "analista"],
+        "properties": {
+          "hdu": { "type": "string", "description": "clave de una HDU" },
+          "analista": { "type": "string", "description": "clave de un usuario con rol ANALISTA_QA" }
+        }
+      }
+    },
+    "estadosHdu": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["hdu", "estado"],
+        "properties": {
+          "hdu": { "type": "string", "description": "clave de una HDU" },
+          "estado": { "enum": ["PENDIENTE", "DISENO_PRUEBAS", "EN_EJECUCION", "PENDIENTE_CIERRE"] }
+        }
+      }
+    }
+  }
+}

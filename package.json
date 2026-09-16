@@ -23,7 +23,8 @@
     "contracts:types": "npx --yes openapi-typescript@7.13.0",
     "ws:lint": "npm run lint --workspaces --if-present",
     "ws:test": "npm run test --workspaces --if-present",
-    "ws:build": "npm run build --workspaces --if-present"
+    "ws:build": "npm run build --workspaces --if-present",
+    "seed": "node --env-file-if-exists=infrastructure/seed/mvp/.env.carga infrastructure/seed/mvp/cargar.mjs"
   },
   "dependencies": {
     "react": "^19.2.8",

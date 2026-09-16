@@ -1,0 +1,351 @@
+{
+  "$schema": "./esquema.json",
+  "contrasenaDemo": "Quality360Demo#2025",
+  "usuarios": [
+    {
+      "clave": "patricia",
+      "nombre": "Patricia Rojas",
+      "correo": "patricia.rojas@quality360.local",
+      "rol": "ADMINISTRADOR"
+    },
+    {
+      "clave": "carla",
+      "nombre": "Carla Fuentes",
+      "correo": "carla.fuentes@quality360.local",
+      "rol": "QE"
+    },
+    {
+      "clave": "marcos",
+      "nombre": "Marcos Ibanez",
+      "correo": "marcos.ibanez@quality360.local",
+      "rol": "QE"
+    },
+    {
+      "clave": "sofia",
+      "nombre": "Sofia Herrera",
+      "correo": "sofia.herrera@quality360.local",
+      "rol": "QE"
+    },
+    {
+      "clave": "ana",
+      "nombre": "Ana Torres",
+      "correo": "ana.torres@quality360.local",
+      "rol": "ANALISTA_QA"
+    },
+    {
+      "clave": "beatriz",
+      "nombre": "Beatriz Molina",
+      "correo": "beatriz.molina@quality360.local",
+      "rol": "ANALISTA_QA"
+    },
+    {
+      "clave": "diego",
+      "nombre": "Diego Salazar",
+      "correo": "diego.salazar@quality360.local",
+      "rol": "ANALISTA_QA"
+    },
+    {
+      "clave": "elena",
+      "nombre": "Elena Campos",
+      "correo": "elena.campos@quality360.local",
+      "rol": "ANALISTA_QA"
+    },
+    {
+      "clave": "francisco",
+      "nombre": "Francisco Reyes",
+      "correo": "francisco.reyes@quality360.local",
+      "rol": "ANALISTA_QA"
+    },
+    {
+      "clave": "gabriela",
+      "nombre": "Gabriela Nunez",
+      "correo": "gabriela.nunez@quality360.local",
+      "rol": "ANALISTA_QA",
+      "activo": false
+    }
+  ],
+  "celulas": [
+    {
+      "clave": "pagos",
+      "nombre": "Pagos"
+    },
+    {
+      "clave": "clientes",
+      "nombre": "Clientes"
+    }
+  ],
+  "sprints": [
+    {
+      "clave": "sprint-33",
+      "nombre": "Sprint 2025.33",
+      "inicio": "2025-08-11",
+      "fin": "2025-08-24"
+    },
+    {
+      "clave": "sprint-34",
+      "nombre": "Sprint 2025.34",
+      "inicio": "2025-08-25",
+      "fin": "2025-09-07"
+    },
+    {
+      "clave": "sprint-35",
+      "nombre": "Sprint 2025.35",
+      "inicio": "2025-09-08",
+      "fin": "2025-09-21"
+    }
+  ],
+  "hdu": [
+    {
+      "clave": "hdu-pag-001",
+      "codigo": "HDU-PAG-001",
+      "titulo": "Validar reintento de pago rechazado",
+      "celula": "pagos",
+      "sprint": "sprint-33",
+      "prioridad": "ALTA",
+      "qeResponsable": "carla"
+    },
+    {
+      "clave": "hdu-pag-002",
+      "codigo": "HDU-PAG-002",
+      "titulo": "Conciliación de pagos con el banco emisor",
+      "celula": "pagos",
+      "sprint": "sprint-33",
+      "prioridad": "MEDIA",
+      "qeResponsable": "carla"
+    },
+    {
+      "clave": "hdu-pag-003",
+      "codigo": "HDU-PAG-003",
+      "titulo": "Bloqueo de pagos duplicados en la misma sesión",
+      "celula": "pagos",
+      "sprint": "sprint-34",
+      "prioridad": "CRITICA",
+      "qeResponsable": "carla"
+    },
+    {
+      "clave": "hdu-pag-004",
+      "codigo": "HDU-PAG-004",
+      "titulo": "Exportar comprobante de pago en PDF",
+      "celula": "pagos",
+      "sprint": "sprint-34",
+      "prioridad": "BAJA",
+      "qeResponsable": "carla"
+    },
+    {
+      "clave": "hdu-pag-005",
+      "codigo": "HDU-PAG-005",
+      "titulo": "Notificación de pago exitoso por correo",
+      "celula": "clientes",
+      "sprint": "sprint-35",
+      "prioridad": "MEDIA",
+      "qeResponsable": "carla"
+    },
+    {
+      "clave": "hdu-pag-006",
+      "codigo": "HDU-PAG-006",
+      "titulo": "Rechazo de pago por tarjeta vencida",
+      "celula": "pagos",
+      "sprint": "sprint-35",
+      "prioridad": "ALTA",
+      "qeResponsable": "carla"
+    },
+    {
+      "clave": "hdu-cli-001",
+      "codigo": "HDU-CLI-001",
+      "titulo": "Actualizar datos de contacto del cliente",
+      "celula": "clientes",
+      "sprint": "sprint-33",
+      "prioridad": "ALTA",
+      "qeResponsable": "marcos"
+    },
+    {
+      "clave": "hdu-cli-002",
+      "codigo": "HDU-CLI-002",
+      "titulo": "Fusión de perfiles de cliente duplicados",
+      "celula": "clientes",
+      "sprint": "sprint-33",
+      "prioridad": "MEDIA",
+      "qeResponsable": "marcos"
+    },
+    {
+      "clave": "hdu-cli-003",
+      "codigo": "HDU-CLI-003",
+      "titulo": "Eliminar cuenta de cliente a solicitud (RGPD)",
+      "celula": "clientes",
+      "sprint": "sprint-34",
+      "prioridad": "CRITICA",
+      "qeResponsable": "marcos"
+    },
+    {
+      "clave": "hdu-cli-004",
+      "codigo": "HDU-CLI-004",
+      "titulo": "Historial de compras del cliente",
+      "celula": "pagos",
+      "sprint": "sprint-34",
+      "prioridad": "BAJA",
+      "qeResponsable": "marcos"
+    },
+    {
+      "clave": "hdu-cli-005",
+      "codigo": "HDU-CLI-005",
+      "titulo": "Verificación de identidad en alta de cliente",
+      "celula": "clientes",
+      "sprint": "sprint-35",
+      "prioridad": "MEDIA",
+      "qeResponsable": "marcos"
+    },
+    {
+      "clave": "hdu-cli-006",
+      "codigo": "HDU-CLI-006",
+      "titulo": "Preferencias de comunicación del cliente",
+      "celula": "clientes",
+      "sprint": "sprint-35",
+      "prioridad": "ALTA",
+      "qeResponsable": "marcos"
+    },
+    {
+      "clave": "hdu-sof-001",
+      "codigo": "HDU-SOF-001",
+      "titulo": "Panel de reportes para auditoría de pagos",
+      "celula": "pagos",
+      "sprint": "sprint-33",
+      "prioridad": "MEDIA",
+      "qeResponsable": "sofia"
+    },
+    {
+      "clave": "hdu-sof-002",
+      "codigo": "HDU-SOF-002",
+      "titulo": "Exportación masiva de clientes a CSV",
+      "celula": "clientes",
+      "sprint": "sprint-34",
+      "prioridad": "BAJA",
+      "qeResponsable": "sofia"
+    }
+  ],
+  "supervisiones": [
+    {
+      "analista": "ana",
+      "historial": [
+        {
+          "qe": "carla"
+        }
+      ]
+    },
+    {
+      "analista": "beatriz",
+      "historial": [
+        {
+          "qe": "carla"
+        }
+      ]
+    },
+    {
+      "analista": "elena",
+      "historial": [
+        {
+          "qe": "marcos"
+        }
+      ]
+    },
+    {
+      "analista": "diego",
+      "historial": [
+        {
+          "qe": "carla"
+        },
+        {
+          "qe": "marcos",
+          "motivo": "Reorganización del equipo: Diego pasa a apoyar a Marcos en la célula Clientes."
+        }
+      ]
+    }
+  ],
+  "asignacionesAnalista": [
+    {
+      "hdu": "hdu-pag-001",
+      "analista": "ana"
+    },
+    {
+      "hdu": "hdu-pag-002",
+      "analista": "beatriz"
+    },
+    {
+      "hdu": "hdu-pag-003",
+      "analista": "ana"
+    },
+    {
+      "hdu": "hdu-pag-004",
+      "analista": "beatriz"
+    },
+    {
+      "hdu": "hdu-pag-005",
+      "analista": "ana"
+    },
+    {
+      "hdu": "hdu-cli-001",
+      "analista": "diego"
+    },
+    {
+      "hdu": "hdu-cli-002",
+      "analista": "elena"
+    },
+    {
+      "hdu": "hdu-cli-003",
+      "analista": "diego"
+    },
+    {
+      "hdu": "hdu-cli-004",
+      "analista": "elena"
+    },
+    {
+      "hdu": "hdu-cli-005",
+      "analista": "diego"
+    },
+    {
+      "hdu": "hdu-cli-006",
+      "analista": "elena"
+    }
+  ],
+  "estadosHdu": [
+    {
+      "hdu": "hdu-pag-001",
+      "estado": "EN_EJECUCION"
+    },
+    {
+      "hdu": "hdu-pag-002",
+      "estado": "DISENO_PRUEBAS"
+    },
+    {
+      "hdu": "hdu-pag-003",
+      "estado": "PENDIENTE_CIERRE"
+    },
+    {
+      "hdu": "hdu-pag-005",
+      "estado": "DISENO_PRUEBAS"
+    },
+    {
+      "hdu": "hdu-cli-001",
+      "estado": "EN_EJECUCION"
+    },
+    {
+      "hdu": "hdu-cli-002",
+      "estado": "PENDIENTE_CIERRE"
+    },
+    {
+      "hdu": "hdu-cli-003",
+      "estado": "DISENO_PRUEBAS"
+    },
+    {
+      "hdu": "hdu-cli-005",
+      "estado": "PENDIENTE_CIERRE"
+    },
+    {
+      "hdu": "hdu-cli-006",
+      "estado": "EN_EJECUCION"
+    },
+    {
+      "hdu": "hdu-sof-002",
+      "estado": "DISENO_PRUEBAS"
+    }
+  ]
+}
