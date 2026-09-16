@@ -32,3 +32,6 @@ playwright-report/
 *.njsproj
 *.sln
 *.sw?
+
+# Worktrees de agentes
+.claude/worktrees/
