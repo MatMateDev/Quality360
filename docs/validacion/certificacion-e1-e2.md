@@ -260,3 +260,80 @@ mismo resultado (ver nota de método arriba).
 | # | Defecto | Agente dueño | Severidad | Reproducción |
 | --- | --- | --- | --- | --- |
 | 1 | `AdminSupervisionPage` no pagina ni busca en sus selects de QE/Analista QA (`useUsuarios({rol})` sin `tamanoPagina`); con más de 20 activos de un rol, algunos no se pueden seleccionar para (re)asignar supervisor, sin aviso. | `q360-frontend` | Media | Con >20 QE activos, abrir `/admin/supervision` e intentar seleccionar en "QE supervisor" uno cuyo nombre ordene después del puesto 20: no aparece en el `<select>`. |
+
+## Ronda 1 · Grupo 4 — E2 completo (gestión de HDU)
+
+Escenarios: E2-F01 (3), E2-F02 (3), E2-F03 (3), E2-F04 (3), E2-B01 (3),
+E2-B02 (3), E2-B03 (3), E2-B04 (3) = 24 escenarios.
+
+Interpretación ya decidida (ver arriba): **E2-B02#3** se verifica llevando
+una HDU propia de la prueba hasta `PENDIENTE_CIERRE` y pidiendo `CERRADA`;
+como Certificaciones responde «indisponible» para el checklist en esta
+corrida (D11), el resultado esperado y verificado es 409
+`CHECKLIST_NO_DISPONIBLE` — ninguna HDU llega a `CERRADA` en esta
+certificación.
+
+Ejecución: `npx playwright test --project=api api/e2-b01-persistencia-hdu.spec.ts api/e2-b02-transiciones-estado.spec.ts api/e2-b03-ambito-hdu.spec.ts api/e2-b04-historial-hdu.spec.ts --project=e2e e2e/e2-f01-crear-hdu.spec.ts e2e/e2-f02-asignar-analista.spec.ts e2e/e2-f03-listado-hdu.spec.ts e2e/e2-f04-detalle-hdu.spec.ts`
+→ **33/33 pasaron** (24 escenarios + 9 sesiones de `setup`), dos corridas
+consecutivas con el mismo resultado (algunas pruebas de escritura
+esperaron su reintento por el límite de tasa compartido, ver nota de
+método; todas terminaron dentro del tiempo límite de 90 s).
+
+| Escenario | Prueba | Resultado | Evidencia |
+| --- | --- | --- | --- |
+| E2-F01#1 | `tests/e2e/e2-f01-crear-hdu.spec.ts` | Pasa | HDU creada, redirige a `/hdu/{id}`, insignia de estado "Pendiente" |
+| E2-F01#2 | `tests/e2e/e2-f01-crear-hdu.spec.ts` | Pasa | "El código/título es obligatorio." y sigue en `/qe/hdu/nueva` |
+| E2-F01#3 | `tests/e2e/e2-f01-crear-hdu.spec.ts` | Pasa | Segundo alta con el mismo código → `error-codigo-hdu` junto al campo |
+| E2-F02#1 | `tests/e2e/e2-f02-asignar-analista.spec.ts` | Pasa | Diálogo "Asignar analista", selección de Ana, `valor-analista-hdu` actualizado |
+| E2-F02#2 | `tests/e2e/e2-f02-asignar-analista.spec.ts` | Pasa | El `<select>` de analistas contiene a Ana/Beatriz y no a Diego (equipo de Marcos) |
+| E2-F02#3 | `tests/e2e/e2-f02-asignar-analista.spec.ts` | Pasa | Diálogo "Reasignar analista" pide motivo; historial registra el cambio con el motivo |
+| E2-F03#1 | `tests/e2e/e2-f03-listado-hdu.spec.ts` | Pasa | Filtro por sprint deja solo filas de ese sprint |
+| E2-F03#2 | `tests/e2e/e2-f03-listado-hdu.spec.ts` | Pasa | Filtro por estado Cerrada (D11, nunca hay ninguna) → `bloque-mis-hdu-vacio` |
+| E2-F03#3 | `tests/e2e/e2-f03-listado-hdu.spec.ts` | Pasa | HDU-PAG-001/003 (de Ana) visibles; HDU-PAG-002/004 (de Beatriz) ausentes |
+| E2-F04#1 | `tests/e2e/e2-f04-detalle-hdu.spec.ts` | Pasa | Código, QE, "Sin asignar", `checklist-no-disponible` visibles |
+| E2-F04#2 | `tests/e2e/e2-f04-detalle-hdu.spec.ts` | Pasa | Ana abre una HDU de Marcos sin relación → `acceso-denegado` |
+| E2-F04#3 | `tests/e2e/e2-f04-detalle-hdu.spec.ts` | Pasa | "Pasar a Diseño de pruebas" actualiza la insignia; `estadoActualizadoEn` confirmado por API |
+| E2-B01#1 | `tests/api/e2-b01-persistencia-hdu.spec.ts` | Pasa | `estado: PENDIENTE`, célula/sprint/prioridad/creadoPor/creadoEn correctos |
+| E2-B01#2 | `tests/api/e2-b01-persistencia-hdu.spec.ts` | Pasa | Datos inválidos → 400 `VALIDACION` con `detalles` |
+| E2-B01#3 | `tests/api/e2-b01-persistencia-hdu.spec.ts` | Pasa | Código repetido → 409 `CODIGO_HDU_DUPLICADO` |
+| E2-B02#1 | `tests/api/e2-b02-transiciones-estado.spec.ts` | Pasa | `PENDIENTE → DISENO_PRUEBAS` aceptada, `transicionesPermitidas: [EN_EJECUCION]` |
+| E2-B02#2 | `tests/api/e2-b02-transiciones-estado.spec.ts` | Pasa | `PENDIENTE → CERRADA` → 409 `TRANSICION_INVALIDA`, permitidas `[DISENO_PRUEBAS]` |
+| E2-B02#3 | `tests/api/e2-b02-transiciones-estado.spec.ts` | Pasa | HDU en `PENDIENTE_CIERRE` → `CERRADA` → 409 `CHECKLIST_NO_DISPONIBLE`; HDU sigue en `PENDIENTE_CIERRE` |
+| E2-B03#1 | `tests/api/e2-b03-ambito-hdu.spec.ts` | Pasa | Todas las HDU de Ana traen `analista.correo === ana` |
+| E2-B03#2 | `tests/api/e2-b03-ambito-hdu.spec.ts` | Pasa | Marcos ve una HDU ajena (responsable Carla) asignada a Diego, y las suyas propias |
+| E2-B03#3 | `tests/api/e2-b03-ambito-hdu.spec.ts` | Pasa | Patricia ve HDU de Carla/Ana, Marcos/Diego y Sofía a la vez |
+| E2-B04#1 | `tests/api/e2-b04-historial-hdu.spec.ts` | Pasa | Evento `ESTADO` con `estadoAnterior`, `estadoNuevo` y actor |
+| E2-B04#2 | `tests/api/e2-b04-historial-hdu.spec.ts` | Pasa | Evento `ASIGNACION` con analista anterior, nuevo y motivo |
+| E2-B04#3 | `tests/api/e2-b04-historial-hdu.spec.ts` | Pasa | Eventos en orden cronológico ascendente; un tercero sin relación recibe 403 |
+
+### Dictamen HDU — Grupo 4
+
+| HDU | Dictamen | Motivo |
+| --- | --- | --- |
+| E2-F01 | CERTIFICADA | 3/3 escenarios pasan |
+| E2-F02 | CERTIFICADA | 3/3 escenarios pasan |
+| E2-F03 | CERTIFICADA | 3/3 escenarios pasan |
+| E2-F04 | CERTIFICADA | 3/3 escenarios pasan |
+| E2-B01 | CERTIFICADA | 3/3 escenarios pasan |
+| E2-B02 | CERTIFICADA | 3/3 escenarios pasan (interpretación D11 documentada arriba) |
+| E2-B03 | CERTIFICADA | 3/3 escenarios pasan |
+| E2-B04 | CERTIFICADA | 3/3 escenarios pasan |
+
+Sin defectos de producto abiertos en este grupo.
+
+## Resumen final (Ronda 1)
+
+- **Escenarios:** 96/96 ejecutados, 96/96 pasan (72 de E1 + 24 de E2).
+- **HDU:** 32/32 `CERTIFICADA`, 0 `OBSERVADA`, 0 `NO VERIFICABLE`.
+- **Defectos abiertos:** 1, agente dueño `q360-frontend` (severidad media,
+  ver Grupo 3: paginación/búsqueda ausente en los selects de
+  `AdminSupervisionPage`). Sin defectos abiertos de `q360-backend`,
+  `q360-seguridad-gateway`, `q360-frontend` (fuera del anterior) ni
+  `q360-integraciones` en esta ronda.
+- **Observación de infraestructura (no bloqueante, `q360-infra`):** ausencia
+  de límite de tasa perceptible en `POST /auth/v1/token` de Supabase Auth
+  local tras intentos fallidos repetidos (E1-B01#3).
+- **Rondas usadas:** 1 de 3 (no hubo que reejecutar nada por defecto de
+  producto; los reintentos por límite de tasa del propio gateway no cuentan
+  como ronda de corrección).
+- Suite completa reproducible con `cd tests && npx playwright test`.

@@ -80,6 +80,32 @@ export async function crearHdu(
   return respuesta.body;
 }
 
+/**
+ * Recorre todas las páginas de `GET /v1/hdu` (la semilla más las que crean
+ * otras pruebas ya suman decenas): evita que una aserción por `.toContain`
+ * falle solo porque el registro buscado quedó fuera de una única página.
+ */
+export async function listarTodasHdu(
+  request: APIRequestContext,
+  token: string,
+  filtros: Record<string, string> = {},
+): Promise<HduCreada[]> {
+  const items: HduCreada[] = [];
+  let pagina = 1;
+  const tamanoPagina = 100;
+  for (;;) {
+    const query = new URLSearchParams({ ...filtros, pagina: String(pagina), tamanoPagina: String(tamanoPagina) });
+    const respuesta = await api.get<{ items: HduCreada[]; total: number }>(request, `/v1/hdu?${query.toString()}`, { token });
+    if (respuesta.status !== 200) {
+      throw new Error(`No fue posible listar HDU: ${respuesta.status} ${JSON.stringify(respuesta.body)}`);
+    }
+    items.push(...respuesta.body.items);
+    if (items.length >= respuesta.body.total || respuesta.body.items.length === 0) break;
+    pagina += 1;
+  }
+  return items;
+}
+
 /** Avanza una HDU un paso de estado (D10). Lanza si el gateway rechaza la transición. */
 export async function avanzarEstadoHdu(request: APIRequestContext, token: string, hduId: string, estado: string) {
   const respuesta = await api.post(request, `/v1/hdu/${hduId}/estado`, { token, body: { estado } });
