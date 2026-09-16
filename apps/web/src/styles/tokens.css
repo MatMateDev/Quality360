@@ -1,0 +1,43 @@
+/* Tokens de color y tipografía rescatados del prototipo (src/ raíz). */
+:root {
+  --q360-font-family: Arial, Helvetica, sans-serif;
+
+  /* Fondo y superficie */
+  --q360-color-fondo: #f4f6f8;
+  --q360-color-superficie: #ffffff;
+  --q360-color-superficie-sutil: #f8fafc;
+  --q360-color-borde: #e2e7ee;
+  --q360-color-borde-fuerte: #cfd6df;
+
+  /* Texto */
+  --q360-color-texto: #172033;
+  --q360-color-texto-secundario: #687386;
+  --q360-color-texto-terciario: #465267;
+
+  /* Marca / acento */
+  --q360-color-acento: #2563eb;
+  --q360-color-acento-hover: #1d4ed8;
+  --q360-color-acento-suave: #eef4ff;
+  --q360-color-acento-suave-borde: #cddcff;
+
+  /* Estados semánticos */
+  --q360-color-exito: #157347;
+  --q360-color-exito-suave: #e5f6ec;
+  --q360-color-alerta: #8a5a00;
+  --q360-color-alerta-suave: #fff3d6;
+  --q360-color-error: #b42318;
+  --q360-color-error-suave: #fde8e8;
+  --q360-color-error-texto: #b91c1c;
+  --q360-color-error-fondo: #fee2e2;
+  --q360-color-indisponible: #5b5f66;
+  --q360-color-indisponible-suave: #eceef1;
+
+  /* Forma */
+  --q360-radio: 8px;
+  --q360-radio-grande: 12px;
+  --q360-radio-pastilla: 999px;
+
+  /* Foco visible (accesibilidad) */
+  --q360-foco-color: #1d4ed8;
+  --q360-foco-sombra: 0 0 0 3px rgba(37, 99, 235, 0.35);
+}

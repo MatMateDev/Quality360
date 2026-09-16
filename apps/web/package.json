@@ -1,0 +1,42 @@
+{
+  "name": "@quality360/web",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "description": "Portal Quality360 (Vite + React 19 + TypeScript) · dueño: q360-frontend · consume contracts/gateway.v1.yaml.",
+  "scripts": {
+    "gen:types": "npm run contracts:types --prefix ../..",
+    "dev": "vite --port 5173",
+    "build": "npm run gen:types && tsc --noEmit -p tsconfig.json && vite build",
+    "preview": "vite preview --port 5173",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "lint": "oxlint src"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "2.116.0",
+    "@tanstack/react-query": "^5.102.8",
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8",
+    "react-router-dom": "^7.18.4"
+  },
+  "devDependencies": {
+    "@testing-library/jest-dom": "^7.0.1",
+    "@testing-library/react": "^16.3.3",
+    "@testing-library/user-event": "^14.6.7",
+    "@types/react": "^19.2.17",
+    "@types/react-dom": "^19.2.3",
+    "@vitejs/plugin-react": "^6.0.4",
+    "jsdom": "^30.0.1",
+    "msw": "^2.15.0",
+    "oxlint": "^1.75.0",
+    "typescript": "^5.9.3",
+    "vite": "^8.2.0",
+    "vitest": "^5.0.1"
+  },
+  "msw": {
+    "workerDirectory": [
+      "public"
+    ]
+  }
+}
