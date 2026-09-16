@@ -7,7 +7,7 @@ import type {
   ResumenSupervisionAdmin,
   SupervisionRepositorio,
 } from '../../dominio/repositorios/supervision.repositorio.js';
-import type { Actor, SupervisionConUsuarios } from '../../dominio/tipos.js';
+import type { Actor, SupervisionConUsuarios, UsuarioResumen } from '../../dominio/tipos.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 
 type FilaConUsuarios = SupervisionPrisma & { qe: UsuarioPrisma; analista: UsuarioPrisma };
@@ -66,6 +66,25 @@ export class SupervisionPrismaRepositorio implements SupervisionRepositorio {
       orderBy: { desde: 'asc' },
     });
     return filas.map(aConUsuarios);
+  }
+
+  async mapaQeVigentePorAnalistas(analistaIds: readonly string[]): Promise<Map<string, UsuarioResumen>> {
+    if (analistaIds.length === 0) return new Map();
+    const filas = await this.prisma.supervision.findMany({
+      where: { analistaId: { in: [...analistaIds] }, hasta: null },
+      include: { qe: true },
+    });
+    return new Map(filas.map((fila) => [fila.analistaId, { id: fila.qe.id, nombre: fila.qe.nombre, correo: fila.qe.correo }]));
+  }
+
+  async mapaConteoAnalistasPorQe(qeIds: readonly string[]): Promise<Map<string, number>> {
+    if (qeIds.length === 0) return new Map();
+    const agrupado = await this.prisma.supervision.groupBy({
+      by: ['qeId'],
+      where: { qeId: { in: [...qeIds] }, hasta: null },
+      _count: { _all: true },
+    });
+    return new Map(agrupado.map((fila) => [fila.qeId, fila._count._all]));
   }
 
   async cerrarYCrearVigente(input: {

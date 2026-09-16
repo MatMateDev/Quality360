@@ -19,7 +19,7 @@
     "migrate:dev": "prisma migrate dev",
     "migrate:deploy": "prisma migrate deploy",
     "migrate:status": "prisma migrate status",
-    "test": "npm run build:pruebas && node --env-file=.env.test --test \"build-pruebas/test/**/*.test.js\"",
+    "test": "npm run build:pruebas && node --env-file=.env.test --test --test-concurrency=1 \"build-pruebas/test/**/*.test.js\"",
     "test:dominio": "npm run build:pruebas && node --test \"build-pruebas/test/dominio/**/*.test.js\""
   },
   "dependencies": {

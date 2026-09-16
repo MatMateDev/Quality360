@@ -1,4 +1,4 @@
-import type { Actor, SupervisionConUsuarios } from '../tipos.js';
+import type { Actor, SupervisionConUsuarios, UsuarioResumen } from '../tipos.js';
 
 export interface ResultadoCambioSupervision {
   readonly cambio: boolean;
@@ -21,6 +21,10 @@ export interface SupervisionRepositorio {
   /** Equipo vigente del QE, con los datos del analista y desde cuándo lo supervisa. */
   listarEquipoVigente(qeId: string): Promise<Array<{ analista: { id: string; nombre: string; correo: string; activo: boolean }; desde: Date }>>;
   listarHistorialPorAnalista(analistaId: string): Promise<SupervisionConUsuarios[]>;
+  /** QE vigente de cada analista dado, para enriquecer listados (`Usuario.supervisorVigente`). */
+  mapaQeVigentePorAnalistas(analistaIds: readonly string[]): Promise<Map<string, UsuarioResumen>>;
+  /** Cantidad de analistas vigentes de cada QE dado, para `Usuario.analistasVigentes`. */
+  mapaConteoAnalistasPorQe(qeIds: readonly string[]): Promise<Map<string, number>>;
 
   /**
    * Cierra la relación vigente del analista (si existe) y crea la nueva, en
