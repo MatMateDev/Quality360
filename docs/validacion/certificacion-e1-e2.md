@@ -84,3 +84,61 @@ consecutivas con el mismo resultado.
   baja.
 
 Sin defectos de producto abiertos en este grupo.
+
+## Ronda 1 · Grupo 2 — Portales de QE y QA
+
+Escenarios: E1-F03 (3), E1-F04 (3), E1-F06 (3), E1-B03 (3), E1-B04 (3),
+E1-B05 (3) = 18 escenarios.
+
+Interpretación de fuente caída (E1-F03#3, E1-F06#3, E1-B03#3): se levanta
+una segunda instancia del gateway (`http://localhost:3100`) con
+`FUENTE_RESUMEN_HDU_URL` apuntando a un puerto muerto (`:3199`), y para los
+escenarios F una segunda instancia del portal (`http://localhost:5180`)
+apuntando a ese gateway; el stack principal no se toca. Por diseño (regla no
+negociable #4 de `docs/arquitectura/decisiones-mvp.md`), la caída de una
+fuente se representa como un bloque `indisponible` dentro de una respuesta
+200, nunca como un error de solicitud completo. Por eso E1-F03#3 y E1-F06#3
+se verifican comprobando que el bloque de HDU muestra el texto de «no
+disponible» (`bloque-hdu-qe-indisponible` / `bloque-hdu-qa-indisponible`)
+mientras el otro bloque de la misma pantalla sigue mostrando datos reales
+(caída parcial, no total), distinguible de cargando y de un cero explícito.
+Queda escrita también en el código (`tests/e2e/fuente-caida-inicio.spec.ts`).
+
+Ejecución: `npx playwright test api/e1-b03-resumen-qe.spec.ts api/e1-b04-equipo-qe.spec.ts api/e1-b05-resumen-qa.spec.ts e2e/e1-f03-qe-inicio.spec.ts e2e/e1-f04-qe-equipo.spec.ts e2e/e1-f06-qa-inicio.spec.ts e2e/fuente-caida-inicio.spec.ts`
+→ **27/27 pasaron** (18 escenarios + 9 sesiones de `setup`), dos corridas
+consecutivas con el mismo resultado; los puertos `3100`/`5180` quedan libres
+al terminar (verificado con `netstat`/`tasklist`).
+
+| Escenario | Prueba | Resultado | Evidencia |
+| --- | --- | --- | --- |
+| E1-F03#1 | `tests/e2e/e1-f03-qe-inicio.spec.ts` | Pasa | Carla: `tarjeta-equipo` y `tarjeta-hdu-qe` con valores numéricos; enlaces a `/qe/equipo` y `/qe/hdu` |
+| E1-F03#2 | `tests/e2e/e1-f03-qe-inicio.spec.ts` | Pasa | Sofía: `tarjeta-equipo` muestra "0" explícito (consulta ok, sin analistas) |
+| E1-F03#3 | `tests/e2e/fuente-caida-inicio.spec.ts` | Pasa | Ver interpretación arriba: `bloque-hdu-qe-indisponible` visible, `tarjeta-equipo` sigue con datos |
+| E1-F04#1 | `tests/e2e/e1-f04-qe-equipo.spec.ts` | Pasa | Carla ve a Ana y Beatriz por nombre y correo |
+| E1-F04#2 | `tests/e2e/e1-f04-qe-equipo.spec.ts` | Pasa | El correo de Diego (reasignado a Marcos) no aparece en el equipo de Carla |
+| E1-F04#3 | `tests/e2e/e1-f04-qe-equipo.spec.ts` | Pasa | Sofía: `bloque-equipo-lista-vacio` = "No tienes analistas asignados." |
+| E1-F06#1 | `tests/e2e/e1-f06-qa-inicio.spec.ts` | Pasa | Ana: `valor-supervisor` = "Carla Fuentes", `tarjeta-hdu-qa` numérica |
+| E1-F06#2 | `tests/e2e/e1-f06-qa-inicio.spec.ts` | Pasa | Francisco: `valor-supervisor` = "Sin supervisor asignado" |
+| E1-F06#3 | `tests/e2e/fuente-caida-inicio.spec.ts` | Pasa | Ver interpretación arriba: `bloque-hdu-qa-indisponible` visible, supervisor sigue con datos |
+| E1-B03#1 | `tests/api/e1-b03-resumen-qe.spec.ts` | Pasa | Carla: `equipo.datos.analistasVigentes>=2`, `hdu.datos.hduEnAmbito>=6`, ambos `estado: ok` |
+| E1-B03#2 | `tests/api/e1-b03-resumen-qe.spec.ts` | Pasa | Sofía: `equipo: {estado: ok, datos: {analistasVigentes: 0}}` |
+| E1-B03#3 | `tests/api/e1-b03-resumen-qe.spec.ts` | Pasa | Gateway de prueba con `FUENTE_RESUMEN_HDU_URL` muerta: `hdu.estado === "indisponible"`, sin `datos`; `equipo.estado === "ok"` |
+| E1-B04#1 | `tests/api/e1-b04-equipo-qe.spec.ts` | Pasa | `GET /v1/qe/analistas` de Carla incluye a Ana/Beatriz y excluye a Diego |
+| E1-B04#2 | `tests/api/e1-b04-equipo-qe.spec.ts` | Pasa | Carla pide `qeId=<Marcos>` → 403 `ACCESO_DENEGADO` |
+| E1-B04#3 | `tests/api/e1-b04-equipo-qe.spec.ts` | Pasa | Patricia (admin) pide `qeId=<Carla>` → 200 con el equipo de Carla |
+| E1-B05#1 | `tests/api/e1-b05-resumen-qa.spec.ts` | Pasa | Ana: supervisor = Carla, `hdu.datos.hduAsignadas>=3`, `estado: ok` |
+| E1-B05#2 | `tests/api/e1-b05-resumen-qa.spec.ts` | Pasa | Francisco: `supervisor: {estado: ok, datos: {supervisor: null}}` |
+| E1-B05#3 | `tests/api/e1-b05-resumen-qa.spec.ts` | Pasa | Ana pide `analistaId=<Beatriz>` → 403 `ACCESO_DENEGADO` |
+
+### Dictamen HDU — Grupo 2
+
+| HDU | Dictamen | Motivo |
+| --- | --- | --- |
+| E1-F03 | CERTIFICADA | 3/3 escenarios pasan (interpretación de fuente caída documentada arriba) |
+| E1-F04 | CERTIFICADA | 3/3 escenarios pasan |
+| E1-F06 | CERTIFICADA | 3/3 escenarios pasan (interpretación de fuente caída documentada arriba) |
+| E1-B03 | CERTIFICADA | 3/3 escenarios pasan |
+| E1-B04 | CERTIFICADA | 3/3 escenarios pasan |
+| E1-B05 | CERTIFICADA | 3/3 escenarios pasan |
+
+Sin defectos de producto abiertos en este grupo.
