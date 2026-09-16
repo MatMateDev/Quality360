@@ -93,13 +93,18 @@ export async function asegurarUsuarioVisibleEnSelector(
   });
 }
 
-export async function clicConReintentoPorLimiteTasa(page: Page, boton: Locator, patronUrl: RegExp, intentos = 4): Promise<void> {
+export async function clicConReintentoPorLimiteTasa(page: Page, boton: Locator, patronUrl: RegExp, intentos = 5): Promise<void> {
   for (let intento = 0; intento < intentos; intento += 1) {
     const [respuesta] = await Promise.all([
-      page.waitForResponse((r) => patronUrl.test(r.url()), { timeout: 15_000 }).catch(() => null),
+      page.waitForResponse((r) => patronUrl.test(r.url()), { timeout: 20_000 }).catch(() => null),
       boton.click(),
     ]);
     if (!respuesta || respuesta.status() !== 429) return;
-    await page.waitForTimeout(3000);
+    // El límite de tasa del gateway usa una ventana fija (no deslizante):
+    // esperar el `Retry-After` real, no un tiempo fijo corto, para caer ya
+    // en la siguiente ventana en vez de reintentar dentro de la misma.
+    const cabeceras = respuesta.headers();
+    const segundos = Number(cabeceras["retry-after"] ?? "5");
+    await page.waitForTimeout((Number.isFinite(segundos) ? segundos : 5) * 1000 + 500);
   }
 }

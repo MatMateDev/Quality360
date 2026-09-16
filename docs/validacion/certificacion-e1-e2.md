@@ -410,12 +410,27 @@ todos los grupos. Se hizo dos veces:
    `tests/e2e/e1-f10-admin-supervision.spec.ts` se verificó de forma
    aislada tres veces seguidas después de este cambio: 12/12 pasan cada
    vez.
+4. **Tercera corrida completa** (4.2 min): 109/111 pasaron; 2 fallas
+   nuevas, otra vez de infraestructura de prueba, no del producto: (a)
+   `E2-F02#3` volvió a chocar con el límite de tasa incluso con reintento
+   (~24 s, todos los intentos con 429) porque la ventana del limitador es
+   fija, no deslizante — se cambió `clicConReintentoPorLimiteTasa` para
+   esperar el `Retry-After` real de la respuesta en vez de un tiempo fijo
+   de 3 s, así el reintento cae en la siguiente ventana; y (b)
+   `E2-F03#3` ("solo aparecen HDU asignadas al analista autenticado")
+   dependía de que `HDU-PAG-001`/`003` de la semilla siguieran visibles en
+   la primera página de «Mis HDU» (sin paginar, ordenada por creación
+   descendente); con las decenas de HDU que esta sesión de trabajo ya creó,
+   quedaron fuera de esa página. Se reescribió para usar dos HDU propias de
+   la prueba (una asignada a Ana, otra a Beatriz): al ser las más recientes,
+   siempre aparecen primero, sin depender del tamaño acumulado del
+   catálogo. Ambas correcciones, verificadas de forma aislada: pasan.
 
 Ninguna de las fallas de esta sección correspondió a un defecto de
 producto: todas fueron de infraestructura de prueba (tiempos de arranque,
 límite de tasa compartido, el entorno del equipo, o la acumulación de
 datos de las corridas repetidas de esta misma sesión de trabajo) y
 quedaron corregidas en el código de `tests/`. Con las correcciones
-aplicadas, `E1-F10#1/#2/#3`, `E2-F02#3`, `E1-F03#3` y `E1-F08#2` se
-verificaron de nuevo de forma aislada y pasan; el dictamen de sus HDU
-(Grupos 2, 3 y 4) no cambia.
+aplicadas, `E1-F10#1/#2/#3`, `E2-F02#3`, `E2-F03#3`, `E1-F03#3` y
+`E1-F08#2` se verificaron de nuevo de forma aislada y pasan; el dictamen
+de sus HDU (Grupos 2, 3 y 4) no cambia.
