@@ -17,7 +17,10 @@ import { env } from "./support/env";
  */
 export default defineConfig({
   testDir: ".",
-  timeout: 30_000,
+  // Generoso porque las pruebas de escritura comparten el límite de tasa
+  // real del gateway (30 escrituras/min) con el resto de la suite: un
+  // reintento tras 429 puede esperar casi un minuto (ver tests/support/api.ts).
+  timeout: 90_000,
   expect: { timeout: 10_000 },
   fullyParallel: false,
   workers: 1,

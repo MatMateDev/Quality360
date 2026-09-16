@@ -31,6 +31,9 @@ function leerDotEnv(rutaArchivo: string): Record<string, string> {
 
 const envWeb = leerDotEnv(path.join(RAIZ_REPO, "apps", "web", ".env.local"));
 const envGateway = leerDotEnv(path.join(RAIZ_REPO, "apps", "gateway", ".env"));
+const envOrganizacion = leerDotEnv(path.join(RAIZ_REPO, "services", "organizacion", ".env"));
+const envCertificaciones = leerDotEnv(path.join(RAIZ_REPO, "services", "certificaciones", ".env"));
+const envImpedimentos = leerDotEnv(path.join(RAIZ_REPO, "services", "impedimentos", ".env"));
 
 function requerido(valor: string | undefined, descripcion: string): string {
   if (!valor) {
@@ -72,4 +75,14 @@ export const env = {
   // para autenticarse de verdad ni se expone fuera de tests/.
   supabaseJwtSecret: process.env.SUPABASE_JWT_SECRET ?? envGateway.SUPABASE_JWT_SECRET ?? "",
   supabaseJwtIssuer: process.env.SUPABASE_JWT_ISSUER ?? envGateway.SUPABASE_JWT_ISSUER ?? `${envGateway.SUPABASE_URL ?? "http://127.0.0.1:54321"}/auth/v1`,
+
+  // Solo para: (a) forjar el password de un administrador propio de la
+  // prueba y probar ULTIMO_ADMINISTRADOR sin tocar la sesión de Patricia
+  // (E1-B08#2), y (b) el escenario de aislamiento de esquemas (cada rol de
+  // servicio no puede leer el esquema de otro). Nunca se registra ni se usa
+  // para nada más.
+  supabaseServiceRoleKey: process.env.SUPABASE_SERVICE_ROLE_KEY ?? envOrganizacion.SUPABASE_SERVICE_ROLE_KEY ?? "",
+  databaseUrlOrganizacion: process.env.DATABASE_URL_ORGANIZACION ?? envOrganizacion.DATABASE_URL ?? "",
+  databaseUrlCertificaciones: process.env.DATABASE_URL_CERTIFICACIONES ?? envCertificaciones.DATABASE_URL ?? "",
+  databaseUrlImpedimentos: process.env.DATABASE_URL_IMPEDIMENTOS ?? envImpedimentos.DATABASE_URL ?? "",
 };

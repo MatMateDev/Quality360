@@ -53,3 +53,31 @@ test.describe("Fuente de HDU caída", () => {
     await expect(page.getByTestId("valor-supervisor")).toHaveText(USUARIOS_SEMILLA.carla.nombre);
   });
 });
+
+/** E1-F08#2: misma mecánica, con la fuente de supervisión (no la de HDU) caída para el panel del Administrador. */
+test.describe("Fuente de supervisión caída (panel del Administrador)", () => {
+  let gatewayCaido: GatewayCaido;
+  let portalCaido: PortalCaido;
+
+  test.beforeAll(async () => {
+    gatewayCaido = await levantarGatewayConFuenteCaida({
+      FUENTE_RESUMEN_SUPERVISION_URL: `http://127.0.0.1:${env.fuenteMuertaPuerto}`,
+    });
+    portalCaido = await levantarPortalCaido(gatewayCaido.url);
+  });
+
+  test.afterAll(async () => {
+    await portalCaido?.detener();
+    await gatewayCaido?.detener();
+  });
+
+  test("[E1-F08#2] informa el error de carga de supervisión sin mostrar cifras ficticias", async ({ page }) => {
+    await iniciarSesionUI(page, USUARIOS_SEMILLA.patricia.correo, env.contrasenaDemo, portalCaido.url);
+    await esperarPortal(page, "ADMINISTRADOR");
+
+    await expect(page.getByTestId("bloque-supervision-vigentes-indisponible")).toContainText("Esta información no está disponible en este momento.");
+    await expect(page.getByTestId("bloque-supervision-sin-supervisor-indisponible")).toBeVisible();
+    // El bloque de usuarios, de otra fuente, sigue sano.
+    await expect(page.getByTestId("tarjeta-usuarios-total")).toContainText(/\d+/);
+  });
+});
