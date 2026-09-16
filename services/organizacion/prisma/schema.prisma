@@ -1,0 +1,233 @@
+// Quality360 · Organización y seguimiento
+//
+// Modelo según docs/arquitectura/decisiones-mvp.md (informe pp. 6-7, D9) y el
+// backlog (docs/backlog/historias-quality360.md). Las tablas viven en el
+// esquema `organizacion` de Postgres (ver infrastructure/db/001_esquemas_roles.sql):
+// la conexión se hace SIEMPRE con el rol `svc_organizacion`, cuya DATABASE_URL
+// debe incluir `?schema=organizacion` para que Prisma cree y use ese esquema
+// (el rol no tiene privilegios en `public`).
+//
+// Sin claves foráneas hacia otro esquema (regla no negociable 3): todas las
+// relaciones de este archivo son dentro de `organizacion`.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+/// Catálogo cerrado de roles (comun.v1.yaml#/components/schemas/Rol).
+enum Rol {
+  ADMINISTRADOR
+  QE
+  ANALISTA_QA
+}
+
+/// Prioridad de una HDU (comun.v1.yaml#/components/schemas/PrioridadHdu).
+enum PrioridadHdu {
+  BAJA
+  MEDIA
+  ALTA
+  CRITICA
+}
+
+/// Estados de HDU y transiciones permitidas (D10).
+enum EstadoHdu {
+  PENDIENTE
+  DISENO_PRUEBAS
+  EN_EJECUCION
+  PENDIENTE_CIERRE
+  CERRADA
+}
+
+/// Quién ejecutó un cambio: un usuario o el servicio de carga semilla
+/// (comun.v1.yaml#/components/schemas/Actor).
+enum TipoActor {
+  USUARIO
+  SERVICIO
+}
+
+enum EntidadAuditoria {
+  USUARIO
+  SUPERVISION
+  HDU
+}
+
+enum AccionAuditoria {
+  CREAR_USUARIO
+  ACTUALIZAR_USUARIO
+  ACTIVAR_USUARIO
+  DESACTIVAR_USUARIO
+  CAMBIAR_ROL
+  ASIGNAR_SUPERVISOR
+  CAMBIAR_SUPERVISOR
+  CREAR_HDU
+  CAMBIAR_ESTADO_HDU
+  ASIGNAR_ANALISTA
+  REASIGNAR_ANALISTA
+}
+
+/// usuario(id uuid = sub de Supabase, nombre, correo único, rol, activo,
+/// creado_en, actualizado_en).
+model Usuario {
+  id            String   @id @db.Uuid
+  nombre        String
+  correo        String   @unique
+  rol           Rol
+  activo        Boolean  @default(true)
+  creadoEn      DateTime @default(now()) @map("creado_en") @db.Timestamptz(6)
+  actualizadoEn DateTime @updatedAt @map("actualizado_en") @db.Timestamptz(6)
+
+  supervisionesComoQe       Supervision[] @relation("SupervisionQe")
+  supervisionesComoAnalista Supervision[] @relation("SupervisionAnalista")
+  hduComoQeResponsable      Hdu[]         @relation("HduQeResponsable")
+  hduComoAnalista           Hdu[]         @relation("HduAnalista")
+
+  @@map("usuario")
+}
+
+/// supervision(id, qe_id, analista_id, desde, hasta null, motivo null) con
+/// índice único parcial sobre analista_id WHERE hasta IS NULL (ver migración
+/// 0001_init: Prisma no expresa índices parciales en el DSL).
+model Supervision {
+  id          String    @id @default(uuid()) @db.Uuid
+  qeId        String    @map("qe_id") @db.Uuid
+  analistaId  String    @map("analista_id") @db.Uuid
+  desde       DateTime  @default(now()) @db.Timestamptz(6)
+  hasta       DateTime? @db.Timestamptz(6)
+  motivo      String?
+  /// Quién registró ESTA relación (comun.v1.yaml#/RelacionSupervision.registradoPor).
+  actorTipo   TipoActor @map("actor_tipo")
+  actorId     String    @map("actor_id")
+  actorNombre String    @map("actor_nombre")
+
+  qe       Usuario @relation("SupervisionQe", fields: [qeId], references: [id])
+  analista Usuario @relation("SupervisionAnalista", fields: [analistaId], references: [id])
+
+  @@map("supervision")
+  @@index([qeId])
+  @@index([analistaId])
+  @@index([analistaId, hasta])
+}
+
+/// celula(id, nombre) — catálogo.
+model Celula {
+  id     String @id @default(uuid()) @db.Uuid
+  nombre String @unique
+
+  hdus Hdu[]
+
+  @@map("celula")
+}
+
+/// sprint(id, nombre, inicio, fin) — catálogo.
+model Sprint {
+  id     String   @id @default(uuid()) @db.Uuid
+  nombre String   @unique
+  inicio DateTime @db.Date
+  fin    DateTime @db.Date
+
+  hdus Hdu[]
+
+  @@map("sprint")
+}
+
+/// hdu(id, codigo único, titulo, celula_id, sprint_id, prioridad,
+/// qe_responsable_id, analista_id null, estado, estado_actualizado_en,
+/// creado_por, creado_en). `codigoNormalizado` respalda la unicidad sin
+/// distinguir mayúsculas (NuevaHdu: "único sin distinguir mayúsculas; se
+/// guarda tal como llega").
+model Hdu {
+  id                  String       @id @default(uuid()) @db.Uuid
+  codigo              String
+  codigoNormalizado   String       @unique @map("codigo_normalizado")
+  titulo              String
+  celulaId            String       @map("celula_id") @db.Uuid
+  sprintId            String       @map("sprint_id") @db.Uuid
+  prioridad           PrioridadHdu
+  qeResponsableId     String       @map("qe_responsable_id") @db.Uuid
+  analistaId          String?      @map("analista_id") @db.Uuid
+  estado              EstadoHdu    @default(PENDIENTE)
+  estadoActualizadoEn DateTime     @default(now()) @map("estado_actualizado_en") @db.Timestamptz(6)
+  creadoPorTipo       TipoActor    @map("creado_por_tipo")
+  creadoPorId         String       @map("creado_por_id")
+  creadoPorNombre     String       @map("creado_por_nombre")
+  creadoEn            DateTime     @default(now()) @map("creado_en") @db.Timestamptz(6)
+
+  celula        Celula                   @relation(fields: [celulaId], references: [id])
+  sprint        Sprint                   @relation(fields: [sprintId], references: [id])
+  qeResponsable Usuario                  @relation("HduQeResponsable", fields: [qeResponsableId], references: [id])
+  analista      Usuario?                 @relation("HduAnalista", fields: [analistaId], references: [id])
+  historialEstado     HduHistorialEstado[]
+  historialAsignacion HduHistorialAsignacion[]
+
+  @@map("hdu")
+  @@index([celulaId])
+  @@index([sprintId])
+  @@index([qeResponsableId])
+  @@index([analistaId])
+  @@index([estado])
+}
+
+/// hdu_historial_estado(hdu_id, estado_anterior, estado_nuevo, actor_id, fecha).
+/// `estado_anterior` nulo no se persiste aquí: el evento de creación
+/// (PENDIENTE) se sintetiza desde `hdu.creadoEn`/`creadoPor` al leer el
+/// historial (comun.v1.yaml: "El primero es la creación").
+model HduHistorialEstado {
+  id             String    @id @default(uuid()) @db.Uuid
+  hduId          String    @map("hdu_id") @db.Uuid
+  estadoAnterior EstadoHdu @map("estado_anterior")
+  estadoNuevo    EstadoHdu @map("estado_nuevo")
+  actorTipo      TipoActor @map("actor_tipo")
+  actorId        String    @map("actor_id")
+  actorNombre    String    @map("actor_nombre")
+  fecha          DateTime  @default(now()) @db.Timestamptz(6)
+
+  hdu Hdu @relation(fields: [hduId], references: [id])
+
+  @@map("hdu_historial_estado")
+  @@index([hduId])
+}
+
+/// hdu_historial_asignacion(hdu_id, analista_anterior, analista_nuevo, motivo,
+/// actor_id, fecha).
+model HduHistorialAsignacion {
+  id                 String    @id @default(uuid()) @db.Uuid
+  hduId              String    @map("hdu_id") @db.Uuid
+  analistaAnteriorId String?   @map("analista_anterior_id") @db.Uuid
+  analistaNuevoId    String    @map("analista_nuevo_id") @db.Uuid
+  motivo             String?
+  actorTipo          TipoActor @map("actor_tipo")
+  actorId            String    @map("actor_id")
+  actorNombre        String    @map("actor_nombre")
+  fecha              DateTime  @default(now()) @db.Timestamptz(6)
+
+  hdu Hdu @relation(fields: [hduId], references: [id])
+
+  @@map("hdu_historial_asignacion")
+  @@index([hduId])
+}
+
+/// auditoria(id, actor_id, entidad, entidad_id, accion, antes jsonb,
+/// despues jsonb, fecha). Toda escritura se audita en la misma transacción
+/// (E1-B12, E2-B04).
+model Auditoria {
+  id          String           @id @default(uuid()) @db.Uuid
+  actorTipo   TipoActor        @map("actor_tipo")
+  actorId     String           @map("actor_id")
+  actorNombre String           @map("actor_nombre")
+  entidad     EntidadAuditoria
+  entidadId   String           @map("entidad_id") @db.Uuid
+  accion      AccionAuditoria
+  antes       Json?
+  despues     Json?
+  motivo      String?
+  fecha       DateTime         @default(now()) @db.Timestamptz(6)
+
+  @@map("auditoria")
+  @@index([entidad, entidadId])
+  @@index([fecha])
+}
