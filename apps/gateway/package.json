@@ -1,0 +1,38 @@
+{
+  "name": "@quality360/gateway",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Gateway público de Quality360: verifica la sesión, enruta a Organización y compone /v1/inicio/*.",
+  "license": "LicenseRef-Capstone-Duoc-UC",
+  "main": "./dist/main.js",
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "build:pruebas": "tsc -p tsconfig.pruebas.json",
+    "typecheck": "tsc -p tsconfig.json",
+    "start": "node dist/main.js",
+    "start:dev": "node --env-file=.env dist/main.js",
+    "test": "npm run build:pruebas && node --test \"build-pruebas/pruebas/*.test.js\""
+  },
+  "dependencies": {
+    "@nestjs/common": "^11.2.5",
+    "@nestjs/core": "^11.2.5",
+    "@nestjs/platform-express": "^11.2.5",
+    "@quality360/auth-nest": "*",
+    "express-rate-limit": "^8.7.0",
+    "helmet": "^8.3.0",
+    "reflect-metadata": "^0.2.2",
+    "rxjs": "^7.8.2"
+  },
+  "devDependencies": {
+    "@types/express": "^5.0.6",
+    "@types/node": "^24.13.5",
+    "@types/supertest": "^7.2.1",
+    "jose": "^6.2.12",
+    "supertest": "^7.2.2",
+    "typescript": "^5.9.3"
+  }
+}
