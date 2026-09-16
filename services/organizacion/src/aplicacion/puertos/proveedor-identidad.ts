@@ -19,6 +19,12 @@ export interface ProveedorIdentidad {
   invitarUsuario(input: { correo: string; nombre: string }): Promise<{ id: string }>;
   /** Alta con contraseña inicial y correo confirmado, solo para la carga semilla. */
   crearUsuarioConContrasena(input: { correo: string; nombre: string; contrasena: string }): Promise<{ id: string }>;
+  /**
+   * Invita por correo; si la cuenta ya existe en Supabase Auth (semilla
+   * cargada parcialmente antes, o cuenta creada por otra vía), la vincula en
+   * vez de fallar. Solo para `/v1/interno/carga/usuarios`.
+   */
+  invitarOVincularUsuario(input: { correo: string; nombre: string }): Promise<{ id: string }>;
   /** Coordina el cambio de correo con el proveedor (E1-B07#2). */
   actualizarCorreo(id: string, correo: string): Promise<void>;
   /** Compensación: si el alta local falla tras crear la cuenta, se elimina. */
