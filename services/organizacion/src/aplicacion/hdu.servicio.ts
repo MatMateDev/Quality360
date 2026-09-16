@@ -119,6 +119,11 @@ export class HduAplicacion {
     return this.aDetalle(hdu, contexto);
   }
 
+  /** Sin control de ámbito: solo para la carga semilla, que verifica idempotencia por código. */
+  async buscarPorCodigo(codigoNormalizado: string): Promise<Hdu | null> {
+    return this.hdus.buscarPorCodigoNormalizado(codigoNormalizado);
+  }
+
   async listar(contexto: ContextoActor, filtro: FiltroHdu, paginacion: OpcionesPaginacion): Promise<Pagina<HduResumenRespuesta>> {
     const rol = contexto.rol ?? 'ADMINISTRADOR';
     const actorId = contexto.actorId ?? '';

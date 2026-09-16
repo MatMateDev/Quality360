@@ -11,6 +11,7 @@ import { AuthNestModule } from '@quality360/auth-nest';
 import { AplicacionModule } from './aplicacion/aplicacion.module.js';
 import { AccesoInternoController } from './api/controladores/acceso-interno.controller.js';
 import { AuditoriaController } from './api/controladores/auditoria.controller.js';
+import { CargaSemillaController } from './api/controladores/carga-semilla.controller.js';
 import { CatalogosController } from './api/controladores/catalogos.controller.js';
 import { EquipoController } from './api/controladores/equipo.controller.js';
 import { HduController } from './api/controladores/hdu.controller.js';
@@ -19,6 +20,7 @@ import { SaludController } from './api/controladores/salud.controller.js';
 import { SesionController } from './api/controladores/sesion.controller.js';
 import { SupervisionController } from './api/controladores/supervision.controller.js';
 import { UsuariosController } from './api/controladores/usuarios.controller.js';
+import { CargaSemillaGuard } from './api/guardias/carga-semilla.guard.js';
 import { SesionOServicioGuard } from './api/guardias/sesion-o-servicio.guard.js';
 import { ConfiguracionModule } from './configuracion.module.js';
 import type { ConfiguracionOrganizacion } from './configuracion.js';
@@ -54,8 +56,9 @@ export class AppModule {
         AuditoriaController,
         CatalogosController,
         HduController,
+        CargaSemillaController,
       ],
-      providers: [SesionOServicioGuard],
+      providers: [SesionOServicioGuard, CargaSemillaGuard],
     };
   }
 }

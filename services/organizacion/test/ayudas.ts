@@ -3,6 +3,8 @@
  * (Admin API + inicio de sesión por contraseña contra el Supabase local) y
  * limpieza de las tablas de `organizacion` entre pruebas.
  */
+import './entorno.js';
+
 import { randomUUID } from 'node:crypto';
 import { PrismaClient } from '@prisma/client';
 import { createClient } from '@supabase/supabase-js';

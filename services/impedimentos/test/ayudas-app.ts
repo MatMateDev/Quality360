@@ -1,3 +1,5 @@
+import './entorno.js';
+
 import type { NestExpressApplication } from '@nestjs/platform-express';
 import { resolverOpcionesVerificador } from '@quality360/auth-nest';
 
