@@ -321,9 +321,28 @@ método; todas terminaron dentro del tiempo límite de 90 s).
 
 Sin defectos de producto abiertos en este grupo.
 
+## Escenarios obligatorios (informe p. 15)
+
+Tabla de la definición de este agente, adicional a los 96 escenarios de
+E1/E2 (algunos ya quedan cubiertos por ellos; el aislamiento de esquemas no
+tiene ID de HU propio y se agrega aquí):
+
+| Escenario | Prueba(s) | Resultado |
+| --- | --- | --- |
+| Credenciales inválidas | E1-F01#3, E1-B01#1/#2 | Pasa — error genérico, reintento posible, sin exponer si el correo existe |
+| Usuario desactivado con token vigente | E1-B01#2, E1-B07#3 | Pasa — mismo token, antes 200 y después de desactivar 403 en `/v1/me` y `/v1/usuarios` |
+| Acceso cruzado (API y URL directa) | E1-B02, E1-B04#2, E1-B05#3, E2-B03, E2-F03#3, E2-F04#2 | Pasa — un QA no ve HDU de otro QA (API y listado), un QE no ve equipo/resumen de otro QE (API), y una HDU sin relación responde `acceso-denegado` por URL directa |
+| Cambio de supervisor | E1-B09#2, E1-F10#2/#3 | Pasa — historial conservado con fechas y motivos; nunca dos QE vigentes (relación anterior cerrada en la misma transacción) |
+| Sesión expirada o cerrada | E1-F07#3, E1-F12, E1-B11 | Pasa — 401 y vuelta al login; el `logout` revoca la renovación |
+| Falla parcial del inicio | E1-F03#3, E1-F06#3, E1-F08#2, E1-B03#3 | Pasa — el bloque afectado muestra «indisponible», nunca 0 |
+| Consulta sin resultados | E1-F03#2, E1-F04#3, E2-F03#2 | Pasa — cero o lista vacía solo cuando la consulta terminó bien |
+| Aislamiento de datos | `tests/api/seguridad-aislamiento-esquemas.spec.ts` (4 pruebas) | Pasa — `svc_organizacion`, `svc_certificaciones` y `svc_impedimentos` no pueden leer el esquema de otro servicio ni `public` (`permission denied`); la Data API de PostgREST no expone `organizacion.usuario` |
+
 ## Resumen final (Ronda 1)
 
-- **Escenarios:** 96/96 ejecutados, 96/96 pasan (72 de E1 + 24 de E2).
+- **Escenarios:** 96/96 ejecutados, 96/96 pasan (72 de E1 + 24 de E2), más
+  4 pruebas de seguridad del aislamiento de esquemas (sin ID de HU propio,
+  ver «Escenarios obligatorios»), también 4/4 pasan.
 - **HDU:** 32/32 `CERTIFICADA`, 0 `OBSERVADA`, 0 `NO VERIFICABLE`.
 - **Defectos abiertos:** 1, agente dueño `q360-frontend` (severidad media,
   ver Grupo 3: paginación/búsqueda ausente en los selects de
