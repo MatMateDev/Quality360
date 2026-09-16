@@ -1,0 +1,17 @@
+{
+  "name": "@quality360/tests",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "description": "Pruebas e2e (Playwright, escenarios F), de API/contrato (Playwright request, escenarios B) y de seguridad de Quality360. Dueño: q360-qa.",
+  "scripts": {
+    "test": "playwright test",
+    "test:api": "playwright test --project=api",
+    "test:e2e": "playwright test --project=e2e",
+    "test:setup": "playwright test --project=setup",
+    "report": "playwright show-report"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.55.0"
+  }
+}
