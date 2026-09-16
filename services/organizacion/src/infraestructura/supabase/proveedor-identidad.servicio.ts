@@ -45,6 +45,16 @@ export class ProveedorIdentidadSupabase implements ProveedorIdentidad {
     return { id: data.user.id };
   }
 
+  async crearOVincularUsuarioConContrasena(input: { correo: string; nombre: string; contrasena: string }): Promise<{ id: string }> {
+    try {
+      return await this.crearUsuarioConContrasena(input);
+    } catch (error) {
+      const existente = await this.buscarPorCorreo(input.correo);
+      if (existente !== null) return existente;
+      throw error;
+    }
+  }
+
   async invitarOVincularUsuario(input: { correo: string; nombre: string }): Promise<{ id: string }> {
     try {
       const { data, error } = await this.cliente.auth.admin.inviteUserByEmail(input.correo, { data: { nombre: input.nombre } });

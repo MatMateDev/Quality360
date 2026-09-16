@@ -1,7 +1,7 @@
 /**
- * DTO de `/v1/interno/carga/*`. Desviación del contrato: `CargaUsuario` no
- * lleva `contrasenaInicial` — la carga reutiliza la invitación de la Admin
- * API (igual que `POST /v1/usuarios`), sin manejar contraseñas.
+ * DTO de `/v1/interno/carga/*`: solo para la semilla local (`PERMITIR_CARGA_SEMILLA=true`
+ * y credencial de servicio). `CargaUsuario` exige `contrasenaInicial`, como fija el contrato:
+ * crea cuentas de demo con correo confirmado; la contraseña nunca se guarda ni se audita.
  */
 import { IsBoolean, IsIn, IsISO8601, IsOptional, IsString, IsUUID, MaxLength, MinLength } from 'class-validator';
 
@@ -26,6 +26,12 @@ export class CargaUsuarioDto {
   @IsOptional()
   @IsBoolean()
   activo?: boolean;
+
+  /** Solo cuentas de demo locales: se envía a Supabase Auth y nunca se guarda ni se audita. */
+  @IsString()
+  @MinLength(12)
+  @MaxLength(72)
+  contrasenaInicial!: string;
 }
 
 export class CargaCelulaDto {

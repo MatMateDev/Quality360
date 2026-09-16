@@ -25,6 +25,8 @@ export interface ProveedorIdentidad {
    * vez de fallar. Solo para `/v1/interno/carga/usuarios`.
    */
   invitarOVincularUsuario(input: { correo: string; nombre: string }): Promise<{ id: string }>;
+  /** Semilla local: crea la cuenta con contraseña y correo confirmado; si ya existe en Auth, la vincula sin cambiar su contraseña. */
+  crearOVincularUsuarioConContrasena(input: { correo: string; nombre: string; contrasena: string }): Promise<{ id: string }>;
   /** Coordina el cambio de correo con el proveedor (E1-B07#2). */
   actualizarCorreo(id: string, correo: string): Promise<void>;
   /** Compensación: si el alta local falla tras crear la cuenta, se elimina. */

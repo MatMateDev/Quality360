@@ -14,6 +14,7 @@ import { crearApp } from '../../src/crear-app.js';
 import { limpiarBaseDeDatos, prisma } from '../ayudas.js';
 
 const TOKEN = process.env.X_Q360_SERVICIO_TOKEN as string;
+const CONTRASENA_DEMO = 'Quality360-demo-local';
 const CABECERA = 'x-q360-servicio-token';
 
 let app: NestExpressApplication;
@@ -99,14 +100,14 @@ describe('Idempotencia y errores por fila', () => {
     const primera = await request(app.getHttpServer())
       .post('/v1/interno/carga/usuarios')
       .set(CABECERA, TOKEN)
-      .send({ nombre: 'QE Semilla', correo, rol: 'QE' });
+      .send({ nombre: 'QE Semilla', correo, rol: 'QE', contrasenaInicial: CONTRASENA_DEMO });
     assert.equal(primera.status, 201);
     assert.equal(primera.body.creado, true);
 
     const segunda = await request(app.getHttpServer())
       .post('/v1/interno/carga/usuarios')
       .set(CABECERA, TOKEN)
-      .send({ nombre: 'Otro nombre', correo, rol: 'ANALISTA_QA' });
+      .send({ nombre: 'Otro nombre', correo, rol: 'ANALISTA_QA', contrasenaInicial: CONTRASENA_DEMO });
     assert.equal(segunda.status, 200);
     assert.equal(segunda.body.creado, false);
     assert.equal(segunda.body.usuario.id, primera.body.usuario.id);
@@ -127,7 +128,7 @@ describe('Idempotencia y errores por fila', () => {
     const filaValida = await request(app.getHttpServer())
       .post('/v1/interno/carga/usuarios')
       .set(CABECERA, TOKEN)
-      .send({ nombre: 'Sigue el lote', correo: `sigue.${Date.now()}@quality360.local`, rol: 'ANALISTA_QA' });
+      .send({ nombre: 'Sigue el lote', correo: `sigue.${Date.now()}@quality360.local`, rol: 'ANALISTA_QA', contrasenaInicial: CONTRASENA_DEMO });
     assert.equal(filaValida.status, 201);
   });
 
@@ -143,7 +144,7 @@ describe('Idempotencia y errores por fila', () => {
     const qe = await request(app.getHttpServer())
       .post('/v1/interno/carga/usuarios')
       .set(CABECERA, TOKEN)
-      .send({ nombre: 'QE de HDU semilla', correo: `qe.hdu.${Date.now()}@quality360.local`, rol: 'QE' });
+      .send({ nombre: 'QE de HDU semilla', correo: `qe.hdu.${Date.now()}@quality360.local`, rol: 'QE', contrasenaInicial: CONTRASENA_DEMO });
 
     const codigo = `SEM-${Date.now()}`;
     const datosHdu = {
@@ -186,7 +187,7 @@ describe('Idempotencia y errores por fila', () => {
     const usuario = await request(app.getHttpServer())
       .post('/v1/interno/carga/usuarios')
       .set(CABECERA, TOKEN)
-      .send({ nombre: 'Auditado por semilla', correo, rol: 'ANALISTA_QA' });
+      .send({ nombre: 'Auditado por semilla', correo, rol: 'ANALISTA_QA', contrasenaInicial: CONTRASENA_DEMO });
 
     const registro = await prisma.auditoria.findFirst({
       where: { entidad: 'USUARIO', entidadId: usuario.body.usuario.id, accion: 'CREAR_USUARIO' },
@@ -204,10 +205,10 @@ describe('Supervisión desde la semilla (credencialServicio en PUT /v1/analistas
     const correoA1 = `a1.semilla.${Date.now()}@quality360.local`;
     const correoA2 = `a2.semilla.${Date.now()}@quality360.local`;
 
-    const qe1 = await request(app.getHttpServer()).post('/v1/interno/carga/usuarios').set(CABECERA, TOKEN).send({ nombre: 'QE1', correo: correoQe1, rol: 'QE' });
-    const qe2 = await request(app.getHttpServer()).post('/v1/interno/carga/usuarios').set(CABECERA, TOKEN).send({ nombre: 'QE2', correo: correoQe2, rol: 'QE' });
-    const a1 = await request(app.getHttpServer()).post('/v1/interno/carga/usuarios').set(CABECERA, TOKEN).send({ nombre: 'A1', correo: correoA1, rol: 'ANALISTA_QA' });
-    const a2 = await request(app.getHttpServer()).post('/v1/interno/carga/usuarios').set(CABECERA, TOKEN).send({ nombre: 'A2', correo: correoA2, rol: 'ANALISTA_QA' });
+    const qe1 = await request(app.getHttpServer()).post('/v1/interno/carga/usuarios').set(CABECERA, TOKEN).send({ nombre: 'QE1', correo: correoQe1, rol: 'QE', contrasenaInicial: CONTRASENA_DEMO });
+    const qe2 = await request(app.getHttpServer()).post('/v1/interno/carga/usuarios').set(CABECERA, TOKEN).send({ nombre: 'QE2', correo: correoQe2, rol: 'QE', contrasenaInicial: CONTRASENA_DEMO });
+    const a1 = await request(app.getHttpServer()).post('/v1/interno/carga/usuarios').set(CABECERA, TOKEN).send({ nombre: 'A1', correo: correoA1, rol: 'ANALISTA_QA', contrasenaInicial: CONTRASENA_DEMO });
+    const a2 = await request(app.getHttpServer()).post('/v1/interno/carga/usuarios').set(CABECERA, TOKEN).send({ nombre: 'A2', correo: correoA2, rol: 'ANALISTA_QA', contrasenaInicial: CONTRASENA_DEMO });
 
     // a1 queda con historial de dos QE.
     await request(app.getHttpServer())

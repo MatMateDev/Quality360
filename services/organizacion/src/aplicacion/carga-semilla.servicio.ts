@@ -45,12 +45,12 @@ export class CargaSemillaAplicacion {
   ) {}
 
   /** Idempotente por correo (sin distinguir mayúsculas): si existe, no cambia nada, ni la contraseña. */
-  async cargarUsuario(datos: { nombre: string; correo: string; rol: Rol; activo?: boolean }): Promise<{ creado: boolean; usuario: UsuarioRespuesta }> {
+  async cargarUsuario(datos: { nombre: string; correo: string; rol: Rol; activo?: boolean; contrasenaInicial: string }): Promise<{ creado: boolean; usuario: UsuarioRespuesta }> {
     const correo = datos.correo.trim().toLowerCase();
     const existente = await this.usuarios.buscarPorCorreo(correo);
     if (existente !== null) return { creado: false, usuario: await this.usuariosAplicacion.obtener(existente.id) };
 
-    const cuenta = await this.identidad.invitarOVincularUsuario({ correo, nombre: datos.nombre.trim() });
+    const cuenta = await this.identidad.crearOVincularUsuarioConContrasena({ correo, nombre: datos.nombre.trim(), contrasena: datos.contrasenaInicial });
     try {
       await this.usuarios.crear({ id: cuenta.id, nombre: datos.nombre.trim(), correo, rol: datos.rol, activo: datos.activo ?? true }, ACTOR_SERVICIO);
       return { creado: true, usuario: await this.usuariosAplicacion.obtener(cuenta.id) };
