@@ -67,6 +67,9 @@ jobs:
       - name: Instalar dependencias de la raíz
         run: npm ci
 
+      - name: Compilar @quality360/auth-nest (dependencia del gateway y los servicios)
+        run: npm run build -w packages/auth-nest
+
       - name: Detectar workspaces afectados por el PR
         id: afectados
         env:
