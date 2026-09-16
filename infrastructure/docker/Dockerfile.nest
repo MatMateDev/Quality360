@@ -1,0 +1,69 @@
+# Quality360 · Imagen multi-stage para servicios NestJS (gateway y services/*)
+#
+# Se construye SIEMPRE con el contexto en la raíz del monorepo (por eso
+# docker-compose.yml usa `context: ..`), porque necesita el `package.json` y
+# el `package-lock.json` raíz para instalar con npm workspaces.
+#
+# Uso manual:
+#   docker build -f infrastructure/docker/Dockerfile.nest \
+#     --build-arg WORKSPACE=services/organizacion --build-arg PORT=3001 \
+#     -t q360/organizacion .
+#
+# WORKSPACE es la ruta del workspace dentro del repo (por ejemplo
+# "services/organizacion", "services/certificaciones", "services/impedimentos",
+# "services/integraciones" o "apps/gateway"). PORT es el puerto que expone
+# ese servicio (ver infrastructure/README.md).
+
+ARG NODE_VERSION=24-alpine
+
+FROM node:${NODE_VERSION} AS base
+WORKDIR /repo
+ENV NPM_CONFIG_FUND=false NPM_CONFIG_AUDIT=false
+
+# --- deps: instala todo el monorepo, con devDependencies (hacen falta para
+#     compilar TypeScript con `nest build`) --------------------------------
+FROM base AS deps
+COPY package.json package-lock.json ./
+COPY apps ./apps
+COPY packages ./packages
+COPY services ./services
+RUN npm ci
+
+# --- build: compila solo el workspace objetivo ------------------------------
+FROM deps AS build
+ARG WORKSPACE
+RUN test -n "$WORKSPACE" || (echo "Falta --build-arg WORKSPACE=<ruta-del-workspace>" >&2 && exit 1)
+RUN npm run build --workspace "${WORKSPACE}"
+
+# --- prod-deps: node_modules solo con dependencias de producción -----------
+FROM base AS prod-deps
+COPY package.json package-lock.json ./
+COPY apps ./apps
+COPY packages ./packages
+COPY services ./services
+RUN npm ci --omit=dev
+
+# --- runner: imagen final, sin herramientas de build ni fuente TypeScript --
+FROM node:${NODE_VERSION} AS runner
+ARG WORKSPACE
+ARG PORT=3000
+ENV NODE_ENV=production
+ENV PORT=${PORT}
+ENV WORKSPACE=${WORKSPACE}
+WORKDIR /repo
+
+RUN addgroup -S q360 && adduser -S q360 -G q360
+
+COPY --from=prod-deps /repo/node_modules ./node_modules
+COPY --from=prod-deps /repo/package.json ./package.json
+COPY --from=build "/repo/${WORKSPACE}/dist" "./${WORKSPACE}/dist"
+COPY --from=build "/repo/${WORKSPACE}/package.json" "./${WORKSPACE}/package.json"
+
+USER q360
+EXPOSE ${PORT}
+
+# Todos los servicios exponen GET /health sin autenticación (ver contracts/).
+HEALTHCHECK --interval=15s --timeout=5s --start-period=20s --retries=5 \
+  CMD wget -qO- "http://127.0.0.1:${PORT}/health" || exit 1
+
+CMD ["sh", "-c", "node ${WORKSPACE}/dist/main.js"]

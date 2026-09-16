@@ -1,0 +1,113 @@
+name: CI
+
+on:
+  pull_request:
+    branches: ["**"]
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  contratos:
+    name: Contratos OpenAPI
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Instalar dependencias de la raíz
+        run: npm ci
+
+      - name: Lint de contratos (Redocly)
+        run: npm run contracts:lint
+
+      - name: Cobertura de escenarios E1/E2
+        run: npm run contracts:check
+
+  workspaces:
+    name: Lint, test y build (workspaces afectados)
+    runs-on: ubuntu-latest
+    # Postgres del runner: las pruebas de servicio NUNCA usan Supabase alojado
+    # ni secretos reales (D8, ADR 0008, "No hagas" de q360-infra).
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: quality360_ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/quality360_ci
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Instalar dependencias de la raíz
+        run: npm ci
+
+      - name: Detectar workspaces afectados por el PR
+        id: afectados
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -e
+          LISTA="$(node .github/scripts/listar-workspaces-afectados.mjs "$BASE_SHA" "$HEAD_SHA")"
+          echo "Workspaces afectados: ${LISTA:-'(ninguno con package.json todavía)'}"
+          {
+            echo "lista=$LISTA"
+            echo "hay=$([ -n "$LISTA" ] && echo true || echo false)"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Lint (workspaces afectados)
+        if: steps.afectados.outputs.hay == 'true'
+        run: |
+          for ws in ${{ steps.afectados.outputs.lista }}; do
+            echo "::group::lint $ws"
+            npm run lint --workspace "$ws" --if-present
+            echo "::endgroup::"
+          done
+
+      - name: Test (workspaces afectados)
+        if: steps.afectados.outputs.hay == 'true'
+        run: |
+          for ws in ${{ steps.afectados.outputs.lista }}; do
+            echo "::group::test $ws"
+            npm run test --workspace "$ws" --if-present
+            echo "::endgroup::"
+          done
+
+      - name: Build (workspaces afectados)
+        if: steps.afectados.outputs.hay == 'true'
+        run: |
+          for ws in ${{ steps.afectados.outputs.lista }}; do
+            echo "::group::build $ws"
+            npm run build --workspace "$ws" --if-present
+            echo "::endgroup::"
+          done
+
+      - name: Sin workspaces afectados
+        if: steps.afectados.outputs.hay == 'false'
+        run: echo "Ningún workspace con package.json cambió en este PR (o todavía no existen). Nada que ejecutar."

@@ -1,0 +1,18 @@
+{
+  "name": "@quality360/infrastructure",
+  "private": true,
+  "version": "0.0.0",
+  "description": "Quality360 · Supabase local, esquemas y roles de Postgres, Docker Compose. Dueño: q360-infra.",
+  "scripts": {
+    "supabase:start": "npx --yes supabase@2.117.0 start --workdir . -x realtime,storage-api,imgproxy,edge-runtime,logflare,vector,supavisor",
+    "supabase:stop": "npx --yes supabase@2.117.0 stop --workdir .",
+    "supabase:status": "npx --yes supabase@2.117.0 status --workdir . -o env",
+    "db:schemas": "node db/scripts/aplicar-sql.mjs db/001_esquemas_roles.sql",
+    "db:verificar-aislamiento": "node db/scripts/verificar-aislamiento.mjs",
+    "compose:config": "docker compose -f docker-compose.yml --env-file ../.env config",
+    "compose:up": "docker compose -f docker-compose.yml --env-file ../.env up -d --build",
+    "compose:down": "docker compose -f docker-compose.yml --env-file ../.env down",
+    "up": "npm run supabase:start && npm run db:schemas && npm run compose:up",
+    "down": "npm run compose:down && npm run supabase:stop"
+  }
+}

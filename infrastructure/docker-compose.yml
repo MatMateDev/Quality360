@@ -1,0 +1,167 @@
+# Quality360 · Docker Compose local (D8, ADR 0008)
+#
+# Red interna: solo `web` y `gateway` publican puertos en el host. Los cuatro
+# servicios de dominio (organizacion, certificaciones, impedimentos,
+# integraciones) solo son alcanzables dentro de la red `interna`.
+#
+# Cada servicio recibe ÚNICAMENTE su propia cadena de conexión a Postgres
+# (rol svc_<servicio>, nunca `postgres` ni `service_role`), apuntando al
+# Postgres de Supabase local vía `host.docker.internal:54322`.
+#
+# El Postgres de Supabase NO se define aquí: lo administra la CLI de Supabase
+# (`npm run supabase:start`, ver infrastructure/README.md) y su puerto 54322
+# solo se publica en 127.0.0.1 del host, nunca en este archivo.
+#
+# Variables: se resuelven desde el `.env` de la raíz del repo, ver
+# infrastructure/package.json (`--env-file ../.env`) e infrastructure/README.md.
+
+x-healthcheck-defaults: &healthcheck-defaults
+  interval: 15s
+  timeout: 5s
+  retries: 5
+  start_period: 20s
+
+x-service-defaults: &service-defaults
+  networks: [interna]
+  restart: unless-stopped
+  extra_hosts:
+    # Necesario en Linux (por ejemplo, runners de CI); en Docker Desktop
+    # (Windows/Mac) ya existe de forma nativa (ADR 0008).
+    - "host.docker.internal:host-gateway"
+
+services:
+  organizacion:
+    <<: *service-defaults
+    build:
+      context: ..
+      dockerfile: infrastructure/docker/Dockerfile.nest
+      args:
+        WORKSPACE: services/organizacion
+        PORT: "3001"
+    environment:
+      NODE_ENV: production
+      PORT: "3001"
+      DATABASE_URL: ${DATABASE_URL_ORGANIZACION:?falta DATABASE_URL_ORGANIZACION en tu .env}
+      SUPABASE_URL: ${SUPABASE_URL:-}
+      SUPABASE_SERVICE_ROLE_KEY: ${SUPABASE_SERVICE_ROLE_KEY:-}
+      X_Q360_SERVICIO_TOKEN: ${X_Q360_SERVICIO_TOKEN:-}
+      PERMITIR_CARGA_SEMILLA: ${PERMITIR_CARGA_SEMILLA:-false}
+    healthcheck:
+      <<: *healthcheck-defaults
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:3001/health"]
+
+  certificaciones:
+    <<: *service-defaults
+    build:
+      context: ..
+      dockerfile: infrastructure/docker/Dockerfile.nest
+      args:
+        WORKSPACE: services/certificaciones
+        PORT: "3002"
+    environment:
+      NODE_ENV: production
+      PORT: "3002"
+      DATABASE_URL: ${DATABASE_URL_CERTIFICACIONES:?falta DATABASE_URL_CERTIFICACIONES en tu .env}
+      X_Q360_SERVICIO_TOKEN: ${X_Q360_SERVICIO_TOKEN:-}
+    healthcheck:
+      <<: *healthcheck-defaults
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:3002/health"]
+
+  impedimentos:
+    <<: *service-defaults
+    build:
+      context: ..
+      dockerfile: infrastructure/docker/Dockerfile.nest
+      args:
+        WORKSPACE: services/impedimentos
+        PORT: "3003"
+    environment:
+      NODE_ENV: production
+      PORT: "3003"
+      DATABASE_URL: ${DATABASE_URL_IMPEDIMENTOS:?falta DATABASE_URL_IMPEDIMENTOS en tu .env}
+      X_Q360_SERVICIO_TOKEN: ${X_Q360_SERVICIO_TOKEN:-}
+    healthcheck:
+      <<: *healthcheck-defaults
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:3003/health"]
+
+  integraciones:
+    <<: *service-defaults
+    build:
+      context: ..
+      dockerfile: infrastructure/docker/Dockerfile.nest
+      args:
+        WORKSPACE: services/integraciones
+        PORT: "3004"
+    environment:
+      NODE_ENV: production
+      PORT: "3004"
+      DATABASE_URL: ${DATABASE_URL_INTEGRACIONES:?falta DATABASE_URL_INTEGRACIONES en tu .env}
+      ORGANIZACION_URL: ${ORGANIZACION_URL:-http://organizacion:3001}
+      X_Q360_SERVICIO_TOKEN: ${X_Q360_SERVICIO_TOKEN:-}
+      PERMITIR_CARGA_SEMILLA: ${PERMITIR_CARGA_SEMILLA:-false}
+    depends_on:
+      organizacion:
+        condition: service_healthy
+    healthcheck:
+      <<: *healthcheck-defaults
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:3004/health"]
+
+  gateway:
+    <<: *service-defaults
+    build:
+      context: ..
+      dockerfile: infrastructure/docker/Dockerfile.nest
+      args:
+        WORKSPACE: apps/gateway
+        PORT: "3000"
+    ports:
+      - "${PORT_GATEWAY:-3000}:3000"
+    environment:
+      NODE_ENV: production
+      PORT: "3000"
+      SUPABASE_URL: ${SUPABASE_URL:-}
+      SUPABASE_JWT_SECRET: ${SUPABASE_JWT_SECRET:-}
+      ORGANIZACION_URL: ${ORGANIZACION_URL:-http://organizacion:3001}
+      CERTIFICACIONES_URL: ${CERTIFICACIONES_URL:-http://certificaciones:3002}
+      IMPEDIMENTOS_URL: ${IMPEDIMENTOS_URL:-http://impedimentos:3003}
+      INTEGRACIONES_URL: ${INTEGRACIONES_URL:-http://integraciones:3004}
+      FUENTE_RESUMEN_EQUIPO_URL: ${FUENTE_RESUMEN_EQUIPO_URL:-http://organizacion:3001}
+      FUENTE_RESUMEN_HDU_URL: ${FUENTE_RESUMEN_HDU_URL:-http://organizacion:3001}
+      X_Q360_SERVICIO_TOKEN: ${X_Q360_SERVICIO_TOKEN:-}
+    depends_on:
+      organizacion:
+        condition: service_healthy
+      certificaciones:
+        condition: service_healthy
+      impedimentos:
+        condition: service_healthy
+      integraciones:
+        condition: service_healthy
+    healthcheck:
+      <<: *healthcheck-defaults
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:3000/health"]
+
+  web:
+    networks: [interna]
+    restart: unless-stopped
+    build:
+      context: ..
+      dockerfile: infrastructure/docker/Dockerfile.vite
+      args:
+        WORKSPACE: apps/web
+        VITE_SUPABASE_URL: ${VITE_SUPABASE_URL:-}
+        VITE_SUPABASE_ANON_KEY: ${VITE_SUPABASE_ANON_KEY:-}
+        VITE_GATEWAY_URL: ${VITE_GATEWAY_URL:-http://localhost:3000}
+    ports:
+      - "${PORT_WEB:-8080}:80"
+    depends_on:
+      gateway:
+        condition: service_healthy
+    healthcheck:
+      <<: *healthcheck-defaults
+      start_period: 10s
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:80/health"]
+
+networks:
+  interna:
+    driver: bridge
