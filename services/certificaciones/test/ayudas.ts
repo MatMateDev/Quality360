@@ -3,6 +3,8 @@
  * de Organización (sin depender de que esté levantada) y un token HS256
  * equivalente al de Supabase local.
  */
+import './entorno.js';
+
 import { createServer, type Server } from 'node:http';
 import { SignJWT } from 'jose';
 

@@ -1,3 +1,5 @@
+import './entorno.js';
+
 import type { NestExpressApplication } from '@nestjs/platform-express';
 
 import { cargarConfiguracion } from '../src/configuracion.js';
