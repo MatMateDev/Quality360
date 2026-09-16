@@ -24,7 +24,10 @@ function matarArbolDeProcesos(proceso: ChildProcess): void {
  * sanos.
  */
 
-async function esperarSalud(url: string, intentos = 40, esperaMs = 250): Promise<void> {
+// 90 x 250ms = 22.5 s: con ~100+ pruebas ya corridas en la misma sesión, un
+// arranque en frío de Nest o de Vite bajo carga puede tardar más que los
+// 10 s originales; se amplía el margen en vez de arriesgar un falso fallo.
+async function esperarSalud(url: string, intentos = 90, esperaMs = 250): Promise<void> {
   for (let intento = 0; intento < intentos; intento += 1) {
     try {
       const respuesta = await fetch(url, { signal: AbortSignal.timeout(1000) });

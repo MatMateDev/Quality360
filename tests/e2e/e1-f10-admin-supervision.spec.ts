@@ -13,13 +13,18 @@ test.use({ storageState: path.join(import.meta.dirname, "..", ".auth", "patricia
 // gateway devuelve como máximo 20 (por defecto) ordenados por nombre, sin
 // buscador ni paginación en la pantalla. Con más de 20 QE o analistas
 // activos, los últimos por orden alfabético no aparecen en el desplegable y
-// no se pueden seleccionar. Aquí se evita con un prefijo "0-" que ordena
-// antes que cualquier nombre real; documentado también en el dictamen.
+// no se pueden seleccionar. Aquí se evita con el prefijo "! " (0x21, ordena
+// antes que cualquier letra o dígito, y el backend no recorta signos de
+// puntuación como sí recorta espacios); documentado también en el dictamen.
+// Nota: como el propio catálogo de QE ya pasa de 100 registros por las
+// corridas repetidas de esta suite, incluso un prefijo fijo puede dejar de
+// alcanzar para casos extremos — la corrección de fondo es de
+// `q360-frontend` (paginar o buscar en el select).
 async function crearAnalistaConSupervisorVigente(request: APIRequestContext) {
   const sesion = await iniciarSesion(USUARIOS_SEMILLA.patricia.correo, env.contrasenaDemo);
-  const qeInicial = await crearUsuario(request, sesion.accessToken, { nombre: nombreUnico("0-QE Inicial F10"), correo: correoUnico("qe-inicial-f10"), rol: "QE" });
-  const qeNuevo = await crearUsuario(request, sesion.accessToken, { nombre: nombreUnico("0-QE Nuevo F10"), correo: correoUnico("qe-nuevo-f10"), rol: "QE" });
-  const analista = await crearUsuario(request, sesion.accessToken, { nombre: nombreUnico("0-Analista F10"), correo: correoUnico("analista-f10"), rol: "ANALISTA_QA" });
+  const qeInicial = await crearUsuario(request, sesion.accessToken, { nombre: nombreUnico("! QE Inicial F10"), correo: correoUnico("qe-inicial-f10"), rol: "QE" });
+  const qeNuevo = await crearUsuario(request, sesion.accessToken, { nombre: nombreUnico("! QE Nuevo F10"), correo: correoUnico("qe-nuevo-f10"), rol: "QE" });
+  const analista = await crearUsuario(request, sesion.accessToken, { nombre: nombreUnico("! Analista F10"), correo: correoUnico("analista-f10"), rol: "ANALISTA_QA" });
 
   const asignacion = await api.put(request, `/v1/analistas/${analista.id}/supervisor`, { token: sesion.accessToken, body: { qeId: qeInicial.id } });
   if (asignacion.status !== 200) throw new Error(`No fue posible preparar el fixture: ${asignacion.status}`);

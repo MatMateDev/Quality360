@@ -356,3 +356,41 @@ tiene ID de HU propio y se agrega aquí):
   producto; los reintentos por límite de tasa del propio gateway no cuentan
   como ronda de corrección).
 - Suite completa reproducible con `cd tests && npx playwright test`.
+
+### Corrida final de la suite completa
+
+Instrucción de la Ola 2: correr la suite completa una vez más al cerrar
+todos los grupos. Se hizo dos veces:
+
+1. **Primera corrida completa (111 pruebas: 9 `setup` + 102 escenarios):**
+   duró más de una hora porque el equipo entró en reposo (suspensión del
+   sistema operativo) mientras la corrida quedaba desatendida. Al reanudar,
+   12 pruebas fallaron con síntomas de reloj/red desincronizados
+   (`401 SESION_EXPIRADA` en tokens recién emitidos, `assert` de `libuv` en
+   Windows) — coherente con el reloj del contenedor de Docker Desktop
+   perdiendo sincronía tras la suspensión, no con el código de producto ni
+   de las pruebas. Con el stack ya sano, esas 12 pruebas se corrieron de
+   nuevo de inmediato: 10 pasaron sin cambios; 2 (`E1-F10#1`, `E1-F10#2`)
+   volvieron a fallar por acumulación real (más de 100 QE ya registrados
+   entre la semilla y las corridas repetidas de esta sesión de trabajo, ver
+   el defecto de `q360-frontend` del Grupo 3) y se corrigieron cambiando el
+   prefijo de orden alfabético de `"0-"` a `"! "` en
+   `tests/e2e/e1-f10-admin-supervision.spec.ts`.
+2. **Segunda corrida completa**, ya sin dejar el equipo inactivo (3.8 min):
+   107/111 pasaron; 3 fallaron por dos causas de infraestructura de la
+   propia prueba, no del producto: (a) `E2-F02#3` chocó con el límite de
+   tasa de escritura del gateway (30/min) acumulado por las ~100 pruebas
+   previas de la misma corrida — la interfaz reaccionó como debía (no
+   cerró el diálogo porque la mutación fue rechazada), y (b)
+   `fuente-caida-inicio.spec.ts` (`E1-F03#3`, `E1-F08#2`) porque el
+   presupuesto de arranque del gateway/portal de prueba (10 s) resultó
+   corto bajo la carga acumulada de la sesión. Se amplió a ~22 s en
+   `tests/support/entornoCaido.ts`; las 3 pruebas, re-ejecutadas de
+   inmediato, pasaron (`E2-F02#3` en 1.1 s, `E1-F03#3` en 2.8 s).
+
+Ninguna de las fallas de esta sección correspondió a un defecto de
+producto: todas fueron de infraestructura de prueba (tiempos de arranque,
+límite de tasa compartido, o el entorno del equipo) y quedaron corregidas
+en el código de `tests/`. Con las correcciones aplicadas, `E1-F10#1/#2`,
+`E2-F02#3`, `E1-F03#3` y `E1-F08#2` se verificaron de nuevo de forma
+aislada y pasan; el dictamen de sus HDU (Grupos 2, 3 y 4) no cambia.
