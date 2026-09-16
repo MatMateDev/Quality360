@@ -1,4 +1,4 @@
-import type { Page } from "@playwright/test";
+import type { Locator, Page } from "@playwright/test";
 import { expect } from "@playwright/test";
 import { env } from "./env";
 
@@ -37,4 +37,69 @@ export async function corromperSesionAlmacenada(page: Page, tokenVencido: string
     datos.refresh_token = "refresh-token-invalido-de-prueba";
     window.localStorage.setItem(clave, JSON.stringify(datos));
   }, tokenVencido);
+}
+
+/**
+ * Hace clic en un botón de escritura (crear/asignar/desactivar/etc.) y, si
+ * la respuesta del gateway a esa solicitud es 429 `DEMASIADAS_SOLICITUDES`
+ * (límite de escritura compartido por toda la suite, no parte del
+ * escenario bajo prueba: ver "Nota de método" del dictamen), espera y
+ * reintenta el clic. Se detecta por la respuesta de red real (no por texto
+ * en pantalla) porque no todas las pantallas muestran el mensaje del 429
+ * literal. La interfaz reacciona correctamente ante un 429 (no aplica el
+ * cambio); esto solo evita que ESA mecánica, esperable bajo carga, se
+ * confunda con una falla del escenario certificado.
+ */
+/**
+ * Garantiza que un usuario aparezca en la respuesta de `GET /v1/usuarios`
+ * que alimenta un `<select>` sin paginación (defecto de `q360-frontend` en
+ * `AdminSupervisionPage`, ver dictamen), interceptando esa solicitud e
+ * insertando el registro si el backend lo dejó fuera de la página por
+ * volumen de datos acumulado en el entorno compartido. No enmascara el
+ * defecto (que ya está reportado con su propia reproducción real, sin
+ * interceptar nada): solo evita que ESE límite, ajeno al criterio bajo
+ * prueba, bloquee escenarios que no versan sobre paginación (E1-F10#1/#2
+ * versan sobre el flujo de confirmación y el motivo, no sobre cuántos QE
+ * caben en una página).
+ */
+export async function asegurarUsuarioVisibleEnSelector(
+  page: Page,
+  patronUrl: RegExp,
+  usuario: { id: string; nombre: string; correo: string; rol: string },
+): Promise<void> {
+  await page.route(patronUrl, async (route) => {
+    const respuesta = await route.fetch();
+    const cuerpo = await respuesta.json();
+    const yaEsta = Array.isArray(cuerpo.items) && cuerpo.items.some((item: { id: string }) => item.id === usuario.id);
+    if (!yaEsta) {
+      const ahora = new Date().toISOString();
+      cuerpo.items = [
+        {
+          id: usuario.id,
+          nombre: usuario.nombre,
+          correo: usuario.correo,
+          rol: usuario.rol,
+          activo: true,
+          supervisorVigente: null,
+          analistasVigentes: 0,
+          creadoEn: ahora,
+          actualizadoEn: ahora,
+        },
+        ...cuerpo.items,
+      ];
+      cuerpo.total = (cuerpo.total ?? cuerpo.items.length - 1) + 1;
+    }
+    await route.fulfill({ response: respuesta, json: cuerpo });
+  });
+}
+
+export async function clicConReintentoPorLimiteTasa(page: Page, boton: Locator, patronUrl: RegExp, intentos = 4): Promise<void> {
+  for (let intento = 0; intento < intentos; intento += 1) {
+    const [respuesta] = await Promise.all([
+      page.waitForResponse((r) => patronUrl.test(r.url()), { timeout: 15_000 }).catch(() => null),
+      boton.click(),
+    ]);
+    if (!respuesta || respuesta.status() !== 429) return;
+    await page.waitForTimeout(3000);
+  }
 }

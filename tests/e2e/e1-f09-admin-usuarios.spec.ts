@@ -4,9 +4,12 @@ import { crearUsuario } from "../support/fixtures";
 import { env } from "../support/env";
 import { correoUnico, nombreUnico } from "../support/unique";
 import { iniciarSesion } from "../support/api";
+import { clicConReintentoPorLimiteTasa } from "../support/ui";
 import { USUARIOS_SEMILLA } from "../support/usuarios";
 
 test.use({ storageState: path.join(import.meta.dirname, "..", ".auth", "patricia.json") });
+
+const PATRON_URL_USUARIO = /\/v1\/usuarios\/[^/]+$/;
 
 test.describe("E1-F09 · Administración de usuarios", () => {
   test("[E1-F09#1] lista usuarios y el buscador filtra por nombre o correo", async ({ page, request }) => {
@@ -58,7 +61,7 @@ test.describe("E1-F09 · Administración de usuarios", () => {
 
     const dialogo = page.getByRole("dialog", { name: "Desactivar usuario" });
     await expect(dialogo).toBeVisible();
-    await dialogo.getByRole("button", { name: "Desactivar" }).click();
+    await clicConReintentoPorLimiteTasa(page, dialogo.getByRole("button", { name: "Desactivar" }), PATRON_URL_USUARIO);
 
     await expect(dialogo).toHaveCount(0);
     await expect(fila.getByText("Inactivo")).toBeVisible();

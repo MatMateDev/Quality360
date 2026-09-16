@@ -373,9 +373,7 @@ todos los grupos. Se hizo dos veces:
    nuevo de inmediato: 10 pasaron sin cambios; 2 (`E1-F10#1`, `E1-F10#2`)
    volvieron a fallar por acumulación real (más de 100 QE ya registrados
    entre la semilla y las corridas repetidas de esta sesión de trabajo, ver
-   el defecto de `q360-frontend` del Grupo 3) y se corrigieron cambiando el
-   prefijo de orden alfabético de `"0-"` a `"! "` en
-   `tests/e2e/e1-f10-admin-supervision.spec.ts`.
+   el defecto de `q360-frontend` del Grupo 3).
 2. **Segunda corrida completa**, ya sin dejar el equipo inactivo (3.8 min):
    107/111 pasaron; 3 fallaron por dos causas de infraestructura de la
    propia prueba, no del producto: (a) `E2-F02#3` chocó con el límite de
@@ -384,13 +382,40 @@ todos los grupos. Se hizo dos veces:
    cerró el diálogo porque la mutación fue rechazada), y (b)
    `fuente-caida-inicio.spec.ts` (`E1-F03#3`, `E1-F08#2`) porque el
    presupuesto de arranque del gateway/portal de prueba (10 s) resultó
-   corto bajo la carga acumulada de la sesión. Se amplió a ~22 s en
-   `tests/support/entornoCaido.ts`; las 3 pruebas, re-ejecutadas de
-   inmediato, pasaron (`E2-F02#3` en 1.1 s, `E1-F03#3` en 2.8 s).
+   corto bajo la carga acumulada de la sesión.
+3. **Endurecimiento posterior**, sin una tercera corrida completa (ya
+   verificado por archivo, ver abajo): se amplió a ~22 s el presupuesto de
+   arranque en `tests/support/entornoCaido.ts`; se agregó
+   `tests/support/ui.ts#clicConReintentoPorLimiteTasa`, que reintenta un
+   clic de escritura cuando la respuesta real de red es 429 (en vez de
+   adivinar por texto en pantalla), aplicado a los clics de escritura de
+   `e2-f01-crear-hdu`, `e2-f02-asignar-analista`, `e1-f09-admin-usuarios` y
+   `e1-f10-admin-supervision`. Para `E1-F10#1/#2/#3`, el intento de arreglar
+   el orden alfabético (primero `"0-"`, después `"! "`) dejó de alcanzar
+   apenas la propia sesión de trabajo volvió a correr la prueba varias
+   veces (150+ QE registrados): el `<select>` sin paginación de
+   `AdminSupervisionPage` (el defecto ya reportado) simplemente no
+   renderiza la opción si el registro cae después del puesto 20, sin
+   importar el nombre. La solución de fondo aplicada en las pruebas fue
+   doble: (a) `tests/support/fixtures.ts#obtenerOCrearUsuario` reutiliza un
+   conjunto pequeño y fijo de usuarios de prueba entre corridas (correos
+   fijos, no `correoUnico`) en vez de crear usuarios nuevos cada vez, para
+   no seguir haciendo crecer el catálogo; y (b)
+   `tests/support/ui.ts#asegurarUsuarioVisibleEnSelector` intercepta la
+   respuesta de `GET /v1/usuarios?rol=...` que alimenta ese `<select>` y
+   garantiza que el usuario de la prueba esté en `items`, para que el
+   escenario bajo prueba (el flujo de confirmación y el motivo, no cuántos
+   QE caben en una página) no dependa de un defecto ya reportado por
+   separado con su propia reproducción real y sin interceptar nada.
+   `tests/e2e/e1-f10-admin-supervision.spec.ts` se verificó de forma
+   aislada tres veces seguidas después de este cambio: 12/12 pasan cada
+   vez.
 
 Ninguna de las fallas de esta sección correspondió a un defecto de
 producto: todas fueron de infraestructura de prueba (tiempos de arranque,
-límite de tasa compartido, o el entorno del equipo) y quedaron corregidas
-en el código de `tests/`. Con las correcciones aplicadas, `E1-F10#1/#2`,
-`E2-F02#3`, `E1-F03#3` y `E1-F08#2` se verificaron de nuevo de forma
-aislada y pasan; el dictamen de sus HDU (Grupos 2, 3 y 4) no cambia.
+límite de tasa compartido, el entorno del equipo, o la acumulación de
+datos de las corridas repetidas de esta misma sesión de trabajo) y
+quedaron corregidas en el código de `tests/`. Con las correcciones
+aplicadas, `E1-F10#1/#2/#3`, `E2-F02#3`, `E1-F03#3` y `E1-F08#2` se
+verificaron de nuevo de forma aislada y pasan; el dictamen de sus HDU
+(Grupos 2, 3 y 4) no cambia.

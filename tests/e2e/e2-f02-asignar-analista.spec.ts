@@ -4,9 +4,12 @@ import { api, iniciarSesion } from "../support/api";
 import { env } from "../support/env";
 import { crearHdu, obtenerCatalogos, obtenerUsuarioPorCorreo } from "../support/fixtures";
 import { codigoHduUnico } from "../support/unique";
+import { clicConReintentoPorLimiteTasa } from "../support/ui";
 import { USUARIOS_SEMILLA } from "../support/usuarios";
 
 test.use({ storageState: path.join(import.meta.dirname, "..", ".auth", "carla.json") });
+
+const PATRON_URL_ANALISTA = /\/v1\/hdu\/.*\/analista$/;
 
 async function crearHduSinAnalista(request: APIRequestContext, prefijo: string) {
   const sesion = await iniciarSesion(USUARIOS_SEMILLA.carla.correo, env.contrasenaDemo);
@@ -22,7 +25,7 @@ test.describe("E2-F02 · Asignación de analista", () => {
     await page.getByRole("button", { name: "Asignar analista" }).click();
     const dialogo = page.getByRole("dialog", { name: "Asignar analista" });
     await dialogo.getByLabel("Analista QA").selectOption({ label: USUARIOS_SEMILLA.ana.nombre });
-    await dialogo.getByRole("button", { name: "Confirmar" }).click();
+    await clicConReintentoPorLimiteTasa(page, dialogo.getByRole("button", { name: "Confirmar" }), PATRON_URL_ANALISTA);
 
     await expect(dialogo).toHaveCount(0);
     await expect(page.getByTestId("valor-analista-hdu")).toHaveText(USUARIOS_SEMILLA.ana.nombre);
@@ -62,7 +65,7 @@ test.describe("E2-F02 · Asignación de analista", () => {
     await dialogo.getByLabel("Analista QA").selectOption({ label: USUARIOS_SEMILLA.ana.nombre });
     await expect(dialogo.getByLabel("Motivo del cambio")).toBeVisible();
     await dialogo.getByLabel("Motivo del cambio").fill("Motivo de prueba E2-F02#3 desde la interfaz.");
-    await dialogo.getByRole("button", { name: "Confirmar" }).click();
+    await clicConReintentoPorLimiteTasa(page, dialogo.getByRole("button", { name: "Confirmar" }), PATRON_URL_ANALISTA);
 
     await expect(dialogo).toHaveCount(0);
     await expect(page.getByTestId("valor-analista-hdu")).toHaveText(USUARIOS_SEMILLA.ana.nombre);

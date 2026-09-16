@@ -39,6 +39,26 @@ export async function crearUsuario(
   return respuesta.body;
 }
 
+/**
+ * Crea un usuario con correo fijo (no `correoUnico`) o, si ya existe
+ * (`CORREO_DUPLICADO`), reutiliza el existente. Para fixtures que dependen
+ * de aparecer en un `<select>` sin paginación (ver el defecto de
+ * `q360-frontend` en `AdminSupervisionPage`): crear uno nuevo en cada
+ * corrida haría crecer sin límite el catálogo de QE/analistas y tarde o
+ * temprano lo sacaría de la primera página. Reutilizar el mismo usuario
+ * entre corridas mantiene acotado el tamaño del catálogo.
+ */
+export async function obtenerOCrearUsuario(
+  request: APIRequestContext,
+  tokenAdmin: string,
+  datos: { nombre: string; correo: string; rol: "ADMINISTRADOR" | "QE" | "ANALISTA_QA" },
+): Promise<UsuarioCreado> {
+  const respuesta = await api.post<UsuarioCreado>(request, "/v1/usuarios", { token: tokenAdmin, body: datos });
+  if (respuesta.status === 201) return respuesta.body;
+  if (respuesta.status === 409) return obtenerUsuarioPorCorreo(request, tokenAdmin, datos.correo);
+  throw new Error(`No fue posible crear u obtener el usuario ${datos.correo}: ${respuesta.status} ${JSON.stringify(respuesta.body)}`);
+}
+
 /** Busca un usuario sembrado por correo, con sesión de Administrador. */
 export async function obtenerUsuarioPorCorreo(request: APIRequestContext, tokenAdmin: string, correo: string): Promise<UsuarioCreado> {
   const respuesta = await api.get<{ items: UsuarioCreado[] }>(request, `/v1/usuarios?q=${encodeURIComponent(correo)}`, { token: tokenAdmin });
