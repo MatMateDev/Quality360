@@ -38,6 +38,9 @@ Decisiones y justificación: [`docs/arquitectura/decisiones-mvp.md`](docs/arquit
 
 ## Levantar en local
 
+> **¿Primera vez?** Sigue la guía paso a paso [GUIA-LOCAL.md](GUIA-LOCAL.md): requisitos, instalación, usuarios de demo, cómo detener y solución de problemas frecuentes.
+
+
 ```bash
 npm install
 npm run local
