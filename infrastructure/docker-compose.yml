@@ -85,6 +85,8 @@ services:
       test: ["CMD", "wget", "-qO-", "http://127.0.0.1:3003/health"]
 
   integraciones:
+    # Pendiente (E5): el servicio aún no tiene código. Se activa con: docker compose --profile e5 up
+    profiles: ["e5"]
     <<: *service-defaults
     build:
       context: ..
@@ -134,8 +136,6 @@ services:
       certificaciones:
         condition: service_healthy
       impedimentos:
-        condition: service_healthy
-      integraciones:
         condition: service_healthy
     healthcheck:
       <<: *healthcheck-defaults
