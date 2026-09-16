@@ -15,6 +15,9 @@ export interface ConfiguracionOrganizacion {
   /** Habilita `/v1/interno/carga/*`. */
   permitirCargaSemilla: boolean;
   verificador: OpcionesVerificador;
+  /** Base de Certificaciones, para `GET /v1/hdu/{id}/checklist` al cerrar una HDU (D11). */
+  certificacionesUrl: string;
+  certificacionesTimeoutMs: number;
 }
 
 function requerido(valor: string | undefined, nombre: string): string {
@@ -37,6 +40,17 @@ function leerBooleano(valor: string | undefined): boolean {
   return valor?.trim().toLowerCase() === 'true';
 }
 
+function leerUrl(valor: string | undefined, porDefecto: string, nombre: string): string {
+  const crudo = valor === undefined || valor.trim().length === 0 ? porDefecto : valor.trim();
+  try {
+    const url = new URL(crudo);
+    if (url.protocol !== 'http:' && url.protocol !== 'https:') throw new Error('protocolo');
+  } catch {
+    throw errorInterno(`${nombre} no es una URL http(s) válida: ${crudo}`);
+  }
+  return crudo.replace(/\/+$/, '');
+}
+
 export function cargarConfiguracion(entorno: NodeJS.ProcessEnv = process.env): ConfiguracionOrganizacion {
   return {
     puerto: leerEntero(entorno.PORT, 3001, 'PORT'),
@@ -45,5 +59,7 @@ export function cargarConfiguracion(entorno: NodeJS.ProcessEnv = process.env): C
     credencialServicio: entorno.X_Q360_SERVICIO_TOKEN?.trim().length ? entorno.X_Q360_SERVICIO_TOKEN.trim() : null,
     permitirCargaSemilla: leerBooleano(entorno.PERMITIR_CARGA_SEMILLA),
     verificador: opcionesDesdeEntorno(entorno),
+    certificacionesUrl: leerUrl(entorno.CERTIFICACIONES_URL, 'http://localhost:3002', 'CERTIFICACIONES_URL'),
+    certificacionesTimeoutMs: leerEntero(entorno.CERTIFICACIONES_TIMEOUT_MS, 2000, 'CERTIFICACIONES_TIMEOUT_MS'),
   };
 }

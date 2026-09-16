@@ -13,6 +13,7 @@ import { AccesoInternoController } from './api/controladores/acceso-interno.cont
 import { AuditoriaController } from './api/controladores/auditoria.controller.js';
 import { CatalogosController } from './api/controladores/catalogos.controller.js';
 import { EquipoController } from './api/controladores/equipo.controller.js';
+import { HduController } from './api/controladores/hdu.controller.js';
 import { ResumenesController } from './api/controladores/resumenes.controller.js';
 import { SaludController } from './api/controladores/salud.controller.js';
 import { SesionController } from './api/controladores/sesion.controller.js';
@@ -52,6 +53,7 @@ export class AppModule {
         SupervisionController,
         AuditoriaController,
         CatalogosController,
+        HduController,
       ],
       providers: [SesionOServicioGuard],
     };

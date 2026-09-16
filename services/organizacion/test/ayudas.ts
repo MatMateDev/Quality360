@@ -66,3 +66,16 @@ export async function limpiarBaseDeDatos(): Promise<void> {
 export function autorizacion(token: string): string {
   return `Bearer ${token}`;
 }
+
+/** Los catálogos no tienen CRUD en el backlog (los carga la semilla); las pruebas los insertan directo. */
+export async function crearCelulaDePrueba(nombre = `Célula ${randomUUID()}`): Promise<{ id: string; nombre: string }> {
+  return prisma.celula.create({ data: { nombre } });
+}
+
+export async function crearSprintDePrueba(
+  nombre = `Sprint ${randomUUID()}`,
+  inicio = new Date('2026-01-01'),
+  fin = new Date('2026-01-14'),
+): Promise<{ id: string; nombre: string; inicio: Date; fin: Date }> {
+  return prisma.sprint.create({ data: { nombre, inicio, fin } });
+}

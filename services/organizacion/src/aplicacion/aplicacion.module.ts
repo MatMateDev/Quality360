@@ -4,11 +4,20 @@ import { InfraestructuraModule } from '../infraestructura/infraestructura.module
 import { AccesoAplicacion } from './acceso.servicio.js';
 import { AuditoriaAplicacion } from './auditoria.servicio.js';
 import { CatalogosAplicacion } from './catalogos.servicio.js';
+import { HduAplicacion } from './hdu.servicio.js';
 import { ResumenesAplicacion } from './resumenes.servicio.js';
 import { SupervisionAplicacion } from './supervision.servicio.js';
 import { UsuariosAplicacion } from './usuarios.servicio.js';
 
-const SERVICIOS = [UsuariosAplicacion, SupervisionAplicacion, CatalogosAplicacion, AuditoriaAplicacion, AccesoAplicacion, ResumenesAplicacion];
+const SERVICIOS = [
+  UsuariosAplicacion,
+  SupervisionAplicacion,
+  CatalogosAplicacion,
+  AuditoriaAplicacion,
+  AccesoAplicacion,
+  ResumenesAplicacion,
+  HduAplicacion,
+];
 
 @Module({
   imports: [InfraestructuraModule],

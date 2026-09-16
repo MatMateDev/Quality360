@@ -12,7 +12,9 @@ import { CATALOGO_REPOSITORIO } from '../dominio/repositorios/catalogo.repositor
 import { HDU_REPOSITORIO } from '../dominio/repositorios/hdu.repositorio.js';
 import { SUPERVISION_REPOSITORIO } from '../dominio/repositorios/supervision.repositorio.js';
 import { USUARIO_REPOSITORIO } from '../dominio/repositorios/usuario.repositorio.js';
+import { PROVEEDOR_CHECKLIST } from '../aplicacion/puertos/proveedor-checklist.js';
 import { PROVEEDOR_IDENTIDAD } from '../aplicacion/puertos/proveedor-identidad.js';
+import { ProveedorChecklistHttp } from './certificaciones/proveedor-checklist.http.js';
 import { AuditoriaPrismaRepositorio } from './repositorios/auditoria.prisma.repositorio.js';
 import { CatalogoPrismaRepositorio } from './repositorios/catalogo.prisma.repositorio.js';
 import { HduPrismaRepositorio } from './repositorios/hdu.prisma.repositorio.js';
@@ -31,6 +33,7 @@ import { ProveedorIdentidadSupabase } from './supabase/proveedor-identidad.servi
     { provide: HDU_REPOSITORIO, useClass: HduPrismaRepositorio },
     { provide: AUDITORIA_REPOSITORIO, useClass: AuditoriaPrismaRepositorio },
     { provide: PROVEEDOR_IDENTIDAD, useClass: ProveedorIdentidadSupabase },
+    { provide: PROVEEDOR_CHECKLIST, useClass: ProveedorChecklistHttp },
     ResolutorAccesoOrganizacion,
   ],
   exports: [
@@ -41,6 +44,7 @@ import { ProveedorIdentidadSupabase } from './supabase/proveedor-identidad.servi
     HDU_REPOSITORIO,
     AUDITORIA_REPOSITORIO,
     PROVEEDOR_IDENTIDAD,
+    PROVEEDOR_CHECKLIST,
     ResolutorAccesoOrganizacion,
   ],
 })
