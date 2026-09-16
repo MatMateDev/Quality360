@@ -1,0 +1,24 @@
+// Quality360 · Certificaciones (esqueleto de E1/E2; ciclos y checklist llegan
+// en E3, fuera de alcance en esta corrida — ver docs/arquitectura/decisiones-mvp.md).
+//
+// Las tablas de este servicio viven en el esquema `certificaciones` de
+// Postgres (infrastructure/db/001_esquemas_roles.sql): la conexión se hace
+// SIEMPRE con el rol `svc_certificaciones`, cuya DATABASE_URL debe incluir
+// `?schema=certificaciones`.
+//
+// Sin modelos todavía: este archivo solo deja lista la conexión para que
+// `PrismaService` pueda `$connect()` y para que el servicio que implemente
+// E3 (checklist de 10 entregables) agregue sus modelos aquí.
+
+// `output` local (no hoisted): ver el comentario equivalente en
+// services/organizacion/prisma/schema.prisma — cada servicio genera su
+// cliente en su propio node_modules para no pisar el de los demás.
+generator client {
+  provider = "prisma-client-js"
+  output   = "../node_modules/@prisma/client"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}

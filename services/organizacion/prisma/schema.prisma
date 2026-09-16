@@ -10,8 +10,13 @@
 // Sin claves foráneas hacia otro esquema (regla no negociable 3): todas las
 // relaciones de este archivo son dentro de `organizacion`.
 
+// `output` local (no hoisted): en un monorepo con npm workspaces, `prisma
+// generate` sin `output` escribe en el `node_modules/@prisma/client` de la
+// RAÍZ, compartido entre servicios — el último `generate` que corre pisa el
+// de los demás. Cada servicio genera el suyo en su propio `node_modules`.
 generator client {
   provider = "prisma-client-js"
+  output   = "../node_modules/@prisma/client"
 }
 
 datasource db {

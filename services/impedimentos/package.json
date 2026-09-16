@@ -1,0 +1,41 @@
+{
+  "name": "@quality360/impedimentos",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Quality360 · Impedimentos y riesgos (NestJS + Prisma). Solo esqueleto en E1/E2 (E4 fuera de alcance). Dueño: q360-backend.",
+  "license": "LicenseRef-Capstone-Duoc-UC",
+  "main": "./dist/main.js",
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "prisma:generate": "prisma generate",
+    "build": "prisma generate && tsc -p tsconfig.build.json",
+    "build:pruebas": "prisma generate && tsc -p tsconfig.pruebas.json",
+    "typecheck": "tsc -p tsconfig.json",
+    "start": "node dist/main.js",
+    "start:dev": "node --env-file=.env dist/main.js",
+    "migrate:deploy": "prisma migrate deploy",
+    "test": "npm run build:pruebas && node --env-file=.env.test --test --test-concurrency=1 \"build-pruebas/test/**/*.test.js\""
+  },
+  "dependencies": {
+    "@nestjs/common": "^11.2.5",
+    "@nestjs/core": "^11.2.5",
+    "@nestjs/platform-express": "^11.2.5",
+    "@prisma/client": "^6.19.3",
+    "@quality360/auth-nest": "*",
+    "helmet": "^8.3.0",
+    "reflect-metadata": "^0.2.2",
+    "rxjs": "^7.8.2"
+  },
+  "devDependencies": {
+    "@types/express": "^5.0.6",
+    "@types/node": "^24.13.5",
+    "@types/supertest": "^7.2.1",
+    "jose": "^6.2.12",
+    "prisma": "^6.19.3",
+    "supertest": "^7.2.2",
+    "typescript": "^5.9.3"
+  }
+}
