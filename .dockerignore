@@ -1,0 +1,21 @@
+# Contexto de build de Docker: solo lo necesario para compilar los servicios.
+**/node_modules
+**/dist
+**/build-pruebas
+**/.env
+**/.env.*
+!**/.env.example
+.git
+.github
+.claude
+.agents
+outputs
+tests
+docs
+Fase 1
+src
+public
+**/test-results
+**/playwright-report
+infrastructure/supabase/.temp
+infrastructure/seed/mvp/.env.carga

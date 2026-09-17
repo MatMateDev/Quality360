@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // Carga idempotente de la semilla MVP (E1 y E2) contra Organización.
-// Uso: X_Q360_SERVICIO_TOKEN=... [ORGANIZACION_URL=http://localhost:3001] node infrastructure/seed/mvp/cargar.mjs
+// Uso: X_Q360_SERVICIO_TOKEN=... [ORGANIZACION_URL=http://localhost:3001] [CONTRASENA_DEMO=...] node infrastructure/seed/mvp/cargar.mjs
 // Organización debe correr con PERMITIR_CARGA_SEMILLA=true y el mismo token. Solo para entorno local.
 import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
@@ -11,6 +11,9 @@ const TOKEN = process.env.X_Q360_SERVICIO_TOKEN;
 if (!TOKEN) { console.error('Falta X_Q360_SERVICIO_TOKEN.'); process.exit(2); }
 
 const datos = JSON.parse(readFileSync(join(dirname(fileURLToPath(import.meta.url)), 'datos.json'), 'utf8'));
+// En la nube se usa otra contraseña de demo, pasada por variable de entorno (nunca versionada).
+const CONTRASENA = process.env.CONTRASENA_DEMO ?? datos.contrasenaDemo;
+if (CONTRASENA.length < 12) { console.error('CONTRASENA_DEMO debe tener al menos 12 caracteres.'); process.exit(2); }
 const ORDEN = ['PENDIENTE', 'DISENO_PRUEBAS', 'EN_EJECUCION', 'PENDIENTE_CIERRE'];
 const resumen = {};
 const rechazos = [];
@@ -45,7 +48,8 @@ async function paso(entidad, id, fn) {
 }
 
 async function esperarOrganizacion() {
-  for (let i = 0; i < 30; i++) {
+  // Hasta 150 s: en Render gratis un servicio dormido tarda ~1 minuto en despertar.
+  for (let i = 0; i < 150; i++) {
     try { if ((await fetch(BASE + '/health')).ok) return; } catch { /* aún no responde */ }
     await new Promise((r) => setTimeout(r, 1000));
   }
@@ -65,7 +69,7 @@ for (const s of datos.sprints) {
   if (j) { ids.sprint[s.clave] = j.sprint.id; anotar('sprints', j.creado ? 'creados' : 'existentes'); }
 }
 for (const u of datos.usuarios) {
-  const cuerpo = { nombre: u.nombre, correo: u.correo, rol: u.rol, contrasenaInicial: datos.contrasenaDemo };
+  const cuerpo = { nombre: u.nombre, correo: u.correo, rol: u.rol, contrasenaInicial: CONTRASENA };
   if (u.activo === false) cuerpo.activo = false;
   const j = await paso('usuarios', u.clave, () => llamar('POST', '/v1/interno/carga/usuarios', cuerpo));
   if (j) {

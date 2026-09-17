@@ -1,69 +1,63 @@
-# Quality360 · Imagen multi-stage para servicios NestJS (gateway y services/*)
+# Quality360 · Imagen para los servicios NestJS (gateway y services/*)
 #
-# Se construye SIEMPRE con el contexto en la raíz del monorepo (por eso
-# docker-compose.yml usa `context: ..`), porque necesita el `package.json` y
-# el `package-lock.json` raíz para instalar con npm workspaces.
+# Se construye SIEMPRE con el contexto en la raíz del monorepo, porque necesita
+# el package.json y el package-lock.json raíz para instalar con npm workspaces.
 #
 # Uso manual:
 #   docker build -f infrastructure/docker/Dockerfile.nest \
-#     --build-arg WORKSPACE=services/organizacion --build-arg PORT=3001 \
-#     -t q360/organizacion .
+#     --build-arg WORKSPACE=services/organizacion -t q360/organizacion .
 #
-# WORKSPACE es la ruta del workspace dentro del repo (por ejemplo
-# "services/organizacion", "services/certificaciones", "services/impedimentos",
-# "services/integraciones" o "apps/gateway"). PORT es el puerto que expone
-# ese servicio (ver infrastructure/README.md).
+# WORKSPACE es la ruta del workspace: services/organizacion, services/certificaciones,
+# services/impedimentos o apps/gateway. En Render, las variables de entorno llegan
+# como build args, así que basta con definir WORKSPACE en el servicio.
+#
+# Variables de ejecución relevantes:
+#   PORT               puerto de escucha (Render lo define; por defecto 3000)
+#   MIGRAR_AL_INICIAR  "true" aplica `prisma migrate deploy` antes de arrancar
+#                      (solo servicios con Prisma; Render gratis no tiene paso previo)
 
 ARG NODE_VERSION=24-alpine
 
 FROM node:${NODE_VERSION} AS base
 WORKDIR /repo
 ENV NPM_CONFIG_FUND=false NPM_CONFIG_AUDIT=false
+# Prisma necesita OpenSSL en Alpine para elegir su motor (linux-musl-openssl-3.0.x).
+RUN apk add --no-cache openssl
 
-# --- deps: instala todo el monorepo, con devDependencies (hacen falta para
-#     compilar TypeScript con `nest build`) --------------------------------
-FROM base AS deps
+FROM base AS build
+ARG WORKSPACE
+RUN test -n "$WORKSPACE" || (echo "Falta --build-arg WORKSPACE=<ruta-del-workspace>" >&2 && exit 1)
 COPY package.json package-lock.json ./
 COPY apps ./apps
 COPY packages ./packages
 COPY services ./services
 RUN npm ci
+# Configuración TypeScript compartida de la que heredan todos los workspaces.
+COPY tsconfig.base.json ./
+# auth-nest primero: el gateway y los servicios importan su versión compilada.
+# El build de cada servicio con Prisma genera su cliente en <servicio>/node_modules.
+RUN npm run build --workspace packages/auth-nest \
+ && npm run build --workspace "${WORKSPACE}"
 
-# --- build: compila solo el workspace objetivo ------------------------------
-FROM deps AS build
-ARG WORKSPACE
-RUN test -n "$WORKSPACE" || (echo "Falta --build-arg WORKSPACE=<ruta-del-workspace>" >&2 && exit 1)
-RUN npm run build --workspace "${WORKSPACE}"
-
-# --- prod-deps: node_modules solo con dependencias de producción -----------
-FROM base AS prod-deps
-COPY package.json package-lock.json ./
-COPY apps ./apps
-COPY packages ./packages
-COPY services ./services
-RUN npm ci --omit=dev
-
-# --- runner: imagen final, sin herramientas de build ni fuente TypeScript --
-FROM node:${NODE_VERSION} AS runner
+FROM base AS runner
 ARG WORKSPACE
 ARG PORT=3000
-ENV NODE_ENV=production
-ENV PORT=${PORT}
-ENV WORKSPACE=${WORKSPACE}
+ENV NODE_ENV=production \
+    WORKSPACE=${WORKSPACE} \
+    PORT=${PORT} \
+    npm_config_cache=/tmp/.npm
 WORKDIR /repo
-
 RUN addgroup -S q360 && adduser -S q360 -G q360
-
-COPY --from=prod-deps /repo/node_modules ./node_modules
-COPY --from=prod-deps /repo/package.json ./package.json
-COPY --from=build "/repo/${WORKSPACE}/dist" "./${WORKSPACE}/dist"
-COPY --from=build "/repo/${WORKSPACE}/package.json" "./${WORKSPACE}/package.json"
-
+# Dependencias completas: la CLI de Prisma (devDependency) hace falta para migrar al iniciar.
+COPY --from=build /repo/package.json ./package.json
+COPY --from=build /repo/node_modules ./node_modules
+# node_modules/@quality360/auth-nest es un enlace al workspace: se copia su versión compilada.
+COPY --from=build /repo/packages/auth-nest/package.json ./packages/auth-nest/package.json
+COPY --from=build /repo/packages/auth-nest/dist ./packages/auth-nest/dist
+# El workspace completo: dist, package.json, prisma/ (esquema y migraciones) y el cliente generado.
+COPY --from=build /repo/${WORKSPACE} ./${WORKSPACE}
 USER q360
 EXPOSE ${PORT}
-
-# Todos los servicios exponen GET /health sin autenticación (ver contracts/).
-HEALTHCHECK --interval=15s --timeout=5s --start-period=20s --retries=5 \
+HEALTHCHECK --interval=15s --timeout=5s --start-period=40s --retries=5 \
   CMD wget -qO- "http://127.0.0.1:${PORT}/health" || exit 1
-
-CMD ["sh", "-c", "node ${WORKSPACE}/dist/main.js"]
+CMD ["sh", "-c", "if [ \"$MIGRAR_AL_INICIAR\" = \"true\" ] && [ -f \"$WORKSPACE/prisma/schema.prisma\" ]; then npx prisma migrate deploy --schema \"$WORKSPACE/prisma/schema.prisma\" || exit 1; fi; exec node \"$WORKSPACE/dist/main.js\""]
