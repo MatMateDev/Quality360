@@ -20,6 +20,8 @@ export interface OpcionesApp {
 export async function crearApp(configuracion: ConfiguracionOrganizacion, opciones: OpcionesApp = {}): Promise<NestExpressApplication> {
   const app = await NestFactory.create<NestExpressApplication>(AppModule.forRoot(configuracion), {
     logger: opciones.registro === false ? false : undefined,
+    // Por defecto Nest cierra el proceso si falla al crear la app; así el error llega a quien llama.
+    abortOnError: false,
   });
 
   app.disable('x-powered-by');
