@@ -8,12 +8,12 @@ Plataforma para supervisar la certificación QA de historias de usuario (HDU). E
 | --- | --- | --- |
 | E1 · Acceso, portales y organización QA | 24 HDU, 72 escenarios | Certificada |
 | E2 · Gestión de HDU | 8 HDU, 24 escenarios | Certificada |
-| E3 · Certificación y entregables | 8 HDU | Pendiente |
+| E3 · Certificación y entregables | 8 HDU, 24 escenarios | Certificada |
 | E4 · Impedimentos y riesgos | 8 HDU | Pendiente |
 | E5 · Integración con Jira Cloud | 8 HDU | Pendiente |
 | E6 · Indicadores y dashboards | 8 HDU | Pendiente |
 
-La certificación de E1 y E2 cubre los 96 escenarios de aceptación del backlog, con 111 pruebas automatizadas contra el stack real. El dictamen por escenario y por HDU está en [`docs/validacion/certificacion-e1-e2.md`](docs/validacion/certificacion-e1-e2.md).
+La certificación de E1, E2 y E3 cubre los 120 escenarios de aceptación del backlog, con 135 pruebas automatizadas contra el stack real. El dictamen por escenario y por HDU está en [`docs/validacion/certificacion-e1-e2.md`](docs/validacion/certificacion-e1-e2.md) y [`docs/validacion/certificacion-e3.md`](docs/validacion/certificacion-e3.md).
 
 ## Arquitectura
 
@@ -24,7 +24,7 @@ Navegador ── Portal React ── Gateway ──┬── Organización ─�
                  └── Supabase Auth (identidad)
 ```
 
-- **Portal** (`apps/web`): React 19, Vite, TypeScript. Un portal por rol: Administrador, QE y Analista QA.
+- **Portal** (`apps/web`): React 19, Vite, TypeScript. Un portal por rol: Administrador, QE y Analista QA, más la verificación pública de certificados en `/verificar`.
 - **Gateway** (`apps/gateway`): único punto público. Verifica la sesión, enruta y compone los paneles de inicio. Si una fuente cae, el bloque se muestra como no disponible, nunca con cifras inventadas.
 - **Servicios** (`services/*`): NestJS y Prisma. Cada uno usa su propio esquema y su propio rol de Postgres, sin SQL entre esquemas. Supabase Auth autentica, pero cada servicio vuelve a autorizar el rol, el usuario activo y el ámbito.
 - **Contratos** (`contracts/`): OpenAPI 3.1 versionado, con los roles y escenarios de cada operación.
@@ -98,7 +98,7 @@ npm test
 | `apps/gateway` | Gateway NestJS |
 | `packages/auth-nest` | Verificación de sesión y autorización compartida |
 | `services/organizacion` | Usuarios, supervisión, HDU, células y sprints (E1, E2) |
-| `services/certificaciones` | Base del servicio de certificaciones (E3) |
+| `services/certificaciones` | Checklist de 10 entregables, evidencias, aprobaciones del QE y certificado PDF (E3) |
 | `services/impedimentos` | Base del servicio de impedimentos (E4) |
 | `contracts` | Contratos OpenAPI |
 | `infrastructure` | Supabase local, SQL de esquemas y roles, Docker Compose, semilla y arranque local |
@@ -109,5 +109,6 @@ npm test
 
 - Los archivos `.env` no se versionan. `npm run local` los genera a partir de Supabase local.
 - Las contraseñas de los roles `svc_*` (sufijo `_local_dev`) y la contraseña de demo **solo sirven en local**. Un entorno en la nube debe usar credenciales nuevas, generadas fuera del repositorio.
-- La clave `service_role` de Supabase solo la usa el servicio de Organización; nunca llega al navegador.
+- La clave `service_role` de Supabase solo la usan Organización (Auth) y Certificaciones (Storage); nunca llega al navegador.
+- Las evidencias y los certificados se guardan en buckets privados de Storage (`evidencias`, `certificados`). El navegador solo recibe URL firmadas de corta duración que emite Certificaciones.
 - Docker Compose (`infrastructure/docker-compose.yml`) es una alternativa a `npm run local`; ver [`infrastructure/README.md`](infrastructure/README.md). El servicio `integraciones` está bajo el perfil `e5` hasta que exista su código.

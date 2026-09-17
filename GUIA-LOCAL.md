@@ -61,8 +61,8 @@ npm run local
 
 Este único comando hace todo lo siguiente:
 
-1. Inicia Supabase local en Docker. **La primera vez descarga sus imágenes y tarda varios minutos.**
-2. Crea los esquemas y roles de la base de datos.
+1. Inicia Supabase local en Docker (Auth, Postgres y Storage). **La primera vez descarga sus imágenes y tarda varios minutos.**
+2. Crea los esquemas y roles de la base de datos, y los buckets privados de evidencias y certificados.
 3. Genera la configuración local (archivos `.env`, que no se suben a Git).
 4. Compila los servicios y aplica las migraciones.
 5. Arranca Organización, Certificaciones, Impedimentos, el gateway y el portal.
@@ -88,7 +88,7 @@ Abre http://localhost:5173 e inicia sesión. La contraseña de todos los usuario
 | --- | --- | --- |
 | Administrador | `patricia.rojas@quality360.local` | Usuarios, roles y supervisión |
 | QE | `carla.fuentes@quality360.local` | Su equipo (Ana y Beatriz) y las historias que supervisa |
-| Analista QA | `ana.torres@quality360.local` | Su supervisora y sus historias asignadas |
+| Analista QA | `ana.torres@quality360.local` | Su supervisora, sus historias asignadas y el checklist de entregables |
 
 Estos usuarios y su contraseña **solo existen en tu Supabase local**. La lista completa, con qué escenario de prueba habilita cada usuario, está en [`infrastructure/seed/mvp/README.md`](infrastructure/seed/mvp/README.md).
 
@@ -104,6 +104,19 @@ Estos usuarios y su contraseña **solo existen en tu Supabase local**. La lista 
 
 La próxima vez solo necesitas abrir Docker Desktop y ejecutar `npm run local`.
 
+### Si ya tenías una versión anterior (sin E3)
+
+Después de `git pull`, ejecuta `npm install` y luego `npm run local -- --build`. La primera vez, `npm run local` detecta que tu Supabase local no tiene Storage y lo reinicia con Storage activo: **los datos se conservan**. También agrega a la configuración de Certificaciones las variables nuevas.
+
+## Paso 8 · Recorrer el flujo de certificación (E3)
+
+1. Entra como **Carla** (QE), abre una HDU que supervisa y asígnala a Ana si no tiene analista.
+2. Entra como **Ana** (Analista QA), abre la HDU y marca el entregable 1 con un enlace `https://…` o un archivo PDF, PNG o JPEG de hasta 10 MB. Los entregables se marcan en orden, del 1 al 10.
+3. Vuelve como **Carla**: en su inicio, «Aprobaciones pendientes» lista lo que espera revisión. Aprueba o rechaza con observaciones.
+4. Con los entregables 1 a 8 aprobados, Carla genera el **certificado PDF** desde el detalle de la HDU. Eso completa el entregable 9.
+5. Cualquier persona, sin iniciar sesión, puede validar el folio impreso en http://localhost:5173/verificar.
+6. Con los 10 entregables aprobados, la HDU puede pasar a **Cerrada**.
+
 ---
 
 ## Tareas frecuentes
@@ -111,6 +124,7 @@ La próxima vez solo necesitas abrir Docker Desktop y ejecutar `npm run local`.
 | Quiero… | Comando |
 | --- | --- |
 | Ver cambios de código de los servicios o del gateway | `npm run local -- --build` |
+| Ver los archivos de evidencias y certificados | Supabase Studio → Storage → buckets `evidencias` y `certificados` |
 | Volver a cargar los datos de demo (no duplica) | `npm run seed` |
 | Ver y consultar la base de datos | Abrir http://127.0.0.1:54323 (Supabase Studio) |
 | Regenerar la configuración local | `node infrastructure/local/preparar-entorno.mjs --forzar` y luego reiniciar `npm run local` |
@@ -144,6 +158,8 @@ npm run local
 | El portal muestra «sesión expirada» o errores 401 tras regenerar la configuración | Los servicios siguen con el token anterior | `Ctrl+C` y `npm run local` de nuevo |
 | El panel de administración muestra cientos de usuarios | Quedaron datos de corridas de pruebas | Sigue «Empezar con la base de datos limpia» |
 | La primera ejecución parece detenida en «Iniciando Supabase local» | Está descargando imágenes de Docker | Espera; puede tardar varios minutos según tu conexión |
+| El checklist muestra «No disponible en este momento» | Certificaciones no arrancó o le falta configuración | `node infrastructure/local/preparar-entorno.mjs --forzar` y luego `npm run local -- --build` |
+| Al adjuntar un archivo aparece un error de subida | Supabase local sin Storage o sin buckets | `Ctrl+C` y `npm run local` de nuevo: reinicia Supabase con Storage y crea los buckets |
 
 ---
 
@@ -156,7 +172,7 @@ npm run local
 | Organización | 3001 | NestJS + Prisma |
 | Certificaciones | 3002 | NestJS + Prisma |
 | Impedimentos | 3003 | NestJS + Prisma |
-| Supabase API y Auth | 54321 | Supabase CLI en Docker |
+| Supabase API, Auth y Storage | 54321 | Supabase CLI en Docker |
 | Postgres | 54322 | Supabase CLI en Docker |
 | Supabase Studio | 54323 | Supabase CLI en Docker |
 
