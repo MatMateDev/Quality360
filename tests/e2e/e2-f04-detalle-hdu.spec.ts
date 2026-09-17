@@ -10,7 +10,17 @@ import { USUARIOS_SEMILLA } from "../support/usuarios";
 test.describe("E2-F04 · Detalle de HDU (con acceso)", () => {
   test.use({ storageState: path.join(import.meta.dirname, "..", ".auth", "carla.json") });
 
-  test("[E2-F04#1] muestra datos, responsables, estado, célula, sprint y avance del checklist", async ({ page, request }) => {
+  /**
+   * Interpretación actualizada por E3 (`docs/arquitectura/decisiones-mvp.md`,
+   * «Efectos de E3 sobre E1 y E2»): con Certificaciones respondiendo de
+   * verdad, el bloque «Avance del checklist» del detalle de HDU ya no es
+   * `indisponible` (ese testid ya no existe en el DOM para una HDU nueva):
+   * ahora es un bloque `ok` real con el avance de la HDU recién creada (0 de
+   * 10, 0%). Se conserva todo lo que ya verificaba el escenario (código,
+   * responsables, sin analista) y se reemplaza solo la aserción del
+   * checklist por la del avance real.
+   */
+  test("[E2-F04#1] muestra datos, responsables, estado, célula, sprint y avance real del checklist", async ({ page, request }) => {
     const sesion = await iniciarSesion(USUARIOS_SEMILLA.carla.correo, env.contrasenaDemo);
     const { celula, sprint } = await obtenerCatalogos(request, sesion.accessToken);
     const codigo = codigoHduUnico("E2F04DET");
@@ -22,7 +32,9 @@ test.describe("E2-F04 · Detalle de HDU (con acceso)", () => {
     await expect(contenido.getByText(codigo, { exact: true })).toBeVisible();
     await expect(contenido.getByText(USUARIOS_SEMILLA.carla.nombre, { exact: true })).toBeVisible();
     await expect(page.getByTestId("valor-analista-hdu")).toHaveText("Sin asignar");
-    await expect(page.getByTestId("checklist-no-disponible")).toContainText("No disponible");
+    await expect(page.getByTestId("checklist-no-disponible")).toHaveCount(0);
+    const filaChecklist = page.locator("article", { has: page.getByText("Avance del checklist", { exact: true }) });
+    await expect(filaChecklist).toContainText("0% (0/10)");
   });
 
   test("[E2-F04#3] cambiar el estado lo actualiza y muestra la fecha del cambio", async ({ page, request }) => {

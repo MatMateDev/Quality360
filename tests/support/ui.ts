@@ -108,3 +108,103 @@ export async function clicConReintentoPorLimiteTasa(page: Page, boton: Locator, 
     await page.waitForTimeout((Number.isFinite(segundos) ? segundos : 5) * 1000 + 500);
   }
 }
+
+/**
+ * El diálogo del checklist (E3: marcar/desmarcar/rechazar) puede encadenar
+ * más de una escritura (p. ej. `evidencias` + `marcar` al subir un archivo).
+ * En vez de esperar una URL de red puntual (que podría no llegar a ocurrir
+ * si la primera escritura de la cadena choca con el límite de tasa), se
+ * observa el resultado real en la interfaz: el diálogo se cierra (éxito) o
+ * muestra `error-dialogo-checklist` (fallo). Si el error es el límite de
+ * tasa del gateway (429, ajeno a los 24 escenarios de E3), se reintenta el
+ * clic completo; cualquier otro error se relanza tal cual, sin enmascararlo.
+ */
+export async function confirmarDialogoChecklistConReintento(page: Page, dialogo: Locator, intentos = 6): Promise<void> {
+  const boton = dialogo.locator(".dialogo-acciones button").last();
+  const error = dialogo.getByTestId("error-dialogo-checklist");
+  for (let intento = 0; intento < intentos; intento += 1) {
+    await boton.click();
+    const resultado = await Promise.race([
+      dialogo
+        .waitFor({ state: "detached", timeout: 30_000 })
+        .then(() => "cerrado" as const)
+        .catch(() => "timeout" as const),
+      error
+        .waitFor({ state: "visible", timeout: 30_000 })
+        .then(() => "error" as const)
+        .catch(() => "timeout" as const),
+    ]);
+    if (resultado === "cerrado") return;
+    if (resultado === "error") {
+      const texto = (await error.textContent()) ?? "";
+      if (/demasiadas solicitudes/i.test(texto)) {
+        await page.waitForTimeout(5_000);
+        continue;
+      }
+      throw new Error(`El diálogo del checklist mostró un error inesperado: ${texto}`);
+    }
+    throw new Error("El diálogo del checklist no respondió a tiempo.");
+  }
+  throw new Error("El diálogo del checklist no se cerró tras varios reintentos por límite de tasa.");
+}
+
+/**
+ * Clic de escritura del checklist sin diálogo (aprobar): reintenta si el
+ * aviso mostrado es el límite de tasa (429); cualquier otro aviso, o que el
+ * botón no llegue a desaparecer (la fila deja de renderizarlo una vez
+ * aprobado), se relanza como error real del escenario bajo prueba.
+ */
+export async function clicChecklistConReintento(page: Page, boton: Locator, aviso: Locator, intentos = 6): Promise<void> {
+  for (let intento = 0; intento < intentos; intento += 1) {
+    await boton.click();
+    const resultado = await Promise.race([
+      boton
+        .waitFor({ state: "detached", timeout: 30_000 })
+        .then(() => "hecho" as const)
+        .catch(() => "timeout" as const),
+      aviso
+        .waitFor({ state: "visible", timeout: 30_000 })
+        .then(() => "aviso" as const)
+        .catch(() => "timeout" as const),
+    ]);
+    if (resultado === "hecho") return;
+    if (resultado === "aviso") {
+      const texto = (await aviso.textContent()) ?? "";
+      if (/demasiadas solicitudes/i.test(texto)) {
+        await page.waitForTimeout(5_000);
+        continue;
+      }
+      throw new Error(`La acción del checklist mostró un aviso inesperado: ${texto}`);
+    }
+    throw new Error("La acción del checklist no respondió a tiempo.");
+  }
+  throw new Error("La acción del checklist no tuvo éxito tras varios reintentos por límite de tasa.");
+}
+
+/**
+ * Genera o vuelve a descargar el certificado (E3-F04): espera el evento real
+ * de descarga del navegador, con el mismo reintento ante el límite de tasa
+ * que las demás acciones del checklist.
+ */
+export async function descargaChecklistConReintento(
+  page: Page,
+  boton: Locator,
+  aviso: Locator,
+  intentos = 6,
+): Promise<import("@playwright/test").Download> {
+  for (let intento = 0; intento < intentos; intento += 1) {
+    const [descarga] = await Promise.all([page.waitForEvent("download", { timeout: 30_000 }).catch(() => null), boton.click()]);
+    if (descarga) return descarga;
+    const avisoVisible = await aviso.isVisible().catch(() => false);
+    if (avisoVisible) {
+      const texto = (await aviso.textContent()) ?? "";
+      if (/demasiadas solicitudes/i.test(texto)) {
+        await page.waitForTimeout(5_000);
+        continue;
+      }
+      throw new Error(`La descarga del certificado mostró un aviso inesperado: ${texto}`);
+    }
+    throw new Error("La descarga del certificado no produjo un evento de descarga ni un aviso.");
+  }
+  throw new Error("La descarga del certificado no tuvo éxito tras varios reintentos por límite de tasa.");
+}

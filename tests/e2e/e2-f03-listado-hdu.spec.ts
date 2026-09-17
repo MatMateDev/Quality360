@@ -29,12 +29,26 @@ test.describe("E2-F03 · Listado de HDU del Analista QA", () => {
     }
   });
 
-  test("[E2-F03#2] informa que no hay HDU cuando ningún registro cumple los filtros", async ({ page }) => {
+  test("[E2-F03#2] informa que no hay HDU cuando ningún registro cumple los filtros", async ({ page, request }) => {
     await page.goto(`${env.portalUrl}/qa/hdu`);
     await expect(page.locator("tbody tr").first()).toBeVisible();
 
-    // D11: en esta corrida ninguna HDU llega a Cerrada, así que este filtro
-    // nunca tiene coincidencias para ningún usuario.
+    // Desde E3, Cerrada ya es alcanzable de verdad (checklist completo, D11):
+    // ya no se puede asumir que ninguna HDU de Ana esté Cerrada en este
+    // entorno compartido (por ejemplo, HDU de humo de otra sesión de
+    // trabajo). En vez de asumirlo, se calcula en tiempo real una célula sin
+    // ninguna HDU Cerrada de Ana y se combina con el filtro de estado: la
+    // combinación queda garantizada vacía sin tocar datos ajenos.
+    const sesionAna = await iniciarSesion(USUARIOS_SEMILLA.ana.correo, env.contrasenaDemo);
+    const [cerradas, celulas] = await Promise.all([
+      api.get<{ items: Array<{ celula: { id: string } }> }>(request, "/v1/hdu?estado=CERRADA&tamanoPagina=100", { token: sesionAna.accessToken }),
+      api.get<{ items: Array<{ id: string; nombre: string }> }>(request, "/v1/catalogos/celulas", { token: sesionAna.accessToken }),
+    ]);
+    const celulasConCerradas = new Set(cerradas.body.items.map((hdu) => hdu.celula.id));
+    const celulaSinCerradas = celulas.body.items.find((celula) => !celulasConCerradas.has(celula.id));
+    expect(celulaSinCerradas).toBeTruthy();
+
+    await page.getByLabel("Célula").selectOption({ label: celulaSinCerradas!.nombre });
     await page.getByLabel("Estado").selectOption({ label: "Cerrada" });
 
     await expect(page.getByTestId("bloque-mis-hdu-vacio")).toContainText("No hay historias de usuario con esos criterios.");
