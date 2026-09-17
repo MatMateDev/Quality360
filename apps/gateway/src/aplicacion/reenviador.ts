@@ -22,11 +22,18 @@ export interface OpcionesReenvio {
   /** Propagar la query string de la solicitud original. */
   conConsulta?: boolean;
   tiempoLimiteMs?: number;
+  /** Ruta pública (`@Publico()`): se reenvía sin `Authorization`. */
+  publico?: boolean;
 }
 
 @Injectable()
 export class Reenviador {
   constructor(@Inject(CONFIGURACION) private readonly configuracion: ConfiguracionGateway) {}
+
+  /** Base de Certificaciones (E3). */
+  get certificacionesUrl(): string {
+    return this.configuracion.certificacionesUrl;
+  }
 
   /** Identidad ya verificada por `IdentidadGuard`. */
   identidadDe(solicitud: SolicitudGateway): Identidad {
@@ -50,7 +57,7 @@ export class Reenviador {
       base: opciones.base ?? this.configuracion.organizacionUrl,
       ruta: opciones.ruta,
       metodo: solicitud.method,
-      token: this.identidadDe(solicitud).token,
+      token: opciones.publico === true ? null : this.identidadDe(solicitud).token,
       traceId: obtenerTraceId(solicitud),
       consulta: opciones.conConsulta === false ? undefined : this.consultaDe(solicitud),
       cuerpo,

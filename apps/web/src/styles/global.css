@@ -633,3 +633,220 @@ tbody tr:hover {
   gap: 6px;
   padding-left: 20px;
 }
+
+/* ------------------------------------------------------- checklist de entregables (E3) */
+.checklist-avance {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 4px;
+  min-width: 200px;
+}
+
+.checklist-avance strong {
+  font-size: 28px;
+  color: var(--q360-color-texto);
+}
+
+.checklist-avance span {
+  color: var(--q360-color-texto-secundario);
+  font-size: 13px;
+}
+
+.barra-progreso {
+  width: 100%;
+  height: 8px;
+  overflow: hidden;
+  background-color: var(--q360-color-superficie-sutil);
+  border: 1px solid var(--q360-color-borde);
+  border-radius: var(--q360-radio-pastilla);
+}
+
+.barra-progreso > div {
+  height: 100%;
+  background-color: var(--q360-color-exito);
+  transition: width 0.3s ease;
+}
+
+.checklist-lista {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.entregable-item {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 14px 16px;
+  border: 1px solid var(--q360-color-borde);
+  border-radius: var(--q360-radio);
+  background-color: var(--q360-color-superficie);
+}
+
+.entregable-cabecera {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.entregable-orden {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--q360-color-texto-secundario);
+  background-color: var(--q360-color-superficie-sutil);
+  border-radius: var(--q360-radio-pastilla);
+}
+
+.entregable-detalle {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 18px;
+  font-size: 14px;
+  color: var(--q360-color-texto-secundario);
+}
+
+.entregable-acciones {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.entregable-acciones:empty {
+  display: none;
+}
+
+.badge-entregable-pendiente {
+  color: var(--q360-color-indisponible);
+  background-color: var(--q360-color-indisponible-suave);
+}
+
+.badge-entregable-por_aprobar {
+  color: var(--q360-color-alerta);
+  background-color: var(--q360-color-alerta-suave);
+}
+
+.badge-entregable-aprobado {
+  color: var(--q360-color-exito);
+  background-color: var(--q360-color-exito-suave);
+}
+
+.boton-enlace {
+  padding: 0;
+  font: inherit;
+  color: var(--q360-color-acento);
+  text-decoration: underline;
+  cursor: pointer;
+  background: none;
+  border: none;
+}
+
+.boton-enlace:focus-visible {
+  outline: none;
+  box-shadow: var(--q360-foco-sombra);
+}
+
+.certificado-bloque {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 10px;
+  margin-top: 24px;
+  padding-top: 20px;
+  border-top: 1px solid var(--q360-color-borde);
+}
+
+.certificado-bloque h3 {
+  margin: 0;
+}
+
+.certificado-bloque p {
+  margin: 0;
+}
+
+.campo-ayuda {
+  margin: 0;
+  font-size: 14px;
+  color: var(--q360-color-texto-secundario);
+}
+
+.bitacora-checklist {
+  margin-top: 24px;
+}
+
+.bitacora-checklist summary {
+  font-weight: 700;
+  cursor: pointer;
+}
+
+/* ------------------------------------------------------- verificación pública (D21) */
+.pagina-publica {
+  display: flex;
+  justify-content: center;
+  min-height: 100vh;
+  padding: 40px 16px;
+  background-color: var(--q360-color-fondo);
+}
+
+.verificacion-panel {
+  width: 100%;
+  max-width: 560px;
+  height: fit-content;
+}
+
+.verificacion-resultado {
+  margin-top: 20px;
+  padding: 16px;
+  border-radius: var(--q360-radio);
+}
+
+.verificacion-resultado h2 {
+  margin-top: 0;
+}
+
+.verificacion-resultado--valido {
+  background-color: var(--q360-color-exito-suave);
+  border: 1px solid var(--q360-color-exito);
+}
+
+.verificacion-resultado--invalido {
+  background-color: var(--q360-color-error-suave);
+  border: 1px solid var(--q360-color-error);
+}
+
+.verificacion-resultado dl {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 6px 14px;
+  margin: 0;
+}
+
+.verificacion-resultado dt {
+  font-weight: 700;
+}
+
+.verificacion-resultado dd {
+  margin: 0;
+}
+
+.texto-huella {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 12px;
+  word-break: break-all;
+}
+
+@media (max-width: 640px) {
+  .checklist-avance {
+    align-items: flex-start;
+    width: 100%;
+  }
+}

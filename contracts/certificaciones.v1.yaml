@@ -1,24 +1,25 @@
 openapi: 3.1.0
 info:
   title: Quality360 · Servicio de Certificaciones
-  version: 1.0.0
+  version: 1.1.0
   license:
     name: Uso académico · Capstone Duoc UC
     identifier: LicenseRef-Capstone-Duoc-UC
   description: |
-    API interna de Certificaciones. La consumen el gateway (bloque `checklist`
-    de `GET /v1/hdu/{id}`) y Organización (verificación de cierre, D11). No se
-    publica fuera de la red interna.
+    Checklist de 10 entregables, evidencias, aprobaciones del QE, bitácora y
+    certificado PDF de cada HDU (E3, decisiones D15–D22). Lo consumen el
+    gateway, que publica estas mismas rutas, y Organización, que verifica el
+    cierre (D11).
 
-    **Esta corrida (E1 y E2).** El checklist de entregables llega con E3.
-    Después de autenticar la sesión, `GET /v1/hdu/{hduId}/checklist` responde
-    siempre 503 `CAPACIDAD_NO_DISPONIBLE`. Quien lo consume debe tratarlo como
-    fuente indisponible: el gateway marca el bloque `indisponible` y
-    Organización rechaza el cierre con 409 `CHECKLIST_NO_DISPONIBLE`.
-
-    **Desde E3.** Antes de responder, valida el acceso del usuario a la HDU
-    con `GET /v1/interno/hdu/{id}/acceso` de Organización (nunca con su
-    esquema) y responde 403 si no tiene acceso.
+    - **Acceso.** Cada operación sobre una HDU consulta
+      `GET /v1/interno/hdu/{id}/acceso` de Organización con el token del
+      usuario, nunca su esquema. Si la HDU está fuera de ámbito o no existe,
+      responde 403 `ACCESO_DENEGADO` (D12). La relación que devuelve Organización
+      decide qué acciones se permiten (D18).
+    - **Orden.** El entregable N solo se marca si el N-1 está `APROBADO` (D17).
+    - **HDU cerrada.** Rechaza cualquier cambio con 409 `HDU_CERRADA` (D22).
+    - **Archivos.** Las evidencias y los certificados viven en buckets privados
+      de Supabase Storage. Se suben y descargan con URL firmadas (D20).
 servers:
   - url: http://certificaciones:3002
     description: Red interna de Docker Compose
@@ -30,7 +31,9 @@ tags:
   - name: Salud
     description: Estado del proceso.
   - name: Checklist
-    description: Avance del checklist de entregables de una HDU.
+    description: Entregables, evidencias y aprobaciones de una HDU.
+  - name: Certificado
+    description: Certificado PDF de cierre y su verificación pública.
 
 paths:
   /health:
@@ -58,29 +61,27 @@ paths:
           $ref: './comun.v1.yaml#/components/responses/ErrorInterno'
 
   /v1/hdu/{hduId}/checklist:
+    parameters:
+      - $ref: '#/components/parameters/HduId'
     get:
       operationId: obtenerResumenChecklist
       tags: [Checklist]
       summary: Resumen del checklist de una HDU
       description: |
-        Propaga `Authorization` y `x-trace-id` del llamador. En esta corrida:
-        401 si la sesión no es válida; en cualquier otro caso, 503
-        `CAPACIDAD_NO_DISPONIBLE`. La respuesta 200 queda reservada para E3.
+        Avance sobre los 10 entregables: `completados` son los `APROBADO` y
+        `completo` es verdadero con los 10 aprobados (D16). Lo usan el bloque
+        `checklist` del detalle de HDU en el gateway y el cierre en Organización (D11).
       x-roles: [ADMINISTRADOR, QE, ANALISTA_QA]
-      x-hdu: [E2-F04#1, E2-B02#3]
-      parameters:
-        - name: hduId
-          in: path
-          required: true
-          schema:
-            $ref: './comun.v1.yaml#/components/schemas/Uuid'
+      x-hdu: [E2-F04#1, E2-B02#3, E3-B02#3]
       responses:
         '200':
-          description: Reservado para E3. Resumen del checklist.
+          description: Resumen del checklist.
           content:
             application/json:
               schema:
                 $ref: './comun.v1.yaml#/components/schemas/ResumenChecklist'
+        '400':
+          $ref: './comun.v1.yaml#/components/responses/Validacion'
         '401':
           $ref: './comun.v1.yaml#/components/responses/NoAutenticado'
         '403':
@@ -88,20 +89,418 @@ paths:
         '500':
           $ref: './comun.v1.yaml#/components/responses/ErrorInterno'
         '503':
-          description: La capacidad de checklist aún no está habilitada (E3).
-          x-codigos: [CAPACIDAD_NO_DISPONIBLE]
-          headers:
-            x-trace-id:
-              $ref: './comun.v1.yaml#/components/headers/XTraceId'
+          $ref: './comun.v1.yaml#/components/responses/ServicioNoDisponible'
+
+  /v1/hdu/{hduId}/entregables:
+    parameters:
+      - $ref: '#/components/parameters/HduId'
+    get:
+      operationId: obtenerChecklist
+      tags: [Checklist]
+      summary: Checklist de 10 entregables con estado, responsable, fecha y permisos
+      description: |
+        - Los 10 entregables en orden, con estado, evidencia, quién lo marcó y
+          cuándo, quién lo aprobó y cuándo, y la última observación (E3-F01#1).
+        - `resumen.porcentajeCumplimiento` = aprobados / 10 × 100 (E3-F01#2, E3-B02#3).
+        - `permisos` indica qué puede hacer quien consulta. Sin permiso, el portal
+          muestra el checklist en solo lectura (E3-F01#3).
+        - `certificacion` dice si hoy se puede generar el certificado y, si no,
+          el motivo y los entregables faltantes (E3-F04#2).
+      x-roles: [ADMINISTRADOR, QE, ANALISTA_QA]
+      x-hdu: [E3-F01#1, E3-F01#2, E3-F01#3, E3-F04#2]
+      responses:
+        '200':
+          description: Checklist de la HDU.
           content:
             application/json:
               schema:
-                $ref: './comun.v1.yaml#/components/schemas/Error'
-              example:
-                codigo: CAPACIDAD_NO_DISPONIBLE
-                mensaje: Esta capacidad aún no está disponible.
-                traceId: 4bf92f3577b34da6a3ce929d0e0e4736
-                detalles: []
+                $ref: './comun.v1.yaml#/components/schemas/ChecklistHdu'
+        '400':
+          $ref: './comun.v1.yaml#/components/responses/Validacion'
+        '401':
+          $ref: './comun.v1.yaml#/components/responses/NoAutenticado'
+        '403':
+          $ref: './comun.v1.yaml#/components/responses/AccesoDenegado'
+        '500':
+          $ref: './comun.v1.yaml#/components/responses/ErrorInterno'
+        '503':
+          $ref: './comun.v1.yaml#/components/responses/ServicioNoDisponible'
+
+  /v1/hdu/{hduId}/entregables/{clave}/evidencias:
+    parameters:
+      - $ref: '#/components/parameters/HduId'
+      - $ref: './comun.v1.yaml#/components/parameters/ClaveEntregablePath'
+    post:
+      operationId: solicitarSubidaEvidencia
+      tags: [Checklist]
+      summary: URL firmada para subir un archivo de evidencia
+      description: |
+        Solo el analista asignado, con el entregable marcable (D17, D18). Valida
+        tipo (PDF, PNG o JPEG) y tamaño (hasta 10 MB) y devuelve una URL de subida
+        firmada al bucket privado `evidencias`. El archivo se sube directo a
+        Supabase Storage. Luego se usa `ruta` al marcar (E3-F02#1).
+      x-roles: [ANALISTA_QA]
+      x-hdu: [E3-F02#1]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: './comun.v1.yaml#/components/schemas/SolicitudSubidaEvidencia'
+      responses:
+        '201':
+          description: URL de subida emitida.
+          content:
+            application/json:
+              schema:
+                $ref: './comun.v1.yaml#/components/schemas/SubidaEvidencia'
+        '400':
+          $ref: './comun.v1.yaml#/components/responses/Validacion'
+        '401':
+          $ref: './comun.v1.yaml#/components/responses/NoAutenticado'
+        '403':
+          $ref: './comun.v1.yaml#/components/responses/AccesoDenegado'
+        '409':
+          $ref: '#/components/responses/ConflictoChecklist'
+        '422':
+          $ref: '#/components/responses/SolicitudInvalida'
+        '500':
+          $ref: './comun.v1.yaml#/components/responses/ErrorInterno'
+        '503':
+          $ref: './comun.v1.yaml#/components/responses/ServicioNoDisponible'
+
+  /v1/hdu/{hduId}/entregables/{clave}/marcar:
+    parameters:
+      - $ref: '#/components/parameters/HduId'
+      - $ref: './comun.v1.yaml#/components/parameters/ClaveEntregablePath'
+    post:
+      operationId: marcarEntregable
+      tags: [Checklist]
+      summary: Marcar un entregable como completado con evidencia
+      description: |
+        - Solo el analista asignado (D18). Otro usuario recibe 403 (E3-B01#3).
+        - El entregable anterior debe estar `APROBADO`; si no, 409
+          `ORDEN_ENTREGABLES` con el faltante en `detalles` (E3-F02#2, E3-B02#1).
+        - Un entregable `POR_APROBAR` o `APROBADO` ya tiene registro: 409
+          `ENTREGABLE_YA_REGISTRADO`. Hay un registro por clave y HDU (E3-B01#2).
+        - `CERTIFICADO` no se marca a mano: 409 `ENTREGABLE_AUTOMATICO` (D19).
+        - Queda `POR_APROBAR` con evidencia, analista y fecha, y se registra el
+          evento `MARCAR` en la bitácora (E3-F02#1, E3-B01#1, E3-B04#1).
+      x-roles: [ANALISTA_QA]
+      x-hdu: [E3-F02#1, E3-F02#2, E3-B01#1, E3-B01#2, E3-B01#3, E3-B02#1, E3-B04#1]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: './comun.v1.yaml#/components/schemas/SolicitudMarca'
+      responses:
+        '200':
+          $ref: '#/components/responses/EntregableActualizado'
+        '400':
+          $ref: './comun.v1.yaml#/components/responses/Validacion'
+        '401':
+          $ref: './comun.v1.yaml#/components/responses/NoAutenticado'
+        '403':
+          $ref: './comun.v1.yaml#/components/responses/AccesoDenegado'
+        '409':
+          $ref: '#/components/responses/ConflictoChecklist'
+        '422':
+          $ref: '#/components/responses/SolicitudInvalida'
+        '500':
+          $ref: './comun.v1.yaml#/components/responses/ErrorInterno'
+        '503':
+          $ref: './comun.v1.yaml#/components/responses/ServicioNoDisponible'
+
+  /v1/hdu/{hduId}/entregables/{clave}/desmarcar:
+    parameters:
+      - $ref: '#/components/parameters/HduId'
+      - $ref: './comun.v1.yaml#/components/parameters/ClaveEntregablePath'
+    post:
+      operationId: desmarcarEntregable
+      tags: [Checklist]
+      summary: Desmarcar un entregable indicando el motivo
+      description: |
+        - Solo el analista asignado, con motivo obligatorio (422 `MOTIVO_REQUERIDO`).
+        - Aplica a un entregable `POR_APROBAR` o `APROBADO` cuyo siguiente siga
+          `PENDIENTE`. Si no, 409 `ORDEN_ENTREGABLES`. El entregable 9
+          (`CERTIFICADO`) no se desmarca (D19).
+        - Vuelve a `PENDIENTE` y registra el evento `DESMARCAR` con el valor
+          anterior y el motivo (E3-F02#3, E3-B04#1, E3-B04#2).
+      x-roles: [ANALISTA_QA]
+      x-hdu: [E3-F02#3, E3-B04#2]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: './comun.v1.yaml#/components/schemas/SolicitudDesmarca'
+      responses:
+        '200':
+          $ref: '#/components/responses/EntregableActualizado'
+        '400':
+          $ref: './comun.v1.yaml#/components/responses/Validacion'
+        '401':
+          $ref: './comun.v1.yaml#/components/responses/NoAutenticado'
+        '403':
+          $ref: './comun.v1.yaml#/components/responses/AccesoDenegado'
+        '409':
+          $ref: '#/components/responses/ConflictoChecklist'
+        '422':
+          $ref: '#/components/responses/SolicitudInvalida'
+        '500':
+          $ref: './comun.v1.yaml#/components/responses/ErrorInterno'
+        '503':
+          $ref: './comun.v1.yaml#/components/responses/ServicioNoDisponible'
+
+  /v1/hdu/{hduId}/entregables/{clave}/aprobar:
+    parameters:
+      - $ref: '#/components/parameters/HduId'
+      - $ref: './comun.v1.yaml#/components/parameters/ClaveEntregablePath'
+    post:
+      operationId: aprobarEntregable
+      tags: [Checklist]
+      summary: Aprobar un entregable por aprobar
+      description: |
+        - Solo el QE responsable de la HDU. El analista u otro QE reciben 403 (E3-B02#2).
+        - Solo desde `POR_APROBAR`; si no, 409 `ESTADO_ENTREGABLE_INVALIDO`.
+        - Queda `APROBADO` con el nombre del QE y la fecha, y se registra el
+          evento `APROBAR` (E3-F03#1, E3-B04#1).
+      x-roles: [QE]
+      x-hdu: [E3-F03#1, E3-B02#2]
+      responses:
+        '200':
+          $ref: '#/components/responses/EntregableActualizado'
+        '400':
+          $ref: './comun.v1.yaml#/components/responses/Validacion'
+        '401':
+          $ref: './comun.v1.yaml#/components/responses/NoAutenticado'
+        '403':
+          $ref: './comun.v1.yaml#/components/responses/AccesoDenegado'
+        '409':
+          $ref: '#/components/responses/ConflictoChecklist'
+        '500':
+          $ref: './comun.v1.yaml#/components/responses/ErrorInterno'
+        '503':
+          $ref: './comun.v1.yaml#/components/responses/ServicioNoDisponible'
+
+  /v1/hdu/{hduId}/entregables/{clave}/rechazar:
+    parameters:
+      - $ref: '#/components/parameters/HduId'
+      - $ref: './comun.v1.yaml#/components/parameters/ClaveEntregablePath'
+    post:
+      operationId: rechazarEntregable
+      tags: [Checklist]
+      summary: Rechazar un entregable con observaciones
+      description: |
+        - Solo el QE responsable, con comentario obligatorio (422 `MOTIVO_REQUERIDO`).
+        - Solo desde `POR_APROBAR`. Vuelve a `PENDIENTE`, sin evidencia, con la
+          observación visible para el analista, y se registra el evento
+          `RECHAZAR` (E3-F03#2, E3-B04#1).
+      x-roles: [QE]
+      x-hdu: [E3-F03#2]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: './comun.v1.yaml#/components/schemas/SolicitudRechazo'
+      responses:
+        '200':
+          $ref: '#/components/responses/EntregableActualizado'
+        '400':
+          $ref: './comun.v1.yaml#/components/responses/Validacion'
+        '401':
+          $ref: './comun.v1.yaml#/components/responses/NoAutenticado'
+        '403':
+          $ref: './comun.v1.yaml#/components/responses/AccesoDenegado'
+        '409':
+          $ref: '#/components/responses/ConflictoChecklist'
+        '422':
+          $ref: '#/components/responses/SolicitudInvalida'
+        '500':
+          $ref: './comun.v1.yaml#/components/responses/ErrorInterno'
+        '503':
+          $ref: './comun.v1.yaml#/components/responses/ServicioNoDisponible'
+
+  /v1/hdu/{hduId}/entregables/{clave}/evidencia:
+    parameters:
+      - $ref: '#/components/parameters/HduId'
+      - $ref: './comun.v1.yaml#/components/parameters/ClaveEntregablePath'
+    get:
+      operationId: descargarEvidencia
+      tags: [Checklist]
+      summary: URL firmada para descargar la evidencia de archivo
+      description: Cualquier relación permitida con la HDU. 404 si el entregable no tiene un archivo como evidencia.
+      x-roles: [ADMINISTRADOR, QE, ANALISTA_QA]
+      x-hdu: [E3-F03#1]
+      responses:
+        '200':
+          description: URL de descarga de corta duración.
+          content:
+            application/json:
+              schema:
+                $ref: './comun.v1.yaml#/components/schemas/EnlaceDescarga'
+        '400':
+          $ref: './comun.v1.yaml#/components/responses/Validacion'
+        '401':
+          $ref: './comun.v1.yaml#/components/responses/NoAutenticado'
+        '403':
+          $ref: './comun.v1.yaml#/components/responses/AccesoDenegado'
+        '404':
+          $ref: './comun.v1.yaml#/components/responses/NoEncontrado'
+        '500':
+          $ref: './comun.v1.yaml#/components/responses/ErrorInterno'
+        '503':
+          $ref: './comun.v1.yaml#/components/responses/ServicioNoDisponible'
+
+  /v1/hdu/{hduId}/entregables/bitacora:
+    parameters:
+      - $ref: '#/components/parameters/HduId'
+    get:
+      operationId: obtenerBitacoraChecklist
+      tags: [Checklist]
+      summary: Bitácora de cambios del checklist y del certificado
+      description: |
+        Historial completo, del más reciente al más antiguo, con actor, fecha,
+        valor anterior y nuevo, y motivo o comentario. Pueden consultarlo el
+        Administrador, los QE con la HDU en su ámbito y el analista asignado
+        (E3-B04#3).
+      x-roles: [ADMINISTRADOR, QE, ANALISTA_QA]
+      x-hdu: [E3-B04#3]
+      responses:
+        '200':
+          description: Bitácora de la HDU.
+          content:
+            application/json:
+              schema:
+                $ref: './comun.v1.yaml#/components/schemas/BitacoraChecklist'
+        '400':
+          $ref: './comun.v1.yaml#/components/responses/Validacion'
+        '401':
+          $ref: './comun.v1.yaml#/components/responses/NoAutenticado'
+        '403':
+          $ref: './comun.v1.yaml#/components/responses/AccesoDenegado'
+        '500':
+          $ref: './comun.v1.yaml#/components/responses/ErrorInterno'
+        '503':
+          $ref: './comun.v1.yaml#/components/responses/ServicioNoDisponible'
+
+  /v1/qe/aprobaciones-pendientes:
+    get:
+      operationId: listarAprobacionesPendientes
+      tags: [Checklist]
+      summary: Bandeja del QE con entregables por aprobar agrupados por HDU
+      description: |
+        Entregables `POR_APROBAR` de las HDU donde el QE del token es el
+        responsable, agrupados por HDU (E3-F03#3). Organización entrega la
+        lista de HDU con `GET /v1/interno/hdu/responsable`.
+      x-roles: [QE]
+      x-hdu: [E3-F03#3]
+      responses:
+        '200':
+          description: Bandeja de aprobaciones.
+          content:
+            application/json:
+              schema:
+                $ref: './comun.v1.yaml#/components/schemas/BandejaAprobaciones'
+        '401':
+          $ref: './comun.v1.yaml#/components/responses/NoAutenticado'
+        '403':
+          $ref: './comun.v1.yaml#/components/responses/AccesoDenegado'
+        '500':
+          $ref: './comun.v1.yaml#/components/responses/ErrorInterno'
+        '503':
+          $ref: './comun.v1.yaml#/components/responses/ServicioNoDisponible'
+
+  /v1/hdu/{hduId}/certificado:
+    parameters:
+      - $ref: '#/components/parameters/HduId'
+    post:
+      operationId: generarCertificado
+      tags: [Certificado]
+      summary: Generar el certificado PDF de la HDU
+      description: |
+        - Solo el QE responsable (D18).
+        - Exige los entregables 1 a 8 `APROBADO`. Si falta alguno, 409
+          `ENTREGABLES_PENDIENTES` con cada faltante en `detalles` (E3-B03#3).
+        - Si ya existe, 409 `CERTIFICADO_EXISTENTE`: se vuelve a descargar con GET (E3-F04#3).
+        - Genera el PDF con folio único, fechas y responsable de cada entregable.
+          Lo guarda en el bucket privado `certificados`, deja el entregable 9
+          `APROBADO` con el folio como evidencia y registra el evento
+          `GENERAR_CERTIFICADO` (E3-F04#1, E3-B03#1, D19).
+      x-roles: [QE]
+      x-hdu: [E3-F04#1, E3-B03#1, E3-B03#3]
+      responses:
+        '201':
+          description: Certificado emitido, con su URL de descarga.
+          content:
+            application/json:
+              schema:
+                $ref: './comun.v1.yaml#/components/schemas/CertificadoDescarga'
+        '400':
+          $ref: './comun.v1.yaml#/components/responses/Validacion'
+        '401':
+          $ref: './comun.v1.yaml#/components/responses/NoAutenticado'
+        '403':
+          $ref: './comun.v1.yaml#/components/responses/AccesoDenegado'
+        '409':
+          $ref: '#/components/responses/ConflictoChecklist'
+        '500':
+          $ref: './comun.v1.yaml#/components/responses/ErrorInterno'
+        '503':
+          $ref: './comun.v1.yaml#/components/responses/ServicioNoDisponible'
+    get:
+      operationId: obtenerCertificado
+      tags: [Certificado]
+      summary: Volver a descargar el certificado emitido
+      description: Cualquier relación permitida con la HDU. Siempre es el mismo PDF (E3-F04#3). 404 si no hay certificado.
+      x-roles: [ADMINISTRADOR, QE, ANALISTA_QA]
+      x-hdu: [E3-F04#3]
+      responses:
+        '200':
+          description: Certificado con URL de descarga de corta duración.
+          content:
+            application/json:
+              schema:
+                $ref: './comun.v1.yaml#/components/schemas/CertificadoDescarga'
+        '400':
+          $ref: './comun.v1.yaml#/components/responses/Validacion'
+        '401':
+          $ref: './comun.v1.yaml#/components/responses/NoAutenticado'
+        '403':
+          $ref: './comun.v1.yaml#/components/responses/AccesoDenegado'
+        '404':
+          $ref: './comun.v1.yaml#/components/responses/NoEncontrado'
+        '500':
+          $ref: './comun.v1.yaml#/components/responses/ErrorInterno'
+        '503':
+          $ref: './comun.v1.yaml#/components/responses/ServicioNoDisponible'
+
+  /v1/certificados/{folio}/verificacion:
+    parameters:
+      - $ref: './comun.v1.yaml#/components/parameters/FolioPath'
+    get:
+      operationId: verificarCertificado
+      tags: [Certificado]
+      summary: Verificación pública de un folio
+      description: |
+        Sin sesión (D21). Confirma la HDU, la fecha de emisión, la validez y la
+        huella SHA-256 del PDF. Un folio desconocido responde 404 (E3-B03#2).
+      security: []
+      x-roles: [PUBLICO]
+      x-hdu: [E3-B03#2]
+      responses:
+        '200':
+          description: Certificado encontrado.
+          content:
+            application/json:
+              schema:
+                $ref: './comun.v1.yaml#/components/schemas/VerificacionCertificado'
+        '404':
+          $ref: './comun.v1.yaml#/components/responses/NoEncontrado'
+        '500':
+          $ref: './comun.v1.yaml#/components/responses/ErrorInterno'
 
 components:
   securitySchemes:
@@ -110,3 +509,47 @@ components:
       scheme: bearer
       bearerFormat: JWT
       description: Access token de Supabase Auth propagado por el llamador.
+
+  parameters:
+    HduId:
+      name: hduId
+      in: path
+      required: true
+      schema:
+        $ref: './comun.v1.yaml#/components/schemas/Uuid'
+
+  responses:
+    EntregableActualizado:
+      description: Entregable después del cambio.
+      content:
+        application/json:
+          schema:
+            $ref: './comun.v1.yaml#/components/schemas/Entregable'
+    ConflictoChecklist:
+      description: La regla del checklist no permite la acción.
+      x-codigos: [HDU_CERRADA, ORDEN_ENTREGABLES, ENTREGABLE_YA_REGISTRADO, ESTADO_ENTREGABLE_INVALIDO, ENTREGABLE_AUTOMATICO, ENTREGABLES_PENDIENTES, CERTIFICADO_EXISTENTE]
+      headers:
+        x-trace-id:
+          $ref: './comun.v1.yaml#/components/headers/XTraceId'
+      content:
+        application/json:
+          schema:
+            $ref: './comun.v1.yaml#/components/schemas/Error'
+          example:
+            codigo: ORDEN_ENTREGABLES
+            mensaje: Completa «Casos de prueba» antes de marcar «Aprobación de casos de prueba».
+            traceId: 4bf92f3577b34da6a3ce929d0e0e4736
+            detalles:
+              - campo: CASOS_PRUEBA
+                codigo: REQUERIDO
+                mensaje: Casos de prueba debe estar aprobado.
+    SolicitudInvalida:
+      description: Evidencia inválida o falta el motivo o comentario.
+      x-codigos: [EVIDENCIA_INVALIDA, MOTIVO_REQUERIDO]
+      headers:
+        x-trace-id:
+          $ref: './comun.v1.yaml#/components/headers/XTraceId'
+      content:
+        application/json:
+          schema:
+            $ref: './comun.v1.yaml#/components/schemas/Error'

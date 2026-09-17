@@ -62,6 +62,11 @@ services:
       NODE_ENV: production
       PORT: "3002"
       DATABASE_URL: ${DATABASE_URL_CERTIFICACIONES:?falta DATABASE_URL_CERTIFICACIONES en tu .env}
+      SUPABASE_URL: ${SUPABASE_URL:-}
+      SUPABASE_JWT_SECRET: ${SUPABASE_JWT_SECRET:-}
+      SUPABASE_SERVICE_ROLE_KEY: ${SUPABASE_SERVICE_ROLE_KEY:-}
+      ORGANIZACION_URL: ${ORGANIZACION_URL:-http://organizacion:3001}
+      PORTAL_URL: ${PORTAL_URL:-http://localhost:8080}
       X_Q360_SERVICIO_TOKEN: ${X_Q360_SERVICIO_TOKEN:-}
     healthcheck:
       <<: *healthcheck-defaults

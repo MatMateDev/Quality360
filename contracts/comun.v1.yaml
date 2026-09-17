@@ -105,12 +105,19 @@ components:
         | `CHECKLIST_INCOMPLETO` | 409 | No se puede cerrar la HDU: el checklist de entregables está incompleto. |
         | `CHECKLIST_NO_DISPONIBLE` | 409 | No se puede cerrar la HDU: el checklist de entregables no está disponible para verificarse. |
         | `HDU_CERRADA` | 409 | La HDU está cerrada y no admite cambios. |
+        | `ORDEN_ENTREGABLES` | 409 | Completa el entregable anterior antes de continuar. |
+        | `ENTREGABLE_YA_REGISTRADO` | 409 | El entregable ya está registrado para esta HDU. |
+        | `ESTADO_ENTREGABLE_INVALIDO` | 409 | El entregable no está en un estado que permita esta acción. |
+        | `ENTREGABLE_AUTOMATICO` | 409 | Este entregable se completa al generar el certificado. |
+        | `ENTREGABLES_PENDIENTES` | 409 | No se puede generar el certificado: faltan entregables por aprobar. |
+        | `CERTIFICADO_EXISTENTE` | 409 | La HDU ya tiene un certificado emitido. |
         | `MOTIVO_REQUERIDO` | 422 | Indica el motivo del cambio. |
         | `SUPERVISION_INVALIDA` | 422 | El supervisor debe ser QE y el supervisado Analista QA, ambos activos. |
         | `ANALISTA_INVALIDO` | 422 | El analista debe tener rol Analista QA y estar activo. |
         | `ANALISTA_FUERA_DE_EQUIPO` | 422 | El analista no pertenece al equipo vigente del QE responsable. |
         | `QE_INVALIDO` | 422 | El QE responsable debe tener rol QE y estar activo. |
         | `CATALOGO_INVALIDO` | 422 | La célula o el sprint indicados no existen. |
+        | `EVIDENCIA_INVALIDA` | 422 | La evidencia debe ser un enlace https o un archivo PDF, PNG o JPEG de hasta 10 MB. |
         | `DEMASIADAS_SOLICITUDES` | 429 | Demasiadas solicitudes. Intenta más tarde. |
         | `ERROR_INTERNO` | 500 | Ocurrió un error inesperado. |
         | `SERVICIO_NO_DISPONIBLE` | 503 | El servicio no está disponible. Intenta nuevamente. |
@@ -130,12 +137,19 @@ components:
         - CHECKLIST_INCOMPLETO
         - CHECKLIST_NO_DISPONIBLE
         - HDU_CERRADA
+        - ORDEN_ENTREGABLES
+        - ENTREGABLE_YA_REGISTRADO
+        - ESTADO_ENTREGABLE_INVALIDO
+        - ENTREGABLE_AUTOMATICO
+        - ENTREGABLES_PENDIENTES
+        - CERTIFICADO_EXISTENTE
         - MOTIVO_REQUERIDO
         - SUPERVISION_INVALIDA
         - ANALISTA_INVALIDO
         - ANALISTA_FUERA_DE_EQUIPO
         - QE_INVALIDO
         - CATALOGO_INVALIDO
+        - EVIDENCIA_INVALIDA
         - DEMASIADAS_SOLICITUDES
         - ERROR_INTERNO
         - SERVICIO_NO_DISPONIBLE
@@ -291,6 +305,356 @@ components:
         completo:
           type: boolean
           description: Verdadero si todos los entregables aplicables están completos y aprobados.
+
+    # ------------------------------------------------------- checklist (E3)
+    ClaveEntregable:
+      type: string
+      description: Entregables del checklist, en su orden obligatorio (D15, D17).
+      enum: [PLAN_PRUEBAS, DASHBOARD, CASOS_PRUEBA, APROBACION_CASOS, EJECUCION, EVIDENCIAS, DEFECTOS, APROBACION_UAT, CERTIFICADO, CIERRE_PRUEBAS]
+    EstadoEntregable:
+      type: string
+      description: '`PENDIENTE → POR_APROBAR → APROBADO`. Un rechazo del QE vuelve a `PENDIENTE` con observaciones (D16).'
+      enum: [PENDIENTE, POR_APROBAR, APROBADO]
+    PersonaFecha:
+      type: object
+      description: Quién hizo algo y cuándo.
+      required: [id, nombre, fecha]
+      additionalProperties: false
+      properties:
+        id:
+          $ref: '#/components/schemas/Uuid'
+        nombre:
+          type: string
+        fecha:
+          $ref: '#/components/schemas/FechaHora'
+    Evidencia:
+      description: Evidencia registrada de un entregable (D20). `CERTIFICADO` solo aparece en el entregable 9.
+      oneOf:
+        - type: object
+          required: [tipo, url]
+          additionalProperties: false
+          properties:
+            tipo:
+              type: string
+              const: ENLACE
+            url:
+              type: string
+              format: uri
+        - type: object
+          required: [tipo, nombre, tipoContenido, tamanoBytes]
+          additionalProperties: false
+          properties:
+            tipo:
+              type: string
+              const: ARCHIVO
+            nombre:
+              type: string
+            tipoContenido:
+              type: string
+              enum: [application/pdf, image/png, image/jpeg]
+            tamanoBytes:
+              type: integer
+              minimum: 1
+        - type: object
+          required: [tipo, folio]
+          additionalProperties: false
+          properties:
+            tipo:
+              type: string
+              const: CERTIFICADO
+            folio:
+              type: string
+    Observacion:
+      type: object
+      description: Comentario del último rechazo del QE (E3-F03#2).
+      required: [comentario, autor]
+      additionalProperties: false
+      properties:
+        comentario:
+          type: string
+        autor:
+          $ref: '#/components/schemas/PersonaFecha'
+    Entregable:
+      type: object
+      required: [clave, orden, nombre, estado, evidencia, completado, aprobado, observacion]
+      additionalProperties: false
+      properties:
+        clave:
+          $ref: '#/components/schemas/ClaveEntregable'
+        orden:
+          type: integer
+          minimum: 1
+          maximum: 10
+        nombre:
+          type: string
+          examples: [Plan de pruebas]
+        estado:
+          $ref: '#/components/schemas/EstadoEntregable'
+        evidencia:
+          oneOf:
+            - $ref: '#/components/schemas/Evidencia'
+            - type: 'null'
+        completado:
+          description: Analista que lo marcó y cuándo (E3-B01#1).
+          oneOf:
+            - $ref: '#/components/schemas/PersonaFecha'
+            - type: 'null'
+        aprobado:
+          description: QE que lo aprobó y cuándo (E3-F03#1).
+          oneOf:
+            - $ref: '#/components/schemas/PersonaFecha'
+            - type: 'null'
+        observacion:
+          oneOf:
+            - $ref: '#/components/schemas/Observacion'
+            - type: 'null'
+    CertificadoResumen:
+      type: object
+      required: [folio, emitido, huellaSha256]
+      additionalProperties: false
+      properties:
+        folio:
+          type: string
+          pattern: '^Q360-\d{4}-[A-Z2-7]{8}$'
+          examples: [Q360-2026-K7M2QX4A]
+        emitido:
+          $ref: '#/components/schemas/PersonaFecha'
+        huellaSha256:
+          type: string
+          pattern: '^[0-9a-f]{64}$'
+    ChecklistHdu:
+      type: object
+      description: Checklist completo de una HDU con lo que puede hacer quien consulta (E3-F01).
+      required: [hduId, resumen, entregables, permisos, certificado, certificacion]
+      additionalProperties: false
+      properties:
+        hduId:
+          $ref: '#/components/schemas/Uuid'
+        resumen:
+          $ref: '#/components/schemas/ResumenChecklist'
+        entregables:
+          type: array
+          minItems: 10
+          maxItems: 10
+          items:
+            $ref: '#/components/schemas/Entregable'
+        permisos:
+          type: object
+          required: [puedeMarcar, puedeAprobar, puedeGenerarCertificado]
+          additionalProperties: false
+          properties:
+            puedeMarcar:
+              type: boolean
+              description: Analista asignado y HDU no cerrada (D18, E3-F01#3).
+            puedeAprobar:
+              type: boolean
+              description: QE responsable y HDU no cerrada (D18).
+            puedeGenerarCertificado:
+              type: boolean
+              description: QE responsable, sin certificado previo y HDU no cerrada.
+        certificado:
+          oneOf:
+            - $ref: '#/components/schemas/CertificadoResumen'
+            - type: 'null'
+        certificacion:
+          type: object
+          description: Si hoy se puede generar el certificado y, si no, por qué (E3-F04#2).
+          required: [habilitada, motivo, faltantes]
+          additionalProperties: false
+          properties:
+            habilitada:
+              type: boolean
+            motivo:
+              type: [string, 'null']
+            faltantes:
+              type: array
+              items:
+                $ref: '#/components/schemas/ClaveEntregable'
+    EntradaEvidencia:
+      description: Evidencia al marcar. El archivo debe haberse subido antes con la URL firmada de `SubidaEvidencia`.
+      oneOf:
+        - type: object
+          required: [tipo, url]
+          additionalProperties: false
+          properties:
+            tipo:
+              type: string
+              const: ENLACE
+            url:
+              type: string
+              format: uri
+              pattern: '^https://'
+              maxLength: 2000
+        - type: object
+          required: [tipo, ruta]
+          additionalProperties: false
+          properties:
+            tipo:
+              type: string
+              const: ARCHIVO
+            ruta:
+              type: string
+              maxLength: 500
+    SolicitudMarca:
+      type: object
+      required: [evidencia]
+      additionalProperties: false
+      properties:
+        evidencia:
+          $ref: '#/components/schemas/EntradaEvidencia'
+    SolicitudDesmarca:
+      type: object
+      required: [motivo]
+      additionalProperties: false
+      properties:
+        motivo:
+          type: string
+          minLength: 1
+          maxLength: 500
+    SolicitudRechazo:
+      type: object
+      required: [comentario]
+      additionalProperties: false
+      properties:
+        comentario:
+          type: string
+          minLength: 1
+          maxLength: 1000
+    SolicitudSubidaEvidencia:
+      type: object
+      required: [nombreArchivo, tipoContenido, tamanoBytes]
+      additionalProperties: false
+      properties:
+        nombreArchivo:
+          type: string
+          minLength: 1
+          maxLength: 200
+        tipoContenido:
+          type: string
+          enum: [application/pdf, image/png, image/jpeg]
+        tamanoBytes:
+          type: integer
+          minimum: 1
+          maximum: 10485760
+    SubidaEvidencia:
+      type: object
+      description: URL firmada para subir el archivo directo a Supabase Storage (bucket privado `evidencias`, D20).
+      required: [ruta, urlSubida, token, expiraEn]
+      additionalProperties: false
+      properties:
+        ruta:
+          type: string
+        urlSubida:
+          type: string
+          format: uri
+        token:
+          type: string
+        expiraEn:
+          $ref: '#/components/schemas/FechaHora'
+    EnlaceDescarga:
+      type: object
+      required: [url, expiraEn]
+      additionalProperties: false
+      properties:
+        url:
+          type: string
+          format: uri
+        expiraEn:
+          $ref: '#/components/schemas/FechaHora'
+    CertificadoDescarga:
+      type: object
+      required: [hduId, certificado, descarga]
+      additionalProperties: false
+      properties:
+        hduId:
+          $ref: '#/components/schemas/Uuid'
+        certificado:
+          $ref: '#/components/schemas/CertificadoResumen'
+        descarga:
+          $ref: '#/components/schemas/EnlaceDescarga'
+    VerificacionCertificado:
+      type: object
+      description: Resultado público de verificar un folio (E3-B03#2, D21). No expone datos personales salvo el nombre del emisor.
+      required: [folio, valido, hdu, emitidoEn, emitidoPor, huellaSha256]
+      additionalProperties: false
+      properties:
+        folio:
+          type: string
+        valido:
+          type: boolean
+        hdu:
+          type: object
+          required: [codigo, titulo]
+          additionalProperties: false
+          properties:
+            codigo:
+              type: string
+            titulo:
+              type: string
+        emitidoEn:
+          $ref: '#/components/schemas/FechaHora'
+        emitidoPor:
+          type: string
+        huellaSha256:
+          type: string
+    BandejaAprobaciones:
+      type: object
+      description: Entregables `POR_APROBAR` de las HDU donde el QE es responsable, agrupados por HDU (E3-F03#3).
+      required: [total, grupos]
+      additionalProperties: false
+      properties:
+        total:
+          type: integer
+          minimum: 0
+        grupos:
+          type: array
+          items:
+            type: object
+            required: [hdu, entregables]
+            additionalProperties: false
+            properties:
+              hdu:
+                $ref: '#/components/schemas/HduParaCertificacion'
+              entregables:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Entregable'
+    EventoChecklist:
+      type: object
+      required: [id, accion, clave, actor, fecha, valorAnterior, valorNuevo, motivo]
+      additionalProperties: false
+      properties:
+        id:
+          $ref: '#/components/schemas/Uuid'
+        accion:
+          type: string
+          enum: [MARCAR, DESMARCAR, APROBAR, RECHAZAR, GENERAR_CERTIFICADO]
+        clave:
+          $ref: '#/components/schemas/ClaveEntregable'
+        actor:
+          $ref: '#/components/schemas/PersonaRol'
+        fecha:
+          $ref: '#/components/schemas/FechaHora'
+        valorAnterior:
+          type: [object, 'null']
+          description: Estado y datos del entregable antes del cambio.
+        valorNuevo:
+          type: [object, 'null']
+        motivo:
+          type: [string, 'null']
+          description: Motivo del retroceso o comentario del rechazo (E3-B04#2).
+    BitacoraChecklist:
+      type: object
+      required: [hduId, eventos]
+      additionalProperties: false
+      properties:
+        hduId:
+          $ref: '#/components/schemas/Uuid'
+        eventos:
+          type: array
+          description: Del más reciente al más antiguo.
+          items:
+            $ref: '#/components/schemas/EventoChecklist'
 
     # ------------------------------------------------------ actores y usuarios
     Actor:
@@ -900,6 +1264,68 @@ components:
             - type: string
               enum: [ADMINISTRADOR, QE_RESPONSABLE, QE_SUPERVISOR_DEL_ANALISTA, ANALISTA_ASIGNADO]
             - type: 'null'
+        actor:
+          description: Solo si `permitido`. Quién consulta, para registrar su nombre (E3-B01#1).
+          $ref: '#/components/schemas/PersonaRol'
+        hdu:
+          description: Solo si `permitido`. Datos de la HDU que necesita Certificaciones (reglas y certificado).
+          $ref: '#/components/schemas/HduParaCertificacion'
+    PersonaRol:
+      type: object
+      required: [id, nombre, rol]
+      additionalProperties: false
+      properties:
+        id:
+          $ref: '#/components/schemas/Uuid'
+        nombre:
+          type: string
+        rol:
+          $ref: '#/components/schemas/Rol'
+    Persona:
+      type: object
+      required: [id, nombre]
+      additionalProperties: false
+      properties:
+        id:
+          $ref: '#/components/schemas/Uuid'
+        nombre:
+          type: string
+    HduParaCertificacion:
+      type: object
+      required: [id, codigo, titulo, estado, celula, sprint, qeResponsable, analista]
+      additionalProperties: false
+      properties:
+        id:
+          $ref: '#/components/schemas/Uuid'
+        codigo:
+          type: string
+          examples: [HDU-PAG-001]
+        titulo:
+          type: string
+        estado:
+          $ref: '#/components/schemas/EstadoHdu'
+        celula:
+          type: string
+          description: Nombre de la célula.
+        sprint:
+          type: string
+          description: Nombre del sprint.
+        qeResponsable:
+          $ref: '#/components/schemas/Persona'
+        analista:
+          oneOf:
+            - $ref: '#/components/schemas/Persona'
+            - type: 'null'
+    ListaHduResponsable:
+      type: object
+      description: HDU donde el QE del token es el responsable (E3-F03#3).
+      required: [items]
+      additionalProperties: false
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/HduParaCertificacion'
 
     # -------------------------------------------------------------- auditoría
     RegistroAuditoria:
@@ -968,6 +1394,19 @@ components:
         minimum: 1
 
   parameters:
+    ClaveEntregablePath:
+      name: clave
+      in: path
+      required: true
+      schema:
+        $ref: '#/components/schemas/ClaveEntregable'
+    FolioPath:
+      name: folio
+      in: path
+      required: true
+      schema:
+        type: string
+        maxLength: 40
     Pagina:
       name: pagina
       in: query

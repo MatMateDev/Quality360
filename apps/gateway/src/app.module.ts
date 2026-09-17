@@ -9,6 +9,7 @@
 import { Module, type DynamicModule } from '@nestjs/common';
 import { AuthNestModule } from '@quality360/auth-nest';
 
+import { BandejaAprobacionesController, ChecklistController, VerificacionCertificadoController } from './api/certificaciones.controller.js';
 import { HduController } from './api/hdu.controller.js';
 import { InicioController } from './api/inicio.controller.js';
 import { NoImplementadoController } from './api/no-implementado.controller.js';
@@ -48,6 +49,9 @@ export class AppModule {
         AuditoriaController,
         CatalogosController,
         HduController,
+        ChecklistController,
+        BandejaAprobacionesController,
+        VerificacionCertificadoController,
         NoImplementadoController,
       ],
       providers: [{ provide: CONFIGURACION, useValue: configuracion }, Reenviador, Compositor],

@@ -4,13 +4,14 @@ import { useAnalistasAsignables } from "@/api/equipo";
 import { useAsignarAnalista, useCambiarEstadoHdu, useDetalleHdu, useHistorialHdu } from "@/api/hdu";
 import { AccesoDenegado } from "@/components/AccesoDenegado";
 import { BloqueEstado } from "@/components/BloqueEstado";
+import { ChecklistEntregables } from "@/components/ChecklistEntregables";
 import { DialogoConfirmacion } from "@/components/DialogoConfirmacion";
 import { InsigniaEstadoHdu, InsigniaPrioridad } from "@/components/Etiquetas";
 import { ErrorApi } from "@/lib/httpClient";
 import { formatearFecha } from "@/lib/formato";
 import { ETIQUETAS_ESTADO_HDU, type EstadoHdu } from "@/types/dominio";
 
-/** E2-F04: detalle de HDU con responsables, estado, célula, sprint, avance del checklist, cambio de estado e historial. */
+/** E2-F04 y E3: detalle de HDU con responsables, estado, célula, sprint, checklist de entregables, cambio de estado e historial. */
 export function HduDetailPage() {
   const { id } = useParams<{ id: string }>();
   const detalleQuery = useDetalleHdu(id);
@@ -137,7 +138,7 @@ export function HduDetailPage() {
                 {hdu.checklist.datos.porcentajeCumplimiento}% ({hdu.checklist.datos.completados}/{hdu.checklist.datos.totalEntregables})
               </strong>
             ) : (
-              <strong data-testid="checklist-no-disponible">No disponible (se habilita en E3)</strong>
+              <strong data-testid="checklist-no-disponible">No disponible en este momento</strong>
             )}
           </article>
         </div>
@@ -156,6 +157,8 @@ export function HduDetailPage() {
           </p>
         ) : null}
       </div>
+
+      <ChecklistEntregables hduId={hdu.id} hduCerrada={hdu.estado === "CERRADA"} />
 
       {hdu.permisos.cambiarEstado ? (
         <div className="panel">

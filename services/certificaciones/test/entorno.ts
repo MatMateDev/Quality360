@@ -10,3 +10,4 @@ process.env.SUPABASE_URL ??= 'http://127.0.0.1:54321';
 process.env.SUPABASE_JWT_SECRET ??= 'secreto-hs256-solo-para-pruebas-locales-0000';
 process.env.ORGANIZACION_URL ??= 'http://127.0.0.1:3001';
 process.env.X_Q360_SERVICIO_TOKEN ??= 'token-servicio-local-de-pruebas-0123456789';
+process.env.SUPABASE_SERVICE_ROLE_KEY ??= 'clave-de-servicio-falsa-para-pruebas';

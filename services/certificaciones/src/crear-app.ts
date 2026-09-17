@@ -1,4 +1,5 @@
 /** Construcción de la aplicación. La usan `main.ts` y las pruebas. */
+import type { Provider } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import type { NestExpressApplication } from '@nestjs/platform-express';
 import { middlewareTraza } from '@quality360/auth-nest';
@@ -9,10 +10,12 @@ import type { ConfiguracionCertificaciones } from './configuracion.js';
 
 export interface OpcionesApp {
   registro?: boolean;
+  /** Reemplaza el almacén de archivos (pruebas). */
+  almacen?: Provider;
 }
 
 export async function crearApp(configuracion: ConfiguracionCertificaciones, opciones: OpcionesApp = {}): Promise<NestExpressApplication> {
-  const app = await NestFactory.create<NestExpressApplication>(AppModule.forRoot(configuracion), {
+  const app = await NestFactory.create<NestExpressApplication>(AppModule.forRoot(configuracion, { almacen: opciones.almacen }), {
     logger: opciones.registro === false ? false : undefined,
     // Por defecto Nest cierra el proceso si falla al crear la app; así el error llega a quien llama.
     abortOnError: false,

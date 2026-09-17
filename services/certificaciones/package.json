@@ -31,7 +31,9 @@
     "@nestjs/platform-express": "^11.2.5",
     "@prisma/client": "^6.19.3",
     "@quality360/auth-nest": "*",
+    "@supabase/supabase-js": "^2.116.0",
     "helmet": "^8.3.0",
+    "pdf-lib": "^1.17.1",
     "reflect-metadata": "^0.2.2",
     "rxjs": "^7.8.2"
   },

@@ -63,11 +63,20 @@ if (spawnSync('docker info', { shell: true, stdio: 'ignore' }).status !== 0) {
 }
 const supabaseArriba =
   spawnSync('npx --yes supabase@2.117.0 status --workdir .', { cwd: INFRA, shell: true, stdio: 'ignore' }).status === 0;
-if (supabaseArriba) titulo('Supabase local ya está corriendo');
-else correr('Iniciando Supabase local', 'npm run supabase:start', INFRA);
+// Storage guarda evidencias y certificados (E3). Un Supabase iniciado con la configuración anterior no lo tiene.
+const storageArriba = () =>
+  (spawnSync('docker ps --filter name=supabase_storage_quality360 --format "{{.Names}}"', { shell: true, encoding: 'utf8' }).stdout ?? '').includes(
+    'supabase_storage_quality360',
+  );
+if (supabaseArriba && storageArriba()) titulo('Supabase local ya está corriendo');
+else {
+  if (supabaseArriba) correr('Reiniciando Supabase para habilitar Storage (los datos se conservan)', 'npx --yes supabase@2.117.0 stop --workdir .', INFRA);
+  correr('Iniciando Supabase local', 'npm run supabase:start', INFRA);
+}
 
 // 2. Esquemas, roles y configuración local
 correr('Aplicando esquemas y roles (idempotente)', 'npm run db:schemas', INFRA);
+correr('Creando buckets de Storage (idempotente)', 'npm run db:buckets', INFRA);
 correr('Preparando configuración local', `"${process.execPath}" infrastructure/local/preparar-entorno.mjs`);
 
 // 3. Compilación (solo lo que falte, salvo --build)

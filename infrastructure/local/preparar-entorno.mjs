@@ -3,7 +3,7 @@
 // Uso: node infrastructure/local/preparar-entorno.mjs [--forzar]
 // Sin --forzar no toca nada si todos los archivos ya existen. Solo para entorno local.
 import { execSync } from 'node:child_process';
-import { existsSync, writeFileSync } from 'node:fs';
+import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { randomBytes } from 'node:crypto';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -19,7 +19,11 @@ const ARCHIVOS = [
   'infrastructure/seed/mvp/.env.carga',
 ];
 
-if (!forzar && ARCHIVOS.every((a) => existsSync(join(RAIZ, a)))) {
+// Una variable nueva en algún servicio obliga a regenerar (E3: Storage en Certificaciones).
+const completos = () =>
+  ARCHIVOS.every((a) => existsSync(join(RAIZ, a))) &&
+  readFileSync(join(RAIZ, 'services/certificaciones/.env'), 'utf8').includes('SUPABASE_SERVICE_ROLE_KEY=');
+if (!forzar && completos()) {
   console.log('Configuración local ya existe (usa --forzar para regenerarla).');
   process.exit(0);
 }
@@ -74,8 +78,10 @@ escribir('services/certificaciones/.env', {
   PORT: 3002,
   DATABASE_URL: db('svc_certificaciones', 'certificaciones'),
   SUPABASE_URL: api,
+  SUPABASE_SERVICE_ROLE_KEY: sb.SERVICE_ROLE_KEY,
   SUPABASE_JWT_SECRET: sb.JWT_SECRET,
   ORGANIZACION_URL: 'http://localhost:3001',
+  PORTAL_URL: 'http://localhost:5173',
   X_Q360_SERVICIO_TOKEN: token,
 });
 escribir('services/impedimentos/.env', {

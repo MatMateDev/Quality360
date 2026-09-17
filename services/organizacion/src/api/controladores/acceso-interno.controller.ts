@@ -7,7 +7,7 @@
 import { Controller, Get, Param } from '@nestjs/common';
 import { AccesoActual, Roles, type ResolucionAcceso } from '@quality360/auth-nest';
 
-import { AccesoAplicacion, type AccesoHduRespuesta } from '../../aplicacion/acceso.servicio.js';
+import { AccesoAplicacion, type AccesoHduRespuesta, type HduParaCertificacion } from '../../aplicacion/acceso.servicio.js';
 import { uuidDeRuta } from '../validacion/uuid.js';
 
 const ROLES_TODOS = ['ADMINISTRADOR', 'QE', 'ANALISTA_QA'] as const;
@@ -20,6 +20,13 @@ export class AccesoInternoController {
   @Get('acceso')
   resolverAcceso(@AccesoActual() acceso: ResolucionAcceso): ResolucionAcceso {
     return acceso;
+  }
+
+  /** HDU del QE responsable, para la bandeja de aprobaciones de Certificaciones (E3-F03#3). */
+  @Roles('QE')
+  @Get('hdu/responsable')
+  async hduResponsable(@AccesoActual() acceso: ResolucionAcceso): Promise<{ items: HduParaCertificacion[] }> {
+    return this.acceso.hduComoResponsable(acceso.usuarioId);
   }
 
   @Roles(...ROLES_TODOS)

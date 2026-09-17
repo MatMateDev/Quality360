@@ -1,18 +1,15 @@
-// Quality360 · Certificaciones (esqueleto de E1/E2; ciclos y checklist llegan
-// en E3, fuera de alcance en esta corrida — ver docs/arquitectura/decisiones-mvp.md).
+// Quality360 · Certificaciones (E3): checklist de 10 entregables, bitácora y
+// certificado de cierre. Reglas en docs/arquitectura/decisiones-mvp.md (D15–D22).
 //
-// Las tablas de este servicio viven en el esquema `certificaciones` de
-// Postgres (infrastructure/db/001_esquemas_roles.sql): la conexión se hace
-// SIEMPRE con el rol `svc_certificaciones`, cuya DATABASE_URL debe incluir
-// `?schema=certificaciones`.
+// Las tablas viven en el esquema `certificaciones` de Postgres
+// (infrastructure/db/001_esquemas_roles.sql). La conexión se hace SIEMPRE con el
+// rol `svc_certificaciones` y `?schema=certificaciones` en la DATABASE_URL.
 //
-// Sin modelos todavía: este archivo solo deja lista la conexión para que
-// `PrismaService` pueda `$connect()` y para que el servicio que implemente
-// E3 (checklist de 10 entregables) agregue sus modelos aquí.
+// Sin claves foráneas hacia otro esquema (regla no negociable 3): `hdu_id` y los
+// ids de usuario son UUID de Organización, que solo se consultan por API.
 
-// `output` local (no hoisted): ver el comentario equivalente en
-// services/organizacion/prisma/schema.prisma — cada servicio genera su
-// cliente en su propio node_modules para no pisar el de los demás.
+// Cliente generado dentro del workspace (fuera de node_modules): cada servicio
+// tiene el suyo y lo importa con el alias `#prisma` de su package.json.
 generator client {
   provider = "prisma-client-js"
   output   = "../generated/prisma"
@@ -21,4 +18,101 @@ generator client {
 datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
+}
+
+enum ClaveEntregable {
+  PLAN_PRUEBAS
+  DASHBOARD
+  CASOS_PRUEBA
+  APROBACION_CASOS
+  EJECUCION
+  EVIDENCIAS
+  DEFECTOS
+  APROBACION_UAT
+  CERTIFICADO
+  CIERRE_PRUEBAS
+}
+
+enum EstadoEntregable {
+  PENDIENTE
+  POR_APROBAR
+  APROBADO
+}
+
+enum TipoEvidencia {
+  ENLACE
+  ARCHIVO
+  CERTIFICADO
+}
+
+enum AccionChecklist {
+  MARCAR
+  DESMARCAR
+  APROBAR
+  RECHAZAR
+  GENERAR_CERTIFICADO
+}
+
+/// Un registro por clave y HDU (E3-B01#2). Si no existe, el entregable está PENDIENTE.
+model Entregable {
+  id                     String           @id @default(uuid()) @db.Uuid
+  hduId                  String           @map("hdu_id") @db.Uuid
+  clave                  ClaveEntregable
+  estado                 EstadoEntregable @default(PENDIENTE)
+  evidenciaTipo          TipoEvidencia?   @map("evidencia_tipo")
+  evidenciaUrl           String?          @map("evidencia_url")
+  evidenciaRuta          String?          @map("evidencia_ruta")
+  evidenciaNombre        String?          @map("evidencia_nombre")
+  evidenciaTipoContenido String?          @map("evidencia_tipo_contenido")
+  evidenciaTamanoBytes   Int?             @map("evidencia_tamano_bytes")
+  evidenciaFolio         String?          @map("evidencia_folio")
+  completadoPorId        String?          @map("completado_por_id") @db.Uuid
+  completadoPorNombre    String?          @map("completado_por_nombre")
+  completadoEn           DateTime?        @map("completado_en") @db.Timestamptz(6)
+  aprobadoPorId          String?          @map("aprobado_por_id") @db.Uuid
+  aprobadoPorNombre      String?          @map("aprobado_por_nombre")
+  aprobadoEn             DateTime?        @map("aprobado_en") @db.Timestamptz(6)
+  observacion            String?
+  observadoPorId         String?          @map("observado_por_id") @db.Uuid
+  observadoPorNombre     String?          @map("observado_por_nombre")
+  observadoEn            DateTime?        @map("observado_en") @db.Timestamptz(6)
+  actualizadoEn          DateTime         @default(now()) @updatedAt @map("actualizado_en") @db.Timestamptz(6)
+
+  @@unique([hduId, clave])
+  @@index([estado])
+  @@map("entregable")
+}
+
+/// Bitácora de solo inserción (E3-B04): nunca se actualiza ni se borra.
+model EventoChecklist {
+  id            String          @id @default(uuid()) @db.Uuid
+  hduId         String          @map("hdu_id") @db.Uuid
+  clave         ClaveEntregable
+  accion        AccionChecklist
+  actorId       String          @map("actor_id") @db.Uuid
+  actorNombre   String          @map("actor_nombre")
+  actorRol      String          @map("actor_rol")
+  fecha         DateTime        @default(now()) @db.Timestamptz(6)
+  valorAnterior Json?           @map("valor_anterior")
+  valorNuevo    Json?           @map("valor_nuevo")
+  motivo        String?
+
+  @@index([hduId, fecha])
+  @@map("evento_checklist")
+}
+
+/// Uno por HDU e inmutable (D19). El PDF vive en el bucket privado `certificados`.
+model Certificado {
+  id               String   @id @default(uuid()) @db.Uuid
+  hduId            String   @unique @map("hdu_id") @db.Uuid
+  folio            String   @unique
+  hduCodigo        String   @map("hdu_codigo")
+  hduTitulo        String   @map("hdu_titulo")
+  emitidoPorId     String   @map("emitido_por_id") @db.Uuid
+  emitidoPorNombre String   @map("emitido_por_nombre")
+  emitidoEn        DateTime @default(now()) @map("emitido_en") @db.Timestamptz(6)
+  rutaPdf          String   @map("ruta_pdf")
+  huellaSha256     String   @map("huella_sha256")
+
+  @@map("certificado")
 }

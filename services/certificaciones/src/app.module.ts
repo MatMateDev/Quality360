@@ -1,20 +1,25 @@
-/**
- * Módulo raíz (esqueleto E1/E2). `ResolutorDeAccesoRemoto` consulta el rol,
- * el estado activo y el ámbito a Organización en cada solicitud (D4); este
- * servicio nunca lee el esquema `organizacion`.
- */
-import { Module, type DynamicModule } from '@nestjs/common';
+import { Module, type DynamicModule, type Provider } from '@nestjs/common';
 import { AuthNestModule, ResolutorDeAccesoRemoto } from '@quality360/auth-nest';
 
-import { ChecklistController } from './api/controladores/checklist.controller.js';
+import { BandejaController, ChecklistController, VerificacionController } from './api/controladores/checklist.controller.js';
 import { SaludController } from './api/controladores/salud.controller.js';
-import type { ConfiguracionCertificaciones } from './configuracion.js';
-import { PrismaService } from './infraestructura/prisma/prisma.service.js';
+import { ChecklistAplicacion } from './aplicacion/checklist.servicio.js';
+import { CONFIGURACION, type ConfiguracionCertificaciones } from './configuracion.js';
+import { ALMACEN_ARCHIVOS, AlmacenSupabase } from './infraestructura/almacen.js';
+import { GeneradorCertificadoPdf } from './infraestructura/certificado-pdf.js';
+import { ChecklistRepositorio } from './infraestructura/checklist.repositorio.js';
 import { OpcionesResolutorRemotoModule } from './infraestructura/opciones-resolutor-remoto.module.js';
+import { OrganizacionCliente } from './infraestructura/organizacion.cliente.js';
+import { PrismaService } from './infraestructura/prisma/prisma.service.js';
+
+export interface OpcionesAppModule {
+  /** Reemplaza el almacén de archivos (las pruebas usan uno en memoria). */
+  almacen?: Provider;
+}
 
 @Module({})
 export class AppModule {
-  static forRoot(configuracion: ConfiguracionCertificaciones): DynamicModule {
+  static forRoot(configuracion: ConfiguracionCertificaciones, opciones: OpcionesAppModule = {}): DynamicModule {
     return {
       module: AppModule,
       imports: [
@@ -27,8 +32,16 @@ export class AppModule {
           filtroErroresGlobal: true,
         }),
       ],
-      controllers: [SaludController, ChecklistController],
-      providers: [PrismaService],
+      controllers: [SaludController, ChecklistController, BandejaController, VerificacionController],
+      providers: [
+        { provide: CONFIGURACION, useValue: configuracion },
+        PrismaService,
+        OrganizacionCliente,
+        ChecklistRepositorio,
+        GeneradorCertificadoPdf,
+        opciones.almacen ?? { provide: ALMACEN_ARCHIVOS, useClass: AlmacenSupabase },
+        ChecklistAplicacion,
+      ],
     };
   }
 }

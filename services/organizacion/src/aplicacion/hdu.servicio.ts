@@ -267,6 +267,11 @@ export class HduAplicacion {
     };
   }
 
+  /** Resumen con nombres de célula, sprint y responsables (lo usa también el acceso interno de E3). */
+  async resumir(hdus: Hdu[]): Promise<HduResumenRespuesta[]> {
+    return this.enriquecerResumen(hdus);
+  }
+
   private async enriquecerResumen(hdus: Hdu[]): Promise<HduResumenRespuesta[]> {
     if (hdus.length === 0) return [];
     const [celulas, sprints] = await Promise.all([this.catalogos.listarCelulas(), this.catalogos.listarSprints()]);

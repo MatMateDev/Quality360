@@ -1,4 +1,4 @@
-/** Arranque de Certificaciones (puerto 3002, solo red interna). Esqueleto E1/E2. */
+/** Arranque de Certificaciones (puerto 3002, solo red interna). Checklist, evidencias y certificados (E3). */
 import 'reflect-metadata';
 import { Logger } from '@nestjs/common';
 

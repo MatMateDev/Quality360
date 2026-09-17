@@ -144,9 +144,12 @@ paths:
       description: |
         Aplica el ámbito de HDU. Responde 200 con `permitido: false` si está
         fuera de ámbito o no existe, para no revelar existencia. Usuario
-        inactivo o sin registro → 403.
+        inactivo o sin registro → 403. Si se permite, incluye `actor` (nombre y
+        rol de quien consulta) y `hdu` (código, título, estado, célula, sprint,
+        QE responsable y analista), que Certificaciones usa para sus reglas y
+        para el certificado (E3).
       x-roles: [ADMINISTRADOR, QE, ANALISTA_QA]
-      x-hdu: [E2-F04#2, E2-B03#1, E2-B03#2, E2-B03#3]
+      x-hdu: [E2-F04#2, E2-B03#1, E2-B03#2, E2-B03#3, E3-B01#1]
       responses:
         '200':
           description: Resolución de acceso a la HDU.
@@ -154,6 +157,28 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/AccesoHdu'
+        '401':
+          $ref: '#/components/responses/NoAutenticado'
+        '403':
+          $ref: '#/components/responses/AccesoDenegado'
+        '500':
+          $ref: '#/components/responses/ErrorInterno'
+
+  /v1/interno/hdu/responsable:
+    get:
+      operationId: listarHduResponsable
+      tags: [Acceso interno]
+      summary: HDU donde el QE del token es el responsable
+      description: Para la bandeja de aprobaciones de Certificaciones (E3-F03#3). Solo rol QE.
+      x-roles: [QE]
+      x-hdu: [E3-F03#3]
+      responses:
+        '200':
+          description: HDU del QE responsable.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ListaHduResponsable'
         '401':
           $ref: '#/components/responses/NoAutenticado'
         '403':
@@ -1306,6 +1331,7 @@ components:
     ErrorRelacionesIncompatibles: {$ref: './comun.v1.yaml#/components/schemas/ErrorRelacionesIncompatibles'}
     Perfil: {$ref: './comun.v1.yaml#/components/schemas/Perfil'}
     AccesoHdu: {$ref: './comun.v1.yaml#/components/schemas/AccesoHdu'}
+    ListaHduResponsable: {$ref: './comun.v1.yaml#/components/schemas/ListaHduResponsable'}
     ResumenEquipoQe: {$ref: './comun.v1.yaml#/components/schemas/ResumenEquipoQe'}
     ResumenHduQe: {$ref: './comun.v1.yaml#/components/schemas/ResumenHduQe'}
     ResumenSupervisorQa: {$ref: './comun.v1.yaml#/components/schemas/ResumenSupervisorQa'}

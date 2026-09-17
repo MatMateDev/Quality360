@@ -48,6 +48,20 @@ export type EventoHistorialHdu = components["schemas"]["EventoHistorialHdu"];
 
 export type ErrorApiCuerpo = components["schemas"]["Error"];
 
+// E3 · checklist de entregables, evidencias y certificado
+export type ClaveEntregable = components["schemas"]["ClaveEntregable"];
+export type EstadoEntregable = components["schemas"]["EstadoEntregable"];
+export type Entregable = components["schemas"]["Entregable"];
+export type ChecklistHdu = components["schemas"]["ChecklistHdu"];
+export type EntradaEvidencia = components["schemas"]["EntradaEvidencia"];
+export type SubidaEvidencia = components["schemas"]["SubidaEvidencia"];
+export type EnlaceDescarga = components["schemas"]["EnlaceDescarga"];
+export type CertificadoDescarga = components["schemas"]["CertificadoDescarga"];
+export type VerificacionCertificado = components["schemas"]["VerificacionCertificado"];
+export type BandejaAprobaciones = components["schemas"]["BandejaAprobaciones"];
+export type BitacoraChecklist = components["schemas"]["BitacoraChecklist"];
+export type EventoChecklist = components["schemas"]["EventoChecklist"];
+
 export const ROLES_CATALOGO: Rol[] = ["ADMINISTRADOR", "QE", "ANALISTA_QA"];
 
 export const ESTADOS_HDU: EstadoHdu[] = [
@@ -80,6 +94,24 @@ export const ETIQUETAS_ESTADO_HDU: Record<EstadoHdu, string> = {
   PENDIENTE_CIERRE: "Pendiente de cierre",
   CERRADA: "Cerrada",
 };
+
+export const ETIQUETAS_ESTADO_ENTREGABLE: Record<EstadoEntregable, string> = {
+  PENDIENTE: "Pendiente",
+  POR_APROBAR: "Por aprobar",
+  APROBADO: "Aprobado",
+};
+
+export const ETIQUETAS_ACCION_CHECKLIST: Record<EventoChecklist["accion"], string> = {
+  MARCAR: "marcó",
+  DESMARCAR: "desmarcó",
+  APROBAR: "aprobó",
+  RECHAZAR: "rechazó",
+  GENERAR_CERTIFICADO: "generó el certificado de",
+};
+
+/** Tipos y tamaño de archivo aceptados como evidencia (D20). */
+export const TIPOS_EVIDENCIA = ["application/pdf", "image/png", "image/jpeg"] as const;
+export const TAMANO_MAXIMO_EVIDENCIA = 10 * 1024 * 1024;
 
 export const ETIQUETAS_PRIORIDAD: Record<PrioridadHdu, string> = {
   BAJA: "Baja",

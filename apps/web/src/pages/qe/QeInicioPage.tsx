@@ -46,6 +46,10 @@ export function QeInicioPage() {
           <Link className="boton boton--secundario" to="/qe/hdu">
             Ver historias supervisadas
           </Link>
+          {/* E3-F03#3: la bandeja va en accesos rápidos para respetar el menú de E1-F02#3. */}
+          <Link className="boton boton--primario" to="/qe/aprobaciones" data-testid="enlace-aprobaciones-pendientes">
+            Aprobaciones pendientes
+          </Link>
         </div>
       </div>
     </div>

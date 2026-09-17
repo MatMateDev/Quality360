@@ -13,8 +13,8 @@ export interface PeticionServicio {
   /** Ruta ya construida y codificada, por ejemplo `/v1/usuarios/<uuid>`. */
   ruta: string;
   metodo: string;
-  /** Access token del usuario, que se propaga tal cual. */
-  token: string;
+  /** Access token del usuario, que se propaga tal cual; `null` solo en rutas públicas. */
+  token: string | null;
   traceId: string;
   /** Query string sin `?`. */
   consulta?: string | undefined;
@@ -42,10 +42,10 @@ export async function solicitarServicio(peticion: PeticionServicio): Promise<Res
   if (peticion.consulta !== undefined && peticion.consulta.length > 0) url.search = peticion.consulta;
 
   const cabeceras: Record<string, string> = {
-    authorization: `Bearer ${peticion.token}`,
     accept: 'application/json',
     [CABECERA_TRAZA]: peticion.traceId,
   };
+  if (peticion.token !== null) cabeceras.authorization = `Bearer ${peticion.token}`;
   if (peticion.cuerpo !== undefined) cabeceras['content-type'] = 'application/json';
 
   let respuesta: Response;

@@ -7,7 +7,7 @@ info:
     identifier: LicenseRef-Capstone-Duoc-UC
   description: |
     API que consume el portal (`apps/web`). Es el único punto de entrada
-    público. Alcance: épicas E1 y E2.
+    público. Alcance: épicas E1, E2 y E3.
 
     - **Sesión.** El portal se autentica directo con Supabase Auth y envía
       `Authorization: Bearer <access token>`. El gateway verifica firma,
@@ -17,8 +17,9 @@ info:
       y ámbito los valida el servicio dueño en cada solicitud, leyendo
       Organización; el rol del token no se usa (D4).
     - **Enrutamiento.** Salvo `/v1/inicio/*` y `GET /v1/hdu/{id}`, cada ruta
-      reenvía a la misma ruta de `organizacion.v1.yaml` y devuelve su respuesta
-      tal cual. Si el destino no responde en el tiempo límite, responde 503
+      reenvía a la misma ruta de su servicio dueño y devuelve su respuesta tal
+      cual: el checklist, el certificado y la verificación (E3) a
+      `certificaciones.v1.yaml`; el resto a `organizacion.v1.yaml`. Si el destino no responde en el tiempo límite, responde 503
       `SERVICIO_NO_DISPONIBLE`.
     - **Composición.** `/v1/inicio/*` y `GET /v1/hdu/{id}` consultan varias
       fuentes en paralelo con tiempo límite por fuente (2 s por defecto). Si una
@@ -1144,6 +1145,31 @@ paths:
         '503':
           $ref: '#/components/responses/ServicioNoDisponible'
 
+  # ---------------------------------------------------------------- E3
+  # Reenvío a la misma ruta de Certificaciones (CERTIFICACIONES_URL), sin cambios.
+  /v1/hdu/{hduId}/entregables:
+    $ref: './certificaciones.v1.yaml#/paths/~1v1~1hdu~1{hduId}~1entregables'
+  /v1/hdu/{hduId}/entregables/{clave}/evidencias:
+    $ref: './certificaciones.v1.yaml#/paths/~1v1~1hdu~1{hduId}~1entregables~1{clave}~1evidencias'
+  /v1/hdu/{hduId}/entregables/{clave}/marcar:
+    $ref: './certificaciones.v1.yaml#/paths/~1v1~1hdu~1{hduId}~1entregables~1{clave}~1marcar'
+  /v1/hdu/{hduId}/entregables/{clave}/desmarcar:
+    $ref: './certificaciones.v1.yaml#/paths/~1v1~1hdu~1{hduId}~1entregables~1{clave}~1desmarcar'
+  /v1/hdu/{hduId}/entregables/{clave}/aprobar:
+    $ref: './certificaciones.v1.yaml#/paths/~1v1~1hdu~1{hduId}~1entregables~1{clave}~1aprobar'
+  /v1/hdu/{hduId}/entregables/{clave}/rechazar:
+    $ref: './certificaciones.v1.yaml#/paths/~1v1~1hdu~1{hduId}~1entregables~1{clave}~1rechazar'
+  /v1/hdu/{hduId}/entregables/{clave}/evidencia:
+    $ref: './certificaciones.v1.yaml#/paths/~1v1~1hdu~1{hduId}~1entregables~1{clave}~1evidencia'
+  /v1/hdu/{hduId}/entregables/bitacora:
+    $ref: './certificaciones.v1.yaml#/paths/~1v1~1hdu~1{hduId}~1entregables~1bitacora'
+  /v1/qe/aprobaciones-pendientes:
+    $ref: './certificaciones.v1.yaml#/paths/~1v1~1qe~1aprobaciones-pendientes'
+  /v1/hdu/{hduId}/certificado:
+    $ref: './certificaciones.v1.yaml#/paths/~1v1~1hdu~1{hduId}~1certificado'
+  /v1/certificados/{folio}/verificacion:
+    $ref: './certificaciones.v1.yaml#/paths/~1v1~1certificados~1{folio}~1verificacion'
+
 components:
   securitySchemes:
     sesionSupabase:
@@ -1272,6 +1298,29 @@ components:
     ListaSprints: {$ref: './comun.v1.yaml#/components/schemas/ListaSprints'}
     PaginaHdu: {$ref: './comun.v1.yaml#/components/schemas/PaginaHdu'}
     NuevaHdu: {$ref: './comun.v1.yaml#/components/schemas/NuevaHdu'}
+    # E3 · checklist, evidencias y certificado
+    ClaveEntregable: {$ref: './comun.v1.yaml#/components/schemas/ClaveEntregable'}
+    EstadoEntregable: {$ref: './comun.v1.yaml#/components/schemas/EstadoEntregable'}
+    PersonaFecha: {$ref: './comun.v1.yaml#/components/schemas/PersonaFecha'}
+    PersonaRol: {$ref: './comun.v1.yaml#/components/schemas/PersonaRol'}
+    Evidencia: {$ref: './comun.v1.yaml#/components/schemas/Evidencia'}
+    Entregable: {$ref: './comun.v1.yaml#/components/schemas/Entregable'}
+    ChecklistHdu: {$ref: './comun.v1.yaml#/components/schemas/ChecklistHdu'}
+    CertificadoResumen: {$ref: './comun.v1.yaml#/components/schemas/CertificadoResumen'}
+    EntradaEvidencia: {$ref: './comun.v1.yaml#/components/schemas/EntradaEvidencia'}
+    SolicitudMarca: {$ref: './comun.v1.yaml#/components/schemas/SolicitudMarca'}
+    SolicitudDesmarca: {$ref: './comun.v1.yaml#/components/schemas/SolicitudDesmarca'}
+    SolicitudRechazo: {$ref: './comun.v1.yaml#/components/schemas/SolicitudRechazo'}
+    SolicitudSubidaEvidencia: {$ref: './comun.v1.yaml#/components/schemas/SolicitudSubidaEvidencia'}
+    SubidaEvidencia: {$ref: './comun.v1.yaml#/components/schemas/SubidaEvidencia'}
+    EnlaceDescarga: {$ref: './comun.v1.yaml#/components/schemas/EnlaceDescarga'}
+    CertificadoDescarga: {$ref: './comun.v1.yaml#/components/schemas/CertificadoDescarga'}
+    VerificacionCertificado: {$ref: './comun.v1.yaml#/components/schemas/VerificacionCertificado'}
+    BandejaAprobaciones: {$ref: './comun.v1.yaml#/components/schemas/BandejaAprobaciones'}
+    EventoChecklist: {$ref: './comun.v1.yaml#/components/schemas/EventoChecklist'}
+    BitacoraChecklist: {$ref: './comun.v1.yaml#/components/schemas/BitacoraChecklist'}
+    HduParaCertificacion: {$ref: './comun.v1.yaml#/components/schemas/HduParaCertificacion'}
+    ResumenChecklist: {$ref: './comun.v1.yaml#/components/schemas/ResumenChecklist'}
     HduDetalleBase: {$ref: './comun.v1.yaml#/components/schemas/HduDetalleBase'}
     AsignacionAnalista: {$ref: './comun.v1.yaml#/components/schemas/AsignacionAnalista'}
     ResultadoAsignacion: {$ref: './comun.v1.yaml#/components/schemas/ResultadoAsignacion'}

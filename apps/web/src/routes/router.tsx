@@ -9,8 +9,10 @@ import { HduDetailPage } from "@/pages/hdu/HduDetailPage";
 import { LoginPage } from "@/pages/LoginPage";
 import { PerfilPage } from "@/pages/PerfilPage";
 import { PortalRedirect } from "@/pages/PortalRedirect";
+import { VerificarCertificadoPage } from "@/pages/VerificarCertificadoPage";
 import { QaHduListPage } from "@/pages/qa/QaHduListPage";
 import { QaInicioPage } from "@/pages/qa/QaInicioPage";
+import { QeAprobacionesPage } from "@/pages/qe/QeAprobacionesPage";
 import { QeEquipoPage } from "@/pages/qe/QeEquipoPage";
 import { QeHduFormPage } from "@/pages/qe/QeHduFormPage";
 import { QeHduListPage } from "@/pages/qe/QeHduListPage";
@@ -21,6 +23,9 @@ export function AppRoutes() {
   return (
     <Routes>
       <Route path="/login" element={<LoginPage />} />
+      {/* Pública (D21): cualquiera con el folio verifica un certificado. */}
+      <Route path="/verificar" element={<VerificarCertificadoPage />} />
+      <Route path="/verificar/:folio" element={<VerificarCertificadoPage />} />
 
       <Route element={<RequireAuth />}>
         <Route element={<Layout />}>
@@ -39,6 +44,7 @@ export function AppRoutes() {
             <Route path="qe/equipo" element={<QeEquipoPage />} />
             <Route path="qe/hdu" element={<QeHduListPage />} />
             <Route path="qe/hdu/nueva" element={<QeHduFormPage />} />
+            <Route path="qe/aprobaciones" element={<QeAprobacionesPage />} />
           </Route>
 
           <Route element={<RequireRole roles={["ANALISTA_QA"]} />}>

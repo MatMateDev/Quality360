@@ -49,7 +49,7 @@ Tiempo estimado: 30 a 40 minutos.
 
 3. En **Project Settings > API Keys** copia:
    - La **clave publicable** (`sb_publishable_…`): la usa el portal y es pública por diseño.
-   - La **clave secreta** (`sb_secret_…`, o la `service_role` legacy): **solo** para Organización. Nunca la compartas ni la subas al repositorio.
+   - La **clave secreta** (`sb_secret_…`, o la `service_role` legacy): **solo** para Organización y Certificaciones. Nunca la compartas ni la subas al repositorio.
 
 4. Genera el token entre servicios (una sola vez, guárdalo):
 
@@ -76,7 +76,9 @@ Para **cada** fila de la tabla del inicio, en este orden (certificaciones, organ
 | --- | --- |
 | `DATABASE_URL` | URL de `svc_certificaciones` del paso 2 |
 | `SUPABASE_URL` | `https://ufdnrrpeznwyargzgopu.supabase.co` |
+| `SUPABASE_SERVICE_ROLE_KEY` | Clave secreta del paso 2: firma subidas y descargas de evidencias y certificados (E3) |
 | `ORGANIZACION_URL` | `https://quality360-organizacion.vercel.app` (ajústala cuando exista) |
+| `PORTAL_URL` | URL real del portal: se imprime en el certificado para verificar el folio |
 
 ### Variables de `quality360-organizacion`
 

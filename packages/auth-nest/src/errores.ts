@@ -22,12 +22,19 @@ export type CodigoError =
   | 'CHECKLIST_INCOMPLETO'
   | 'CHECKLIST_NO_DISPONIBLE'
   | 'HDU_CERRADA'
+  | 'ORDEN_ENTREGABLES'
+  | 'ENTREGABLE_YA_REGISTRADO'
+  | 'ESTADO_ENTREGABLE_INVALIDO'
+  | 'ENTREGABLE_AUTOMATICO'
+  | 'ENTREGABLES_PENDIENTES'
+  | 'CERTIFICADO_EXISTENTE'
   | 'MOTIVO_REQUERIDO'
   | 'SUPERVISION_INVALIDA'
   | 'ANALISTA_INVALIDO'
   | 'ANALISTA_FUERA_DE_EQUIPO'
   | 'QE_INVALIDO'
   | 'CATALOGO_INVALIDO'
+  | 'EVIDENCIA_INVALIDA'
   | 'DEMASIADAS_SOLICITUDES'
   | 'ERROR_INTERNO'
   | 'SERVICIO_NO_DISPONIBLE'
@@ -50,12 +57,19 @@ export const MENSAJES: Readonly<Record<CodigoError, string>> = Object.freeze({
   CHECKLIST_NO_DISPONIBLE:
     'No se puede cerrar la HDU: el checklist de entregables no está disponible para verificarse.',
   HDU_CERRADA: 'La HDU está cerrada y no admite cambios.',
+  ORDEN_ENTREGABLES: 'Completa el entregable anterior antes de continuar.',
+  ENTREGABLE_YA_REGISTRADO: 'El entregable ya está registrado para esta HDU.',
+  ESTADO_ENTREGABLE_INVALIDO: 'El entregable no está en un estado que permita esta acción.',
+  ENTREGABLE_AUTOMATICO: 'Este entregable se completa al generar el certificado.',
+  ENTREGABLES_PENDIENTES: 'No se puede generar el certificado: faltan entregables por aprobar.',
+  CERTIFICADO_EXISTENTE: 'La HDU ya tiene un certificado emitido.',
   MOTIVO_REQUERIDO: 'Indica el motivo del cambio.',
   SUPERVISION_INVALIDA: 'El supervisor debe ser QE y el supervisado Analista QA, ambos activos.',
   ANALISTA_INVALIDO: 'El analista debe tener rol Analista QA y estar activo.',
   ANALISTA_FUERA_DE_EQUIPO: 'El analista no pertenece al equipo vigente del QE responsable.',
   QE_INVALIDO: 'El QE responsable debe tener rol QE y estar activo.',
   CATALOGO_INVALIDO: 'La célula o el sprint indicados no existen.',
+  EVIDENCIA_INVALIDA: 'La evidencia debe ser un enlace https o un archivo PDF, PNG o JPEG de hasta 10 MB.',
   DEMASIADAS_SOLICITUDES: 'Demasiadas solicitudes. Intenta más tarde.',
   ERROR_INTERNO: 'Ocurrió un error inesperado.',
   SERVICIO_NO_DISPONIBLE: 'El servicio no está disponible. Intenta nuevamente.',

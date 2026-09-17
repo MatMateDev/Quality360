@@ -115,16 +115,12 @@ port = 54324
 # sender_name = "Admin"
 
 [storage]
-enabled = false
+# Evidencias y certificados de E3 (D20). Buckets privados: se leen con URL firmadas.
+enabled = true
 # The maximum file size allowed (e.g. "5MB", "500KB").
 file_size_limit = "50MiB"
 
-# Uncomment to configure local storage buckets
-# [storage.buckets.images]
-# public = false
-# file_size_limit = "50MiB"
-# allowed_mime_types = ["image/png", "image/jpeg"]
-# objects_path = "./images"
+# Los buckets evidencias y certificados los crea infrastructure/db/002_storage_buckets.sql.
 
 # Allow connections via S3 compatible clients
 [storage.s3_protocol]
