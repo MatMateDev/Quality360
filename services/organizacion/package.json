@@ -6,6 +6,12 @@
   "description": "Quality360 · Organización y seguimiento: usuarios, roles, supervisión, células, sprints y HDU (NestJS + Prisma). Dueño: q360-backend.",
   "license": "LicenseRef-Capstone-Duoc-UC",
   "main": "./dist/main.js",
+  "imports": {
+    "#prisma": {
+      "types": "./generated/prisma/index.d.ts",
+      "default": "./generated/prisma/index.js"
+    }
+  },
   "engines": {
     "node": ">=24"
   },

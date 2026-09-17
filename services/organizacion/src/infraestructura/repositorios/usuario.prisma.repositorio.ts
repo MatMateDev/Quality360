@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import type { Prisma } from '@prisma/client';
+import type { Prisma } from '#prisma';
 
 import { ConflictoUnicidad } from '../../dominio/errores/conflicto-unicidad.js';
 import type {

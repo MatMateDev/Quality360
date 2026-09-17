@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import type { Prisma } from '@prisma/client';
+import type { Prisma } from '#prisma';
 
 import type { AuditoriaRepositorio, FiltroAuditoria } from '../../dominio/repositorios/auditoria.repositorio.js';
 import type { OpcionesPaginacion, Pagina, RegistroAuditoria } from '../../dominio/tipos.js';

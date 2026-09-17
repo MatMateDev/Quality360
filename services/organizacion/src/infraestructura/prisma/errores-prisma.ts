@@ -1,4 +1,4 @@
-import { Prisma } from '@prisma/client';
+import { Prisma } from '#prisma';
 
 /** `true` si `error` es una violación de unicidad (`P2002`) del constraint/índice dado. */
 export function esErrorUnicidad(error: unknown, nombreConstraint?: string): boolean {

@@ -1,5 +1,5 @@
 /** Traduce filas de Prisma a los tipos del dominio. Vive solo en infraestructura. */
-import type { Hdu as HduPrisma, Usuario as UsuarioPrisma } from '@prisma/client';
+import type { Hdu as HduPrisma, Usuario as UsuarioPrisma } from '#prisma';
 
 import type { Actor, Hdu, Usuario } from '../../dominio/tipos.js';
 

@@ -1,6 +1,6 @@
 /** Cliente de Prisma como servicio de Nest. Conecta al esquema `impedimentos` con el rol `svc_impedimentos`. */
 import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
-import { PrismaClient } from '@prisma/client';
+import { PrismaClient } from '#prisma';
 
 @Injectable()
 export class PrismaService extends PrismaClient implements OnModuleInit, OnModuleDestroy {

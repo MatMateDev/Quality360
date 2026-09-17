@@ -6,6 +6,12 @@
   "description": "Quality360 · Certificaciones y checklist de entregables (NestJS + Prisma). Solo esqueleto en E1/E2 (E3 fuera de alcance). Dueño: q360-backend.",
   "license": "LicenseRef-Capstone-Duoc-UC",
   "main": "./dist/main.js",
+  "imports": {
+    "#prisma": {
+      "types": "./generated/prisma/index.d.ts",
+      "default": "./generated/prisma/index.js"
+    }
+  },
   "engines": {
     "node": ">=24"
   },

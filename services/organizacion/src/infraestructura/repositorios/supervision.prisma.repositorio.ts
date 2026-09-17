@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import type { Supervision as SupervisionPrisma, Usuario as UsuarioPrisma } from '@prisma/client';
+import type { Supervision as SupervisionPrisma, Usuario as UsuarioPrisma } from '#prisma';
 
 import { decidirCambioSupervision } from '../../dominio/reglas/supervision.js';
 import type {

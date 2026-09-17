@@ -6,7 +6,7 @@
 import './entorno.js';
 
 import { randomUUID } from 'node:crypto';
-import { PrismaClient } from '@prisma/client';
+import { PrismaClient } from '#prisma';
 import { createClient } from '@supabase/supabase-js';
 
 import type { Rol } from '../src/dominio/tipos.js';
