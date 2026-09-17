@@ -114,7 +114,7 @@ La próxima vez solo necesitas abrir Docker Desktop y ejecutar `npm run local`.
 | Volver a cargar los datos de demo (no duplica) | `npm run seed` |
 | Ver y consultar la base de datos | Abrir http://127.0.0.1:54323 (Supabase Studio) |
 | Regenerar la configuración local | `node infrastructure/local/preparar-entorno.mjs --forzar` y luego reiniciar `npm run local` |
-| Correr las pruebas de cada servicio | `npm run ws:test` (con Supabase corriendo) |
+| Correr las pruebas de cada servicio | `npm run ws:test` (con Supabase corriendo). **Borra los datos locales de Organización**: después ejecuta `npm run seed` |
 | Correr la suite de certificación | Con la plataforma arriba: `cd tests`, `npm install`, `npx playwright install chromium`, `npm test` |
 
 ### Empezar con la base de datos limpia
