@@ -14,7 +14,7 @@ Deja la plataforma funcionando en internet con datos reales:
 
 Cada carpeta ya trae su `vercel.json` (instalación desde la raíz del monorepo, compilación, región y rutas). Los servicios se publican como una función que sirve el código compilado (`api/index.mjs`).
 
-> **Ya está hecho en Supabase:** esquemas `organizacion`, `certificaciones`, `impedimentos` e `integraciones`, roles de servicio **sin contraseña**, permisos, aislamiento entre servicios y las tablas de Organización. Los roles `anon`, `authenticated` y `service_role` no tienen acceso a esos esquemas.
+> **Ya está hecho en Supabase:** esquemas `organizacion`, `certificaciones`, `impedimentos` e `integraciones`, roles de servicio **sin contraseña**, permisos, aislamiento entre servicios y las tablas de Organización. Los roles `anon`, `authenticated` y `service_role` no tienen acceso a esos esquemas. Además, las tablas de Organización tienen **RLS activo** con una sola política, para `svc_organizacion` (`infrastructure/nube/002_rls_organizacion_nube.sql`).
 
 Tiempo estimado: 30 a 40 minutos.
 
