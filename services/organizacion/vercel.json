@@ -4,6 +4,7 @@
   "regions": ["gru1"],
   "installCommand": "cd ../.. && npm ci",
   "buildCommand": "cd ../.. && npm run build -w packages/auth-nest && npm run build -w services/organizacion",
+  "outputDirectory": "public",
   "rewrites": [{ "source": "/(.*)", "destination": "/api/index" }],
   "functions": {
     "api/index.mjs": {
