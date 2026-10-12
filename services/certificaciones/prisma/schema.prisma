@@ -1,12 +1,16 @@
-// Quality360 · Certificaciones (E3): checklist de 10 entregables, bitácora y
-// certificado de cierre. Reglas en docs/arquitectura/decisiones-mvp.md (D15–D22).
+// Quality360 · Certificaciones (E3): ciclos de certificación, checklist de 10
+// entregables con evidencias, bitácora y certificado de cierre. Reglas en
+// docs/arquitectura/decisiones-mvp.md (D15–D22) y modelo de datos (D23–D27): los
+// nombres físicos de tablas y columnas siguen el modelo ER y lógico de Quality360.
 //
 // Las tablas viven en el esquema `certificaciones` de Postgres
 // (infrastructure/db/001_esquemas_roles.sql). La conexión se hace SIEMPRE con el
 // rol `svc_certificaciones` y `?schema=certificaciones` en la DATABASE_URL.
 //
-// Sin claves foráneas hacia otro esquema (regla no negociable 3): `hdu_id` y los
-// ids de usuario son UUID de Organización, que solo se consultan por API.
+// Sin claves foráneas hacia otro esquema (regla no negociable 3): `id_historia`
+// (HistoriaUsuario) e `id_usuario` (Usuario) son UUID de Organización, que solo se
+// consultan por API. Dentro del esquema, todas las relaciones del modelo tienen
+// su llave foránea.
 
 // Cliente generado dentro del workspace (fuera de node_modules): cada servicio
 // tiene el suyo y lo importa con el alias `#prisma` de su package.json.
@@ -53,34 +57,163 @@ enum AccionChecklist {
   GENERAR_CERTIFICADO
 }
 
-/// Un registro por clave y HDU (E3-B01#2). Si no existe, el entregable está PENDIENTE.
-model Entregable {
-  id                     String           @id @default(uuid()) @db.Uuid
-  hduId                  String           @map("hdu_id") @db.Uuid
-  clave                  ClaveEntregable
-  estado                 EstadoEntregable @default(PENDIENTE)
-  evidenciaTipo          TipoEvidencia?   @map("evidencia_tipo")
-  evidenciaUrl           String?          @map("evidencia_url")
-  evidenciaRuta          String?          @map("evidencia_ruta")
-  evidenciaNombre        String?          @map("evidencia_nombre")
-  evidenciaTipoContenido String?          @map("evidencia_tipo_contenido")
-  evidenciaTamanoBytes   Int?             @map("evidencia_tamano_bytes")
-  evidenciaFolio         String?          @map("evidencia_folio")
-  completadoPorId        String?          @map("completado_por_id") @db.Uuid
-  completadoPorNombre    String?          @map("completado_por_nombre")
-  completadoEn           DateTime?        @map("completado_en") @db.Timestamptz(6)
-  aprobadoPorId          String?          @map("aprobado_por_id") @db.Uuid
-  aprobadoPorNombre      String?          @map("aprobado_por_nombre")
-  aprobadoEn             DateTime?        @map("aprobado_en") @db.Timestamptz(6)
-  observacion            String?
-  observadoPorId         String?          @map("observado_por_id") @db.Uuid
-  observadoPorNombre     String?          @map("observado_por_nombre")
-  observadoEn            DateTime?        @map("observado_en") @db.Timestamptz(6)
-  actualizadoEn          DateTime         @default(now()) @updatedAt @map("actualizado_en") @db.Timestamptz(6)
+/// Estado de un ciclo: COMPLETADA cuando los 10 entregables están aprobados.
+enum EstadoCertificacion {
+  EN_CURSO
+  COMPLETADA
+}
 
-  @@unique([hduId, clave])
+/// Certificacion (modelo de datos): un ciclo de certificación de una HU. Se crea
+/// con su checklist al primer cambio de un entregable. Índice único parcial: un
+/// solo ciclo activo por HU (ver migración; Prisma no expresa índices parciales).
+model Certificacion {
+  id          String              @id @default(uuid()) @map("id_certificacion") @db.Uuid
+  numeroCiclo Int                 @map("numero_ciclo")
+  estado      EstadoCertificacion @default(EN_CURSO)
+  activo      Boolean             @default(true)
+  fechaInicio DateTime            @default(dbgenerated("CURRENT_DATE")) @map("fecha_inicio") @db.Date
+  fechaFin    DateTime?           @map("fecha_fin") @db.Date
+  observacion String?             @db.VarChar(500)
+  /// HistoriaUsuario de Organización (sin llave foránea entre esquemas).
+  hduId       String              @map("id_historia") @db.Uuid
+
+  asignaciones AsignacionCertificacion[]
+  items        ItemChecklist[]
+  entregables  Entregable[]
+  ejecuciones  EjecucionPrueba[]
+  defectos     Defecto[]
+  certificado  Certificado?
+
+  @@unique([hduId, numeroCiclo])
+  @@map("certificacion")
+}
+
+/// AsignacionCertificacion (modelo de datos): qué analista trabajó el ciclo y
+/// desde/hasta cuándo. Se abre cuando el analista asignado marca o desmarca.
+model AsignacionCertificacion {
+  id              String    @id @default(uuid()) @map("id_asignacion") @db.Uuid
+  fechaDesde      DateTime  @default(now()) @map("fecha_desde") @db.Timestamptz(6)
+  fechaHasta      DateTime? @map("fecha_hasta") @db.Timestamptz(6)
+  certificacionId String    @map("id_certificacion") @db.Uuid
+  /// Usuario de Organización (sin llave foránea entre esquemas).
+  usuarioId       String    @map("id_usuario") @db.Uuid
+
+  certificacion Certificacion @relation(fields: [certificacionId], references: [id])
+
+  @@index([certificacionId])
+  @@index([usuarioId])
+  @@map("asignacion_certificacion")
+}
+
+/// ItemChecklist (modelo de datos): los 10 ítems del checklist de un ciclo, en
+/// orden. `clave` es una extensión que enlaza el ítem con su entregable (D15).
+model ItemChecklist {
+  id              String          @id @default(uuid()) @map("id_item_checklist") @db.Uuid
+  nombre          String          @db.VarChar(150)
+  descripcion     String?         @db.VarChar(150)
+  obligatorio     Boolean         @default(true)
+  orden           Int
+  activo          Boolean         @default(true)
+  certificacionId String          @map("id_certificacion") @db.Uuid
+  clave           ClaveEntregable
+
+  certificacion Certificacion @relation(fields: [certificacionId], references: [id])
+  entregables   Entregable[]
+
+  @@unique([certificacionId, orden])
+  @@unique([certificacionId, clave])
+  @@map("item_checklist")
+}
+
+/// Entregable (modelo de datos): uno por ítem del checklist. `fecha_validacion`
+/// es la aprobación del QE. Extensiones que exige E3: clave, id_item_checklist,
+/// completado_por_*, aprobado_por_*, observacion/observado_por_* y actualizado_en.
+model Entregable {
+  id                  String           @id @default(uuid()) @map("id_entregable") @db.Uuid
+  nombre              String           @db.VarChar(150)
+  descripcion         String?          @db.VarChar(500)
+  estado              EstadoEntregable @default(PENDIENTE)
+  fechaCreacion       DateTime         @default(now()) @map("fecha_creacion") @db.Timestamptz(6)
+  fechaValidacion     DateTime?        @map("fecha_validacion") @db.Timestamptz(6)
+  certificacionId     String           @map("id_certificacion") @db.Uuid
+  itemChecklistId     String           @map("id_item_checklist") @db.Uuid
+  clave               ClaveEntregable
+  completadoPorId     String?          @map("completado_por_id") @db.Uuid
+  completadoPorNombre String?          @map("completado_por_nombre")
+  completadoEn        DateTime?        @map("completado_en") @db.Timestamptz(6)
+  aprobadoPorId       String?          @map("aprobado_por_id") @db.Uuid
+  aprobadoPorNombre   String?          @map("aprobado_por_nombre")
+  observacion         String?
+  observadoPorId      String?          @map("observado_por_id") @db.Uuid
+  observadoPorNombre  String?          @map("observado_por_nombre")
+  observadoEn         DateTime?        @map("observado_en") @db.Timestamptz(6)
+  actualizadoEn       DateTime         @default(now()) @updatedAt @map("actualizado_en") @db.Timestamptz(6)
+
+  certificacion Certificacion @relation(fields: [certificacionId], references: [id])
+  itemChecklist ItemChecklist @relation(fields: [itemChecklistId], references: [id])
+  evidencias    Evidencia[]
+
+  @@unique([certificacionId, clave])
+  @@index([itemChecklistId])
   @@index([estado])
   @@map("entregable")
+}
+
+/// Evidencia (modelo de datos): historial de evidencias de un entregable. La
+/// vigente es la última cargada desde que se marcó (fecha_carga >= completado_en).
+/// `referencia` es la URL (ENLACE) o la ruta en Storage (ARCHIVO, CERTIFICADO).
+model Evidencia {
+  id            String        @id @default(uuid()) @map("id_evidencia") @db.Uuid
+  nombre        String        @db.VarChar(150)
+  descripcion   String?       @db.VarChar(500)
+  tipo          TipoEvidencia
+  referencia    String        @db.VarChar(500)
+  fechaCarga    DateTime      @default(now()) @map("fecha_carga") @db.Timestamptz(6)
+  entregableId  String        @map("id_entregable") @db.Uuid
+  tipoContenido String?       @map("tipo_contenido")
+  tamanoBytes   Int?          @map("tamano_bytes")
+  folio         String?
+
+  entregable Entregable @relation(fields: [entregableId], references: [id])
+
+  @@index([entregableId, fechaCarga])
+  @@map("evidencia")
+}
+
+/// EjecucionPrueba (modelo de datos). Sin funcionalidad todavía: los valores de
+/// `resultado` se fijan cuando una historia del backlog la use.
+model EjecucionPrueba {
+  id              String   @id @default(uuid()) @map("id_ejecucion") @db.Uuid
+  nombrePrueba    String   @map("nombre_prueba") @db.VarChar(200)
+  resultado       String   @db.VarChar(30)
+  fechaEjecucion  DateTime @map("fecha_ejecucion") @db.Timestamptz(6)
+  ambiente        String?  @db.VarChar(50)
+  observacion     String?  @db.VarChar(500)
+  certificacionId String   @map("id_certificacion") @db.Uuid
+
+  certificacion Certificacion @relation(fields: [certificacionId], references: [id])
+
+  @@index([certificacionId])
+  @@map("ejecucion_prueba")
+}
+
+/// Defecto (modelo de datos). Sin funcionalidad todavía: los valores de
+/// `severidad` y `estado` se fijan cuando una historia del backlog lo use.
+model Defecto {
+  id              String    @id @default(uuid()) @map("id_defecto") @db.Uuid
+  codigo          String?   @db.VarChar(50)
+  titulo          String    @db.VarChar(200)
+  descripcion     String?   @db.VarChar(1000)
+  severidad       String    @db.VarChar(20)
+  estado          String    @db.VarChar(30)
+  fechaReporte    DateTime  @default(now()) @map("fecha_reporte") @db.Timestamptz(6)
+  fechaCierre     DateTime? @map("fecha_cierre") @db.Timestamptz(6)
+  certificacionId String    @map("id_certificacion") @db.Uuid
+
+  certificacion Certificacion @relation(fields: [certificacionId], references: [id])
+
+  @@index([certificacionId])
+  @@map("defecto")
 }
 
 /// Bitácora de solo inserción (E3-B04): nunca se actualiza ni se borra.
@@ -101,9 +234,11 @@ model EventoChecklist {
   @@map("evento_checklist")
 }
 
-/// Uno por HDU e inmutable (D19). El PDF vive en el bucket privado `certificados`.
+/// Uno por ciclo e inmutable (D19). El PDF vive en el bucket privado `certificados`.
+/// Extensión del modelo de datos: el certificado no figura en el modelo ER.
 model Certificado {
   id               String   @id @default(uuid()) @db.Uuid
+  certificacionId  String   @unique @map("id_certificacion") @db.Uuid
   hduId            String   @unique @map("hdu_id") @db.Uuid
   folio            String   @unique
   hduCodigo        String   @map("hdu_codigo")
@@ -113,6 +248,8 @@ model Certificado {
   emitidoEn        DateTime @default(now()) @map("emitido_en") @db.Timestamptz(6)
   rutaPdf          String   @map("ruta_pdf")
   huellaSha256     String   @map("huella_sha256")
+
+  certificacion Certificacion @relation(fields: [certificacionId], references: [id])
 
   @@map("certificado")
 }

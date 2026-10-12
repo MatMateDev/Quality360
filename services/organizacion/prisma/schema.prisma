@@ -1,8 +1,11 @@
 // Quality360 · Organización y seguimiento
 //
-// Modelo según docs/arquitectura/decisiones-mvp.md (informe pp. 6-7, D9) y el
-// backlog (docs/backlog/historias-quality360.md). Las tablas viven en el
-// esquema `organizacion` de Postgres (ver infrastructure/db/001_esquemas_roles.sql):
+// Modelo según el modelo de datos de Quality360 (modelo ER y lógico, D23–D27 en
+// docs/arquitectura/decisiones-mvp.md), el informe (pp. 6-7, D9) y el backlog
+// (docs/backlog/historias-quality360.md). Los nombres físicos de tablas y columnas
+// siguen el modelo de datos; los campos de Prisma conservan los nombres del código.
+//
+// Las tablas viven en el esquema `organizacion` de Postgres (ver infrastructure/db/001_esquemas_roles.sql):
 // la conexión se hace SIEMPRE con el rol `svc_organizacion`, cuya DATABASE_URL
 // debe incluir `?schema=organizacion` para que Prisma cree y use ese esquema
 // (el rol no tiene privilegios en `public`).
@@ -22,13 +25,6 @@ generator client {
 datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
-}
-
-/// Catálogo cerrado de roles (comun.v1.yaml#/components/schemas/Rol).
-enum Rol {
-  ADMINISTRADOR
-  QE
-  ANALISTA_QA
 }
 
 /// Prioridad de una HDU (comun.v1.yaml#/components/schemas/PrioridadHdu).
@@ -75,34 +71,51 @@ enum AccionAuditoria {
   REASIGNAR_ANALISTA
 }
 
-/// usuario(id uuid = sub de Supabase, nombre, correo único, rol, activo,
-/// creado_en, actualizado_en).
+/// Rol (modelo de datos: Rol). Catálogo cerrado que carga la migración
+/// 20261012000000_modelo_datos; `nombre` es uno de comun.v1.yaml#/Rol.
+model Rol {
+  id          String  @id @default(dbgenerated("gen_random_uuid()")) @map("id_rol") @db.Uuid
+  nombre      String  @unique @db.VarChar(30)
+  descripcion String? @db.VarChar(150)
+
+  usuarios Usuario[]
+
+  @@map("rol")
+}
+
+/// Usuario (modelo de datos: Usuario). `id_usuario` = sub de Supabase Auth.
+/// `actualizado_en` es una extensión del modelo para la auditoría.
 model Usuario {
-  id            String   @id @db.Uuid
-  nombre        String
-  correo        String   @unique
-  rol           Rol
+  id            String   @id @map("id_usuario") @db.Uuid
+  nombre        String   @db.VarChar(120)
+  correo        String   @unique @map("email") @db.VarChar(150)
   activo        Boolean  @default(true)
-  creadoEn      DateTime @default(now()) @map("creado_en") @db.Timestamptz(6)
+  creadoEn      DateTime @default(now()) @map("fecha_creacion") @db.Timestamptz(6)
+  rolId         String   @map("id_rol") @db.Uuid
   actualizadoEn DateTime @updatedAt @map("actualizado_en") @db.Timestamptz(6)
 
+  rol                       Rol           @relation(fields: [rolId], references: [id])
   supervisionesComoQe       Supervision[] @relation("SupervisionQe")
   supervisionesComoAnalista Supervision[] @relation("SupervisionAnalista")
   hduComoQeResponsable      Hdu[]         @relation("HduQeResponsable")
   hduComoAnalista           Hdu[]         @relation("HduAnalista")
 
+  @@index([rolId])
   @@map("usuario")
 }
 
-/// supervision(id, qe_id, analista_id, desde, hasta null, motivo null) con
-/// índice único parcial sobre analista_id WHERE hasta IS NULL (ver migración
-/// 0001_init: Prisma no expresa índices parciales en el DSL).
+/// Supervision (modelo de datos: Supervision). El supervisor es el QE y el
+/// supervisado, el analista. Índice único parcial sobre id_supervisado WHERE
+/// fecha_hasta IS NULL (máximo un QE vigente por analista; ver migraciones:
+/// Prisma no expresa índices parciales). Las fechas son timestamptz y no DATE
+/// para conservar el orden del historial; motivo y actor_* son extensiones
+/// del modelo que exigen E1-F10 y E1-B12.
 model Supervision {
-  id          String    @id @default(uuid()) @db.Uuid
-  qeId        String    @map("qe_id") @db.Uuid
-  analistaId  String    @map("analista_id") @db.Uuid
-  desde       DateTime  @default(now()) @db.Timestamptz(6)
-  hasta       DateTime? @db.Timestamptz(6)
+  id          String    @id @default(uuid()) @map("id_supervision") @db.Uuid
+  desde       DateTime  @default(now()) @map("fecha_desde") @db.Timestamptz(6)
+  hasta       DateTime? @map("fecha_hasta") @db.Timestamptz(6)
+  qeId        String    @map("id_supervisor") @db.Uuid
+  analistaId  String    @map("id_supervisado") @db.Uuid
   motivo      String?
   /// Quién registró ESTA relación (comun.v1.yaml#/RelacionSupervision.registradoPor).
   actorTipo   TipoActor @map("actor_tipo")
@@ -112,69 +125,102 @@ model Supervision {
   qe       Usuario @relation("SupervisionQe", fields: [qeId], references: [id])
   analista Usuario @relation("SupervisionAnalista", fields: [analistaId], references: [id])
 
-  @@map("supervision")
   @@index([qeId])
   @@index([analistaId])
   @@index([analistaId, hasta])
+  @@map("supervision")
 }
 
-/// celula(id, nombre) — catálogo.
+/// Celula (modelo de datos: Celula).
 model Celula {
-  id     String @id @default(uuid()) @db.Uuid
-  nombre String @unique
+  id          String  @id @default(uuid()) @map("id_celula") @db.Uuid
+  nombre      String  @unique @db.VarChar(100)
+  descripcion String? @db.VarChar(250)
+  activo      Boolean @default(true)
 
-  hdus Hdu[]
+  sprints Sprint[]
+  hdus    Hdu[]
 
   @@map("celula")
 }
 
-/// sprint(id, nombre, inicio, fin) — catálogo.
+/// Estado del sprint (modelo de datos: Sprint.estado).
+enum EstadoSprint {
+  PLANIFICADO
+  EN_CURSO
+  CERRADO
+}
+
+/// Sprint (modelo de datos: Sprint). Pertenece a una célula; la regla «el
+/// sprint de una HU es de su misma célula» aún no se exige porque el backlog
+/// no la pide y la semilla comparte sprints entre células.
 model Sprint {
-  id     String   @id @default(uuid()) @db.Uuid
-  nombre String   @unique
-  inicio DateTime @db.Date
-  fin    DateTime @db.Date
+  id       String       @id @default(uuid()) @map("id_sprint") @db.Uuid
+  nombre   String       @unique @db.VarChar(100)
+  inicio   DateTime     @map("fecha_inicio") @db.Date
+  fin      DateTime     @map("fecha_fin") @db.Date
+  estado   EstadoSprint @default(PLANIFICADO)
+  celulaId String       @map("id_celula") @db.Uuid
 
-  hdus Hdu[]
+  celula          Celula           @relation(fields: [celulaId], references: [id])
+  historiaSprints HistoriaSprint[]
 
+  @@index([celulaId])
   @@map("sprint")
 }
 
-/// hdu(id, codigo único, titulo, celula_id, sprint_id, prioridad,
-/// qe_responsable_id, analista_id null, estado, estado_actualizado_en,
-/// creado_por, creado_en). `codigoNormalizado` respalda la unicidad sin
-/// distinguir mayúsculas (NuevaHdu: "único sin distinguir mayúsculas; se
-/// guarda tal como llega").
+/// HistoriaUsuario (modelo de datos: HistoriaUsuario). El sprint vive en
+/// HistoriaSprint. Extensiones del modelo que exige E2: codigo_normalizado
+/// (unicidad sin distinguir mayúsculas), qe_responsable_id, analista_id,
+/// estado_actualizado_en y creado_por_*. `prioridad` es obligatoria porque
+/// E2-B01 la exige al crear.
 model Hdu {
-  id                  String       @id @default(uuid()) @db.Uuid
-  codigo              String
+  id                  String       @id @default(uuid()) @map("id_historia") @db.Uuid
+  codigo              String       @db.VarChar(50)
   codigoNormalizado   String       @unique @map("codigo_normalizado")
-  titulo              String
-  celulaId            String       @map("celula_id") @db.Uuid
-  sprintId            String       @map("sprint_id") @db.Uuid
+  titulo              String       @db.VarChar(200)
+  descripcion         String?      @db.VarChar(1000)
+  estado              EstadoHdu    @default(PENDIENTE)
   prioridad           PrioridadHdu
+  creadoEn            DateTime     @default(now()) @map("fecha_creacion") @db.Timestamptz(6)
+  celulaId            String       @map("id_celula") @db.Uuid
   qeResponsableId     String       @map("qe_responsable_id") @db.Uuid
   analistaId          String?      @map("analista_id") @db.Uuid
-  estado              EstadoHdu    @default(PENDIENTE)
   estadoActualizadoEn DateTime     @default(now()) @map("estado_actualizado_en") @db.Timestamptz(6)
   creadoPorTipo       TipoActor    @map("creado_por_tipo")
   creadoPorId         String       @map("creado_por_id")
   creadoPorNombre     String       @map("creado_por_nombre")
-  creadoEn            DateTime     @default(now()) @map("creado_en") @db.Timestamptz(6)
 
-  celula        Celula                   @relation(fields: [celulaId], references: [id])
-  sprint        Sprint                   @relation(fields: [sprintId], references: [id])
-  qeResponsable Usuario                  @relation("HduQeResponsable", fields: [qeResponsableId], references: [id])
-  analista      Usuario?                 @relation("HduAnalista", fields: [analistaId], references: [id])
+  celula              Celula                   @relation(fields: [celulaId], references: [id])
+  qeResponsable       Usuario                  @relation("HduQeResponsable", fields: [qeResponsableId], references: [id])
+  analista            Usuario?                 @relation("HduAnalista", fields: [analistaId], references: [id])
+  historiaSprints     HistoriaSprint[]
   historialEstado     HduHistorialEstado[]
   historialAsignacion HduHistorialAsignacion[]
 
-  @@map("hdu")
   @@index([celulaId])
-  @@index([sprintId])
   @@index([qeResponsableId])
   @@index([analistaId])
   @@index([estado])
+  @@map("historia_usuario")
+}
+
+/// HistoriaSprint (modelo de datos: HistoriaSprint). El sprint vigente de una
+/// HU es la fila con fecha_retiro nula (índice único parcial en la migración).
+/// id_sprint es opcional como en el modelo; el servicio siempre lo informa.
+model HistoriaSprint {
+  id              String    @id @default(uuid()) @map("id_historia_sprint") @db.Uuid
+  fechaAsignacion DateTime  @default(dbgenerated("CURRENT_DATE")) @map("fecha_asignacion") @db.Date
+  fechaRetiro     DateTime? @map("fecha_retiro") @db.Date
+  hduId           String    @map("id_historia") @db.Uuid
+  sprintId        String?   @map("id_sprint") @db.Uuid
+
+  hdu    Hdu     @relation(fields: [hduId], references: [id])
+  sprint Sprint? @relation(fields: [sprintId], references: [id])
+
+  @@index([hduId])
+  @@index([sprintId])
+  @@map("historia_sprint")
 }
 
 /// hdu_historial_estado(hdu_id, estado_anterior, estado_nuevo, actor_id, fecha).

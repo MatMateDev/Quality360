@@ -6,14 +6,15 @@
 --
 -- En la nube las tablas pertenecen a postgres (las migraciones se aplican por MCP), así que
 -- svc_organizacion no es dueño y necesita esta política para seguir leyendo y escribiendo.
--- Toda tabla nueva que agregue una migración de Organización debe incluirse aquí.
+-- Toda tabla nueva que agregue una migración de Organización debe incluirse aquí. Los
+-- nombres son los del modelo de datos (migración 20261012000000_modelo_datos).
 -- Es idempotente.
 
 do $$
 declare t text;
 begin
   foreach t in array array[
-    'usuario', 'supervision', 'celula', 'sprint', 'hdu',
+    'rol', 'usuario', 'supervision', 'celula', 'sprint', 'historia_usuario', 'historia_sprint',
     'hdu_historial_estado', 'hdu_historial_asignacion', 'auditoria'
   ] loop
     execute format('alter table organizacion.%I enable row level security', t);

@@ -4,6 +4,7 @@
  * por fila y auditoría con actor `{tipo: SERVICIO, id: integraciones}`.
  */
 import assert from 'node:assert/strict';
+import { randomUUID } from 'node:crypto';
 import { after, before, describe, it } from 'node:test';
 import type { NestExpressApplication } from '@nestjs/platform-express';
 import request from 'supertest';
@@ -11,7 +12,7 @@ import request from 'supertest';
 import { crearAppDePrueba } from '../ayudas-app.js';
 import { cargarConfiguracion } from '../../src/configuracion.js';
 import { crearApp } from '../../src/crear-app.js';
-import { limpiarBaseDeDatos, prisma } from '../ayudas.js';
+import { crearCelulaDePrueba, limpiarBaseDeDatos, prisma } from '../ayudas.js';
 
 const TOKEN = process.env.X_Q360_SERVICIO_TOKEN as string;
 const CONTRASENA_DEMO = 'Quality360-demo-local';
@@ -82,17 +83,37 @@ describe('Idempotencia y errores por fila', () => {
   });
 
   it('sprint: fin anterior a inicio se rechaza (400) sin afectar otras filas', async () => {
+    const celula = await crearCelulaDePrueba();
     const invalida = await request(app.getHttpServer())
       .post('/v1/interno/carga/sprints')
       .set(CABECERA, TOKEN)
-      .send({ nombre: `Sprint inválido ${Date.now()}`, inicio: '2026-02-01', fin: '2026-01-01' });
+      .send({ nombre: `Sprint inválido ${Date.now()}`, inicio: '2026-02-01', fin: '2026-01-01', celulaId: celula.id });
     assert.equal(invalida.status, 400);
 
     const valida = await request(app.getHttpServer())
       .post('/v1/interno/carga/sprints')
       .set(CABECERA, TOKEN)
-      .send({ nombre: `Sprint válido ${Date.now()}`, inicio: '2026-01-01', fin: '2026-01-14' });
+      .send({ nombre: `Sprint válido ${Date.now()}`, inicio: '2026-01-01', fin: '2026-01-14', celulaId: celula.id });
     assert.equal(valida.status, 201);
+  });
+
+  it('sprint: queda en su célula con el estado según sus fechas; célula inexistente → 422 (modelo de datos)', async () => {
+    const celula = await crearCelulaDePrueba();
+    const cerrado = await request(app.getHttpServer())
+      .post('/v1/interno/carga/sprints')
+      .set(CABECERA, TOKEN)
+      .send({ nombre: `Sprint cerrado ${Date.now()}`, inicio: '2020-01-01', fin: '2020-01-14', celulaId: celula.id });
+    assert.equal(cerrado.status, 201);
+    const fila = await prisma.sprint.findUniqueOrThrow({ where: { id: cerrado.body.sprint.id } });
+    assert.equal(fila.celulaId, celula.id);
+    assert.equal(fila.estado, 'CERRADO');
+
+    const sinCelula = await request(app.getHttpServer())
+      .post('/v1/interno/carga/sprints')
+      .set(CABECERA, TOKEN)
+      .send({ nombre: `Sprint huérfano ${Date.now()}`, inicio: '2026-01-01', fin: '2026-01-14', celulaId: randomUUID() });
+    assert.equal(sinCelula.status, 422);
+    assert.equal(sinCelula.body.codigo, 'CATALOGO_INVALIDO');
   });
 
   it('usuario: vuelve a cargar el mismo correo sin duplicar ni tocar el rol', async () => {
@@ -140,7 +161,7 @@ describe('Idempotencia y errores por fila', () => {
     const sprint = await request(app.getHttpServer())
       .post('/v1/interno/carga/sprints')
       .set(CABECERA, TOKEN)
-      .send({ nombre: `Sprint HDU ${Date.now()}`, inicio: '2026-01-01', fin: '2026-01-14' });
+      .send({ nombre: `Sprint HDU ${Date.now()}`, inicio: '2026-01-01', fin: '2026-01-14', celulaId: celula.body.celula.id });
     const qe = await request(app.getHttpServer())
       .post('/v1/interno/carga/usuarios')
       .set(CABECERA, TOKEN)

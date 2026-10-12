@@ -12,6 +12,7 @@ import { ExcepcionQ360, MENSAJES, errorValidacion } from '@quality360/auth-nest'
 import { ConflictoUnicidad } from '../dominio/errores/conflicto-unicidad.js';
 import { CATALOGO_REPOSITORIO, type CatalogoRepositorio } from '../dominio/repositorios/catalogo.repositorio.js';
 import { USUARIO_REPOSITORIO, type UsuarioRepositorio } from '../dominio/repositorios/usuario.repositorio.js';
+import { estadoSprintPorFechas } from '../dominio/reglas/sprint.js';
 import type { Celula, Rol, Sprint } from '../dominio/tipos.js';
 import { ACTOR_SERVICIO } from './actores.js';
 import { type HduDetalleRespuesta, HduAplicacion } from './hdu.servicio.js';
@@ -69,14 +70,24 @@ export class CargaSemillaAplicacion {
     return this.catalogos.crearCelulaSiNoExiste(nombre.trim());
   }
 
-  /** Idempotente por nombre (sin distinguir mayúsculas). `fin` anterior a `inicio` → 400. */
-  async cargarSprint(datos: { nombre: string; inicio: string; fin: string }): Promise<{ creado: boolean; sprint: Sprint }> {
+  /**
+   * Idempotente por nombre (sin distinguir mayúsculas). `fin` anterior a `inicio` → 400;
+   * célula inexistente → 422. El estado se deduce de las fechas (modelo de datos: Sprint).
+   */
+  async cargarSprint(datos: { nombre: string; inicio: string; fin: string; celulaId: string }): Promise<{ creado: boolean; sprint: Sprint }> {
     const inicio = new Date(datos.inicio);
     const fin = new Date(datos.fin);
     if (fin.getTime() < inicio.getTime()) {
       throw errorValidacion([{ campo: 'fin', codigo: 'VALOR_NO_PERMITIDO', mensaje: 'fin no puede ser anterior a inicio.' }]);
     }
-    return this.catalogos.crearSprintSiNoExiste(datos.nombre.trim(), inicio, fin);
+    if ((await this.catalogos.buscarCelula(datos.celulaId)) === null) throw catalogoInvalido();
+    return this.catalogos.crearSprintSiNoExiste({
+      nombre: datos.nombre.trim(),
+      inicio,
+      fin,
+      estado: estadoSprintPorFechas(inicio, fin, new Date()),
+      celulaId: datos.celulaId,
+    });
   }
 
   /** Idempotente por código (sin distinguir mayúsculas): se crea en PENDIENTE, sin analista. */

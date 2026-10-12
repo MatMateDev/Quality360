@@ -484,7 +484,7 @@ components:
               type: string
               format: uri
               pattern: '^https://'
-              maxLength: 2000
+              maxLength: 500
         - type: object
           required: [tipo, ruta]
           additionalProperties: false
@@ -761,7 +761,7 @@ components:
         correo:
           type: string
           format: email
-          maxLength: 254
+          maxLength: 150
           description: Se normaliza a minúsculas. Único sin distinguir mayúsculas.
         rol:
           $ref: '#/components/schemas/Rol'
@@ -778,7 +778,7 @@ components:
         correo:
           type: string
           format: email
-          maxLength: 254
+          maxLength: 150
           description: El `id` no cambia; Organización actualiza el correo también en Supabase Auth (E1-B07#2).
         activo:
           type: boolean

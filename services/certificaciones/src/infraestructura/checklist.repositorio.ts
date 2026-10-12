@@ -1,15 +1,47 @@
 /**
- * Persistencia del checklist en el esquema `certificaciones`. Cada cambio de un
- * entregable y su evento de bitácora se guardan en la misma transacción (E3-B04#1).
+ * Persistencia del checklist en el esquema `certificaciones`, según el modelo de
+ * datos: Certificacion (ciclo de una HU) → ItemChecklist y Entregable → Evidencia.
+ * Cada cambio de un entregable, su evidencia y su evento de bitácora se guardan en
+ * la misma transacción (E3-B04#1).
+ *
+ * Hacia la aplicación expone un registro plano por entregable (`RegistroEntregable`)
+ * con su evidencia vigente, para que las reglas de E3 no dependan de las tablas.
  */
+import { randomUUID } from 'node:crypto';
+
 import { Injectable } from '@nestjs/common';
 import { ExcepcionQ360, MENSAJES } from '@quality360/auth-nest';
-import { Prisma, type Certificado, type Entregable } from '#prisma';
+import { Prisma, type Certificado, type TipoEvidencia } from '#prisma';
 
-import type { ClaveEntregable, EstadoEntregable } from '../dominio/entregables.js';
+import { CLAVES_ENTREGABLE, NOMBRES_ENTREGABLE, type ClaveEntregable, type EstadoEntregable } from '../dominio/entregables.js';
 import { PrismaService } from './prisma/prisma.service.js';
 
-export type RegistroEntregable = Entregable;
+/** Entregable con su evidencia vigente, tal como lo usan las reglas de E3. */
+export interface RegistroEntregable {
+  readonly id: string;
+  readonly hduId: string;
+  readonly clave: ClaveEntregable;
+  readonly estado: EstadoEntregable;
+  readonly evidenciaTipo: TipoEvidencia | null;
+  readonly evidenciaUrl: string | null;
+  readonly evidenciaRuta: string | null;
+  readonly evidenciaNombre: string | null;
+  readonly evidenciaTipoContenido: string | null;
+  readonly evidenciaTamanoBytes: number | null;
+  readonly evidenciaFolio: string | null;
+  readonly completadoPorId: string | null;
+  readonly completadoPorNombre: string | null;
+  readonly completadoEn: Date | null;
+  readonly aprobadoPorId: string | null;
+  readonly aprobadoPorNombre: string | null;
+  readonly aprobadoEn: Date | null;
+  readonly observacion: string | null;
+  readonly observadoPorId: string | null;
+  readonly observadoPorNombre: string | null;
+  readonly observadoEn: Date | null;
+  readonly actualizadoEn: Date;
+}
+
 export type RegistroCertificado = Certificado;
 
 export interface ActorEvento {
@@ -20,10 +52,14 @@ export interface ActorEvento {
 
 export type AccionChecklist = 'MARCAR' | 'DESMARCAR' | 'APROBAR' | 'RECHAZAR' | 'GENERAR_CERTIFICADO';
 
-/** Campos del entregable que cambian; los omitidos no se tocan. */
+/**
+ * Campos del entregable que cambian; los omitidos no se tocan. Un `evidenciaTipo`
+ * con valor agrega una evidencia (la vigente pasa a ser esa); la evidencia deja de
+ * estar vigente cuando `completadoEn` vuelve a nulo.
+ */
 export type CambioEntregable = Partial<
   Pick<
-    Entregable,
+    RegistroEntregable,
     | 'estado'
     | 'evidenciaTipo'
     | 'evidenciaUrl'
@@ -57,6 +93,75 @@ export interface NuevoCertificado {
   readonly huellaSha256: string;
 }
 
+type Tx = Prisma.TransactionClient;
+
+/** La última evidencia cargada; si es vigente lo decide `aRegistro`. */
+const INCLUYE_EVIDENCIA = { evidencias: { orderBy: { fechaCarga: 'desc' }, take: 1 } } as const satisfies Prisma.EntregableInclude;
+
+type FilaEntregable = Prisma.EntregableGetPayload<{ include: typeof INCLUYE_EVIDENCIA }>;
+
+function aRegistro(fila: FilaEntregable, hduId: string): RegistroEntregable {
+  const ultima = fila.evidencias[0];
+  const vigente = ultima !== undefined && fila.completadoEn !== null && ultima.fechaCarga.getTime() >= fila.completadoEn.getTime() ? ultima : null;
+  return {
+    id: fila.id,
+    hduId,
+    clave: fila.clave,
+    estado: fila.estado,
+    evidenciaTipo: vigente?.tipo ?? null,
+    evidenciaUrl: vigente?.tipo === 'ENLACE' ? vigente.referencia : null,
+    evidenciaRuta: vigente !== null && vigente.tipo !== 'ENLACE' ? vigente.referencia : null,
+    evidenciaNombre: vigente !== null && vigente.tipo !== 'ENLACE' ? vigente.nombre : null,
+    evidenciaTipoContenido: vigente?.tipoContenido ?? null,
+    evidenciaTamanoBytes: vigente?.tamanoBytes ?? null,
+    evidenciaFolio: vigente?.folio ?? null,
+    completadoPorId: fila.completadoPorId,
+    completadoPorNombre: fila.completadoPorNombre,
+    completadoEn: fila.completadoEn,
+    aprobadoPorId: fila.aprobadoPorId,
+    aprobadoPorNombre: fila.aprobadoPorNombre,
+    aprobadoEn: fila.fechaValidacion,
+    observacion: fila.observacion,
+    observadoPorId: fila.observadoPorId,
+    observadoPorNombre: fila.observadoPorNombre,
+    observadoEn: fila.observadoEn,
+    actualizadoEn: fila.actualizadoEn,
+  };
+}
+
+/** Columnas de `entregable` que toca un cambio (la evidencia va en su propia tabla). */
+function datosEntregable(cambio: CambioEntregable): Prisma.EntregableUpdateManyMutationInput {
+  const datos: Prisma.EntregableUpdateManyMutationInput = {};
+  if (cambio.estado !== undefined) datos.estado = cambio.estado;
+  if (cambio.completadoPorId !== undefined) datos.completadoPorId = cambio.completadoPorId;
+  if (cambio.completadoPorNombre !== undefined) datos.completadoPorNombre = cambio.completadoPorNombre;
+  if (cambio.completadoEn !== undefined) datos.completadoEn = cambio.completadoEn;
+  if (cambio.aprobadoPorId !== undefined) datos.aprobadoPorId = cambio.aprobadoPorId;
+  if (cambio.aprobadoPorNombre !== undefined) datos.aprobadoPorNombre = cambio.aprobadoPorNombre;
+  if (cambio.aprobadoEn !== undefined) datos.fechaValidacion = cambio.aprobadoEn;
+  if (cambio.observacion !== undefined) datos.observacion = cambio.observacion;
+  if (cambio.observadoPorId !== undefined) datos.observadoPorId = cambio.observadoPorId;
+  if (cambio.observadoPorNombre !== undefined) datos.observadoPorNombre = cambio.observadoPorNombre;
+  if (cambio.observadoEn !== undefined) datos.observadoEn = cambio.observadoEn;
+  return datos;
+}
+
+/** Evidencia que agrega el cambio, si trae una. Se carga en el mismo instante en que se marca. */
+function evidenciaNueva(cambio: CambioEntregable): Omit<Prisma.EvidenciaUncheckedCreateInput, 'entregableId'> | null {
+  if (cambio.evidenciaTipo === undefined || cambio.evidenciaTipo === null) return null;
+  const referencia = cambio.evidenciaTipo === 'ENLACE' ? cambio.evidenciaUrl : cambio.evidenciaRuta;
+  if (referencia === undefined || referencia === null) throw new Error('La evidencia no trae URL ni ruta');
+  return {
+    tipo: cambio.evidenciaTipo,
+    nombre: (cambio.evidenciaNombre ?? referencia).slice(0, 150),
+    referencia,
+    fechaCarga: cambio.completadoEn ?? new Date(),
+    tipoContenido: cambio.evidenciaTipoContenido ?? null,
+    tamanoBytes: cambio.evidenciaTamanoBytes ?? null,
+    folio: cambio.evidenciaFolio ?? null,
+  };
+}
+
 /** Foto del entregable para la bitácora: estado, evidencia y responsables. */
 export function fotoEntregable(registro: RegistroEntregable | null): Prisma.InputJsonObject | null {
   if (registro === null) return null;
@@ -87,17 +192,52 @@ function esUnicidadViolada(error: unknown): boolean {
   return error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002';
 }
 
+/** Valor anterior para la bitácora: nulo si el entregable nunca tuvo un evento (E3-B04#2). */
+async function valorAnterior(tx: Tx, hduId: string, clave: ClaveEntregable, anterior: RegistroEntregable): Promise<Prisma.InputJsonObject | null> {
+  const previo = await tx.eventoChecklist.findFirst({ where: { hduId, clave }, select: { id: true } });
+  return previo === null ? null : fotoEntregable(anterior);
+}
+
+/** COMPLETADA con fecha de fin cuando los 10 entregables están aprobados; si no, EN_CURSO. */
+async function actualizarEstadoCertificacion(tx: Tx, certificacionId: string): Promise<void> {
+  const aprobados = await tx.entregable.count({ where: { certificacionId, estado: 'APROBADO' } });
+  const completa = aprobados === CLAVES_ENTREGABLE.length;
+  await tx.certificacion.update({
+    where: { id: certificacionId },
+    data: { estado: completa ? 'COMPLETADA' : 'EN_CURSO', fechaFin: completa ? new Date() : null },
+  });
+}
+
+/** Deja al analista que marca o desmarca como el asignado vigente del ciclo. */
+async function registrarAsignacion(tx: Tx, certificacionId: string, usuarioId: string): Promise<void> {
+  const vigente = await tx.asignacionCertificacion.findFirst({ where: { certificacionId, fechaHasta: null } });
+  if (vigente?.usuarioId === usuarioId) return;
+  const ahora = new Date();
+  if (vigente !== null) await tx.asignacionCertificacion.update({ where: { id: vigente.id }, data: { fechaHasta: ahora } });
+  await tx.asignacionCertificacion.create({ data: { certificacionId, usuarioId, fechaDesde: ahora } });
+}
+
 @Injectable()
 export class ChecklistRepositorio {
   constructor(private readonly prisma: PrismaService) {}
 
-  listar(hduId: string): Promise<RegistroEntregable[]> {
-    return this.prisma.entregable.findMany({ where: { hduId } });
+  /** Entregables del ciclo activo de la HU; vacío si aún no tiene certificación. */
+  async listar(hduId: string): Promise<RegistroEntregable[]> {
+    const filas = await this.prisma.entregable.findMany({
+      where: { certificacion: { hduId, activo: true } },
+      include: INCLUYE_EVIDENCIA,
+      orderBy: { itemChecklist: { orden: 'asc' } },
+    });
+    return filas.map((fila) => aRegistro(fila, hduId));
   }
 
-  listarPorAprobar(hduIds: readonly string[]): Promise<RegistroEntregable[]> {
-    if (hduIds.length === 0) return Promise.resolve([]);
-    return this.prisma.entregable.findMany({ where: { hduId: { in: [...hduIds] }, estado: 'POR_APROBAR' } });
+  async listarPorAprobar(hduIds: readonly string[]): Promise<RegistroEntregable[]> {
+    if (hduIds.length === 0) return [];
+    const filas = await this.prisma.entregable.findMany({
+      where: { estado: 'POR_APROBAR', certificacion: { hduId: { in: [...hduIds] }, activo: true } },
+      include: { ...INCLUYE_EVIDENCIA, certificacion: { select: { hduId: true } } },
+    });
+    return filas.map((fila) => aRegistro(fila, fila.certificacion.hduId));
   }
 
   buscarCertificado(hduId: string): Promise<RegistroCertificado | null> {
@@ -113,10 +253,39 @@ export class ChecklistRepositorio {
   }
 
   /**
+   * Ciclo activo de la HU. El primero se crea con sus 10 ítems y 10 entregables
+   * PENDIENTE; si otra solicitud lo crea al mismo tiempo, se usa el de ella.
+   */
+  async asegurarCertificacion(hduId: string): Promise<string> {
+    const activa = await this.prisma.certificacion.findFirst({ where: { hduId, activo: true }, select: { id: true } });
+    if (activa !== null) return activa.id;
+    try {
+      return await this.prisma.$transaction(async (tx) => {
+        const ultimo = await tx.certificacion.aggregate({ where: { hduId }, _max: { numeroCiclo: true } });
+        const certificacion = await tx.certificacion.create({ data: { hduId, numeroCiclo: (ultimo._max.numeroCiclo ?? 0) + 1 } });
+        const items = CLAVES_ENTREGABLE.map((clave, indice) => ({
+          id: randomUUID(),
+          clave,
+          nombre: NOMBRES_ENTREGABLE[clave],
+          orden: indice + 1,
+          certificacionId: certificacion.id,
+        }));
+        await tx.itemChecklist.createMany({ data: items });
+        await tx.entregable.createMany({
+          data: items.map((item) => ({ clave: item.clave, nombre: item.nombre, certificacionId: certificacion.id, itemChecklistId: item.id })),
+        });
+        return certificacion.id;
+      });
+    } catch (error) {
+      if (!esUnicidadViolada(error)) throw error;
+      const otra = await this.prisma.certificacion.findFirstOrThrow({ where: { hduId, activo: true }, select: { id: true } });
+      return otra.id;
+    }
+  }
+
+  /**
    * Aplica el cambio solo si el entregable sigue en `estadoEsperado` (control
    * optimista frente a dos solicitudes simultáneas) y registra el evento.
-   * Un entregable PENDIENTE sin registro se crea; el índice único (hdu, clave)
-   * rechaza el duplicado (E3-B01#2).
    */
   async cambiar(input: {
     hduId: string;
@@ -127,21 +296,26 @@ export class ChecklistRepositorio {
     actor: ActorEvento;
     motivo?: string | null;
   }): Promise<RegistroEntregable> {
+    const certificacionId = await this.asegurarCertificacion(input.hduId);
     try {
       return await this.prisma.$transaction(async (tx) => {
-        const anterior = await tx.entregable.findUnique({ where: { hduId_clave: { hduId: input.hduId, clave: input.clave } } });
-        let actualizado: RegistroEntregable;
-        if (anterior === null) {
-          if (input.estadoEsperado !== 'PENDIENTE') throw registroYaExiste();
-          actualizado = await tx.entregable.create({ data: { hduId: input.hduId, clave: input.clave, ...input.cambio } });
-        } else {
-          const { count } = await tx.entregable.updateMany({
-            where: { id: anterior.id, estado: input.estadoEsperado },
-            data: input.cambio,
-          });
-          if (count === 0) throw registroYaExiste();
-          actualizado = await tx.entregable.findUniqueOrThrow({ where: { id: anterior.id } });
-        }
+        const filaAnterior = await tx.entregable.findUniqueOrThrow({
+          where: { certificacionId_clave: { certificacionId, clave: input.clave } },
+          include: INCLUYE_EVIDENCIA,
+        });
+        const anterior = aRegistro(filaAnterior, input.hduId);
+        const { count } = await tx.entregable.updateMany({
+          where: { id: filaAnterior.id, estado: input.estadoEsperado },
+          data: datosEntregable(input.cambio),
+        });
+        if (count === 0) throw registroYaExiste();
+        const evidencia = evidenciaNueva(input.cambio);
+        if (evidencia !== null) await tx.evidencia.create({ data: { ...evidencia, entregableId: filaAnterior.id } });
+
+        const actualizado = aRegistro(
+          await tx.entregable.findUniqueOrThrow({ where: { id: filaAnterior.id }, include: INCLUYE_EVIDENCIA }),
+          input.hduId,
+        );
         await tx.eventoChecklist.create({
           data: {
             hduId: input.hduId,
@@ -150,11 +324,13 @@ export class ChecklistRepositorio {
             actorId: input.actor.id,
             actorNombre: input.actor.nombre,
             actorRol: input.actor.rol,
-            valorAnterior: fotoEntregable(anterior) ?? Prisma.DbNull,
+            valorAnterior: (await valorAnterior(tx, input.hduId, input.clave, anterior)) ?? Prisma.DbNull,
             valorNuevo: fotoEntregable(actualizado) ?? Prisma.DbNull,
             motivo: input.motivo ?? null,
           },
         });
+        await actualizarEstadoCertificacion(tx, certificacionId);
+        if (input.accion === 'MARCAR' || input.accion === 'DESMARCAR') await registrarAsignacion(tx, certificacionId, input.actor.id);
         return actualizado;
       });
     } catch (error) {
@@ -164,40 +340,51 @@ export class ChecklistRepositorio {
   }
 
   /**
-   * Registra el certificado, deja el entregable 9 aprobado con el folio y audita
-   * `GENERAR_CERTIFICADO`, todo junto (D19). Devuelve `null` si otra solicitud
-   * emitió el certificado primero.
+   * Registra el certificado, deja el entregable 9 aprobado con el PDF como
+   * evidencia y audita `GENERAR_CERTIFICADO`, todo junto (D19). Devuelve `null`
+   * si otra solicitud emitió el certificado primero.
    */
   async emitirCertificado(certificado: NuevoCertificado, actor: ActorEvento): Promise<RegistroCertificado | null> {
+    const certificacionId = await this.asegurarCertificacion(certificado.hduId);
     try {
       return await this.prisma.$transaction(async (tx) => {
-        const creado = await tx.certificado.create({ data: certificado });
-        const anterior = await tx.entregable.findUnique({ where: { hduId_clave: { hduId: certificado.hduId, clave: 'CERTIFICADO' } } });
-        const datos = {
-          estado: 'APROBADO' as const,
-          evidenciaTipo: 'CERTIFICADO' as const,
-          evidenciaUrl: null,
-          evidenciaRuta: certificado.rutaPdf,
-          evidenciaNombre: `${certificado.folio}.pdf`,
-          evidenciaTipoContenido: 'application/pdf',
-          evidenciaTamanoBytes: null,
-          evidenciaFolio: certificado.folio,
-          completadoPorId: actor.id,
-          completadoPorNombre: actor.nombre,
-          completadoEn: certificado.emitidoEn,
-          aprobadoPorId: actor.id,
-          aprobadoPorNombre: actor.nombre,
-          aprobadoEn: certificado.emitidoEn,
-          observacion: null,
-          observadoPorId: null,
-          observadoPorNombre: null,
-          observadoEn: null,
-        };
-        const actualizado = await tx.entregable.upsert({
-          where: { hduId_clave: { hduId: certificado.hduId, clave: 'CERTIFICADO' } },
-          create: { hduId: certificado.hduId, clave: 'CERTIFICADO', ...datos },
-          update: datos,
+        const creado = await tx.certificado.create({ data: { ...certificado, certificacionId } });
+        const filaAnterior = await tx.entregable.findUniqueOrThrow({
+          where: { certificacionId_clave: { certificacionId, clave: 'CERTIFICADO' } },
+          include: INCLUYE_EVIDENCIA,
         });
+        const anterior = aRegistro(filaAnterior, certificado.hduId);
+        await tx.entregable.update({
+          where: { id: filaAnterior.id },
+          data: {
+            estado: 'APROBADO',
+            completadoPorId: actor.id,
+            completadoPorNombre: actor.nombre,
+            completadoEn: certificado.emitidoEn,
+            aprobadoPorId: actor.id,
+            aprobadoPorNombre: actor.nombre,
+            fechaValidacion: certificado.emitidoEn,
+            observacion: null,
+            observadoPorId: null,
+            observadoPorNombre: null,
+            observadoEn: null,
+          },
+        });
+        await tx.evidencia.create({
+          data: {
+            entregableId: filaAnterior.id,
+            tipo: 'CERTIFICADO',
+            nombre: `${certificado.folio}.pdf`,
+            referencia: certificado.rutaPdf,
+            fechaCarga: certificado.emitidoEn,
+            tipoContenido: 'application/pdf',
+            folio: certificado.folio,
+          },
+        });
+        const actualizado = aRegistro(
+          await tx.entregable.findUniqueOrThrow({ where: { id: filaAnterior.id }, include: INCLUYE_EVIDENCIA }),
+          certificado.hduId,
+        );
         await tx.eventoChecklist.create({
           data: {
             hduId: certificado.hduId,
@@ -206,11 +393,12 @@ export class ChecklistRepositorio {
             actorId: actor.id,
             actorNombre: actor.nombre,
             actorRol: actor.rol,
-            valorAnterior: fotoEntregable(anterior) ?? Prisma.DbNull,
+            valorAnterior: (await valorAnterior(tx, certificado.hduId, 'CERTIFICADO', anterior)) ?? Prisma.DbNull,
             valorNuevo: { ...(fotoEntregable(actualizado) ?? {}), folio: certificado.folio, huellaSha256: certificado.huellaSha256 },
             motivo: null,
           },
         });
+        await actualizarEstadoCertificacion(tx, certificacionId);
         return creado;
       });
     } catch (error) {

@@ -1,3 +1,4 @@
+import type { EstadoSprint } from '../reglas/sprint.js';
 import type { Celula, Sprint } from '../tipos.js';
 
 /** Token de inyección del repositorio de catálogos. */
@@ -12,5 +13,11 @@ export interface CatalogoRepositorio {
   /** Alta idempotente por nombre (sin distinguir mayúsculas) — carga semilla. */
   crearCelulaSiNoExiste(nombre: string): Promise<{ creado: boolean; celula: Celula }>;
   /** Alta idempotente por nombre (sin distinguir mayúsculas) — carga semilla. */
-  crearSprintSiNoExiste(nombre: string, inicio: Date, fin: Date): Promise<{ creado: boolean; sprint: Sprint }>;
+  crearSprintSiNoExiste(datos: {
+    nombre: string;
+    inicio: Date;
+    fin: Date;
+    estado: EstadoSprint;
+    celulaId: string;
+  }): Promise<{ creado: boolean; sprint: Sprint }>;
 }

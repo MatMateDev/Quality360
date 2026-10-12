@@ -17,7 +17,7 @@ export class CargaUsuarioDto {
 
   @IsString()
   @MinLength(3)
-  @MaxLength(254)
+  @MaxLength(150)
   correo!: string;
 
   @IsIn(ROLES)
@@ -52,6 +52,10 @@ export class CargaSprintDto {
 
   @IsISO8601({ strict: true })
   fin!: string;
+
+  /** Célula dueña del sprint (modelo de datos: Sprint.id_celula). */
+  @IsUUID('4')
+  celulaId!: string;
 }
 
 export class CargaHduDto {

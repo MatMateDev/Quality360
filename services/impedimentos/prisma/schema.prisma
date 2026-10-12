@@ -1,15 +1,14 @@
-// Quality360 · Impedimentos (esqueleto de E1/E2; impedimentos y riesgos
-// llegan en E4, fuera de alcance en esta corrida — ver
-// docs/arquitectura/decisiones-mvp.md).
+// Quality360 · Impedimentos. Las tablas siguen el modelo de datos de Quality360
+// (modelo ER y lógico, D23–D27 en docs/arquitectura/decisiones-mvp.md); la
+// funcionalidad de impedimentos y riesgos llega con E4.
 //
 // Las tablas de este servicio viven en el esquema `impedimentos` de Postgres
 // (infrastructure/db/001_esquemas_roles.sql): la conexión se hace SIEMPRE
 // con el rol `svc_impedimentos`, cuya DATABASE_URL debe incluir
 // `?schema=impedimentos`.
 //
-// Sin modelos todavía: este archivo solo deja lista la conexión para que
-// `PrismaService` pueda `$connect()` y para que el servicio que implemente
-// E4 agregue sus modelos aquí.
+// Sin claves foráneas hacia otro esquema (regla no negociable 3):
+// `impedimento.id_certificacion` es un UUID de Certificaciones.
 
 // `output` local (no hoisted): ver el comentario equivalente en
 // services/organizacion/prisma/schema.prisma.
@@ -21,4 +20,38 @@ generator client {
 datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
+}
+
+/// Impedimento (modelo de datos). Sin funcionalidad todavía (E4): los valores de
+/// `tipo` y `estado` se fijan cuando se construyan sus historias.
+model Impedimento {
+  id               String    @id @default(uuid()) @map("id_impedimento") @db.Uuid
+  titulo           String    @db.VarChar(200)
+  descripcion      String?   @db.VarChar(1000)
+  tipo             String    @db.VarChar(30)
+  estado           String    @db.VarChar(30)
+  fechaRegistro    DateTime  @default(now()) @map("fecha_registro") @db.Timestamptz(6)
+  fechaResolucion  DateTime? @map("fecha_resolucion") @db.Timestamptz(6)
+  /// Certificacion del servicio Certificaciones (sin llave foránea entre esquemas).
+  certificacionId  String    @map("id_certificacion") @db.Uuid
+
+  acciones AccionImpedimento[]
+
+  @@index([certificacionId])
+  @@map("impedimento")
+}
+
+/// AccionImpedimento (modelo de datos): acciones tomadas sobre un impedimento.
+model AccionImpedimento {
+  id            String   @id @default(uuid()) @map("id_accion_impedimento") @db.Uuid
+  descripcion   String   @db.VarChar(500)
+  fechaAccion   DateTime @default(now()) @map("fecha_accion") @db.Timestamptz(6)
+  estado        String   @db.VarChar(30)
+  observacion   String?  @db.VarChar(500)
+  impedimentoId String   @map("id_impedimento") @db.Uuid
+
+  impedimento Impedimento @relation(fields: [impedimentoId], references: [id])
+
+  @@index([impedimentoId])
+  @@map("accion_impedimento")
 }

@@ -48,7 +48,7 @@ export async function crearUsuarioDePrueba(rol: Rol, opciones: { nombre?: string
   }
   const id = creado.data.user.id;
 
-  await prisma.usuario.create({ data: { id, nombre, correo, rol, activo: opciones.activo ?? true } });
+  await prisma.usuario.create({ data: { id, nombre, correo, rol: { connect: { nombre: rol } }, activo: opciones.activo ?? true } });
 
   const sesion = await anon.auth.signInWithPassword({ email: correo, password: CONTRASENA_PRUEBA });
   if (sesion.error || sesion.data.session === null) {
@@ -61,7 +61,8 @@ export async function crearUsuarioDePrueba(rol: Rol, opciones: { nombre?: string
 /** Limpia las tablas de `organizacion` entre pruebas (base local compartida, sin datos reales). */
 export async function limpiarBaseDeDatos(): Promise<void> {
   await prisma.$executeRawUnsafe(
-    'TRUNCATE TABLE auditoria, hdu_historial_asignacion, hdu_historial_estado, hdu, supervision, sprint, celula, usuario RESTART IDENTITY CASCADE',
+    // `rol` no se trunca: es un catálogo que carga la migración.
+    'TRUNCATE TABLE auditoria, hdu_historial_asignacion, hdu_historial_estado, historia_sprint, historia_usuario, supervision, sprint, celula, usuario RESTART IDENTITY CASCADE',
   );
 }
 
@@ -71,7 +72,7 @@ export function autorizacion(token: string): string {
 
 /** Los catálogos no tienen CRUD en el backlog (los carga la semilla); las pruebas los insertan directo. */
 export async function crearCelulaDePrueba(nombre = `Célula ${randomUUID()}`): Promise<{ id: string; nombre: string }> {
-  return prisma.celula.create({ data: { nombre } });
+  return prisma.celula.create({ data: { nombre }, select: { id: true, nombre: true } });
 }
 
 export async function crearSprintDePrueba(
@@ -79,5 +80,7 @@ export async function crearSprintDePrueba(
   inicio = new Date('2026-01-01'),
   fin = new Date('2026-01-14'),
 ): Promise<{ id: string; nombre: string; inicio: Date; fin: Date }> {
-  return prisma.sprint.create({ data: { nombre, inicio, fin } });
+  // Sprint.id_celula es obligatorio en el modelo de datos: cada sprint de prueba trae su célula.
+  const celula = await crearCelulaDePrueba();
+  return prisma.sprint.create({ data: { nombre, inicio, fin, celulaId: celula.id }, select: { id: true, nombre: true, inicio: true, fin: true } });
 }

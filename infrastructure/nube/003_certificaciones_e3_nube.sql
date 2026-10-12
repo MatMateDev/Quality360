@@ -1,6 +1,7 @@
 -- Quality360 · Certificaciones E3 en Supabase nube: RLS y buckets privados.
 --
--- Se aplica DESPUÉS de la migración de Prisma `20260917000000_checklist_e3`
+-- Se aplica DESPUÉS de las migraciones de Prisma `20260917000000_checklist_e3` y
+-- `20261012000000_modelo_datos`
 -- (services/certificaciones/prisma/migrations), con `set local search_path to certificaciones;`.
 -- Es idempotente.
 --
@@ -10,7 +11,10 @@
 do $$
 declare t text;
 begin
-  foreach t in array array['entregable', 'evento_checklist', 'certificado'] loop
+  foreach t in array array[
+    'certificacion', 'asignacion_certificacion', 'item_checklist', 'entregable', 'evidencia',
+    'ejecucion_prueba', 'defecto', 'evento_checklist', 'certificado'
+  ] loop
     execute format('alter table certificaciones.%I enable row level security', t);
     if not exists (
       select 1 from pg_policies

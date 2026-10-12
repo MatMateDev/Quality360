@@ -10,7 +10,7 @@ export class NuevoUsuarioDto {
   nombre!: string;
 
   @IsEmail()
-  @MaxLength(254)
+  @MaxLength(150)
   correo!: string;
 
   @IsIn(ROLES)
@@ -26,7 +26,7 @@ export class ActualizacionUsuarioDto {
 
   @IsOptional()
   @IsEmail()
-  @MaxLength(254)
+  @MaxLength(150)
   correo?: string;
 
   @IsOptional()

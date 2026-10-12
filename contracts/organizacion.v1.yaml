@@ -1065,7 +1065,10 @@ paths:
       operationId: cargarSprint
       tags: [Carga semilla]
       summary: Alta idempotente de un sprint
-      description: Idempotente por nombre, sin distinguir mayúsculas. `fin` anterior a `inicio` → 400.
+      description: |
+        Idempotente por nombre, sin distinguir mayúsculas. `fin` anterior a `inicio` → 400.
+        El sprint pertenece a una célula (modelo de datos: Sprint.id_celula) y su estado se
+        deduce de las fechas.
       x-roles: [SERVICIO]
       x-hdu: []
       security:
@@ -1095,6 +1098,13 @@ paths:
           $ref: '#/components/responses/NoAutenticado'
         '403':
           $ref: '#/components/responses/AccesoDenegado'
+        '422':
+          description: La célula indicada no existe.
+          x-codigos: [CATALOGO_INVALIDO]
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
         '500':
           $ref: '#/components/responses/ErrorInterno'
 
@@ -1227,7 +1237,7 @@ components:
         correo:
           type: string
           format: email
-          maxLength: 254
+          maxLength: 150
         rol:
           $ref: './comun.v1.yaml#/components/schemas/Rol'
         activo:
@@ -1268,7 +1278,7 @@ components:
           $ref: './comun.v1.yaml#/components/schemas/CatalogoRef'
     CargaSprint:
       type: object
-      required: [nombre, inicio, fin]
+      required: [nombre, inicio, fin, celulaId]
       additionalProperties: false
       properties:
         nombre:
@@ -1280,6 +1290,9 @@ components:
         fin:
           $ref: './comun.v1.yaml#/components/schemas/Fecha'
           description: Igual o posterior a `inicio`; si no, 400.
+        celulaId:
+          $ref: './comun.v1.yaml#/components/schemas/Uuid'
+          description: Célula dueña del sprint; si no existe, 422 `CATALOGO_INVALIDO`.
     ResultadoCargaSprint:
       type: object
       required: [creado, sprint]

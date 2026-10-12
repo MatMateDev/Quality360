@@ -38,7 +38,7 @@ export function leerMarca(cuerpo: unknown): EntradaEvidencia {
     const url = typeof evidencia.url === 'string' ? evidencia.url.trim() : '';
     let valida = false;
     try {
-      valida = url.length <= 2000 && new URL(url).protocol === 'https:';
+      valida = url.length <= 500 && new URL(url).protocol === 'https:';
     } catch {
       valida = false;
     }

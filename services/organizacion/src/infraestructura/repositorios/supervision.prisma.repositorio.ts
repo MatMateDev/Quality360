@@ -147,10 +147,10 @@ export class SupervisionPrismaRepositorio implements SupervisionRepositorio {
     const [relacionesVigentes, analistasSinSupervisor, qeSinAnalistas] = await Promise.all([
       this.prisma.supervision.count({ where: { hasta: null } }),
       this.prisma.usuario.count({
-        where: { rol: 'ANALISTA_QA', activo: true, supervisionesComoAnalista: { none: { hasta: null } } },
+        where: { rol: { nombre: 'ANALISTA_QA' }, activo: true, supervisionesComoAnalista: { none: { hasta: null } } },
       }),
       this.prisma.usuario.count({
-        where: { rol: 'QE', activo: true, supervisionesComoQe: { none: { hasta: null } } },
+        where: { rol: { nombre: 'QE' }, activo: true, supervisionesComoQe: { none: { hasta: null } } },
       }),
     ]);
     return { relacionesVigentes, analistasSinSupervisor, qeSinAnalistas };

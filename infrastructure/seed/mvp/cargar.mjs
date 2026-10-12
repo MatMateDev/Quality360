@@ -65,7 +65,7 @@ for (const c of datos.celulas) {
   if (j) { ids.celula[c.clave] = j.celula.id; anotar('celulas', j.creado ? 'creados' : 'existentes'); }
 }
 for (const s of datos.sprints) {
-  const j = await paso('sprints', s.clave, () => llamar('POST', '/v1/interno/carga/sprints', { nombre: s.nombre, inicio: s.inicio, fin: s.fin }));
+  const j = await paso('sprints', s.clave, () => llamar('POST', '/v1/interno/carga/sprints', { nombre: s.nombre, inicio: s.inicio, fin: s.fin, celulaId: ids.celula[s.celula] }));
   if (j) { ids.sprint[s.clave] = j.sprint.id; anotar('sprints', j.creado ? 'creados' : 'existentes'); }
 }
 for (const u of datos.usuarios) {

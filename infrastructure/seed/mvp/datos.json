@@ -79,19 +79,22 @@
       "clave": "sprint-33",
       "nombre": "Sprint 2025.33",
       "inicio": "2025-08-11",
-      "fin": "2025-08-24"
+      "fin": "2025-08-24",
+      "celula": "pagos"
     },
     {
       "clave": "sprint-34",
       "nombre": "Sprint 2025.34",
       "inicio": "2025-08-25",
-      "fin": "2025-09-07"
+      "fin": "2025-09-07",
+      "celula": "pagos"
     },
     {
       "clave": "sprint-35",
       "nombre": "Sprint 2025.35",
       "inicio": "2025-09-08",
-      "fin": "2025-09-21"
+      "fin": "2025-09-21",
+      "celula": "clientes"
     }
   ],
   "hdu": [

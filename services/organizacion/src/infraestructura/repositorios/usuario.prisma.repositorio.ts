@@ -12,7 +12,7 @@ import type {
 import type { Actor, OpcionesPaginacion, Pagina, Rol, Usuario, UsuarioResumen } from '../../dominio/tipos.js';
 import { ROLES } from '../../dominio/tipos.js';
 import { esErrorUnicidad } from '../prisma/errores-prisma.js';
-import { aUsuarioDominio } from '../prisma/mapeadores.js';
+import { INCLUYE_ROL, aRol, aUsuarioDominio } from '../prisma/mapeadores.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 
 function accionActivacion(activoNuevo: boolean): 'ACTIVAR_USUARIO' | 'DESACTIVAR_USUARIO' {
@@ -24,18 +24,18 @@ export class UsuarioPrismaRepositorio implements UsuarioRepositorio {
   constructor(private readonly prisma: PrismaService) {}
 
   async buscarPorId(id: string): Promise<Usuario | null> {
-    const fila = await this.prisma.usuario.findUnique({ where: { id } });
+    const fila = await this.prisma.usuario.findUnique({ where: { id }, include: INCLUYE_ROL });
     return fila === null ? null : aUsuarioDominio(fila);
   }
 
   async buscarPorCorreo(correo: string): Promise<Usuario | null> {
-    const fila = await this.prisma.usuario.findUnique({ where: { correo: correo.toLowerCase() } });
+    const fila = await this.prisma.usuario.findUnique({ where: { correo: correo.toLowerCase() }, include: INCLUYE_ROL });
     return fila === null ? null : aUsuarioDominio(fila);
   }
 
   async listar(filtro: FiltroUsuarios, paginacion: OpcionesPaginacion): Promise<Pagina<Usuario>> {
     const where: Prisma.UsuarioWhereInput = {};
-    if (filtro.rol !== undefined) where.rol = filtro.rol;
+    if (filtro.rol !== undefined) where.rol = { nombre: filtro.rol };
     if (filtro.activo !== undefined) where.activo = filtro.activo;
     if (filtro.q !== undefined && filtro.q.trim().length > 0) {
       const q = filtro.q.trim();
@@ -48,6 +48,7 @@ export class UsuarioPrismaRepositorio implements UsuarioRepositorio {
     const [items, total] = await this.prisma.$transaction([
       this.prisma.usuario.findMany({
         where,
+        include: INCLUYE_ROL,
         orderBy: { nombre: 'asc' },
         skip: (paginacion.pagina - 1) * paginacion.tamanoPagina,
         take: paginacion.tamanoPagina,
@@ -70,7 +71,7 @@ export class UsuarioPrismaRepositorio implements UsuarioRepositorio {
 
   async listarAnalistasActivos(): Promise<UsuarioResumen[]> {
     const filas = await this.prisma.usuario.findMany({
-      where: { rol: 'ANALISTA_QA', activo: true },
+      where: { rol: { nombre: 'ANALISTA_QA' }, activo: true },
       select: { id: true, nombre: true, correo: true },
       orderBy: { nombre: 'asc' },
     });
@@ -78,14 +79,15 @@ export class UsuarioPrismaRepositorio implements UsuarioRepositorio {
   }
 
   async contarAdministradoresActivos(): Promise<number> {
-    return this.prisma.usuario.count({ where: { rol: 'ADMINISTRADOR', activo: true } });
+    return this.prisma.usuario.count({ where: { rol: { nombre: 'ADMINISTRADOR' }, activo: true } });
   }
 
   async crear(datos: DatosNuevoUsuario, actor: Actor): Promise<Usuario> {
     try {
       return await this.prisma.$transaction(async (tx) => {
         const creado = await tx.usuario.create({
-          data: { id: datos.id, nombre: datos.nombre, correo: datos.correo, rol: datos.rol, activo: datos.activo },
+          data: { id: datos.id, nombre: datos.nombre, correo: datos.correo, rol: { connect: { nombre: datos.rol } }, activo: datos.activo },
+          include: INCLUYE_ROL,
         });
         await tx.auditoria.create({
           data: {
@@ -96,14 +98,14 @@ export class UsuarioPrismaRepositorio implements UsuarioRepositorio {
             entidadId: creado.id,
             accion: 'CREAR_USUARIO',
             antes: undefined,
-            despues: { nombre: creado.nombre, correo: creado.correo, rol: creado.rol, activo: creado.activo },
+            despues: { nombre: creado.nombre, correo: creado.correo, rol: creado.rol.nombre, activo: creado.activo },
             motivo: null,
           },
         });
         return aUsuarioDominio(creado);
       });
     } catch (error) {
-      if (esErrorUnicidad(error, 'usuario_correo_key')) throw new ConflictoUnicidad('correo');
+      if (esErrorUnicidad(error, 'usuario_email_key')) throw new ConflictoUnicidad('correo');
       throw error;
     }
   }
@@ -117,7 +119,7 @@ export class UsuarioPrismaRepositorio implements UsuarioRepositorio {
         if (cambios.correo !== undefined) data.correo = cambios.correo;
         if (cambios.activo !== undefined) data.activo = cambios.activo;
 
-        const actualizado = await tx.usuario.update({ where: { id }, data });
+        const actualizado = await tx.usuario.update({ where: { id }, data, include: INCLUYE_ROL });
 
         const accion = cambios.activo !== undefined && cambios.activo !== antes.activo
           ? accionActivacion(cambios.activo)
@@ -140,15 +142,15 @@ export class UsuarioPrismaRepositorio implements UsuarioRepositorio {
         return aUsuarioDominio(actualizado);
       });
     } catch (error) {
-      if (esErrorUnicidad(error, 'usuario_correo_key')) throw new ConflictoUnicidad('correo');
+      if (esErrorUnicidad(error, 'usuario_email_key')) throw new ConflictoUnicidad('correo');
       throw error;
     }
   }
 
   async cambiarRol(id: string, rol: Rol, actor: Actor): Promise<Usuario> {
     return this.prisma.$transaction(async (tx) => {
-      const antes = await tx.usuario.findUniqueOrThrow({ where: { id } });
-      const actualizado = await tx.usuario.update({ where: { id }, data: { rol } });
+      const antes = await tx.usuario.findUniqueOrThrow({ where: { id }, include: INCLUYE_ROL });
+      const actualizado = await tx.usuario.update({ where: { id }, data: { rol: { connect: { nombre: rol } } }, include: INCLUYE_ROL });
       await tx.auditoria.create({
         data: {
           actorTipo: actor.tipo,
@@ -157,8 +159,8 @@ export class UsuarioPrismaRepositorio implements UsuarioRepositorio {
           entidad: 'USUARIO',
           entidadId: id,
           accion: 'CAMBIAR_ROL',
-          antes: { rol: antes.rol },
-          despues: { rol: actualizado.rol },
+          antes: { rol: antes.rol.nombre },
+          despues: { rol: actualizado.rol.nombre },
           motivo: null,
         },
       });
@@ -170,11 +172,11 @@ export class UsuarioPrismaRepositorio implements UsuarioRepositorio {
     const [total, activos, agrupado] = await Promise.all([
       this.prisma.usuario.count(),
       this.prisma.usuario.count({ where: { activo: true } }),
-      this.prisma.usuario.groupBy({ by: ['rol'], _count: { _all: true } }),
+      this.prisma.rol.findMany({ select: { nombre: true, _count: { select: { usuarios: true } } } }),
     ]);
 
     const porRol = Object.fromEntries(ROLES.map((rol) => [rol, 0])) as Record<Rol, number>;
-    for (const fila of agrupado) porRol[fila.rol] = fila._count._all;
+    for (const fila of agrupado) porRol[aRol(fila.nombre)] = fila._count.usuarios;
 
     return { total, activos, inactivos: total - activos, porRol };
   }

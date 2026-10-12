@@ -25,7 +25,7 @@ import {
   type UsuarioResumen,
 } from '../../dominio/tipos.js';
 import { esErrorUnicidad } from '../prisma/errores-prisma.js';
-import { aHduDominio } from '../prisma/mapeadores.js';
+import { INCLUYE_SPRINT_VIGENTE, aHduDominio } from '../prisma/mapeadores.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 
 function whereDeAmbito(ambito: FiltroAmbitoHdu): Prisma.HduWhereInput {
@@ -37,7 +37,7 @@ function whereDeAmbito(ambito: FiltroAmbitoHdu): Prisma.HduWhereInput {
 function whereDeFiltro(filtro: FiltroHdu): Prisma.HduWhereInput {
   const where: Prisma.HduWhereInput = {};
   if (filtro.celulaId !== undefined) where.celulaId = filtro.celulaId;
-  if (filtro.sprintId !== undefined) where.sprintId = filtro.sprintId;
+  if (filtro.sprintId !== undefined) where.historiaSprints = { some: { sprintId: filtro.sprintId, fechaRetiro: null } };
   if (filtro.estado !== undefined) where.estado = filtro.estado;
   return where;
 }
@@ -65,7 +65,7 @@ export class HduPrismaRepositorio implements HduRepositorio {
             codigoNormalizado: datos.codigo.toLowerCase(),
             titulo: datos.titulo,
             celulaId: datos.celulaId,
-            sprintId: datos.sprintId,
+            historiaSprints: { create: { sprintId: datos.sprintId } },
             prioridad: datos.prioridad,
             qeResponsableId: datos.qeResponsableId,
             estado: 'PENDIENTE',
@@ -73,6 +73,7 @@ export class HduPrismaRepositorio implements HduRepositorio {
             creadoPorId: actor.id,
             creadoPorNombre: actor.nombre,
           },
+          include: INCLUYE_SPRINT_VIGENTE,
         });
         await tx.auditoria.create({
           data: {
@@ -83,25 +84,25 @@ export class HduPrismaRepositorio implements HduRepositorio {
             entidadId: creada.id,
             accion: 'CREAR_HDU',
             antes: undefined,
-            despues: { codigo: creada.codigo, titulo: creada.titulo, celulaId: creada.celulaId, sprintId: creada.sprintId, prioridad: creada.prioridad },
+            despues: { codigo: creada.codigo, titulo: creada.titulo, celulaId: creada.celulaId, sprintId: datos.sprintId, prioridad: creada.prioridad },
             motivo: null,
           },
         });
         return aHduDominio(creada);
       });
     } catch (error) {
-      if (esErrorUnicidad(error, 'hdu_codigo_normalizado_key')) throw new ConflictoUnicidad('codigo');
+      if (esErrorUnicidad(error, 'historia_usuario_codigo_normalizado_key')) throw new ConflictoUnicidad('codigo');
       throw error;
     }
   }
 
   async buscarPorId(id: string): Promise<Hdu | null> {
-    const fila = await this.prisma.hdu.findUnique({ where: { id } });
+    const fila = await this.prisma.hdu.findUnique({ where: { id }, include: INCLUYE_SPRINT_VIGENTE });
     return fila === null ? null : aHduDominio(fila);
   }
 
   async buscarPorCodigoNormalizado(codigoNormalizado: string): Promise<Hdu | null> {
-    const fila = await this.prisma.hdu.findUnique({ where: { codigoNormalizado } });
+    const fila = await this.prisma.hdu.findUnique({ where: { codigoNormalizado }, include: INCLUYE_SPRINT_VIGENTE });
     return fila === null ? null : aHduDominio(fila);
   }
 
@@ -110,6 +111,7 @@ export class HduPrismaRepositorio implements HduRepositorio {
     const [items, total] = await this.prisma.$transaction([
       this.prisma.hdu.findMany({
         where,
+        include: INCLUYE_SPRINT_VIGENTE,
         orderBy: { creadoEn: 'desc' },
         skip: (paginacion.pagina - 1) * paginacion.tamanoPagina,
         take: paginacion.tamanoPagina,
@@ -121,13 +123,13 @@ export class HduPrismaRepositorio implements HduRepositorio {
 
   async asignarAnalista(input: { hduId: string; analistaId: string; motivo: string | null; actor: Actor }): Promise<ResultadoAsignacionAnalista> {
     return this.prisma.$transaction(async (tx) => {
-      const antes = await tx.hdu.findUniqueOrThrow({ where: { id: input.hduId } });
+      const antes = await tx.hdu.findUniqueOrThrow({ where: { id: input.hduId }, include: INCLUYE_SPRINT_VIGENTE });
       if (antes.analistaId === input.analistaId) {
         return { cambio: false, hdu: aHduDominio(antes), analistaAnteriorId: antes.analistaId, fecha: antes.estadoActualizadoEn };
       }
 
       const fecha = new Date();
-      const actualizada = await tx.hdu.update({ where: { id: input.hduId }, data: { analistaId: input.analistaId } });
+      const actualizada = await tx.hdu.update({ where: { id: input.hduId }, data: { analistaId: input.analistaId }, include: INCLUYE_SPRINT_VIGENTE });
       await tx.hduHistorialAsignacion.create({
         data: {
           hduId: input.hduId,
@@ -164,6 +166,7 @@ export class HduPrismaRepositorio implements HduRepositorio {
       const actualizada = await tx.hdu.update({
         where: { id: input.hduId },
         data: { estado: input.estadoNuevo, estadoActualizadoEn: fecha },
+        include: INCLUYE_SPRINT_VIGENTE,
       });
       await tx.hduHistorialEstado.create({
         data: {

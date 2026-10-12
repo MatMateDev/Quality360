@@ -49,12 +49,13 @@
       "items": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["clave", "nombre", "inicio", "fin"],
+        "required": ["clave", "nombre", "inicio", "fin", "celula"],
         "properties": {
           "clave": { "type": "string", "pattern": "^[a-z][a-z0-9-]*$" },
           "nombre": { "type": "string", "minLength": 1, "maxLength": 80 },
           "inicio": { "type": "string", "format": "date" },
-          "fin": { "type": "string", "format": "date" }
+          "fin": { "type": "string", "format": "date" },
+          "celula": { "type": "string", "pattern": "^[a-z][a-z0-9-]*$", "description": "Célula dueña del sprint (modelo de datos: Sprint.id_celula)." }
         }
       }
     },
