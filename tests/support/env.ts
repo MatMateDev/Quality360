@@ -82,6 +82,9 @@ export const env = {
   // servicio no puede leer el esquema de otro). Nunca se registra ni se usa
   // para nada más.
   supabaseServiceRoleKey: process.env.SUPABASE_SERVICE_ROLE_KEY ?? envOrganizacion.SUPABASE_SERVICE_ROLE_KEY ?? "",
+  // Solo para llamar a la carga semilla interna de Organización (`/v1/interno/carga/*`,
+  // ADR 0007) en las pruebas «[MODELO]» que verifican su validación; nunca se registra.
+  servicioToken: process.env.X_Q360_SERVICIO_TOKEN ?? envOrganizacion.X_Q360_SERVICIO_TOKEN ?? "",
   databaseUrlOrganizacion: process.env.DATABASE_URL_ORGANIZACION ?? envOrganizacion.DATABASE_URL ?? "",
   databaseUrlCertificaciones: process.env.DATABASE_URL_CERTIFICACIONES ?? envCertificaciones.DATABASE_URL ?? "",
   databaseUrlImpedimentos: process.env.DATABASE_URL_IMPEDIMENTOS ?? envImpedimentos.DATABASE_URL ?? "",

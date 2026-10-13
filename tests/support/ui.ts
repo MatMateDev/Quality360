@@ -2,6 +2,15 @@ import type { Locator, Page } from "@playwright/test";
 import { expect } from "@playwright/test";
 import { env } from "./env";
 
+/**
+ * Espera entre reintentos de las acciones del checklist cuando el gateway responde 429. La ventana del
+ * límite de tasa es fija (60 s) y la interfaz no expone `Retry-After`: con 6 intentos de 12 s se cubre
+ * una ventana completa. Con 5 s por intento (30 s en total) una racha de escrituras de las pruebas
+ * anteriores podía agotar los reintentos antes de que la ventana se reiniciara (falla intermitente
+ * observada en `[E3-F02#1]` en la corrida final del modelo de datos; pasó en las otras dos corridas).
+ */
+const ESPERA_LIMITE_TASA_MS = 12_000;
+
 /** Login real por el formulario del portal (E1-F01). */
 export async function iniciarSesionUI(page: Page, correo: string, contrasena: string, baseURL = env.portalUrl) {
   await page.goto(`${baseURL}/login`);
@@ -138,7 +147,7 @@ export async function confirmarDialogoChecklistConReintento(page: Page, dialogo:
     if (resultado === "error") {
       const texto = (await error.textContent()) ?? "";
       if (/demasiadas solicitudes/i.test(texto)) {
-        await page.waitForTimeout(5_000);
+        await page.waitForTimeout(ESPERA_LIMITE_TASA_MS);
         continue;
       }
       throw new Error(`El diálogo del checklist mostró un error inesperado: ${texto}`);
@@ -171,7 +180,7 @@ export async function clicChecklistConReintento(page: Page, boton: Locator, avis
     if (resultado === "aviso") {
       const texto = (await aviso.textContent()) ?? "";
       if (/demasiadas solicitudes/i.test(texto)) {
-        await page.waitForTimeout(5_000);
+        await page.waitForTimeout(ESPERA_LIMITE_TASA_MS);
         continue;
       }
       throw new Error(`La acción del checklist mostró un aviso inesperado: ${texto}`);
@@ -199,7 +208,7 @@ export async function descargaChecklistConReintento(
     if (avisoVisible) {
       const texto = (await aviso.textContent()) ?? "";
       if (/demasiadas solicitudes/i.test(texto)) {
-        await page.waitForTimeout(5_000);
+        await page.waitForTimeout(ESPERA_LIMITE_TASA_MS);
         continue;
       }
       throw new Error(`La descarga del certificado mostró un aviso inesperado: ${texto}`);

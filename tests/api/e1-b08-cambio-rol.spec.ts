@@ -77,15 +77,21 @@ test.describe("E1-B08 · Cambio de rol de un usuario", () => {
     // no el token: D4).
     const idsRestaurar = await conOrganizacion(async (cliente) => {
       const previos = await cliente.query<{ id: string }>(
-        `SELECT id FROM organizacion.usuario WHERE rol = 'ADMINISTRADOR' AND activo = true AND id <> $1`,
+        // Nombres físicos del modelo de datos (D23): id_usuario y rol por llave foránea a organizacion.rol.
+        `SELECT u.id_usuario AS id FROM organizacion.usuario u JOIN organizacion.rol r ON r.id_rol = u.id_rol WHERE r.nombre = 'ADMINISTRADOR' AND u.activo = true AND u.id_usuario <> $1`,
         [adminFA.id],
       );
-      await cliente.query(`UPDATE organizacion.usuario SET activo = false WHERE rol = 'ADMINISTRADOR' AND activo = true AND id <> $1`, [adminFA.id]);
+      await cliente.query(
+        `UPDATE organizacion.usuario u SET activo = false FROM organizacion.rol r WHERE r.id_rol = u.id_rol AND r.nombre = 'ADMINISTRADOR' AND u.activo = true AND u.id_usuario <> $1`,
+        [adminFA.id],
+      );
       return previos.rows.map((fila) => fila.id);
     });
 
     try {
-      const soloUno = await conOrganizacion((cliente) => cliente.query(`SELECT count(*)::int AS total FROM organizacion.usuario WHERE rol = 'ADMINISTRADOR' AND activo = true`));
+      const soloUno = await conOrganizacion((cliente) =>
+        cliente.query(`SELECT count(*)::int AS total FROM organizacion.usuario u JOIN organizacion.rol r ON r.id_rol = u.id_rol WHERE r.nombre = 'ADMINISTRADOR' AND u.activo = true`),
+      );
       expect(soloUno.rows[0].total).toBe(1);
 
       const intento = await api.put(request, `/v1/usuarios/${adminFA.id}/rol`, {
@@ -97,7 +103,7 @@ test.describe("E1-B08 · Cambio de rol de un usuario", () => {
       expect(intento.body).toMatchObject({ codigo: "ULTIMO_ADMINISTRADOR" });
     } finally {
       // Restaura exactamente lo que había, pase o no la prueba.
-      await conOrganizacion((cliente) => cliente.query(`UPDATE organizacion.usuario SET activo = true WHERE id = ANY($1::uuid[])`, [idsRestaurar]));
+      await conOrganizacion((cliente) => cliente.query(`UPDATE organizacion.usuario SET activo = true WHERE id_usuario = ANY($1::uuid[])`, [idsRestaurar]));
     }
 
     // Patricia sigue activa y utilizable para el resto de la suite.
