@@ -104,9 +104,14 @@ Estos usuarios y su contraseña **solo existen en tu Supabase local**. La lista 
 
 La próxima vez solo necesitas abrir Docker Desktop y ejecutar `npm run local`.
 
-### Si ya tenías una versión anterior (sin E3)
+### Si ya tenías una versión anterior
 
-Después de `git pull`, ejecuta `npm install` y luego `npm run local -- --build`. La primera vez, `npm run local` detecta que tu Supabase local no tiene Storage y lo reinicia con Storage activo: **los datos se conservan**. También agrega a la configuración de Certificaciones las variables nuevas.
+Después de `git pull`, ejecuta `npm install` y luego `npm run local -- --build`:
+
+- **Desde una versión sin E3:** `npm run local` detecta que tu Supabase local no tiene Storage y lo reinicia con Storage activo. También agrega a la configuración de Certificaciones las variables nuevas.
+- **Desde una versión anterior al modelo de datos:** las migraciones renombran las tablas según el modelo ER (por ejemplo `hdu` pasa a `historia_usuario`) y crean las nuevas (`rol`, `historia_sprint`, `certificacion`, `evidencia`, `impedimento`…).
+
+En ambos casos **los datos se conservan**. El modelo y su correspondencia con las tablas están en `docs/arquitectura/modelo-datos/` y en `docs/arquitectura/decisiones-mvp.md` (D23–D27).
 
 ## Paso 8 · Recorrer el flujo de certificación (E3)
 

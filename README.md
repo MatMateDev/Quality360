@@ -103,7 +103,7 @@ npm test
 | `contracts` | Contratos OpenAPI |
 | `infrastructure` | Supabase local, SQL de esquemas y roles, Docker Compose, semilla y arranque local |
 | `tests` | Suite de certificación E2E y de API |
-| `docs` | Arquitectura, backlog y validación |
+| `docs` | Arquitectura, modelo de datos (`docs/arquitectura/modelo-datos`), backlog y validación |
 
 ## Seguridad
 
