@@ -126,6 +126,18 @@ Quiero cerrar sesión desde mi portal. Para finalizar mi acceso a la plataforma.
 | 2 | Cierre efectivo | El usuario está autenticado. | Presiona Cerrar sesión. | Se muestra la pantalla de inicio de sesión. |
 | 3 | Navegación hacia atrás | El usuario cerró sesión. | Presiona volver atrás en el navegador. | No se puede consultar información protegida sin autenticarse nuevamente. |
 
+### E1-F13 · Usuario de Quality360
+
+> Agregada el 2026-10-15 junto con el rediseño del inicio de sesión; aún no está en `Historias_de_usuario_Quality360.xlsx`.
+
+Quiero recuperar mi acceso cuando olvido mi contraseña. Para volver a ingresar al portal sin depender del administrador.
+
+| # | Criterio | Contexto | Evento | Resultado esperado |
+| --- | --- | --- | --- | --- |
+| 1 | Solicitud del enlace | El usuario está en la pantalla de inicio de sesión. | Selecciona «¿Olvidaste tu contraseña?», ingresa su correo y presiona Enviar enlace. | Se valida que el correo sea obligatorio y tenga formato válido, y se muestra siempre la misma confirmación, sin revelar si el correo está registrado. |
+| 2 | Nueva contraseña | El usuario abre el enlace recibido por correo. | Ingresa y repite la nueva contraseña y presiona Guardar. | Se exige un mínimo de 8 caracteres y que ambas coincidan. Al guardar, se cierra la sesión de recuperación y el usuario vuelve al inicio de sesión con un aviso de contraseña actualizada. |
+| 3 | Enlace inválido o ya usado | El enlace expiró o ya fue utilizado. | El usuario lo abre. | Se informa que el enlace no es válido y se ofrece solicitar uno nuevo, sin dar acceso al portal. |
+
 ### E1-B01 · Usuario registrado
 
 Quiero que el sistema valide mis credenciales y mi acceso activo. Para iniciar una sesión segura.
@@ -245,6 +257,18 @@ Quiero que el sistema registre los cambios de usuarios, roles y supervisión. Pa
 | 1 | Registro de auditoría | Se modifica un usuario, rol o supervisión. | Se confirma la operación. | Se registra actor, fecha, operación, recurso y cambios relevantes. |
 | 2 | Motivo en supervisión | Se cambia el QE de un analista. | Se confirma el cambio. | Se conserva el motivo del cambio. |
 | 3 | Datos sensibles | Se registra un cambio de credenciales. | Se genera el registro. | Se excluyen contraseñas y tokens de los registros. |
+
+### E1-B13 · Usuario registrado
+
+> Agregada el 2026-10-15 junto con E1-F13; aún no está en `Historias_de_usuario_Quality360.xlsx`.
+
+Quiero que el sistema gestione de forma segura el restablecimiento de mi contraseña. Para que solo quien controla mi correo pueda cambiarla.
+
+| # | Criterio | Contexto | Evento | Resultado esperado |
+| --- | --- | --- | --- | --- |
+| 1 | Envío del enlace | Se solicita la recuperación para un correo. | El proveedor de autenticación procesa la solicitud. | Solo si el correo está registrado se envía un enlace de un solo uso, válido por un tiempo limitado. La respuesta es idéntica para correos registrados e inexistentes. |
+| 2 | Cambio de contraseña | Se usa un enlace válido. | Se fija la nueva contraseña. | La contraseña anterior deja de ser válida, las sesiones previas no pueden renovarse y la sesión de recuperación no habilita el acceso al portal. |
+| 3 | Redirección y abuso | Se solicita con una dirección de retorno no autorizada o se repiten las solicitudes. | El proveedor procesa la solicitud. | Solo se redirige a direcciones autorizadas y se limita la frecuencia de envíos, sin revelar si el correo existe. |
 
 ## ÉPICA 2 — GESTIÓN DE HISTORIAS DE USUARIO (HDU)
 
