@@ -73,14 +73,21 @@ export class ProveedorIdentidadSupabase implements ProveedorIdentidad {
     }
   }
 
-  /** Busca por correo listando usuarios (alcanza para el volumen de una semilla local). */
+  /**
+   * Busca por correo recorriendo todas las páginas de usuarios de Supabase Auth: con más de
+   * 1000 cuentas, mirar solo la primera página dejaba sin vincular a los usuarios más antiguos.
+   */
   private async buscarPorCorreo(correo: string): Promise<{ id: string } | null> {
+    const objetivo = correo.trim().toLowerCase();
+    const porPagina = 1000;
     try {
-      const { data, error } = await this.cliente.auth.admin.listUsers({ page: 1, perPage: 1000 });
-      if (error !== null || data === null) return null;
-      const objetivo = correo.trim().toLowerCase();
-      const encontrado = data.users.find((usuario) => usuario.email?.toLowerCase() === objetivo);
-      return encontrado === undefined ? null : { id: encontrado.id };
+      for (let pagina = 1; ; pagina += 1) {
+        const { data, error } = await this.cliente.auth.admin.listUsers({ page: pagina, perPage: porPagina });
+        if (error !== null || data === null) return null;
+        const encontrado = data.users.find((usuario) => usuario.email?.toLowerCase() === objetivo);
+        if (encontrado !== undefined) return { id: encontrado.id };
+        if (data.users.length < porPagina) return null;
+      }
     } catch {
       return null;
     }
