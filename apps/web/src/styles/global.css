@@ -361,15 +361,6 @@ tbody tr:hover {
   font-weight: 600;
 }
 
-.campo-envolver-contrasena {
-  display: flex;
-  gap: 8px;
-}
-
-.campo-envolver-contrasena input {
-  flex: 1;
-}
-
 .acciones-formulario {
   display: flex;
   justify-content: flex-end;
@@ -564,31 +555,7 @@ tbody tr:hover {
 }
 
 /* ------------------------------------------------------------------------ login */
-.pantalla-login {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  min-height: 100vh;
-  padding: 24px;
-}
-
-.tarjeta-login {
-  width: min(420px, 100%);
-  padding: 32px;
-  background-color: var(--q360-color-superficie);
-  border: 1px solid var(--q360-color-borde);
-  border-radius: var(--q360-radio-grande);
-}
-
-.tarjeta-login h1 {
-  margin: 6px 0 4px;
-  font-size: 24px;
-}
-
-.tarjeta-login > p {
-  margin: 0 0 24px;
-  color: var(--q360-color-texto-secundario);
-}
+/* La pantalla de acceso (login y recuperación) vive en acceso.css. */
 
 .indicador-ingresando {
   color: var(--q360-color-texto-secundario);

@@ -1,0 +1,558 @@
+/*
+ * Pantalla de acceso «A · pantalla dividida» (login y RECUPERACION de contraseña).
+ * Todo cuelga de `.pantalla-acceso`: la tipografía IBM Plex Sans y estos colores NO salen de aquí; el resto
+ * de la app sigue con los tokens de tokens.css.
+ *
+ * Mobile primero. Con 1024 px o más pasa a dos columnas (panel de marca + formulario).
+ * Contraste: texto >= 4.5:1; bordes de campo >= 3:1; foco con contorno de 3 px.
+ */
+.pantalla-acceso {
+  --acceso-tinta: #172033;
+  --acceso-titulo: #0b2559;
+  --acceso-secundario: #5b6578;
+  --acceso-marca-texto: #465267;
+  --acceso-lema: #0e6f84;
+  --acceso-panel: #f3f7fc;
+  --acceso-linea: #e2e7ee;
+  --acceso-borde-campo: #8591a5;
+  --acceso-acento: #1d4ed8;
+  --acceso-acento-hover: #1e3a8a;
+  --acceso-error: #b42318;
+
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: auto 1fr auto;
+  grid-template-areas:
+    "marca"
+    "columna"
+    "pie";
+  min-height: 100vh;
+  min-height: 100dvh;
+  color: var(--acceso-tinta);
+  background-color: #ffffff;
+  font-family: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  line-height: 1.5;
+}
+
+.pantalla-acceso a {
+  color: var(--acceso-acento);
+}
+
+.pantalla-acceso a:hover {
+  color: var(--acceso-acento-hover);
+}
+
+/* Foco visible: contorno sólido, no solo un cambio de color. */
+.pantalla-acceso :focus-visible {
+  outline: 3px solid var(--acceso-acento);
+  outline-offset: 2px;
+  box-shadow: none;
+}
+
+/* ------------------------------------------------------------------ panel de marca */
+.acceso-marca {
+  grid-area: marca;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 20px 24px 16px;
+  color: var(--acceso-marca-texto);
+  background-color: var(--acceso-panel);
+  border-bottom: 1px solid var(--acceso-linea);
+}
+
+.acceso-marca__logo {
+  display: block;
+  width: 150px;
+  height: auto;
+  /* PNG con fondo transparente y recortado al contenido: pensado para fondos claros. */
+}
+
+/* Texto de marca y ciclo: solo con dos columnas. */
+.acceso-marca__detalle {
+  display: none;
+}
+
+.acceso-marca__lema {
+  margin: 0;
+  color: var(--acceso-lema);
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.acceso-marca__titular {
+  margin: 0;
+  color: var(--acceso-titulo);
+  font-size: 38px;
+  font-weight: 700;
+  line-height: 1.15;
+}
+
+.acceso-marca__texto {
+  margin: 0;
+  font-size: 17px;
+  line-height: 1.55;
+}
+
+.acceso-ciclo {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 22px;
+  margin: 10px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.acceso-ciclo__etapa {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  color: var(--acceso-marca-texto);
+  background-color: #ffffff;
+  border: 1px solid #cfd6df;
+  border-radius: 999px;
+  font-size: 13px;
+}
+
+/* Conector entre etapas: decorativo. */
+.acceso-ciclo__etapa:not(:last-child)::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  right: -18px;
+  width: 14px;
+  height: 1px;
+  background-color: #b9c3d1;
+}
+
+.acceso-ciclo__etapa--final {
+  color: #ffffff;
+  background-color: var(--acceso-titulo);
+  border-color: var(--acceso-titulo);
+  font-weight: 600;
+}
+
+/* ------------------------------------------------------------------ columna del formulario */
+.acceso-columna {
+  grid-area: columna;
+  display: flex;
+  justify-content: center;
+  min-width: 0;
+  padding: 24px 24px 20px;
+  background-color: #ffffff;
+}
+
+.acceso-formulario {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  width: 100%;
+  max-width: 400px;
+  min-width: 0;
+}
+
+.acceso-cabecera {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.acceso-cabecera h1 {
+  margin: 0;
+  color: var(--acceso-titulo);
+  font-size: 24px;
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+.acceso-cabecera p {
+  margin: 0;
+  color: var(--acceso-secundario);
+  font-size: 15px;
+}
+
+.acceso-form {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.acceso-campo {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.acceso-etiqueta-fila {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0 8px;
+}
+
+.acceso-etiqueta {
+  font-size: 14px;
+  font-weight: 600;
+}
+
+/* Campos de 48 px; a 16 px en móvil para que iOS no amplíe la página al enfocar. */
+.acceso-entrada,
+.acceso-contrasena {
+  height: 48px;
+  color: var(--acceso-tinta);
+  background-color: #ffffff;
+  border: 1px solid var(--acceso-borde-campo);
+  border-radius: 8px;
+  font-size: 16px;
+}
+
+.acceso-entrada {
+  width: 100%;
+  min-width: 0;
+  padding: 0 14px;
+}
+
+.acceso-entrada::placeholder {
+  color: #6b7385;
+  opacity: 1;
+}
+
+.acceso-entrada:focus-visible {
+  border-radius: 8px;
+}
+
+.acceso-contrasena {
+  display: flex;
+  align-items: center;
+}
+
+.acceso-contrasena__entrada {
+  flex: 1;
+  min-width: 0;
+  height: 46px;
+  padding: 0 14px;
+  color: inherit;
+  background-color: transparent;
+  border: 0;
+  border-radius: 8px;
+  font: inherit;
+}
+
+/* El contorno de foco va en el campo completo, no en el input interior. */
+.pantalla-acceso .acceso-contrasena__entrada:focus-visible {
+  outline: none;
+}
+
+.acceso-contrasena:has(.acceso-contrasena__entrada:focus-visible) {
+  outline: 3px solid var(--acceso-acento);
+  outline-offset: 2px;
+  border-color: var(--acceso-acento);
+}
+
+.acceso-contrasena__ojo {
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 46px;
+  height: 46px;
+  color: var(--acceso-marca-texto);
+  background-color: transparent;
+  border: 0;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.acceso-contrasena__ojo:hover {
+  color: var(--acceso-titulo);
+  background-color: #eef2f8;
+}
+
+.pantalla-acceso .acceso-contrasena__ojo:focus-visible {
+  border-radius: 6px;
+  outline-offset: -2px;
+}
+
+/* Campo con error: borde rojo de 2 px (sin cambiar el alto) y el icono del mensaje. */
+.acceso-entrada[aria-invalid="true"],
+.acceso-contrasena--invalida {
+  border-color: var(--acceso-error);
+  box-shadow: inset 0 0 0 1px var(--acceso-error);
+}
+
+/* Enviando: el campo se ve atenuado pero conserva el texto legible. */
+.acceso-entrada--ocupada,
+.acceso-contrasena--ocupada {
+  color: var(--acceso-secundario);
+  background-color: #f8fafc;
+  border-color: var(--acceso-linea);
+}
+
+.acceso-error {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  margin: 0;
+  color: var(--acceso-error);
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1.4;
+}
+
+.acceso-error svg {
+  flex: none;
+  margin-top: 1px;
+}
+
+.acceso-ayuda {
+  margin: 0;
+  color: var(--acceso-secundario);
+  font-size: 13px;
+}
+
+.acceso-enlace-secundario {
+  display: inline-flex;
+  align-items: center;
+  /* Zona táctil de 44 px sin agrandar la fila de la etiqueta. */
+  min-height: 44px;
+  margin: -12px 0;
+  font-size: 14px;
+  font-weight: 500;
+  text-decoration: none;
+}
+
+.acceso-enlace-secundario:hover,
+.acceso-enlace-secundario:focus-visible,
+.acceso-enlace-verificar:hover,
+.acceso-enlace-verificar:focus-visible {
+  text-decoration: underline;
+}
+
+.acceso-boton {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  min-height: 48px;
+  margin-top: 4px;
+  padding: 0 16px;
+  color: #ffffff;
+  background-color: var(--acceso-acento);
+  border: 0;
+  border-radius: 8px;
+  font-size: 16px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.acceso-boton:hover:not(:disabled) {
+  background-color: var(--acceso-acento-hover);
+}
+
+.acceso-boton:disabled {
+  cursor: progress;
+}
+
+.pantalla-acceso .acceso-boton:focus-visible {
+  border-radius: 8px;
+}
+
+.acceso-spinner {
+  flex: none;
+  animation: acceso-giro 0.8s linear infinite;
+}
+
+@keyframes acceso-giro {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .acceso-spinner {
+    animation-duration: 2.4s;
+  }
+}
+
+/* Solo para lectores de pantalla: 1 px (no display:none) para que siga en el árbol de accesibilidad. */
+.acceso-solo-lector {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  border: 0;
+  clip: rect(0 0 0 0);
+  clip-path: inset(50%);
+}
+
+/* ------------------------------------------------------------------ mensajes */
+.acceso-alerta {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 12px;
+  border-radius: 8px;
+  font-size: 14px;
+  line-height: 1.45;
+}
+
+.acceso-alerta__icono {
+  flex: none;
+  margin-top: 1px;
+}
+
+.acceso-alerta--error {
+  color: #8f1c13;
+  background-color: #fde8e8;
+}
+
+.acceso-alerta--aviso {
+  color: #6b4600;
+  background-color: #fff3d6;
+}
+
+.acceso-alerta--exito {
+  color: #0f5c38;
+  background-color: #e5f6ec;
+}
+
+.pantalla-acceso .acceso-alerta a {
+  color: inherit;
+  font-weight: 600;
+  text-decoration: underline;
+}
+
+.acceso-nota {
+  margin: 0;
+  padding-top: 20px;
+  color: var(--acceso-secundario);
+  border-top: 1px solid var(--acceso-linea);
+  font-size: 14px;
+}
+
+.acceso-volver {
+  display: inline-flex;
+  align-items: center;
+  align-self: flex-start;
+  gap: 8px;
+  min-height: 44px;
+  font-size: 15px;
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.acceso-volver:hover,
+.acceso-volver:focus-visible {
+  text-decoration: underline;
+}
+
+/* ------------------------------------------------------------------ enlace al verificador */
+.acceso-pie {
+  grid-area: pie;
+  margin: 0 24px;
+  padding: 8px 0 12px;
+  border-top: 1px solid var(--acceso-linea);
+}
+
+.acceso-enlace-verificar {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 44px;
+  font-size: 15px;
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.acceso-enlace-verificar svg {
+  flex: none;
+}
+
+/* ------------------------------------------------------------------ dos columnas */
+@media (min-width: 1024px) {
+  .pantalla-acceso {
+    grid-template-columns: minmax(0, 1.09fr) minmax(0, 1fr);
+    grid-template-rows: 1fr auto;
+    grid-template-areas:
+      "marca columna"
+      "pie columna";
+  }
+
+  .acceso-marca {
+    align-items: stretch;
+    gap: 36px;
+    padding: 40px 56px 0;
+    border-right: 1px solid var(--acceso-linea);
+    border-bottom: 0;
+  }
+
+  .acceso-marca__logo {
+    width: 240px;
+  }
+
+  .acceso-marca__detalle {
+    display: flex;
+    flex-direction: column;
+    gap: 18px;
+    max-width: 520px;
+    /* Centrado entre el logo y el enlace del pie. */
+    margin-block: auto;
+  }
+
+  .acceso-columna {
+    align-items: center;
+    padding: 48px 32px;
+  }
+
+  .acceso-formulario {
+    gap: 28px;
+  }
+
+  .acceso-cabecera {
+    gap: 8px;
+  }
+
+  .acceso-cabecera h1 {
+    font-size: 28px;
+  }
+
+  .acceso-entrada,
+  .acceso-contrasena {
+    font-size: 15px;
+  }
+
+  .acceso-pie {
+    display: flex;
+    align-items: flex-end;
+    margin: 0;
+    padding: 0 56px 40px;
+    background-color: var(--acceso-panel);
+    border-top: 0;
+    border-right: 1px solid var(--acceso-linea);
+  }
+}
+
+/* Enlace con aspecto de botón principal (p. ej. «Solicitar un enlace nuevo»). */
+.pantalla-acceso .acceso-boton--enlace {
+  color: #ffffff;
+  text-decoration: none;
+}
+
+.pantalla-acceso .acceso-boton--enlace:hover {
+  color: #ffffff;
+  background-color: var(--acceso-acento-hover);
+}
+
+.acceso-estado {
+  margin: 0;
+  color: var(--acceso-secundario);
+  font-size: 15px;
+}

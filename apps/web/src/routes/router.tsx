@@ -9,6 +9,8 @@ import { HduDetailPage } from "@/pages/hdu/HduDetailPage";
 import { LoginPage } from "@/pages/LoginPage";
 import { PerfilPage } from "@/pages/PerfilPage";
 import { PortalRedirect } from "@/pages/PortalRedirect";
+import { RecuperarContrasenaPage } from "@/pages/RecuperarContrasenaPage";
+import { RestablecerContrasenaPage } from "@/pages/RestablecerContrasenaPage";
 import { VerificarCertificadoPage } from "@/pages/VerificarCertificadoPage";
 import { QaHduListPage } from "@/pages/qa/QaHduListPage";
 import { QaInicioPage } from "@/pages/qa/QaInicioPage";
@@ -23,6 +25,9 @@ export function AppRoutes() {
   return (
     <Routes>
       <Route path="/login" element={<LoginPage />} />
+      {/* E1-F13 (públicas): pedir el enlace y restablecer la contraseña desde el correo. */}
+      <Route path="/recuperar-contrasena" element={<RecuperarContrasenaPage />} />
+      <Route path="/restablecer-contrasena" element={<RestablecerContrasenaPage />} />
       {/* Pública (D21): cualquiera con el folio verifica un certificado. */}
       <Route path="/verificar" element={<VerificarCertificadoPage />} />
       <Route path="/verificar/:folio" element={<VerificarCertificadoPage />} />

@@ -36,7 +36,7 @@ npm run lint -w apps/web
 
 Con `VITE_USAR_MOCKS=true`:
 
-- El login **no** llama a Supabase: valida contra los usuarios de `src/mocks/data.ts` (`src/auth/mockAuthProvider.ts`).
+- El login **no** llama a Supabase: valida contra los usuarios de `src/mocks/data.ts` (`src/auth/mockAuthProvider.ts`). Las pruebas pueden simular `DEMASIADOS_INTENTOS`, `SERVICIO_NO_DISPONIBLE`, enlaces de recuperación vencidos y latencia con `simularAccesoMock`.
 - Todas las rutas `/v1/*` del gateway están simuladas en `src/mocks/handlers.ts`, con ámbito por rol, paginación, y los códigos de error del contrato (`VALIDACION`, `ACCESO_DENEGADO`, `SESION_EXPIRADA`, `CORREO_DUPLICADO`, `CODIGO_HDU_DUPLICADO`, `TRANSICION_INVALIDA`, `CHECKLIST_NO_DISPONIBLE`/`CHECKLIST_INCOMPLETO`, `MOTIVO_REQUERIDO`, `ANALISTA_FUERA_DE_EQUIPO`, etc.).
 - D11: el bloque `checklist` del detalle de HDU siempre responde `indisponible`, y el cierre (`CERRADA`) siempre se rechaza (`CHECKLIST_NO_DISPONIBLE`), salvo el flag interno `simularChecklistIncompleto` usado solo en pruebas para mostrar el mensaje `CHECKLIST_INCOMPLETO`.
 
@@ -71,7 +71,8 @@ src/
 
 | HDU | Pantalla(s) |
 | --- | --- |
-| E1-F01 | `pages/LoginPage.tsx` |
+| E1-F01 (+ avisos de E1-B01#2/#3 y E1-B11#1) | `pages/LoginPage.tsx` sobre `components/acceso/AccesoLayout.tsx` (pantalla dividida, IBM Plex Sans solo con la clase `.pantalla-acceso`, estilos en `styles/acceso.css`) |
+| E1-F13 · recuperación de contraseña | `pages/RecuperarContrasenaPage.tsx` (`/recuperar-contrasena`) y `pages/RestablecerContrasenaPage.tsx` (`/restablecer-contrasena`), ambas públicas y con el mismo layout |
 | E1-F02, F05, F07 | `routes/router.tsx` (guardas), `pages/PortalRedirect.tsx`, `components/Layout.tsx` |
 | E1-F03 | `pages/qe/QeInicioPage.tsx` |
 | E1-F04 | `pages/qe/QeEquipoPage.tsx` |
@@ -108,7 +109,7 @@ Patrón `tarjeta-<id>` (`components/TarjetaMetrica.tsx`): `tarjeta-equipo`, `tar
 
 ### Errores y avisos puntuales
 
-`error-login`, `aviso-sesion` (SESION_EXPIRADA), `indicador-ingresando`, `error-codigo-hdu` (E2-F01#3, duplicado junto al campo código), `error-correo-duplicado`, `error-cambio-rol`, `error-cambio-estado-usuario`, `error-supervision`, `aviso-sin-cambios-supervision`, `relacion-vigente-supervision`, `error-asignacion-analista`, `aviso-sin-cambios` (HDU), `valor-analista-hdu`, `checklist-no-disponible`, `acceso-denegado`, y en el cambio de estado de HDU: `error-transicion-invalida`, `error-checklist-no-disponible`, `error-checklist-incompleto` (distintos entre sí, ver `pages/hdu/HduDetailPage.tsx`).
+`error-login` (con `data-tipo` = `credenciales`, `demasiados-intentos` o `servicio`), `aviso-sesion` (SESION_EXPIRADA), `indicador-ingresando`, y en la recuperación de contraseña (E1-F13): `enlace-recuperar`, `confirmacion-recuperacion`, `error-recuperacion`, `indicador-enviando`, `enlace-volver-login`, `verificando-enlace`, `enlace-invalido`, `enlace-solicitar-nuevo`, `error-restablecer` (`data-tipo`: `misma-contrasena`, `contrasena-debil`, `demasiados-intentos`, `servicio`, `desconocido`), `indicador-guardando`, `aviso-contrasena-actualizada`, `error-codigo-hdu` (E2-F01#3, duplicado junto al campo código), `error-correo-duplicado`, `error-cambio-rol`, `error-cambio-estado-usuario`, `error-supervision`, `aviso-sin-cambios-supervision`, `relacion-vigente-supervision`, `error-asignacion-analista`, `aviso-sin-cambios` (HDU), `valor-analista-hdu`, `checklist-no-disponible`, `acceso-denegado`, y en el cambio de estado de HDU: `error-transicion-invalida`, `error-checklist-no-disponible`, `error-checklist-incompleto` (distintos entre sí, ver `pages/hdu/HduDetailPage.tsx`).
 
 ## Diferencias con el contrato / pendientes
 
