@@ -62,6 +62,12 @@ Mitigaciones en uso y recomendadas:
 3. **Token vencido → 401 `SESION_EXPIRADA`** (E1-B11#1), distinto de `NO_AUTENTICADO`, para que el portal mande al login en vez de mostrar «acceso denegado».
 4. El portal limpia su caché al cerrar sesión; el token no se guarda en cookies del gateway.
 
+Comportamiento observado con Supabase Auth local (GoTrue v2.196.0), cubierto por `tests/api/e1-b11-sesion.spec.ts`:
+
+- `signOut()` sin opciones usa alcance **global**: revoca el refresh token de **todas** las sesiones del usuario (`400 refresh_token_not_found`), no solo la del navegador.
+- Tras el cierre, el proveedor ya no reconoce el access token (`GET /auth/v1/user` → `403 session_not_found`), pero el gateway lo sigue aceptando hasta su `exp` porque no consulta al proveedor en cada solicitud.
+- Desactivar a un usuario en Organización **no** lo banea en Supabase Auth: puede iniciar sesión y renovar en el proveedor, pero todo `/v1/*` le responde 403 `ACCESO_DENEGADO`.
+
 ## Seguridad del borde
 
 - **CORS** solo para los orígenes de `PORTAL_ORIGENES`; cualquier otro no recibe cabeceras CORS.

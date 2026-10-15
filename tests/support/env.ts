@@ -55,6 +55,9 @@ export const env = {
   ),
   gatewayUrl: process.env.GATEWAY_URL ?? envWeb.VITE_GATEWAY_URL ?? "http://localhost:3000",
   portalUrl: process.env.PORTAL_URL ?? "http://localhost:5173",
+  // Mailpit de Supabase local ([local_smtp] de infrastructure/supabase/config.toml):
+  // recibe los correos de Auth (invitaciones y recuperación de contraseña).
+  mailpitUrl: process.env.MAILPIT_URL ?? "http://127.0.0.1:54324",
 
   // Segunda instancia (gateway + portal) para simular una fuente caída, solo
   // usada por los escenarios que lo requieren (E1-F03#3, E1-F06#3, E1-F08#2,

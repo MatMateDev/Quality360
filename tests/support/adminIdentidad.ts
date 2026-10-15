@@ -26,3 +26,35 @@ export async function fijarContrasena(userId: string, contrasena: string): Promi
     throw new Error(`No fue posible fijar la contraseña de prueba para ${userId}: ${respuesta.status} ${texto}`);
   }
 }
+
+function cabecerasAdmin(): Record<string, string> {
+  if (!env.supabaseServiceRoleKey) {
+    throw new Error("Falta SUPABASE_SERVICE_ROLE_KEY (services/organizacion/.env) para la Admin API de Supabase Auth.");
+  }
+  return {
+    apikey: env.supabaseServiceRoleKey,
+    Authorization: `Bearer ${env.supabaseServiceRoleKey}`,
+    "Content-Type": "application/json",
+  };
+}
+
+/**
+ * Crea una cuenta que existe SOLO en Supabase Auth (sin registro en
+ * Organización), con correo confirmado. Para probar que el gateway la trata
+ * igual que a un usuario desactivado (E1-B01#2). Elimínala con `eliminarCuenta`.
+ */
+export async function crearCuentaSoloEnProveedor(correo: string, contrasena: string): Promise<string> {
+  const respuesta = await fetch(`${env.supabaseUrl}/auth/v1/admin/users`, {
+    method: "POST",
+    headers: cabecerasAdmin(),
+    body: JSON.stringify({ email: correo, password: contrasena, email_confirm: true }),
+  });
+  const texto = await respuesta.text();
+  if (!respuesta.ok) throw new Error(`No fue posible crear la cuenta de prueba ${correo}: ${respuesta.status} ${texto}`);
+  return (JSON.parse(texto) as { id: string }).id;
+}
+
+/** Elimina una cuenta de Supabase Auth creada por una prueba. */
+export async function eliminarCuenta(userId: string): Promise<void> {
+  await fetch(`${env.supabaseUrl}/auth/v1/admin/users/${userId}`, { method: "DELETE", headers: cabecerasAdmin() });
+}

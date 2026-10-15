@@ -158,7 +158,24 @@ site_url = "http://127.0.0.1:5173"
 # The public URL that Auth serves on. Defaults to the API external URL with `/auth/v1` appended.
 # external_url = ""
 # A list of *exact* URLs that auth providers are permitted to redirect to post authentication.
-additional_redirect_urls = ["http://127.0.0.1:5173", "http://127.0.0.1:8080"]
+# RECUPERACION: el portal pide el correo de recuperación con
+# redirectTo = origin + "/restablecer-contrasena". Se admiten los dos nombres
+# del host local (127.0.0.1 y localhost) para el portal de desarrollo (5173) y
+# el de Compose (8080). Los comodines `/**` cubren la ruta con query string.
+additional_redirect_urls = [
+  "http://127.0.0.1:5173",
+  "http://127.0.0.1:8080",
+  "http://localhost:5173",
+  "http://localhost:8080",
+  "http://127.0.0.1:5173/restablecer-contrasena",
+  "http://localhost:5173/restablecer-contrasena",
+  "http://127.0.0.1:8080/restablecer-contrasena",
+  "http://localhost:8080/restablecer-contrasena",
+  "http://127.0.0.1:5173/**",
+  "http://localhost:5173/**",
+  "http://127.0.0.1:8080/**",
+  "http://localhost:8080/**",
+]
 # How long tokens are valid for, in seconds. Defaults to 3600 (1 hour), maximum 604,800 (1 week).
 jwt_expiry = 3600
 # JWT issuer URL. If not set, defaults to auth.external_url.
