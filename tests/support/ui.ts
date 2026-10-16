@@ -15,7 +15,7 @@ const ESPERA_LIMITE_TASA_MS = 12_000;
 export async function iniciarSesionUI(page: Page, correo: string, contrasena: string, baseURL = env.portalUrl) {
   await page.goto(`${baseURL}/login`);
   await page.getByLabel("Correo electrónico").fill(correo);
-  await page.getByLabel("Contraseña").fill(contrasena);
+  await page.getByLabel("Contraseña", { exact: true }).fill(contrasena);
   await page.getByRole("button", { name: "Ingresar" }).click();
 }
 

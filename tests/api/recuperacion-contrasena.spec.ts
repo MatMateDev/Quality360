@@ -1,7 +1,7 @@
 import { expect, test } from "@playwright/test";
-import { fijarContrasena } from "../support/adminIdentidad";
+import { eliminarCuenta, fijarContrasena } from "../support/adminIdentidad";
 import { api, iniciarSesion } from "../support/api";
-import { enlaceDeVerificacion, esperarCorreoNuevo, idsRecibidos } from "../support/correoLocal";
+import { borrarCorreos, enlaceDeVerificacion, esperarCorreoNuevo, idsRecibidos } from "../support/correoLocal";
 import { env } from "../support/env";
 import { crearUsuario } from "../support/fixtures";
 import { correoUnico, nombreUnico } from "../support/unique";
@@ -86,12 +86,14 @@ test.describe("E1-B13 · Recuperación de contraseña con Supabase Auth", () => 
   test.describe.configure({ mode: "serial" });
 
   let usuarioId = "";
+  let tokenAdmin = "";
 
   test.beforeAll(async ({ request }) => {
     // Alta real por Organización (invitación) y contraseña inicial fijada con
     // la Admin API, como si el usuario ya hubiera aceptado la invitación.
     const admin = await iniciarSesion(USUARIOS_SEMILLA.patricia.correo, env.contrasenaDemo);
-    const creado = await crearUsuario(request, admin.accessToken, {
+    tokenAdmin = admin.accessToken;
+    const creado = await crearUsuario(request, tokenAdmin, {
       nombre: nombreUnico("Recupera Clave"),
       correo: correoUnico("recupera-clave"),
       rol: "ANALISTA_QA",
@@ -99,6 +101,16 @@ test.describe("E1-B13 · Recuperación de contraseña con Supabase Auth", () => 
     usuarioId = creado.id;
     USUARIO.correo = creado.correo;
     await fijarContrasena(usuarioId, CONTRASENA_INICIAL);
+  });
+
+  test.afterAll(async ({ request }) => {
+    // Limpieza (D11): la cuenta de la prueba se desactiva en Organización, se elimina de Supabase Auth y se
+    // vacía su buzón de Mailpit, para que cada ejecución no deje un usuario más.
+    if (usuarioId) {
+      await api.patch(request, `/v1/usuarios/${usuarioId}`, { token: tokenAdmin, body: { activo: false } }).catch(() => undefined);
+      await eliminarCuenta(usuarioId).catch(() => undefined);
+    }
+    if (USUARIO.correo) await borrarCorreos(USUARIO.correo);
   });
 
   /** Deja la contraseña inicial conocida antes de cada escenario que la necesita. */
