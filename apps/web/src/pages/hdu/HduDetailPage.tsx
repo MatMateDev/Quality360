@@ -247,11 +247,10 @@ export function HduDetailPage() {
                       {evento.estadoAnterior ? ` de ${ETIQUETAS_ESTADO_HDU[evento.estadoAnterior]}` : ""} a{" "}
                       {ETIQUETAS_ESTADO_HDU[evento.estadoNuevo]}.
                     </p>
-                  ) : (evento as { tipo: string }).tipo === "QE_RESPONSABLE" ? (
+                  ) : evento.tipo === "QE_RESPONSABLE" ? (
                     <p>
-                      {evento.actor.nombre} reasignó el QE responsable
-                      {eventoQe(evento).antes ? ` (antes ${eventoQe(evento).antes})` : ""} a {eventoQe(evento).nuevo}
-                      {eventoQe(evento).motivo ? ` — Motivo: ${eventoQe(evento).motivo}` : ""}.
+                      {evento.actor.nombre} reasignó el QE responsable (antes {evento.qeAnterior.nombre}) a {evento.qeNuevo.nombre}
+                      {` — Motivo: ${evento.motivo}`}.
                     </p>
                   ) : (
                     <p>
@@ -317,7 +316,3 @@ export function HduDetailPage() {
  * Evento de reasignación del QE responsable en el historial. El contrato aún no lo declara
  * (PENDIENTE: tipar al regenerar los tipos al integrar E7-B05); se lee de forma defensiva.
  */
-function eventoQe(evento: unknown): { antes: string | null; nuevo: string; motivo: string | null } {
-  const e = evento as { qeAnterior?: { nombre: string } | null; qeNuevo?: { nombre: string }; motivo?: string | null };
-  return { antes: e.qeAnterior?.nombre ?? null, nuevo: e.qeNuevo?.nombre ?? "otro QE", motivo: e.motivo ?? null };
-}

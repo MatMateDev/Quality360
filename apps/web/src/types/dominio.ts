@@ -90,23 +90,9 @@ export type CelulasLider = components["schemas"]["CelulasLider"];
 export type SolicitudCelulasLider = components["schemas"]["SolicitudCelulasLider"];
 export type ErrorRelacionesIncompatibles = components["schemas"]["ErrorRelacionesIncompatibles"];
 
-/**
- * Reasignación del QE responsable de una HDU (E7-B05, solo Administrador). Declarado a mano porque el
- * contrato aún no trae `PUT /v1/hdu/{id}/qe-responsable`.
- * PENDIENTE: reemplazar por `components["schemas"][...]` al regenerar los tipos al integrar.
- */
-export interface ReasignacionQeResponsable {
-  qeResponsableId: string;
-  /** Obligatorio, 3 a 500 caracteres. */
-  motivo: string;
-}
-export interface ResultadoReasignacionQe {
-  cambio: boolean;
-  hdu: HduResumen;
-  qeAnterior: UsuarioResumen;
-  qeNuevo: UsuarioResumen;
-  motivo: string;
-}
+/** Reasignación del QE responsable de una HDU (E7-B05, D54, solo Administrador). */
+export type ReasignacionQeResponsable = components["schemas"]["ReasignacionQeResponsable"];
+export type ResultadoReasignacionQe = components["schemas"]["ResultadoReasignacionQe"];
 
 /** Orden de los selectores de rol (diseño E7 §3.1). */
 export const ROLES_CATALOGO: Rol[] = ["ANALISTA_QA", "QE", "LIDER_QA", "ADMINISTRADOR", "AUDITOR"];
