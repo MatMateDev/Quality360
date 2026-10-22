@@ -144,7 +144,10 @@ describe('Lectura total del Auditor [E7-B02#2]', () => {
     assert.equal(mezcla.status, 403);
     assert.equal(mezcla.body.codigo, 'ACCESO_DENEGADO');
     assert.equal('items' in mezcla.body, false, 'sin datos parciales');
-    await http().post('/v1/interno/hdu/consulta').set(como(f.aud1)).send({ hduIds: [f.h.H4.id, INEXISTENTE] }).expect(403);
+    await http().post('/v1/interno/hdu/consulta').set(como(f.lid1)).send({ hduIds: [f.h.H1.id, INEXISTENTE] }).expect(403);
+    // Ámbito total (D55): el id desconocido se omite en vez de tumbar el lote.
+    const conHuerfana = await http().post('/v1/interno/hdu/consulta').set(como(f.aud1)).send({ hduIds: [f.h.H4.id, INEXISTENTE] }).expect(200);
+    assert.deepEqual(conHuerfana.body.items.map((hdu: { id: string }) => hdu.id), [f.h.H4.id]);
     const auditor = await http().post('/v1/interno/hdu/consulta').set(como(f.aud1)).send({ hduIds: [f.h.H4.id, f.h.H8.id] }).expect(200);
     assert.equal(auditor.body.items.length, 2);
   });

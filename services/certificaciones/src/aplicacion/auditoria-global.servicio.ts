@@ -25,6 +25,17 @@ export interface ExportacionTabular {
   readonly filas: Celda[][];
 }
 
+const TITULO_NO_DISPONIBLE = 'HDU no disponible en Organización';
+
+/**
+ * Representación de una HDU que Organización no conoce (D55). `HduReferencia` exige los cuatro
+ * campos, así que `estado` es un valor de relleno (`PENDIENTE`) y lo que marca la ausencia es el
+ * código y el título.
+ */
+function hduNoDisponible(id: string) {
+  return { id, codigo: '(HDU no disponible)', titulo: TITULO_NO_DISPONIBLE, estado: 'PENDIENTE' as const };
+}
+
 function excedeLimite(limite: number): ExcepcionQ360 {
   return new ExcepcionQ360(422, 'EXPORTACION_EXCEDE_LIMITE', {
     mensaje: `La exportación supera las ${limite.toLocaleString('es-CL')} filas. Acota los filtros.`,
@@ -103,8 +114,8 @@ export class AuditorAplicacion {
         const hdu = hdus.get(evento.hduId);
         return [
           evento.fecha,
-          hdu?.codigo ?? evento.hduId,
-          hdu?.titulo ?? null,
+          hdu?.codigo ?? `(HDU no disponible: ${evento.hduId})`,
+          hdu?.titulo ?? TITULO_NO_DISPONIBLE,
           NOMBRES_ENTREGABLE[evento.clave],
           evento.accion,
           evento.actorNombre,
@@ -151,7 +162,7 @@ export class AuditorAplicacion {
   ) {
     return {
       id: evento.id,
-      hdu: { id: evento.hduId, codigo: hdu?.codigo ?? evento.hduId, titulo: hdu?.titulo ?? '', estado: hdu?.estado ?? 'PENDIENTE' },
+      hdu: hdu === undefined ? hduNoDisponible(evento.hduId) : { id: evento.hduId, codigo: hdu.codigo, titulo: hdu.titulo, estado: hdu.estado },
       accion: evento.accion,
       clave: evento.clave,
       nombreEntregable: NOMBRES_ENTREGABLE[evento.clave],

@@ -594,7 +594,10 @@ paths:
         Solo rol `AUDITOR` (E7-B04#2). Del más reciente al más antiguo, con la
         HDU de cada evento (código y título de `POST /v1/interno/hdu/consulta`
         de Organización). Un filtro sin coincidencias → 200 con `items` vacío
-        y `total` 0. Si Organización no responde, 503 (no se muestran eventos
+        y `total` 0. Un evento cuya HDU Organización no conoce (D55) se muestra
+        con `hdu.codigo` «(HDU no disponible)», `hdu.titulo` «HDU no disponible
+        en Organización» y `hdu.estado` `PENDIENTE` como relleno. Si
+        Organización no responde, 503 (no se muestran eventos
         sin su HDU).
       x-roles: [AUDITOR]
       x-hdu: [E7-F06#1, E7-F06#2, E7-F06#3, E7-B04#1, E7-B04#2]

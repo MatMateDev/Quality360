@@ -147,7 +147,8 @@ export class CelulaLiderPrismaRepositorio implements CelulaLiderRepositorio {
 
   async celulasActivasSinLider(): Promise<CatalogoRef[]> {
     return this.prisma.celula.findMany({
-      where: { activo: true, lideres: { none: { hasta: null } } },
+      // Un Líder desactivado no cuenta como líder: sus asignaciones se conservan, sin retirarlas (D55).
+      where: { activo: true, lideres: { none: { hasta: null, usuario: { activo: true } } } },
       select: { id: true, nombre: true },
       orderBy: { nombre: 'asc' },
     });

@@ -2407,7 +2407,7 @@ components:
       properties:
         items:
           type: array
-          description: Una por id pedido, en el mismo orden.
+          description: Una por id pedido que exista, en el mismo orden (D55, con ámbito total se omiten los ids desconocidos).
           items:
             $ref: '#/components/schemas/HduParaCertificacion'
     ListaSeguimientoHdu:

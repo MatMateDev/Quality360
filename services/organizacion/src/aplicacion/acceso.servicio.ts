@@ -87,18 +87,25 @@ export class AccesoAplicacion {
 
   /**
    * Datos de varias HDU del ámbito del usuario (D47). Si algún id está fuera de ámbito o no
-   * existe, 403 completo sin datos parciales (D12).
+   * existe, 403 completo sin datos parciales (D12); Administrador y Auditor, que leen todo,
+   * reciben solo las que existen (D55).
    */
   async consultarLote(ids: readonly string[], rol: Rol, actorId: string, ambito: AmbitoAcceso): Promise<{ items: HduParaCertificacion[] }> {
     const encontradas = await this.hdus.buscarPorIds(ids);
     const porId = new Map(encontradas.map((hdu) => [hdu.id, hdu]));
+    // Con ámbito total (Administrador y Auditor) un id desconocido no tumba el lote: se omite y quien
+    // llama lo muestra como «HDU no disponible» (D55). Con ámbito restringido sigue el 403 completo.
+    const ambitoTotal = filtroAmbitoHdu(rol, actorId, ambito).tipo === 'TODAS';
+    const presentes: Hdu[] = [];
     for (const id of ids) {
       const hdu = porId.get(id);
+      if (hdu === undefined && ambitoTotal) continue;
       if (hdu === undefined || !evaluarAccesoHdu(rol, actorId, ambito, hdu).permitido) {
         throw accesoDenegado('lote con una HDU fuera de ámbito o inexistente');
       }
+      presentes.push(hdu);
     }
-    const resumenes = await this.hduAplicacion.resumir(ids.map((id) => porId.get(id) as Hdu));
+    const resumenes = await this.hduAplicacion.resumir(presentes);
     return { items: resumenes.map(paraCertificacion) };
   }
 

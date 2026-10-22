@@ -76,6 +76,8 @@ export interface OrganizacionFalsa {
   responder(cuerpo: unknown, estado?: number): void;
   /** Registra una HDU nueva: QE responsable `qe`, analista `analista`, EN_EJECUCION. */
   nuevaHdu(cambios?: Partial<HduFalsa>): HduFalsa;
+  /** Organización deja de conocer la HDU (huérfana: el checklist conserva sus eventos). */
+  olvidarHdu(id: string): void;
   cerrar(): Promise<void>;
 }
 
@@ -144,7 +146,9 @@ export async function iniciarOrganizacionFalsa(): Promise<OrganizacionFalsa> {
     if (ruta === '/v1/interno/hdu/consulta' && peticion.method === 'POST') {
       return conCuerpo((cuerpo) => {
         if (estado.fallarConsulta) return enviar(500, { codigo: 'ERROR_INTERNO' });
-        const pedidas = (cuerpo.hduIds as string[]).map((id) => hdus.get(id));
+        let pedidas = (cuerpo.hduIds as string[]).map((id) => hdus.get(id));
+        // Como Organización (D55): con ámbito total se omiten las desconocidas; si no, 403 completo.
+        if (persona.rol === 'ADMINISTRADOR' || persona.rol === 'AUDITOR') pedidas = pedidas.filter((hdu) => hdu !== undefined);
         if (pedidas.some((hdu) => hdu === undefined || relacionCon(persona, hdu) === null)) return enviar(403, { codigo: 'ACCESO_DENEGADO' });
         enviar(200, { items: pedidas.map((hdu) => vista(hdu as HduFalsa)) });
       });
@@ -198,6 +202,9 @@ export async function iniciarOrganizacionFalsa(): Promise<OrganizacionFalsa> {
     url: `http://127.0.0.1:${direccion.port}`,
     responder: (cuerpo, estado = 200) => {
       forzada = cuerpo === null ? null : { cuerpo, estado };
+    },
+    olvidarHdu: (id) => {
+      hdus.delete(id);
     },
     nuevaHdu: (cambios = {}) => {
       contador += 1;

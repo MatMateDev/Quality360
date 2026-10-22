@@ -374,6 +374,34 @@ describe('Consultas del Auditor [E7-B04#1]', () => {
   });
 });
 
+describe('HDU que Organización no conoce en la bitácora global [DEF-02, D55]', () => {
+  it('la página con eventos de una HDU desconocida responde 200: esa HDU sale como «no disponible» y las demás conservan sus datos', async () => {
+    const conocida = organizacion.nuevaHdu();
+    const huerfana = organizacion.nuevaHdu();
+    await llamar('analista', 'post', `/v1/hdu/${conocida.id}/entregables/PLAN_PRUEBAS/marcar`, enlace);
+    await llamar('analista', 'post', `/v1/hdu/${huerfana.id}/entregables/PLAN_PRUEBAS/marcar`, enlace);
+    organizacion.olvidarHdu(huerfana.id);
+
+    const respuesta = await llamar('auditor', 'get', `/v1/auditor/bitacora?desde=${desde()}&tamanoPagina=100`);
+    assert.equal(respuesta.status, 200, JSON.stringify(respuesta.body));
+    const deHuerfana = (respuesta.body.items as Cuerpo[]).filter((e) => e.hdu.id === huerfana.id);
+    assert.equal(deHuerfana.length, 1);
+    assert.deepEqual(deHuerfana[0].hdu, { id: huerfana.id, codigo: '(HDU no disponible)', titulo: 'HDU no disponible en Organización', estado: 'PENDIENTE' });
+    const deConocida = (respuesta.body.items as Cuerpo[]).find((e) => e.hdu.id === conocida.id);
+    assert.equal(deConocida.hdu.codigo, conocida.codigo);
+  });
+
+  it('la exportación también funciona: la fila de la HDU desconocida lleva su id y «HDU no disponible»', async () => {
+    const huerfana = organizacion.nuevaHdu();
+    await llamar('analista', 'post', `/v1/hdu/${huerfana.id}/entregables/PLAN_PRUEBAS/marcar`, enlace);
+    organizacion.olvidarHdu(huerfana.id);
+    const respuesta = await pedirCsv(`/v1/auditor/exportaciones/bitacora?hduId=${huerfana.id}`, 'auditor');
+    const lineas = (respuesta.body as unknown as string).replace(BOM, '').split('\r\n').filter((linea) => linea.length > 0);
+    assert.equal(lineas.length, 2);
+    assert.ok(lineas[1]?.includes(`;(HDU no disponible: ${huerfana.id});HDU no disponible en Organización;`), lineas[1]);
+  });
+});
+
 describe('Exportación del Auditor [E7-B04#3, D48]', () => {
   it('[E7-B04-T09] exporta la bitácora filtrada: BOM, separador ;, una fila por evento y registro previo en Organización', async () => {
     const hdu = organizacion.nuevaHdu();

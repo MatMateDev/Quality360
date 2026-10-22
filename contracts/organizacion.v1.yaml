@@ -240,6 +240,9 @@ paths:
         cada HDU pedida, para que Certificaciones muestre la HDU en la
         bitácora global (E7-B04#1). Si algún id está fuera del ámbito del
         usuario o no existe, responde 403 completo, sin datos parciales (D12).
+        Excepción (D55): para Administrador y Auditor, que leen todo, los ids
+        que Organización no conoce se omiten de `items` en vez de dar 403, y
+        quien llama los muestra como «HDU no disponible».
       x-roles: [ADMINISTRADOR, QE, ANALISTA_QA, LIDER_QA, AUDITOR]
       x-hdu: [E7-B04#1]
       requestBody:

@@ -326,7 +326,8 @@ export class HduAplicacion {
     const mapaUsuarios = new Map(usuarios.map((usuario) => [usuario.id, usuario]));
     const resumenUsuario = (id: string): UsuarioResumen => mapaUsuarios.get(id) ?? { id, nombre: '(usuario no disponible)', correo: '' };
     const refCatalogo = (mapa: Map<string, { id: string; nombre: string }>, id: string): { id: string; nombre: string } =>
-      mapa.get(id) ?? { id, nombre: '(no disponible)' };
+      // Solo `id` y `nombre` (CatalogoRef): el Sprint del catálogo trae además `inicio` y `fin`, que no van en las HDU.
+      ({ id, nombre: mapa.get(id)?.nombre ?? '(no disponible)' });
 
     return hdus.map((hdu) => ({
       id: hdu.id,
