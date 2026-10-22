@@ -20,6 +20,15 @@ info:
     - **HDU cerrada.** Rechaza cualquier cambio con 409 `HDU_CERRADA` (D22).
     - **Archivos.** Las evidencias y los certificados viven en buckets privados
       de Supabase Storage. Se suben y descargan con URL firmadas (D20).
+    - **Solo lectura (E7, D32).** Las relaciones `LECTOR_CELULA` (Líder QA) y
+      `LECTOR_AUDITORIA` (Auditor) permiten ver el checklist, la bitácora, las
+      evidencias y el certificado, nunca escribir: `permisos` va en `false` y
+      toda escritura responde 403.
+    - **Lecturas en lote (D46, D47).** `POST /v1/interno/checklist/estados` y
+      `/v1/auditor/*` resuelven el ámbito con una sola llamada a
+      `GET /v1/interno/hdu/ambito` de Organización. `/v1/auditor/*` exige
+      además `rol: AUDITOR` según `GET /v1/interno/acceso`; el Administrador
+      recibe 403 (D38).
 servers:
   - url: http://certificaciones:3002
     description: Red interna de Docker Compose
@@ -34,6 +43,10 @@ tags:
     description: Entregables, evidencias y aprobaciones de una HDU.
   - name: Certificado
     description: Certificado PDF de cierre y su verificación pública.
+  - name: Interno
+    description: Lecturas en lote para las bandejas que compone Organización (E7-B03).
+  - name: Auditor
+    description: Bitácora global, certificados y exportaciones del Auditor (E7-B04).
 
 paths:
   /health:
@@ -71,8 +84,8 @@ paths:
         Avance sobre los 10 entregables: `completados` son los `APROBADO` y
         `completo` es verdadero con los 10 aprobados (D16). Lo usan el bloque
         `checklist` del detalle de HDU en el gateway y el cierre en Organización (D11).
-      x-roles: [ADMINISTRADOR, QE, ANALISTA_QA]
-      x-hdu: [E2-F04#1, E2-B02#3, E3-B02#3]
+      x-roles: [ADMINISTRADOR, QE, ANALISTA_QA, LIDER_QA, AUDITOR]
+      x-hdu: [E2-F04#1, E2-B02#3, E3-B02#3, E7-B02#1, E7-B02#2]
       responses:
         '200':
           description: Resumen del checklist.
@@ -106,8 +119,8 @@ paths:
           muestra el checklist en solo lectura (E3-F01#3).
         - `certificacion` dice si hoy se puede generar el certificado y, si no,
           el motivo y los entregables faltantes (E3-F04#2).
-      x-roles: [ADMINISTRADOR, QE, ANALISTA_QA]
-      x-hdu: [E3-F01#1, E3-F01#2, E3-F01#3, E3-F04#2]
+      x-roles: [ADMINISTRADOR, QE, ANALISTA_QA, LIDER_QA, AUDITOR]
+      x-hdu: [E3-F01#1, E3-F01#2, E3-F01#3, E3-F04#2, E7-F04#3, E7-F06#1, E7-B02#1, E7-B02#2]
       responses:
         '200':
           description: Checklist de la HDU.
@@ -140,7 +153,7 @@ paths:
         firmada al bucket privado `evidencias`. El archivo se sube directo a
         Supabase Storage. Luego se usa `ruta` al marcar (E3-F02#1).
       x-roles: [ANALISTA_QA]
-      x-hdu: [E3-F02#1]
+      x-hdu: [E3-F02#1, E7-B02#3]
       requestBody:
         required: true
         content:
@@ -187,7 +200,7 @@ paths:
         - Queda `POR_APROBAR` con evidencia, analista y fecha, y se registra el
           evento `MARCAR` en la bitácora (E3-F02#1, E3-B01#1, E3-B04#1).
       x-roles: [ANALISTA_QA]
-      x-hdu: [E3-F02#1, E3-F02#2, E3-B01#1, E3-B01#2, E3-B01#3, E3-B02#1, E3-B04#1]
+      x-hdu: [E3-F02#1, E3-F02#2, E3-B01#1, E3-B01#2, E3-B01#3, E3-B02#1, E3-B04#1, E7-B02#3]
       requestBody:
         required: true
         content:
@@ -228,7 +241,7 @@ paths:
         - Vuelve a `PENDIENTE` y registra el evento `DESMARCAR` con el valor
           anterior y el motivo (E3-F02#3, E3-B04#1, E3-B04#2).
       x-roles: [ANALISTA_QA]
-      x-hdu: [E3-F02#3, E3-B04#2]
+      x-hdu: [E3-F02#3, E3-B04#2, E7-B02#3]
       requestBody:
         required: true
         content:
@@ -267,7 +280,7 @@ paths:
         - Queda `APROBADO` con el nombre del QE y la fecha, y se registra el
           evento `APROBAR` (E3-F03#1, E3-B04#1).
       x-roles: [QE]
-      x-hdu: [E3-F03#1, E3-B02#2]
+      x-hdu: [E3-F03#1, E3-B02#2, E7-B02#3]
       responses:
         '200':
           $ref: '#/components/responses/EntregableActualizado'
@@ -298,7 +311,7 @@ paths:
           observación visible para el analista, y se registra el evento
           `RECHAZAR` (E3-F03#2, E3-B04#1).
       x-roles: [QE]
-      x-hdu: [E3-F03#2]
+      x-hdu: [E3-F03#2, E7-B02#3]
       requestBody:
         required: true
         content:
@@ -332,8 +345,8 @@ paths:
       tags: [Checklist]
       summary: URL firmada para descargar la evidencia de archivo
       description: Cualquier relación permitida con la HDU. 404 si el entregable no tiene un archivo como evidencia.
-      x-roles: [ADMINISTRADOR, QE, ANALISTA_QA]
-      x-hdu: [E3-F03#1]
+      x-roles: [ADMINISTRADOR, QE, ANALISTA_QA, LIDER_QA, AUDITOR]
+      x-hdu: [E3-F03#1, E7-F06#1, E7-B02#1, E7-B02#2]
       responses:
         '200':
           description: URL de descarga de corta duración.
@@ -366,8 +379,8 @@ paths:
         valor anterior y nuevo, y motivo o comentario. Pueden consultarlo el
         Administrador, los QE con la HDU en su ámbito y el analista asignado
         (E3-B04#3).
-      x-roles: [ADMINISTRADOR, QE, ANALISTA_QA]
-      x-hdu: [E3-B04#3]
+      x-roles: [ADMINISTRADOR, QE, ANALISTA_QA, LIDER_QA, AUDITOR]
+      x-hdu: [E3-B04#3, E7-F06#1, E7-B02#1, E7-B02#2]
       responses:
         '200':
           description: Bitácora de la HDU.
@@ -430,7 +443,7 @@ paths:
           `APROBADO` con el folio como evidencia y registra el evento
           `GENERAR_CERTIFICADO` (E3-F04#1, E3-B03#1, D19).
       x-roles: [QE]
-      x-hdu: [E3-F04#1, E3-B03#1, E3-B03#3]
+      x-hdu: [E3-F04#1, E3-B03#1, E3-B03#3, E7-B02#3]
       responses:
         '201':
           description: Certificado emitido, con su URL de descarga.
@@ -455,8 +468,8 @@ paths:
       tags: [Certificado]
       summary: Volver a descargar el certificado emitido
       description: Cualquier relación permitida con la HDU. Siempre es el mismo PDF (E3-F04#3). 404 si no hay certificado.
-      x-roles: [ADMINISTRADOR, QE, ANALISTA_QA]
-      x-hdu: [E3-F04#3]
+      x-roles: [ADMINISTRADOR, QE, ANALISTA_QA, LIDER_QA, AUDITOR]
+      x-hdu: [E3-F04#3, E7-F04#3, E7-F06#1, E7-B02#1, E7-B02#2]
       responses:
         '200':
           description: Certificado con URL de descarga de corta duración.
@@ -501,6 +514,259 @@ paths:
           $ref: './comun.v1.yaml#/components/responses/NoEncontrado'
         '500':
           $ref: './comun.v1.yaml#/components/responses/ErrorInterno'
+
+  # ------------------------------------------------------------------ E7
+  /v1/interno/checklist/estados:
+    post:
+      operationId: obtenerSeguimientoHduLote
+      tags: [Interno]
+      summary: Estado del checklist de varias HDU
+      description: |
+        Lectura en lote (POST solo para enviar hasta 1000 ids) que usa
+        Organización al componer las bandejas (D46). Propaga el token del
+        usuario. Certificaciones consulta una vez `GET /v1/interno/hdu/ambito`
+        y, si algún id está fuera del ámbito o no existe, responde 403 sin
+        datos parciales (D12). Una HDU sin ciclo de certificación responde con
+        0 aprobados: es un dato válido.
+      x-roles: [ADMINISTRADOR, QE, ANALISTA_QA, LIDER_QA, AUDITOR]
+      x-hdu: [E7-F02#1, E7-F03#1, E7-F04#1, E7-B03#1, E7-B03#2]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: './comun.v1.yaml#/components/schemas/ConsultaHduLote'
+      responses:
+        '200':
+          description: Un elemento por id, en el orden pedido.
+          content:
+            application/json:
+              schema:
+                $ref: './comun.v1.yaml#/components/schemas/ListaSeguimientoHdu'
+        '400':
+          $ref: './comun.v1.yaml#/components/responses/Validacion'
+        '401':
+          $ref: './comun.v1.yaml#/components/responses/NoAutenticado'
+        '403':
+          $ref: './comun.v1.yaml#/components/responses/AccesoDenegado'
+        '500':
+          $ref: './comun.v1.yaml#/components/responses/ErrorInterno'
+        '503':
+          $ref: './comun.v1.yaml#/components/responses/ServicioNoDisponible'
+
+  /v1/interno/resumen-auditoria:
+    get:
+      operationId: obtenerResumenAuditoriaCertificaciones
+      tags: [Interno]
+      summary: Contadores de Certificaciones para la bandeja del Auditor
+      description: Certificados emitidos y eventos de bitácora de los últimos 7 días, sobre todo el sistema. Solo rol `AUDITOR`.
+      x-roles: [AUDITOR]
+      x-hdu: [E7-F06#1, E7-B03#1]
+      responses:
+        '200':
+          description: Contadores.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [certificados, eventosUltimos7Dias]
+                additionalProperties: false
+                properties:
+                  certificados:
+                    type: integer
+                    minimum: 0
+                  eventosUltimos7Dias:
+                    type: integer
+                    minimum: 0
+        '401':
+          $ref: './comun.v1.yaml#/components/responses/NoAutenticado'
+        '403':
+          $ref: './comun.v1.yaml#/components/responses/AccesoDenegado'
+        '500':
+          $ref: './comun.v1.yaml#/components/responses/ErrorInterno'
+
+  /v1/auditor/bitacora:
+    get:
+      operationId: listarBitacoraGlobal
+      tags: [Auditor]
+      summary: Bitácora de checklist de todas las HDU
+      description: |
+        Solo rol `AUDITOR` (E7-B04#2). Del más reciente al más antiguo, con la
+        HDU de cada evento (código y título de `POST /v1/interno/hdu/consulta`
+        de Organización). Un filtro sin coincidencias → 200 con `items` vacío
+        y `total` 0. Si Organización no responde, 503 (no se muestran eventos
+        sin su HDU).
+      x-roles: [AUDITOR]
+      x-hdu: [E7-F06#1, E7-F06#2, E7-F06#3, E7-B04#1, E7-B04#2]
+      parameters:
+        - $ref: './comun.v1.yaml#/components/parameters/FiltroDesde'
+        - $ref: './comun.v1.yaml#/components/parameters/FiltroHasta'
+        - name: hduId
+          in: query
+          required: false
+          schema:
+            $ref: './comun.v1.yaml#/components/schemas/Uuid'
+        - name: actorId
+          in: query
+          required: false
+          schema:
+            $ref: './comun.v1.yaml#/components/schemas/Uuid'
+        - name: accion
+          in: query
+          required: false
+          schema:
+            $ref: './comun.v1.yaml#/components/schemas/AccionChecklist'
+        - $ref: './comun.v1.yaml#/components/parameters/Pagina'
+        - $ref: './comun.v1.yaml#/components/parameters/TamanoPaginaBandeja'
+      responses:
+        '200':
+          description: Página de la bitácora global.
+          content:
+            application/json:
+              schema:
+                $ref: './comun.v1.yaml#/components/schemas/PaginaBitacoraGlobal'
+        '400':
+          $ref: './comun.v1.yaml#/components/responses/Validacion'
+        '401':
+          $ref: './comun.v1.yaml#/components/responses/NoAutenticado'
+        '403':
+          $ref: './comun.v1.yaml#/components/responses/AccesoDenegado'
+        '500':
+          $ref: './comun.v1.yaml#/components/responses/ErrorInterno'
+        '503':
+          $ref: './comun.v1.yaml#/components/responses/ServicioNoDisponible'
+
+  /v1/auditor/certificados:
+    get:
+      operationId: listarCertificadosAuditor
+      tags: [Auditor]
+      summary: Certificados emitidos
+      description: |
+        Solo rol `AUDITOR`. Folio, HDU (código y título guardados al emitir),
+        fecha, QE emisor, huella SHA-256 y validez (D45), del más reciente al
+        más antiguo. `q` busca en folio o código de HDU. El PDF se descarga
+        con `GET /v1/hdu/{hduId}/certificado` (URL firmada, E7-B02#2).
+      x-roles: [AUDITOR]
+      x-hdu: [E7-F06#1, E7-F06#2, E7-F06#3, E7-B04#1, E7-B04#2]
+      parameters:
+        - $ref: './comun.v1.yaml#/components/parameters/FiltroDesde'
+        - $ref: './comun.v1.yaml#/components/parameters/FiltroHasta'
+        - name: emitidoPorId
+          in: query
+          required: false
+          schema:
+            $ref: './comun.v1.yaml#/components/schemas/Uuid'
+        - name: q
+          in: query
+          required: false
+          schema:
+            type: string
+            minLength: 2
+            maxLength: 120
+        - $ref: './comun.v1.yaml#/components/parameters/Pagina'
+        - $ref: './comun.v1.yaml#/components/parameters/TamanoPaginaBandeja'
+      responses:
+        '200':
+          description: Página de certificados.
+          content:
+            application/json:
+              schema:
+                $ref: './comun.v1.yaml#/components/schemas/PaginaCertificadosAuditoria'
+        '400':
+          $ref: './comun.v1.yaml#/components/responses/Validacion'
+        '401':
+          $ref: './comun.v1.yaml#/components/responses/NoAutenticado'
+        '403':
+          $ref: './comun.v1.yaml#/components/responses/AccesoDenegado'
+        '500':
+          $ref: './comun.v1.yaml#/components/responses/ErrorInterno'
+        '503':
+          $ref: './comun.v1.yaml#/components/responses/ServicioNoDisponible'
+
+  /v1/auditor/exportaciones/bitacora:
+    get:
+      operationId: exportarBitacoraGlobal
+      tags: [Auditor]
+      summary: Exportar a CSV la bitácora global
+      description: |
+        Mismos filtros y columnas que `GET /v1/auditor/bitacora`. Antes de
+        responder, registra la exportación en Organización con
+        `POST /v1/interno/auditoria/exportaciones` (recurso `BITACORA`); si
+        el registro falla, 503 sin archivo (D48).
+      x-roles: [AUDITOR]
+      x-hdu: [E7-F06#2, E7-B04#2, E7-B04#3]
+      parameters:
+        - $ref: './comun.v1.yaml#/components/parameters/FiltroDesde'
+        - $ref: './comun.v1.yaml#/components/parameters/FiltroHasta'
+        - name: hduId
+          in: query
+          required: false
+          schema:
+            $ref: './comun.v1.yaml#/components/schemas/Uuid'
+        - name: actorId
+          in: query
+          required: false
+          schema:
+            $ref: './comun.v1.yaml#/components/schemas/Uuid'
+        - name: accion
+          in: query
+          required: false
+          schema:
+            $ref: './comun.v1.yaml#/components/schemas/AccionChecklist'
+      responses:
+        '200':
+          $ref: './comun.v1.yaml#/components/responses/ExportacionCsv'
+        '400':
+          $ref: './comun.v1.yaml#/components/responses/Validacion'
+        '401':
+          $ref: './comun.v1.yaml#/components/responses/NoAutenticado'
+        '403':
+          $ref: './comun.v1.yaml#/components/responses/AccesoDenegado'
+        '422':
+          $ref: './comun.v1.yaml#/components/responses/ExportacionExcedeLimite'
+        '500':
+          $ref: './comun.v1.yaml#/components/responses/ErrorInterno'
+        '503':
+          $ref: './comun.v1.yaml#/components/responses/ServicioNoDisponible'
+
+  /v1/auditor/exportaciones/certificados:
+    get:
+      operationId: exportarCertificadosAuditor
+      tags: [Auditor]
+      summary: Exportar a CSV los certificados
+      description: Mismos filtros y columnas que `GET /v1/auditor/certificados`. Registra la exportación como en la bitácora (recurso `CERTIFICADOS`, D48).
+      x-roles: [AUDITOR]
+      x-hdu: [E7-F06#2, E7-B04#2, E7-B04#3]
+      parameters:
+        - $ref: './comun.v1.yaml#/components/parameters/FiltroDesde'
+        - $ref: './comun.v1.yaml#/components/parameters/FiltroHasta'
+        - name: emitidoPorId
+          in: query
+          required: false
+          schema:
+            $ref: './comun.v1.yaml#/components/schemas/Uuid'
+        - name: q
+          in: query
+          required: false
+          schema:
+            type: string
+            minLength: 2
+            maxLength: 120
+      responses:
+        '200':
+          $ref: './comun.v1.yaml#/components/responses/ExportacionCsv'
+        '400':
+          $ref: './comun.v1.yaml#/components/responses/Validacion'
+        '401':
+          $ref: './comun.v1.yaml#/components/responses/NoAutenticado'
+        '403':
+          $ref: './comun.v1.yaml#/components/responses/AccesoDenegado'
+        '422':
+          $ref: './comun.v1.yaml#/components/responses/ExportacionExcedeLimite'
+        '500':
+          $ref: './comun.v1.yaml#/components/responses/ErrorInterno'
+        '503':
+          $ref: './comun.v1.yaml#/components/responses/ServicioNoDisponible'
 
 components:
   securitySchemes:

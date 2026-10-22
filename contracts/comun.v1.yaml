@@ -32,9 +32,16 @@ info:
     | 400 | `VALIDACION`: esquema, obligatorios, formato o valor fuera de catálogo. `detalles[]` indica cada campo. |
     | 401 | `NO_AUTENTICADO` (sin token o token inválido) o `SESION_EXPIRADA` (token vencido). |
     | 403 | `ACCESO_DENEGADO`: rol no permitido, usuario inactivo o recurso fuera del ámbito. Mensaje genérico (D12). |
-    | 404 | `NO_ENCONTRADO`: solo en recursos administrativos. Para QE y Analista QA, una HDU inexistente responde 403 igual que una fuera de ámbito. |
-    | 409 | Conflicto con el estado actual: duplicados, transición inválida, cierre rechazado, último administrador, relaciones incompatibles. |
-    | 422 | Regla de negocio sobre datos bien formados: motivo requerido, supervisión inválida, analista fuera del equipo, catálogo inexistente. |
+    | 404 | `NO_ENCONTRADO`: solo en recursos administrativos. Para QE, Analista QA y Líder QA, una HDU inexistente responde 403 igual que una fuera de ámbito. |
+    | 409 | Conflicto con el estado actual: duplicados, transición inválida, cierre rechazado, último administrador, relaciones incompatibles, rol incompatible. |
+    | 422 | Regla de negocio sobre datos bien formados: motivo requerido, supervisión inválida, analista fuera del equipo, catálogo inexistente, exportación que excede el límite. |
+
+    ## Roles de solo lectura (E7, D32)
+
+    `LIDER_QA` y `AUDITOR` nunca figuran en `x-roles` de una operación que
+    modifica datos: «denegar por defecto». Toda operación nueva que escriba
+    debe listar explícitamente sus roles. Las exportaciones del Auditor son
+    `GET` y solo escriben su propio registro de auditoría.
     | 429 | `DEMASIADAS_SOLICITUDES` (límite de tasa del gateway). |
     | 500 | `ERROR_INTERNO`. |
     | 503 | `SERVICIO_NO_DISPONIBLE`, `PROVEEDOR_IDENTIDAD_NO_DISPONIBLE` o `CAPACIDAD_NO_DISPONIBLE`. |
@@ -59,8 +66,12 @@ components:
       examples: ['2026-09-01']
     Rol:
       type: string
-      description: Catálogo cerrado de roles. Un rol por usuario. El rol vigente se lee siempre desde Organización, nunca desde el token (D4).
-      enum: [ADMINISTRADOR, QE, ANALISTA_QA]
+      description: |
+        Catálogo cerrado de roles (D28). Un rol por usuario. El rol vigente se
+        lee siempre desde Organización, nunca desde el token (D4). `LIDER_QA` y
+        `AUDITOR` son de solo lectura (D32): ninguna operación que modifica
+        datos los incluye en `x-roles`.
+      enum: [ADMINISTRADOR, QE, ANALISTA_QA, LIDER_QA, AUDITOR]
     EstadoHdu:
       type: string
       description: |
@@ -100,7 +111,8 @@ components:
         | `CORREO_DUPLICADO` | 409 | Ya existe un usuario con ese correo. |
         | `CODIGO_HDU_DUPLICADO` | 409 | Ya existe una HDU con ese identificador. |
         | `ULTIMO_ADMINISTRADOR` | 409 | La plataforma debe conservar al menos un administrador activo. |
-        | `RELACIONES_INCOMPATIBLES` | 409 | Resuelve las relaciones de supervisión antes de continuar. |
+        | `RELACIONES_INCOMPATIBLES` | 409 | Resuelve las relaciones de supervisión antes de continuar. (Con HDU abiertas o células vigentes, el mensaje las nombra; ver `ErrorRelacionesIncompatibles`, D31, D40, D43.) |
+        | `ROL_INCOMPATIBLE` | 409 | El usuario no tiene el rol Líder QA. |
         | `TRANSICION_INVALIDA` | 409 | La HDU no puede pasar a ese estado. |
         | `CHECKLIST_INCOMPLETO` | 409 | No se puede cerrar la HDU: el checklist de entregables está incompleto. |
         | `CHECKLIST_NO_DISPONIBLE` | 409 | No se puede cerrar la HDU: el checklist de entregables no está disponible para verificarse. |
@@ -118,6 +130,7 @@ components:
         | `QE_INVALIDO` | 422 | El QE responsable debe tener rol QE y estar activo. |
         | `CATALOGO_INVALIDO` | 422 | La célula o el sprint indicados no existen. |
         | `EVIDENCIA_INVALIDA` | 422 | La evidencia debe ser un enlace https o un archivo PDF, PNG o JPEG de hasta 10 MB. |
+        | `EXPORTACION_EXCEDE_LIMITE` | 422 | La exportación supera las 50.000 filas. Acota los filtros. |
         | `DEMASIADAS_SOLICITUDES` | 429 | Demasiadas solicitudes. Intenta más tarde. |
         | `ERROR_INTERNO` | 500 | Ocurrió un error inesperado. |
         | `SERVICIO_NO_DISPONIBLE` | 503 | El servicio no está disponible. Intenta nuevamente. |
@@ -133,6 +146,7 @@ components:
         - CODIGO_HDU_DUPLICADO
         - ULTIMO_ADMINISTRADOR
         - RELACIONES_INCOMPATIBLES
+        - ROL_INCOMPATIBLE
         - TRANSICION_INVALIDA
         - CHECKLIST_INCOMPLETO
         - CHECKLIST_NO_DISPONIBLE
@@ -150,6 +164,7 @@ components:
         - QE_INVALIDO
         - CATALOGO_INVALIDO
         - EVIDENCIA_INVALIDA
+        - EXPORTACION_EXCEDE_LIMITE
         - DEMASIADAS_SOLICITUDES
         - ERROR_INTERNO
         - SERVICIO_NO_DISPONIBLE
@@ -214,7 +229,12 @@ components:
             checklist:
               $ref: '#/components/schemas/BloqueChecklist'
     ErrorRelacionesIncompatibles:
-      description: 409 `RELACIONES_INCOMPATIBLES`. Indica qué relaciones de supervisión resolver primero (E1-B08#3).
+      description: |
+        409 `RELACIONES_INCOMPATIBLES`. Indica qué relaciones de trabajo
+        resolver antes de cambiar el rol o desactivar al usuario (E1-B08#3,
+        D31, D40, D43). Los cuatro campos vienen siempre; los que no aplican
+        van vacíos o en `null`. Se informan todas las relaciones a la vez, no
+        solo la primera. No se aplicó ningún cambio.
       allOf:
         - $ref: '#/components/schemas/Error'
         - type: object
@@ -222,8 +242,31 @@ components:
           properties:
             relaciones:
               type: object
-              required: [analistasVigentes, supervisorVigente]
+              required: [analistasVigentes, supervisorVigente, hduAbiertas, celulasVigentes]
               properties:
+                hduAbiertas:
+                  type: object
+                  description: |
+                    HDU no cerradas donde el usuario es el analista asignado
+                    (si es Analista QA) o el QE responsable (si es QE). Solo
+                    las exige el cambio de rol (D40). `items` trae hasta 20,
+                    ordenadas por código; `total` las cuenta todas.
+                  required: [total, items]
+                  additionalProperties: false
+                  properties:
+                    total:
+                      type: integer
+                      minimum: 0
+                    items:
+                      type: array
+                      maxItems: 20
+                      items:
+                        $ref: '#/components/schemas/HduReferencia'
+                celulasVigentes:
+                  type: array
+                  description: Células vigentes de un Líder QA, que deben quitarse antes de cambiarle el rol (D31).
+                  items:
+                    $ref: '#/components/schemas/CatalogoRef'
                 analistasVigentes:
                   type: array
                   description: Analistas que el QE supervisa hoy y que deben reasignarse.
@@ -239,7 +282,7 @@ components:
     FuenteDatos:
       type: string
       description: Capacidad que alimenta un bloque compuesto.
-      enum: [organizacion.usuarios, organizacion.supervision, organizacion.hdu, certificaciones.checklist]
+      enum: [organizacion.usuarios, organizacion.supervision, organizacion.hdu, organizacion.celulas, organizacion.auditoria, certificaciones.checklist, certificaciones.bitacora, certificaciones.certificados]
     EstadoBloque:
       type: string
       enum: [ok, indisponible]
@@ -627,8 +670,7 @@ components:
         id:
           $ref: '#/components/schemas/Uuid'
         accion:
-          type: string
-          enum: [MARCAR, DESMARCAR, APROBAR, RECHAZAR, GENERAR_CERTIFICADO]
+          $ref: '#/components/schemas/AccionChecklist'
         clave:
           $ref: '#/components/schemas/ClaveEntregable'
         actor:
@@ -643,6 +685,21 @@ components:
         motivo:
           type: [string, 'null']
           description: Motivo del retroceso o comentario del rechazo (E3-B04#2).
+    AccionChecklist:
+      type: string
+      description: |
+        Catálogo de acciones de la bitácora de checklist (D22, D45). El código
+        es estable; el portal muestra el infinitivo en filtros y columnas del
+        Auditor y el pasado en el historial de la HDU.
+
+        | Código | Filtro y columna (Auditor) | Historial de la HDU |
+        | --- | --- | --- |
+        | `MARCAR` | Marcar | marcó |
+        | `DESMARCAR` | Desmarcar | desmarcó |
+        | `APROBAR` | Aprobar | aprobó |
+        | `RECHAZAR` | Rechazar | rechazó |
+        | `GENERAR_CERTIFICADO` | Certificar | generó el certificado de |
+      enum: [MARCAR, DESMARCAR, APROBAR, RECHAZAR, GENERAR_CERTIFICADO]
     BitacoraChecklist:
       type: object
       required: [hduId, eventos]
@@ -702,7 +759,7 @@ components:
           $ref: '#/components/schemas/Rol'
     Usuario:
       type: object
-      required: [id, nombre, correo, rol, activo, supervisorVigente, analistasVigentes, creadoEn, actualizadoEn]
+      required: [id, nombre, correo, rol, activo, supervisorVigente, analistasVigentes, celulasVigentes, creadoEn, actualizadoEn]
       additionalProperties: false
       properties:
         id:
@@ -725,6 +782,11 @@ components:
           type: integer
           minimum: 0
           description: Analistas que supervisa hoy. Solo aplica a `QE`; 0 para otros roles.
+        celulasVigentes:
+          type: array
+          description: Células vigentes si el rol es `LIDER_QA`, ordenadas por nombre; vacío para otros roles (D30, D44).
+          items:
+            $ref: '#/components/schemas/CatalogoRef'
         creadoEn:
           $ref: '#/components/schemas/FechaHora'
         actualizadoEn:
@@ -765,6 +827,8 @@ components:
           description: Se normaliza a minúsculas. Único sin distinguir mayúsculas.
         rol:
           $ref: '#/components/schemas/Rol'
+        celulaIds:
+          $ref: '#/components/schemas/CelulaIdsLider'
     ActualizacionUsuario:
       type: object
       description: Cambia datos o estado de acceso. El rol se cambia con `PUT /v1/usuarios/{id}/rol`.
@@ -785,11 +849,30 @@ components:
           description: '`false` desactiva: el usuario pierde acceso en su siguiente solicitud aunque su token siga vigente. No borra historial.'
     CambioRol:
       type: object
+      description: |
+        Cambio de rol atómico (D42). Con `rol: LIDER_QA`, `celulaIds` fija sus
+        células vigentes en la misma transacción que el rol: o se aplica todo o
+        nada. Omitido o vacío = Líder sin células (permitido, E7-F07#2). Si el
+        usuario ya es Líder QA, `celulaIds` reemplaza sus células igual que
+        `PUT /v1/usuarios/{id}/celulas-lider`.
       required: [rol]
       additionalProperties: false
       properties:
         rol:
           $ref: '#/components/schemas/Rol'
+        celulaIds:
+          $ref: '#/components/schemas/CelulaIdsLider'
+    CelulaIdsLider:
+      type: array
+      description: |
+        Células a cargo de un Líder QA (D30, D42). Solo se acepta con
+        `rol: LIDER_QA`; con otro rol y una lista no vacía, 400 `VALIDACION`
+        con `{campo: celulaIds, codigo: NO_PERMITIDO}`. Una célula inexistente,
+        422 `CATALOGO_INVALIDO` con `{campo: celulaIds[i], codigo: NO_EXISTE}`.
+      uniqueItems: true
+      maxItems: 50
+      items:
+        $ref: '#/components/schemas/Uuid'
 
     # ------------------------------------------------------------ supervisión
     AsignacionSupervisor:
@@ -958,12 +1041,15 @@ components:
         inactivos: {type: integer, minimum: 0}
         porRol:
           type: object
-          required: [ADMINISTRADOR, QE, ANALISTA_QA]
+          description: Usuarios por rol; los 5 roles vienen siempre (D28).
+          required: [ADMINISTRADOR, QE, ANALISTA_QA, LIDER_QA, AUDITOR]
           additionalProperties: false
           properties:
             ADMINISTRADOR: {type: integer, minimum: 0}
             QE: {type: integer, minimum: 0}
             ANALISTA_QA: {type: integer, minimum: 0}
+            LIDER_QA: {type: integer, minimum: 0}
+            AUDITOR: {type: integer, minimum: 0}
     ResumenSupervisionAdmin:
       type: object
       required: [relacionesVigentes, analistasSinSupervisor, qeSinAnalistas]
@@ -1057,7 +1143,7 @@ components:
           $ref: '#/components/schemas/FechaHora'
     PermisosHdu:
       type: object
-      description: Acciones que el usuario autenticado puede ejecutar sobre la HDU. Orienta la interfaz; el servicio vuelve a validar.
+      description: Acciones que el usuario autenticado puede ejecutar sobre la HDU. Orienta la interfaz; el servicio vuelve a validar. Para Líder QA y Auditor todas son `false` (D32, D39).
       required: [cambiarEstado, asignarAnalista]
       additionalProperties: false
       properties:
@@ -1259,10 +1345,14 @@ components:
         permitido:
           type: boolean
         relacion:
-          description: Motivo del acceso, o `null` si no se permite.
+          description: |
+            Motivo del acceso, o `null` si no se permite (D18). `LECTOR_CELULA`
+            (Líder QA, HDU de sus células vigentes) y `LECTOR_AUDITORIA`
+            (Auditor, todas) solo permiten leer y descargar: nunca marcar,
+            desmarcar, aprobar, rechazar, certificar ni cambiar la HDU (D32).
           oneOf:
             - type: string
-              enum: [ADMINISTRADOR, QE_RESPONSABLE, QE_SUPERVISOR_DEL_ANALISTA, ANALISTA_ASIGNADO]
+              enum: [ADMINISTRADOR, QE_RESPONSABLE, QE_SUPERVISOR_DEL_ANALISTA, ANALISTA_ASIGNADO, LECTOR_CELULA, LECTOR_AUDITORIA]
             - type: 'null'
         actor:
           description: Solo si `permitido`. Quién consulta, para registrar su nombre (E3-B01#1).
@@ -1341,13 +1431,11 @@ components:
         actor:
           $ref: '#/components/schemas/Actor'
         entidad:
-          type: string
-          enum: [USUARIO, SUPERVISION, HDU]
+          $ref: '#/components/schemas/EntidadAuditoria'
         entidadId:
           $ref: '#/components/schemas/Uuid'
         accion:
-          type: string
-          enum: [CREAR_USUARIO, ACTUALIZAR_USUARIO, ACTIVAR_USUARIO, DESACTIVAR_USUARIO, CAMBIAR_ROL, ASIGNAR_SUPERVISOR, CAMBIAR_SUPERVISOR, CREAR_HDU, CAMBIAR_ESTADO_HDU, ASIGNAR_ANALISTA, REASIGNAR_ANALISTA]
+          $ref: '#/components/schemas/AccionAuditoria'
         antes:
           description: Campos relevantes antes del cambio; `null` en creaciones.
           oneOf:
@@ -1381,6 +1469,890 @@ components:
           type: integer
           minimum: 1
           maximum: 100
+    EntidadAuditoria:
+      type: string
+      description: '`EXPORTACION` registra cada exportación del Auditor (D35, D48).'
+      enum: [USUARIO, SUPERVISION, HDU, EXPORTACION]
+    AccionAuditoria:
+      type: string
+      description: |
+        Catálogo de operaciones auditadas (E1-B12, E2-B04, D45). Etiquetas del portal:
+
+        | Código | Etiqueta | Auditoría de usuarios |
+        | --- | --- | --- |
+        | `CREAR_USUARIO` | Registro de usuario | sí |
+        | `ACTUALIZAR_USUARIO` | Actualización de datos | sí |
+        | `ACTIVAR_USUARIO` | Activación | sí |
+        | `DESACTIVAR_USUARIO` | Desactivación | sí |
+        | `CAMBIAR_ROL` | Cambio de rol | sí |
+        | `ASIGNAR_SUPERVISOR` | Asignación de supervisor | sí |
+        | `CAMBIAR_SUPERVISOR` | Cambio de supervisor | sí |
+        | `ASIGNAR_CELULAS_LIDER` | Asignación de células | sí |
+        | `EXPORTAR` | Exportación | sí |
+        | `CREAR_HDU` | Registro de HDU | no |
+        | `CAMBIAR_ESTADO_HDU` | Cambio de estado de HDU | no |
+        | `ASIGNAR_ANALISTA` | Asignación de analista | no |
+        | `REASIGNAR_ANALISTA` | Reasignación de analista | no |
+      enum: [CREAR_USUARIO, ACTUALIZAR_USUARIO, ACTIVAR_USUARIO, DESACTIVAR_USUARIO, CAMBIAR_ROL, ASIGNAR_SUPERVISOR, CAMBIAR_SUPERVISOR, CREAR_HDU, CAMBIAR_ESTADO_HDU, ASIGNAR_ANALISTA, REASIGNAR_ANALISTA, ASIGNAR_CELULAS_LIDER, EXPORTAR]
+    OperacionAuditoriaUsuarios:
+      type: string
+      description: Subconjunto de `AccionAuditoria` que forma la auditoría de usuarios (entidades `USUARIO`, `SUPERVISION` y `EXPORTACION`). Es el filtro `operacion` del Auditor (D45).
+      enum: [CREAR_USUARIO, ACTUALIZAR_USUARIO, ACTIVAR_USUARIO, DESACTIVAR_USUARIO, CAMBIAR_ROL, ASIGNAR_SUPERVISOR, CAMBIAR_SUPERVISOR, ASIGNAR_CELULAS_LIDER, EXPORTAR]
+
+    # ----------------------------------------------------------- E7 · roles
+    HduReferencia:
+      type: object
+      required: [id, codigo, titulo, estado]
+      additionalProperties: false
+      properties:
+        id:
+          $ref: '#/components/schemas/Uuid'
+        codigo:
+          type: string
+        titulo:
+          type: string
+        estado:
+          $ref: '#/components/schemas/EstadoHdu'
+    RolCatalogo:
+      type: object
+      required: [codigo, nombre, soloLectura]
+      additionalProperties: false
+      properties:
+        codigo:
+          $ref: '#/components/schemas/Rol'
+        nombre:
+          type: string
+          description: Analista QA, QE, Líder QA, Administrador o Auditor.
+        soloLectura:
+          type: boolean
+          description: Verdadero para `LIDER_QA` y `AUDITOR` (D32).
+    ListaRoles:
+      type: object
+      required: [items]
+      additionalProperties: false
+      properties:
+        items:
+          type: array
+          description: 'Los 5 roles en el orden del selector: Analista QA, QE, Líder QA, Administrador, Auditor.'
+          minItems: 5
+          maxItems: 5
+          items:
+            $ref: '#/components/schemas/RolCatalogo'
+    ConteoPorRol:
+      type: object
+      required: [ADMINISTRADOR, QE, ANALISTA_QA, LIDER_QA, AUDITOR]
+      additionalProperties: false
+      properties:
+        ADMINISTRADOR: {type: integer, minimum: 0}
+        QE: {type: integer, minimum: 0}
+        ANALISTA_QA: {type: integer, minimum: 0}
+        LIDER_QA: {type: integer, minimum: 0}
+        AUDITOR: {type: integer, minimum: 0}
+    AsignacionCelulaLider:
+      type: object
+      description: Una fila de `organizacion.celula_lider` (D30). Vigente si `hasta` es `null`.
+      required: [id, celula, desde, hasta, asignadoPor, retiradoPor]
+      additionalProperties: false
+      properties:
+        id:
+          $ref: '#/components/schemas/Uuid'
+        celula:
+          $ref: '#/components/schemas/CatalogoRef'
+        desde:
+          $ref: '#/components/schemas/FechaHora'
+        hasta:
+          oneOf:
+            - $ref: '#/components/schemas/FechaHora'
+            - type: 'null'
+        asignadoPor:
+          $ref: '#/components/schemas/Actor'
+        retiradoPor:
+          description: Quién la quitó; `null` mientras está vigente.
+          oneOf:
+            - $ref: '#/components/schemas/Actor'
+            - type: 'null'
+    CelulasLider:
+      type: object
+      required: [usuario, vigentes, historial]
+      additionalProperties: false
+      properties:
+        usuario:
+          $ref: '#/components/schemas/UsuarioResumen'
+        vigentes:
+          type: array
+          description: Asignaciones vigentes, ordenadas por nombre de célula.
+          items:
+            $ref: '#/components/schemas/AsignacionCelulaLider'
+        historial:
+          type: array
+          description: Todas las asignaciones, vigentes y terminadas, de la más reciente a la más antigua por `desde` (E7-F07#3).
+          items:
+            $ref: '#/components/schemas/AsignacionCelulaLider'
+    SolicitudCelulasLider:
+      type: object
+      description: Conjunto completo de células vigentes que debe quedar. Lista vacía = quitar todas.
+      required: [celulaIds]
+      additionalProperties: false
+      properties:
+        celulaIds:
+          $ref: '#/components/schemas/CelulaIdsLider'
+
+    # --------------------------------------------------------- E7 · bandejas
+    Contador:
+      description: Contador de bandeja (D34). `datos.valor` existe solo con `estado` `ok`; 0 con `ok` es un resultado válido.
+      oneOf:
+        - type: object
+          required: [fuente, estado, datos]
+          additionalProperties: false
+          properties:
+            fuente:
+              $ref: '#/components/schemas/FuenteDatos'
+            estado:
+              type: string
+              const: ok
+            datos:
+              type: object
+              required: [valor]
+              additionalProperties: false
+              properties:
+                valor:
+                  type: integer
+                  minimum: 0
+        - $ref: '#/components/schemas/BloqueIndisponible'
+    ContadorPorAprobar:
+      oneOf:
+        - type: object
+          required: [fuente, estado, datos]
+          additionalProperties: false
+          properties:
+            fuente:
+              type: string
+              const: certificaciones.checklist
+            estado:
+              type: string
+              const: ok
+            datos:
+              type: object
+              required: [valor, hdu]
+              additionalProperties: false
+              properties:
+                valor:
+                  type: integer
+                  minimum: 0
+                  description: Entregables en `POR_APROBAR`.
+                hdu:
+                  type: integer
+                  minimum: 0
+                  description: HDU distintas a las que pertenecen.
+        - $ref: '#/components/schemas/BloqueIndisponible'
+    ContadorUsuariosActivos:
+      oneOf:
+        - type: object
+          required: [fuente, estado, datos]
+          additionalProperties: false
+          properties:
+            fuente:
+              type: string
+              const: organizacion.usuarios
+            estado:
+              type: string
+              const: ok
+            datos:
+              type: object
+              required: [valor, porRol]
+              additionalProperties: false
+              properties:
+                valor:
+                  type: integer
+                  minimum: 0
+                porRol:
+                  $ref: '#/components/schemas/ConteoPorRol'
+        - $ref: '#/components/schemas/BloqueIndisponible'
+    SeguimientoHdu:
+      type: object
+      description: |
+        Estado del checklist de una HDU calculado por Certificaciones (D46).
+        Una HDU sin ciclo de certificación tiene 0 aprobados y su siguiente
+        entregable es el 1: es un dato válido, no una falla.
+      required: [hduId, aprobados, porcentaje, porAprobar, observaciones, siguienteEntregable, certificado, listaParaCertificar, listaParaCerrar, porAprobarDesde, listaDesde, ultimaActividad]
+      additionalProperties: false
+      properties:
+        hduId:
+          $ref: '#/components/schemas/Uuid'
+        aprobados:
+          type: integer
+          minimum: 0
+          maximum: 10
+        porcentaje:
+          type: number
+          minimum: 0
+          maximum: 100
+          description: aprobados / 10 × 100 (D16).
+        porAprobar:
+          type: integer
+          minimum: 0
+          description: Entregables en `POR_APROBAR`.
+        observaciones:
+          type: integer
+          minimum: 0
+          description: Entregables en `PENDIENTE` cuyo último evento de bitácora es `RECHAZAR`.
+        siguienteEntregable:
+          description: Primer entregable no aprobado; `null` con los 10 aprobados.
+          oneOf:
+            - type: object
+              required: [clave, orden, nombre]
+              additionalProperties: false
+              properties:
+                clave:
+                  $ref: '#/components/schemas/ClaveEntregable'
+                orden:
+                  type: integer
+                  minimum: 1
+                  maximum: 10
+                nombre:
+                  type: string
+            - type: 'null'
+        certificado:
+          oneOf:
+            - type: object
+              required: [folio, emitidoEn]
+              additionalProperties: false
+              properties:
+                folio:
+                  type: string
+                emitidoEn:
+                  $ref: '#/components/schemas/FechaHora'
+            - type: 'null'
+        listaParaCertificar:
+          type: boolean
+          description: Entregables 1 a 8 aprobados y el 9 sin aprobar.
+        listaParaCerrar:
+          type: boolean
+          description: Los 10 aprobados. Organización agrega la condición «HDU no cerrada».
+        porAprobarDesde:
+          description: Fecha del entregable más antiguo en `POR_APROBAR`, o `null`.
+          oneOf:
+            - $ref: '#/components/schemas/FechaHora'
+            - type: 'null'
+        listaDesde:
+          description: Fecha de aprobación del entregable 8 (lista para certificar) o del 10 (lista para cerrar); `null` si no está lista.
+          oneOf:
+            - $ref: '#/components/schemas/FechaHora'
+            - type: 'null'
+        ultimaActividad:
+          description: Fecha del último evento de bitácora de la HDU, o `null`.
+          oneOf:
+            - $ref: '#/components/schemas/FechaHora'
+            - type: 'null'
+    BloqueSeguimiento:
+      oneOf:
+        - type: object
+          required: [fuente, estado, datos]
+          additionalProperties: false
+          properties:
+            fuente:
+              type: string
+              const: certificaciones.checklist
+            estado:
+              type: string
+              const: ok
+            datos:
+              $ref: '#/components/schemas/SeguimientoHdu'
+        - $ref: '#/components/schemas/BloqueIndisponible'
+    ItemBandejaHdu:
+      description: Fila de HDU de una bandeja. Los datos de Organización siempre vienen; el seguimiento puede estar `indisponible` (D34).
+      allOf:
+        - $ref: '#/components/schemas/HduResumen'
+        - type: object
+          required: [actualizadoEn, seguimiento]
+          properties:
+            actualizadoEn:
+              $ref: '#/components/schemas/FechaHora'
+              description: El mayor entre `estadoActualizadoEn`, la última asignación y `seguimiento.ultimaActividad` (si está disponible).
+            seguimiento:
+              $ref: '#/components/schemas/BloqueSeguimiento'
+    PaginaBandejaHdu:
+      type: object
+      required: [items, total, pagina, tamanoPagina, orden]
+      additionalProperties: false
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/ItemBandejaHdu'
+        total:
+          type: integer
+          minimum: 0
+        pagina:
+          type: integer
+          minimum: 1
+        tamanoPagina:
+          type: integer
+          minimum: 1
+          maximum: 100
+          description: Tamaño efectivo (un pedido mayor a 100 se recorta, D49).
+        orden:
+          type: string
+          description: Orden aplicado, `columna:asc|desc`. Si el orden pedido depende de Certificaciones y no respondió, se informa el orden de respaldo (D46).
+    BloqueListaHdu:
+      oneOf:
+        - type: object
+          required: [fuente, estado, datos]
+          additionalProperties: false
+          properties:
+            fuente:
+              type: string
+              const: organizacion.hdu
+            estado:
+              type: string
+              const: ok
+            datos:
+              $ref: '#/components/schemas/PaginaBandejaHdu'
+        - $ref: '#/components/schemas/BloqueIndisponible'
+    BandejaAnalista:
+      type: object
+      required: [rol, generadaEn, supervisor, contadores, hdu]
+      additionalProperties: false
+      properties:
+        rol:
+          type: string
+          const: ANALISTA_QA
+        generadaEn:
+          $ref: '#/components/schemas/FechaHora'
+        supervisor:
+          oneOf:
+            - type: object
+              required: [fuente, estado, datos]
+              additionalProperties: false
+              properties:
+                fuente: {type: string, const: organizacion.supervision}
+                estado: {type: string, const: ok}
+                datos: {$ref: '#/components/schemas/ResumenSupervisorQa'}
+            - $ref: '#/components/schemas/BloqueIndisponible'
+        contadores:
+          type: object
+          required: [abiertas, conObservaciones, esperandoAprobacion]
+          additionalProperties: false
+          properties:
+            abiertas:
+              $ref: '#/components/schemas/Contador'
+              description: Mis HDU no cerradas (Organización).
+            conObservaciones:
+              $ref: '#/components/schemas/Contador'
+              description: Entregables rechazados sin corregir de mis HDU (Certificaciones).
+            esperandoAprobacion:
+              $ref: '#/components/schemas/Contador'
+              description: Entregables en `POR_APROBAR` de mis HDU (Certificaciones).
+        hdu:
+          $ref: '#/components/schemas/BloqueListaHdu'
+    TipoAccionQe:
+      type: string
+      description: '`APROBAR` (hay entregables en `POR_APROBAR`), `ASIGNAR` (sin analista), `CERTIFICAR` (1 a 8 aprobados y el 9 no), `CERRAR` (10 aprobados y HDU no cerrada).'
+      enum: [APROBAR, ASIGNAR, CERTIFICAR, CERRAR]
+    AccionPendienteQe:
+      type: object
+      description: Una fila por HDU y tipo de acción; una HDU con dos pendientes aparece dos veces.
+      required: [hdu, tipo, entregablesPorAprobar, esperandoDesde, antiguedadDias]
+      additionalProperties: false
+      properties:
+        hdu:
+          $ref: '#/components/schemas/HduResumen'
+        tipo:
+          $ref: '#/components/schemas/TipoAccionQe'
+        entregablesPorAprobar:
+          type: [integer, 'null']
+          minimum: 1
+          description: Solo con `tipo` `APROBAR`.
+        esperandoDesde:
+          $ref: '#/components/schemas/FechaHora'
+          description: '`APROBAR`: `porAprobarDesde`; `ASIGNAR`: creación de la HDU; `CERTIFICAR` y `CERRAR`: `listaDesde`.'
+        antiguedadDias:
+          type: integer
+          minimum: 0
+    BandejaQe:
+      type: object
+      description: El resumen de equipo de E1-F03 sigue en `GET /v1/inicio/qe`; esta bandeja no lo duplica.
+      required: [rol, generadaEn, contadores, acciones]
+      additionalProperties: false
+      properties:
+        rol:
+          type: string
+          const: QE
+        generadaEn:
+          $ref: '#/components/schemas/FechaHora'
+        contadores:
+          type: object
+          required: [porAprobar, sinAnalista, listasCertificar, listasCerrar]
+          additionalProperties: false
+          properties:
+            porAprobar:
+              $ref: '#/components/schemas/ContadorPorAprobar'
+            sinAnalista:
+              $ref: '#/components/schemas/Contador'
+            listasCertificar:
+              $ref: '#/components/schemas/Contador'
+            listasCerrar:
+              $ref: '#/components/schemas/Contador'
+        acciones:
+          oneOf:
+            - type: object
+              required: [fuente, estado, datos]
+              additionalProperties: false
+              properties:
+                fuente: {type: string, const: organizacion.hdu}
+                estado: {type: string, const: ok}
+                datos:
+                  type: object
+                  required: [items, total, pagina, tamanoPagina, calculoParcial]
+                  additionalProperties: false
+                  properties:
+                    items:
+                      type: array
+                      description: Más antigua primero.
+                      items:
+                        $ref: '#/components/schemas/AccionPendienteQe'
+                    total:
+                      type: integer
+                      minimum: 0
+                    pagina:
+                      type: integer
+                      minimum: 1
+                    tamanoPagina:
+                      type: integer
+                      minimum: 1
+                      maximum: 100
+                    calculoParcial:
+                      type: boolean
+                      description: Verdadero si Certificaciones no respondió. Entonces solo vienen las acciones `ASIGNAR` y el portal avisa que el resto no se pudo calcular; nunca es un vacío falso (E7-F03#2).
+            - $ref: '#/components/schemas/BloqueIndisponible'
+    ResumenCelulaLider:
+      type: object
+      required: [celula, porEstado, avancePromedioAbiertas]
+      additionalProperties: false
+      properties:
+        celula:
+          $ref: '#/components/schemas/CatalogoRef'
+        porEstado:
+          $ref: '#/components/schemas/ConteoPorEstado'
+        avancePromedioAbiertas:
+          oneOf:
+            - type: object
+              required: [fuente, estado, datos]
+              additionalProperties: false
+              properties:
+                fuente: {type: string, const: certificaciones.checklist}
+                estado: {type: string, const: ok}
+                datos:
+                  type: object
+                  required: [porcentaje]
+                  additionalProperties: false
+                  properties:
+                    porcentaje:
+                      type: [number, 'null']
+                      minimum: 0
+                      maximum: 100
+                      description: '`null` si la célula no tiene HDU abiertas.'
+            - $ref: '#/components/schemas/BloqueIndisponible'
+    BandejaLider:
+      type: object
+      description: Sin células vigentes, `celulas.datos.items` viene vacío, los contadores en 0 con `ok` y las listas vacías (E7-B02#1); el portal muestra el mensaje de «sin células».
+      required: [rol, generadaEn, celulas, contadores, resumenPorCelula, hdu]
+      additionalProperties: false
+      properties:
+        rol:
+          type: string
+          const: LIDER_QA
+        generadaEn:
+          $ref: '#/components/schemas/FechaHora'
+        celulas:
+          oneOf:
+            - type: object
+              required: [fuente, estado, datos]
+              additionalProperties: false
+              properties:
+                fuente: {type: string, const: organizacion.celulas}
+                estado: {type: string, const: ok}
+                datos: {$ref: '#/components/schemas/ListaCelulas'}
+            - $ref: '#/components/schemas/BloqueIndisponible'
+        contadores:
+          type: object
+          required: [celulas, hduAbiertas, hduCerradas, sinAnalista, certificados]
+          additionalProperties: false
+          properties:
+            celulas:
+              $ref: '#/components/schemas/Contador'
+            hduAbiertas:
+              $ref: '#/components/schemas/Contador'
+            hduCerradas:
+              $ref: '#/components/schemas/Contador'
+            sinAnalista:
+              $ref: '#/components/schemas/Contador'
+            certificados:
+              $ref: '#/components/schemas/Contador'
+              description: HDU de sus células con certificado (Certificaciones).
+        resumenPorCelula:
+          oneOf:
+            - type: object
+              required: [fuente, estado, datos]
+              additionalProperties: false
+              properties:
+                fuente: {type: string, const: organizacion.hdu}
+                estado: {type: string, const: ok}
+                datos:
+                  type: object
+                  required: [items]
+                  additionalProperties: false
+                  properties:
+                    items:
+                      type: array
+                      items:
+                        $ref: '#/components/schemas/ResumenCelulaLider'
+            - $ref: '#/components/schemas/BloqueIndisponible'
+        hdu:
+          $ref: '#/components/schemas/BloqueListaHdu'
+    TipoPendienteAdmin:
+      type: string
+      enum: [ANALISTA_SIN_QE, QE_SIN_ANALISTAS, LIDER_SIN_CELULAS, CELULA_SIN_LIDER]
+    PendienteConfiguracion:
+      type: object
+      description: '`usuario` en los tres primeros tipos; `celula` solo en `CELULA_SIN_LIDER`. Solo usuarios activos.'
+      required: [tipo, usuario, celula]
+      additionalProperties: false
+      properties:
+        tipo:
+          $ref: '#/components/schemas/TipoPendienteAdmin'
+        usuario:
+          oneOf:
+            - $ref: '#/components/schemas/UsuarioResumen'
+            - type: 'null'
+        celula:
+          oneOf:
+            - $ref: '#/components/schemas/CatalogoRef'
+            - type: 'null'
+    BandejaAdmin:
+      type: object
+      description: Todo sale de Organización; no depende de Certificaciones (E7-B03-T11).
+      required: [rol, generadaEn, contadores, pendientes, ultimosCambios]
+      additionalProperties: false
+      properties:
+        rol:
+          type: string
+          const: ADMINISTRADOR
+        generadaEn:
+          $ref: '#/components/schemas/FechaHora'
+        contadores:
+          type: object
+          required: [usuariosActivos, usuariosInactivos, analistasSinQe, qeSinAnalistas, lideresSinCelulas, celulasSinLider, hduTotal]
+          additionalProperties: false
+          properties:
+            usuariosActivos:
+              $ref: '#/components/schemas/ContadorUsuariosActivos'
+            usuariosInactivos:
+              $ref: '#/components/schemas/Contador'
+            analistasSinQe:
+              $ref: '#/components/schemas/Contador'
+            qeSinAnalistas:
+              $ref: '#/components/schemas/Contador'
+            lideresSinCelulas:
+              $ref: '#/components/schemas/Contador'
+            celulasSinLider:
+              $ref: '#/components/schemas/Contador'
+            hduTotal:
+              $ref: '#/components/schemas/Contador'
+        pendientes:
+          oneOf:
+            - type: object
+              required: [fuente, estado, datos]
+              additionalProperties: false
+              properties:
+                fuente: {type: string, const: organizacion.usuarios}
+                estado: {type: string, const: ok}
+                datos:
+                  type: object
+                  required: [items, total, pagina, tamanoPagina]
+                  additionalProperties: false
+                  properties:
+                    items:
+                      type: array
+                      description: Ordenados por tipo (en el orden del enum) y luego por nombre.
+                      items:
+                        $ref: '#/components/schemas/PendienteConfiguracion'
+                    total:
+                      type: integer
+                      minimum: 0
+                    pagina:
+                      type: integer
+                      minimum: 1
+                    tamanoPagina:
+                      type: integer
+                      minimum: 1
+                      maximum: 100
+            - $ref: '#/components/schemas/BloqueIndisponible'
+        ultimosCambios:
+          oneOf:
+            - type: object
+              required: [fuente, estado, datos]
+              additionalProperties: false
+              properties:
+                fuente: {type: string, const: organizacion.auditoria}
+                estado: {type: string, const: ok}
+                datos:
+                  type: object
+                  required: [items]
+                  additionalProperties: false
+                  properties:
+                    items:
+                      type: array
+                      description: Las 10 entradas más recientes de la auditoría de usuarios.
+                      maxItems: 10
+                      items:
+                        $ref: '#/components/schemas/RegistroAuditoriaUsuario'
+            - $ref: '#/components/schemas/BloqueIndisponible'
+    BandejaAuditor:
+      type: object
+      description: Contadores y pestaña HDU. Las otras pestañas usan `/v1/auditor/*` (E7-B04).
+      required: [rol, generadaEn, contadores, hdu]
+      additionalProperties: false
+      properties:
+        rol:
+          type: string
+          const: AUDITOR
+        generadaEn:
+          $ref: '#/components/schemas/FechaHora'
+        contadores:
+          type: object
+          required: [hduTotal, certificados, eventos7d, cambiosUsuarios7d]
+          additionalProperties: false
+          properties:
+            hduTotal:
+              $ref: '#/components/schemas/Contador'
+            certificados:
+              $ref: '#/components/schemas/Contador'
+            eventos7d:
+              $ref: '#/components/schemas/Contador'
+              description: Eventos de bitácora de checklist de los últimos 7 días (Certificaciones).
+            cambiosUsuarios7d:
+              $ref: '#/components/schemas/Contador'
+              description: Entradas de auditoría de usuarios de los últimos 7 días (Organización).
+        hdu:
+          $ref: '#/components/schemas/BloqueListaHdu'
+
+    # ---------------------------------------------------------- E7 · auditor
+    EventoBitacoraGlobal:
+      type: object
+      description: Evento de bitácora de checklist con la HDU a la que pertenece (E7-B04#1).
+      required: [id, hdu, accion, clave, nombreEntregable, actor, fecha, valorAnterior, valorNuevo, motivo]
+      additionalProperties: false
+      properties:
+        id:
+          $ref: '#/components/schemas/Uuid'
+        hdu:
+          $ref: '#/components/schemas/HduReferencia'
+        accion:
+          $ref: '#/components/schemas/AccionChecklist'
+        clave:
+          $ref: '#/components/schemas/ClaveEntregable'
+        nombreEntregable:
+          type: string
+        actor:
+          $ref: '#/components/schemas/PersonaRol'
+        fecha:
+          $ref: '#/components/schemas/FechaHora'
+        valorAnterior:
+          type: [object, 'null']
+        valorNuevo:
+          type: [object, 'null']
+        motivo:
+          type: [string, 'null']
+    PaginaBitacoraGlobal:
+      type: object
+      required: [items, total, pagina, tamanoPagina]
+      additionalProperties: false
+      properties:
+        items:
+          type: array
+          description: Del más reciente al más antiguo.
+          items:
+            $ref: '#/components/schemas/EventoBitacoraGlobal'
+        total:
+          type: integer
+          minimum: 0
+        pagina:
+          type: integer
+          minimum: 1
+        tamanoPagina:
+          type: integer
+          minimum: 1
+          maximum: 100
+    CertificadoAuditoria:
+      type: object
+      required: [folio, hdu, emitidoEn, emitidoPor, huellaSha256, valido]
+      additionalProperties: false
+      properties:
+        folio:
+          type: string
+        hdu:
+          type: object
+          required: [id, codigo, titulo]
+          additionalProperties: false
+          properties:
+            id:
+              $ref: '#/components/schemas/Uuid'
+            codigo:
+              type: string
+            titulo:
+              type: string
+        emitidoEn:
+          $ref: '#/components/schemas/FechaHora'
+        emitidoPor:
+          $ref: '#/components/schemas/Persona'
+        huellaSha256:
+          type: string
+          pattern: '^[0-9a-f]{64}$'
+        valido:
+          type: boolean
+          description: Mismo valor que entrega la verificación pública del folio (D21, D45). Portal - «Válido» o «No válido».
+    PaginaCertificadosAuditoria:
+      type: object
+      required: [items, total, pagina, tamanoPagina]
+      additionalProperties: false
+      properties:
+        items:
+          type: array
+          description: Del más reciente al más antiguo por `emitidoEn`.
+          items:
+            $ref: '#/components/schemas/CertificadoAuditoria'
+        total:
+          type: integer
+          minimum: 0
+        pagina:
+          type: integer
+          minimum: 1
+        tamanoPagina:
+          type: integer
+          minimum: 1
+          maximum: 100
+    RegistroAuditoriaUsuario:
+      type: object
+      description: Entrada de la auditoría de usuarios. `antes` y `despues` solo traen campos de la lista blanca (rol, nombre, correo, activo, supervisor, células; en exportaciones, recurso, filtros y filas). Nunca contraseñas, tokens ni secretos (E1-B12#3).
+      required: [id, fecha, actor, operacion, entidad, entidadId, usuarioAfectado, antes, despues, motivo]
+      additionalProperties: false
+      properties:
+        id:
+          $ref: '#/components/schemas/Uuid'
+        fecha:
+          $ref: '#/components/schemas/FechaHora'
+        actor:
+          $ref: '#/components/schemas/Actor'
+        operacion:
+          $ref: '#/components/schemas/OperacionAuditoriaUsuarios'
+        entidad:
+          type: string
+          enum: [USUARIO, SUPERVISION, EXPORTACION]
+        entidadId:
+          $ref: '#/components/schemas/Uuid'
+        usuarioAfectado:
+          description: Usuario sobre el que se hizo el cambio (en supervisión, el analista); `null` en `EXPORTAR`.
+          oneOf:
+            - $ref: '#/components/schemas/UsuarioResumen'
+            - type: 'null'
+        antes:
+          type: [object, 'null']
+        despues:
+          type: [object, 'null']
+        motivo:
+          type: [string, 'null']
+    PaginaAuditoriaUsuarios:
+      type: object
+      required: [items, total, pagina, tamanoPagina]
+      additionalProperties: false
+      properties:
+        items:
+          type: array
+          description: Del más reciente al más antiguo.
+          items:
+            $ref: '#/components/schemas/RegistroAuditoriaUsuario'
+        total:
+          type: integer
+          minimum: 0
+        pagina:
+          type: integer
+          minimum: 1
+        tamanoPagina:
+          type: integer
+          minimum: 1
+          maximum: 100
+    RecursoExportacion:
+      type: string
+      enum: [HDU, AUDITORIA_USUARIOS, BITACORA, CERTIFICADOS]
+
+    # ------------------------------------------- E7 · ámbitos internos (D47)
+    AmbitoLecturaHdu:
+      type: object
+      description: |
+        HDU que el usuario del token puede leer. `todas: true` para
+        Administrador y Auditor (`hduIds` vacío); para los demás, la lista
+        explícita: Analista QA (asignadas), QE (responsable o de un analista
+        que supervisa hoy), Líder QA (de sus células vigentes; vacía si no
+        tiene).
+      required: [usuarioId, rol, todas, hduIds]
+      additionalProperties: false
+      properties:
+        usuarioId:
+          $ref: '#/components/schemas/Uuid'
+        rol:
+          $ref: '#/components/schemas/Rol'
+        todas:
+          type: boolean
+        hduIds:
+          type: array
+          items:
+            $ref: '#/components/schemas/Uuid'
+    ConsultaHduLote:
+      type: object
+      required: [hduIds]
+      additionalProperties: false
+      properties:
+        hduIds:
+          type: array
+          minItems: 1
+          maxItems: 1000
+          uniqueItems: true
+          items:
+            $ref: '#/components/schemas/Uuid'
+    ListaHduLote:
+      type: object
+      required: [items]
+      additionalProperties: false
+      properties:
+        items:
+          type: array
+          description: Una por id pedido, en el mismo orden.
+          items:
+            $ref: '#/components/schemas/HduParaCertificacion'
+    ListaSeguimientoHdu:
+      type: object
+      required: [items]
+      additionalProperties: false
+      properties:
+        items:
+          type: array
+          description: Una por id pedido, en el mismo orden.
+          items:
+            $ref: '#/components/schemas/SeguimientoHdu'
+    RegistroExportacion:
+      type: object
+      required: [recurso, filtros, filas]
+      additionalProperties: false
+      properties:
+        recurso:
+          $ref: '#/components/schemas/RecursoExportacion'
+        filtros:
+          type: object
+          description: Filtros de la consulta tal como se aplicaron (solo los parámetros del contrato).
+        filas:
+          type: integer
+          minimum: 0
 
   headers:
     XTraceId:
@@ -1445,6 +2417,80 @@ components:
       description: UUID de la HDU.
       schema:
         $ref: '#/components/schemas/Uuid'
+    # E7 · filtros de bandejas y consultas del Auditor (D49)
+    TamanoPaginaBandeja:
+      name: tamanoPagina
+      in: query
+      required: false
+      description: 25 por defecto. Un valor mayor a 100 se recorta a 100 sin error; la respuesta informa el tamaño efectivo (E7-B03-T08).
+      schema:
+        type: integer
+        minimum: 1
+        default: 25
+    FiltroCelula:
+      name: celulaId
+      in: query
+      required: false
+      description: Para el Líder QA, solo una de sus células vigentes; otra responde 403 `ACCESO_DENEGADO` (E7-B02#1).
+      schema:
+        $ref: '#/components/schemas/Uuid'
+    FiltroSprint:
+      name: sprintId
+      in: query
+      required: false
+      schema:
+        $ref: '#/components/schemas/Uuid'
+    FiltroEstadoHdu:
+      name: estado
+      in: query
+      required: false
+      schema:
+        $ref: '#/components/schemas/EstadoHdu'
+    FiltroQe:
+      name: qeId
+      in: query
+      required: false
+      description: QE responsable.
+      schema:
+        $ref: '#/components/schemas/Uuid'
+    FiltroAnalista:
+      name: analistaId
+      in: query
+      required: false
+      description: Analista asignado.
+      schema:
+        $ref: '#/components/schemas/Uuid'
+    FiltroBusqueda:
+      name: q
+      in: query
+      required: false
+      description: Coincidencia parcial en código o título, sin distinguir mayúsculas.
+      schema:
+        type: string
+        minLength: 2
+        maxLength: 120
+    FiltroDesde:
+      name: desde
+      in: query
+      required: false
+      description: Inicio del rango, inclusivo.
+      schema:
+        $ref: '#/components/schemas/FechaHora'
+    FiltroHasta:
+      name: hasta
+      in: query
+      required: false
+      description: Fin del rango, inclusivo. Anterior a `desde` → 400.
+      schema:
+        $ref: '#/components/schemas/FechaHora'
+    Orden:
+      name: orden
+      in: query
+      required: false
+      description: '`columna:asc|desc`. Columnas: `codigo`, `celula`, `sprint`, `prioridad`, `estado`, `avance`, `actualizada`, `fecha`. Sin orden, el de cada bandeja (sección 6 del backlog E7). Una columna no válida → 400.'
+      schema:
+        type: string
+        pattern: '^[a-z]+:(asc|desc)$'
     XTraceIdSolicitud:
       name: x-trace-id
       in: header
@@ -1544,6 +2590,44 @@ components:
         application/json:
           schema:
             $ref: '#/components/schemas/Error'
+    ExportacionCsv:
+      description: |
+        CSV con los mismos filtros y columnas que la consulta (D35, D48):
+        UTF-8 con BOM, separador `;`, fila de encabezado, fechas ISO 8601 en
+        UTC. Sin coincidencias, solo el encabezado. Antes de responder, la
+        exportación queda registrada en la auditoría (`EXPORTAR`); si el
+        registro falla, no se entrega el archivo (503).
+      headers:
+        x-trace-id:
+          $ref: '#/components/headers/XTraceId'
+        Content-Disposition:
+          description: '`attachment; filename="quality360-<recurso>-<AAAA-MM-DD>.csv"`'
+          schema:
+            type: string
+        X-Q360-Filas:
+          description: Filas de datos exportadas, sin el encabezado.
+          schema:
+            type: integer
+            minimum: 0
+      content:
+        text/csv:
+          schema:
+            type: string
+    ExportacionExcedeLimite:
+      description: El resultado supera el límite de filas (50.000; configurable con `EXPORTACION_LIMITE_FILAS` para pruebas). No se genera el archivo ni se registra la exportación.
+      x-codigos: [EXPORTACION_EXCEDE_LIMITE]
+      headers:
+        x-trace-id:
+          $ref: '#/components/headers/XTraceId'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            codigo: EXPORTACION_EXCEDE_LIMITE
+            mensaje: La exportación supera las 50.000 filas. Acota los filtros.
+            traceId: 4bf92f3577b34da6a3ce929d0e0e4736
+            detalles: []
     ProveedorIdentidadNoDisponible:
       description: Supabase Auth no confirmó el cambio. No se aplicó nada.
       x-codigos: [PROVEEDOR_IDENTIDAD_NO_DISPONIBLE]

@@ -26,7 +26,11 @@ info:
       403 `ACCESO_DENEGADO`.
     - Ámbito de HDU: el Analista QA ve las HDU con `analistaId` igual a su id;
       el QE, aquellas donde es responsable o cuyo analista supervisa hoy; el
-      Administrador, todas. Fuera de ámbito → 403 (D12).
+      Líder QA, las de sus células vigentes; el Administrador y el Auditor,
+      todas. Fuera de ámbito → 403 (D12, E7-B02).
+    - Líder QA y Auditor son de solo lectura: ninguna escritura los admite
+      (D32). Las bandejas (`/v1/bandeja/*`) se componen aquí, con
+      Certificaciones por contrato interno (D46).
     - Toda escritura audita valor anterior, nuevo, actor y fecha en la misma
       transacción (E1-B12, E2-B04). No hay borrados físicos.
 
@@ -63,6 +67,10 @@ tags:
     description: Historias de usuario, estados, asignación e historial.
   - name: Carga semilla
     description: Altas idempotentes para Integraciones con credencial de servicio.
+  - name: Bandejas
+    description: Bandeja de inicio de cada rol (E7-B03, D29, D33, D46).
+  - name: Auditor
+    description: Consultas y exportaciones del Auditor que pertenecen a Organización (E7-B04).
 
 x-hdu-transversal: [E1-B02#1, E1-B07#3, E1-B11#1]
 
@@ -91,8 +99,8 @@ paths:
       tags: [Sesión]
       summary: Perfil del usuario autenticado
       description: Rol leído de la base en cada solicitud. Usuario inactivo o sin registro → 403.
-      x-roles: [ADMINISTRADOR, QE, ANALISTA_QA]
-      x-hdu: [E1-F11#3, E1-B01#2, E1-B10#1, E1-B10#2, E1-B10#3]
+      x-roles: [ADMINISTRADOR, QE, ANALISTA_QA, LIDER_QA, AUDITOR]
+      x-hdu: [E1-F11#3, E1-B01#2, E1-B10#1, E1-B10#2, E1-B10#3, E7-F01#1]
       responses:
         '200':
           description: Perfil vigente.
@@ -118,8 +126,10 @@ paths:
         usuario está inactivo (`activo: false`) para que el guard del llamador
         lo deniegue. Sin caché: refleja desactivaciones y cambios de rol en la
         siguiente solicitud. Usuario sin registro en Organización → 403.
-      x-roles: [ADMINISTRADOR, QE, ANALISTA_QA]
-      x-hdu: [E1-B02#2, E1-B02#3]
+        Para `LIDER_QA`, `ambito.celulasIds` trae sus células vigentes (D47);
+        Certificaciones exige `rol: AUDITOR` en `/v1/auditor/*`.
+      x-roles: [ADMINISTRADOR, QE, ANALISTA_QA, LIDER_QA, AUDITOR]
+      x-hdu: [E1-B02#2, E1-B02#3, E7-B02#1, E7-B04#2]
       responses:
         '200':
           description: Resolución de acceso.
@@ -148,8 +158,13 @@ paths:
         rol de quien consulta) y `hdu` (código, título, estado, célula, sprint,
         QE responsable y analista), que Certificaciones usa para sus reglas y
         para el certificado (E3).
-      x-roles: [ADMINISTRADOR, QE, ANALISTA_QA]
-      x-hdu: [E2-F04#2, E2-B03#1, E2-B03#2, E2-B03#3, E3-B01#1]
+
+        Relaciones de solo lectura (D32): `LECTOR_CELULA` si el usuario es
+        Líder QA y la célula de la HDU está entre sus vigentes;
+        `LECTOR_AUDITORIA` si es Auditor. Una célula quitada deja de dar acceso
+        en la siguiente solicitud (E7-B02-T05).
+      x-roles: [ADMINISTRADOR, QE, ANALISTA_QA, LIDER_QA, AUDITOR]
+      x-hdu: [E2-F04#2, E2-B03#1, E2-B03#2, E2-B03#3, E3-B01#1, E7-B02#1, E7-B02#2, E7-F04#3]
       responses:
         '200':
           description: Resolución de acceso a la HDU.
@@ -183,6 +198,485 @@ paths:
           $ref: '#/components/responses/NoAutenticado'
         '403':
           $ref: '#/components/responses/AccesoDenegado'
+        '500':
+          $ref: '#/components/responses/ErrorInterno'
+
+  /v1/interno/hdu/ambito:
+    get:
+      operationId: resolverAmbitoLecturaHdu
+      tags: [Acceso interno]
+      summary: HDU que el usuario del token puede leer
+      description: |
+        Para que Certificaciones autorice lecturas en lote (bandejas y
+        consultas del Auditor) con una sola llamada, sin leer el esquema
+        `organizacion` (D47). Mismo ámbito que `GET /v1/hdu` (E2-B03, E7-B02):
+        Administrador y Auditor → `todas: true`; Líder QA → HDU de sus células
+        vigentes; QE y Analista QA → su ámbito de E2. Sin caché. Usuario
+        inactivo o sin registro → 403.
+      x-roles: [ADMINISTRADOR, QE, ANALISTA_QA, LIDER_QA, AUDITOR]
+      x-hdu: [E7-B02#1, E7-B02#2, E7-B03#1]
+      responses:
+        '200':
+          description: Ámbito de lectura.
+          content:
+            application/json:
+              schema:
+                $ref: './comun.v1.yaml#/components/schemas/AmbitoLecturaHdu'
+        '401':
+          $ref: '#/components/responses/NoAutenticado'
+        '403':
+          $ref: '#/components/responses/AccesoDenegado'
+        '500':
+          $ref: '#/components/responses/ErrorInterno'
+
+  /v1/interno/hdu/consulta:
+    post:
+      operationId: consultarHduLote
+      tags: [Acceso interno]
+      summary: Datos de varias HDU del ámbito del usuario
+      description: |
+        Es una lectura; usa POST solo para enviar hasta 1000 ids. Devuelve
+        código, título, estado, célula, sprint, QE responsable y analista de
+        cada HDU pedida, para que Certificaciones muestre la HDU en la
+        bitácora global (E7-B04#1). Si algún id está fuera del ámbito del
+        usuario o no existe, responde 403 completo, sin datos parciales (D12).
+      x-roles: [ADMINISTRADOR, QE, ANALISTA_QA, LIDER_QA, AUDITOR]
+      x-hdu: [E7-B04#1]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: './comun.v1.yaml#/components/schemas/ConsultaHduLote'
+      responses:
+        '200':
+          description: Una HDU por id, en el orden pedido.
+          content:
+            application/json:
+              schema:
+                $ref: './comun.v1.yaml#/components/schemas/ListaHduLote'
+        '400':
+          $ref: '#/components/responses/Validacion'
+        '401':
+          $ref: '#/components/responses/NoAutenticado'
+        '403':
+          $ref: '#/components/responses/AccesoDenegado'
+        '500':
+          $ref: '#/components/responses/ErrorInterno'
+
+  /v1/interno/auditoria/exportaciones:
+    post:
+      operationId: registrarExportacion
+      tags: [Acceso interno]
+      summary: Registrar en la auditoría una exportación hecha por otro servicio
+      description: |
+        Certificaciones lo llama, con el token del Auditor, antes de entregar
+        el CSV de bitácora o de certificados (D48). Organización verifica que
+        el usuario del token sea Auditor activo y registra `EXPORTAR`
+        (entidad `EXPORTACION`) con actor, recurso, filtros y filas (D35). Si
+        no responde, Certificaciones no entrega el archivo. Las exportaciones
+        de Organización se registran sin pasar por aquí.
+      x-roles: [AUDITOR]
+      x-hdu: [E7-B04#3]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: './comun.v1.yaml#/components/schemas/RegistroExportacion'
+      responses:
+        '201':
+          description: Exportación registrada.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [id]
+                additionalProperties: false
+                properties:
+                  id:
+                    $ref: '#/components/schemas/Uuid'
+        '400':
+          $ref: '#/components/responses/Validacion'
+        '401':
+          $ref: '#/components/responses/NoAutenticado'
+        '403':
+          $ref: '#/components/responses/AccesoDenegado'
+        '500':
+          $ref: '#/components/responses/ErrorInterno'
+
+  # ------------------------------------------------------------ E7 · bandejas
+  /v1/bandeja/analista:
+    get:
+      operationId: obtenerBandejaAnalista
+      tags: [Bandejas]
+      summary: Bandeja del Analista QA
+      description: |
+        Solo rol `ANALISTA_QA`; cualquier otro, incluido el Administrador, 403
+        con el mismo cuerpo (D33). Ámbito: HDU con `analistaId` igual al
+        usuario. Organización compone sus datos con
+        `POST /v1/interno/checklist/estados` de Certificaciones (2 s de tiempo
+        límite, `CERTIFICACIONES_TIMEOUT_MS`), propagando `Authorization` y
+        `x-trace-id` (D46).
+
+        - Contadores: `abiertas` (Organización), `conObservaciones` y
+          `esperandoAprobacion` (Certificaciones). No dependen de los filtros.
+        - Lista: orden por defecto observadas primero, luego prioridad (alta a
+          baja), luego sprint. Si Certificaciones no responde, sus contadores y
+          el `seguimiento` de cada fila vienen `indisponible`, la lista sigue
+          con orden de respaldo `prioridad:desc` y la respuesta es 200 (E7-B03#2).
+        - `soloConObservaciones` depende de Certificaciones: si no responde, el
+          bloque `hdu` viene `indisponible` en vez de una lista sin filtrar.
+      x-roles: [ANALISTA_QA]
+      x-hdu: [E7-F01#3, E7-F02#1, E7-F02#2, E7-F02#3, E7-B03#1, E7-B03#2, E7-B03#3]
+      parameters:
+        - $ref: '#/components/parameters/FiltroEstadoHdu'
+        - $ref: '#/components/parameters/FiltroCelula'
+        - $ref: '#/components/parameters/FiltroSprint'
+        - name: soloConObservaciones
+          in: query
+          required: false
+          schema:
+            type: boolean
+        - $ref: '#/components/parameters/FiltroBusqueda'
+        - $ref: '#/components/parameters/Orden'
+        - $ref: '#/components/parameters/Pagina'
+        - $ref: '#/components/parameters/TamanoPaginaBandeja'
+      responses:
+        '200':
+          description: Bandeja con cada bloque `ok` o `indisponible`.
+          content:
+            application/json:
+              schema:
+                $ref: './comun.v1.yaml#/components/schemas/BandejaAnalista'
+        '400':
+          $ref: '#/components/responses/Validacion'
+        '401':
+          $ref: '#/components/responses/NoAutenticado'
+        '403':
+          $ref: '#/components/responses/AccesoDenegado'
+        '500':
+          $ref: '#/components/responses/ErrorInterno'
+
+  /v1/bandeja/qe:
+    get:
+      operationId: obtenerBandejaQe
+      tags: [Bandejas]
+      summary: Bandeja del QE
+      description: |
+        Solo rol `QE` (D33). Ámbito: HDU donde el usuario es QE responsable;
+        las de sus analistas con otro QE responsable no aparecen (E7-F03#3).
+        Una fila por HDU y acción pendiente, la más antigua primero.
+
+        - `sinAnalista` y las acciones `ASIGNAR` salen de Organización.
+        - `porAprobar`, `listasCertificar`, `listasCerrar` y las acciones
+          `APROBAR`, `CERTIFICAR` y `CERRAR` salen de Certificaciones. Si no
+          responde, esos contadores vienen `indisponible` y la lista trae solo
+          las acciones `ASIGNAR` con `calculoParcial: true` (E7-B03-T09).
+        - Filtrar por `tipoAccion` distinto de `ASIGNAR` con Certificaciones
+          caída deja el bloque `acciones` `indisponible`.
+        - El resumen de equipo de E1-F03 sigue en `GET /v1/inicio/qe`.
+      x-roles: [QE]
+      x-hdu: [E7-F01#3, E7-F03#1, E7-F03#2, E7-F03#3, E7-B03#1, E7-B03#2, E7-B03#3]
+      parameters:
+        - name: tipoAccion
+          in: query
+          required: false
+          schema:
+            $ref: './comun.v1.yaml#/components/schemas/TipoAccionQe'
+        - $ref: '#/components/parameters/FiltroCelula'
+        - $ref: '#/components/parameters/FiltroSprint'
+        - $ref: '#/components/parameters/FiltroAnalista'
+        - $ref: '#/components/parameters/FiltroBusqueda'
+        - $ref: '#/components/parameters/Pagina'
+        - $ref: '#/components/parameters/TamanoPaginaBandeja'
+      responses:
+        '200':
+          description: Bandeja con cada bloque `ok` o `indisponible`.
+          content:
+            application/json:
+              schema:
+                $ref: './comun.v1.yaml#/components/schemas/BandejaQe'
+        '400':
+          $ref: '#/components/responses/Validacion'
+        '401':
+          $ref: '#/components/responses/NoAutenticado'
+        '403':
+          $ref: '#/components/responses/AccesoDenegado'
+        '500':
+          $ref: '#/components/responses/ErrorInterno'
+
+  /v1/bandeja/lider:
+    get:
+      operationId: obtenerBandejaLider
+      tags: [Bandejas]
+      summary: Bandeja del Líder QA
+      description: |
+        Solo rol `LIDER_QA` (D33). Ámbito: HDU cuya célula está entre las
+        vigentes del líder en `celula_lider` (D30). Solo lectura.
+
+        - `celulaId` fuera de sus células vigentes → 403 (E7-B02-T04).
+        - Sin células: 200 con `celulas.datos.items` vacío, contadores en 0
+          con `ok` y listas vacías (E7-B02#1).
+        - `certificados`, `avancePromedioAbiertas` y el `seguimiento` de cada
+          fila salen de Certificaciones; si no responde, van `indisponible` y
+          la lista se mantiene (E7-F04#2). `hduAbiertas`, `hduCerradas` y
+          `sinAnalista` no se degradan.
+        - Orden por defecto: célula, sprint más reciente, código.
+      x-roles: [LIDER_QA]
+      x-hdu: [E7-F01#3, E7-F04#1, E7-F04#2, E7-F04#3, E7-B02#1, E7-B03#1, E7-B03#2, E7-B03#3]
+      parameters:
+        - $ref: '#/components/parameters/FiltroCelula'
+        - $ref: '#/components/parameters/FiltroSprint'
+        - $ref: '#/components/parameters/FiltroEstadoHdu'
+        - $ref: '#/components/parameters/FiltroQe'
+        - $ref: '#/components/parameters/FiltroAnalista'
+        - name: sinAnalista
+          in: query
+          required: false
+          schema:
+            type: boolean
+        - $ref: '#/components/parameters/FiltroBusqueda'
+        - $ref: '#/components/parameters/Orden'
+        - $ref: '#/components/parameters/Pagina'
+        - $ref: '#/components/parameters/TamanoPaginaBandeja'
+      responses:
+        '200':
+          description: Bandeja con cada bloque `ok` o `indisponible`.
+          content:
+            application/json:
+              schema:
+                $ref: './comun.v1.yaml#/components/schemas/BandejaLider'
+        '400':
+          $ref: '#/components/responses/Validacion'
+        '401':
+          $ref: '#/components/responses/NoAutenticado'
+        '403':
+          $ref: '#/components/responses/AccesoDenegado'
+        '500':
+          $ref: '#/components/responses/ErrorInterno'
+
+  /v1/bandeja/admin:
+    get:
+      operationId: obtenerBandejaAdmin
+      tags: [Bandejas]
+      summary: Bandeja del Administrador
+      description: |
+        Solo rol `ADMINISTRADOR` (D33). Todo sale de Organización y no
+        depende de Certificaciones (E7-B03-T11). Si Organización no responde,
+        el gateway devuelve 503 y el portal muestra el error con «Reintentar»
+        (E7-F05#2).
+
+        - Contadores sobre usuarios activos, salvo `usuariosInactivos`.
+          `celulasSinLider` cuenta células activas sin asignación vigente.
+        - `pendientes`: una fila por analista activo sin QE, QE activo sin
+          analistas, Líder activo sin células y célula sin líder (D51).
+        - `ultimosCambios`: las 10 entradas más recientes de la auditoría de
+          usuarios, sin contraseñas ni tokens.
+      x-roles: [ADMINISTRADOR]
+      x-hdu: [E7-F01#3, E7-F05#1, E7-F05#2, E7-F05#3, E7-B03#1, E7-B03#3]
+      parameters:
+        - $ref: '#/components/parameters/Pagina'
+        - $ref: '#/components/parameters/TamanoPaginaBandeja'
+      responses:
+        '200':
+          description: Bandeja del Administrador.
+          content:
+            application/json:
+              schema:
+                $ref: './comun.v1.yaml#/components/schemas/BandejaAdmin'
+        '400':
+          $ref: '#/components/responses/Validacion'
+        '401':
+          $ref: '#/components/responses/NoAutenticado'
+        '403':
+          $ref: '#/components/responses/AccesoDenegado'
+        '500':
+          $ref: '#/components/responses/ErrorInterno'
+
+  /v1/bandeja/auditor:
+    get:
+      operationId: obtenerBandejaAuditor
+      tags: [Bandejas]
+      summary: Bandeja del Auditor (contadores y pestaña HDU)
+      description: |
+        Solo rol `AUDITOR` (D33). Ámbito: todas las HDU, solo lectura.
+        `hduTotal` y `cambiosUsuarios7d` salen de Organización; `certificados`
+        y `eventos7d` de `GET /v1/interno/resumen-auditoria` de
+        Certificaciones. Si Certificaciones no responde, esos contadores y el
+        `seguimiento` de cada fila vienen `indisponible`; filtrar por
+        `certificado` deja el bloque `hdu` `indisponible`.
+        `desde`/`hasta` filtran por `actualizadoEn`.
+      x-roles: [AUDITOR]
+      x-hdu: [E7-F01#3, E7-F06#1, E7-F06#3, E7-B02#2, E7-B03#1, E7-B03#2, E7-B03#3]
+      parameters:
+        - $ref: '#/components/parameters/FiltroCelula'
+        - $ref: '#/components/parameters/FiltroSprint'
+        - $ref: '#/components/parameters/FiltroEstadoHdu'
+        - $ref: '#/components/parameters/FiltroQe'
+        - $ref: '#/components/parameters/FiltroAnalista'
+        - name: certificado
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [con, sin]
+        - $ref: '#/components/parameters/FiltroDesde'
+        - $ref: '#/components/parameters/FiltroHasta'
+        - $ref: '#/components/parameters/FiltroBusqueda'
+        - $ref: '#/components/parameters/Orden'
+        - $ref: '#/components/parameters/Pagina'
+        - $ref: '#/components/parameters/TamanoPaginaBandeja'
+      responses:
+        '200':
+          description: Bandeja con cada bloque `ok` o `indisponible`.
+          content:
+            application/json:
+              schema:
+                $ref: './comun.v1.yaml#/components/schemas/BandejaAuditor'
+        '400':
+          $ref: '#/components/responses/Validacion'
+        '401':
+          $ref: '#/components/responses/NoAutenticado'
+        '403':
+          $ref: '#/components/responses/AccesoDenegado'
+        '500':
+          $ref: '#/components/responses/ErrorInterno'
+
+  # ----------------------------------------------------- E7 · consultas del Auditor
+  /v1/auditor/auditoria-usuarios:
+    get:
+      operationId: listarAuditoriaUsuarios
+      tags: [Auditor]
+      summary: Auditoría de usuarios con filtros
+      description: |
+        Solo rol `AUDITOR`; el Administrador también recibe 403 (D38,
+        E7-B04#2). Entidades `USUARIO`, `SUPERVISION` y `EXPORTACION`, de la
+        más reciente a la más antigua. `antes` y `despues` solo traen campos
+        de la lista blanca: nunca contraseñas, tokens ni secretos (E1-B12#3).
+        Un filtro sin coincidencias → 200 con `items` vacío y `total` 0.
+      x-roles: [AUDITOR]
+      x-hdu: [E7-F06#1, E7-F06#2, E7-F06#3, E7-F07#3, E7-B04#1, E7-B04#2]
+      parameters:
+        - $ref: '#/components/parameters/FiltroDesde'
+        - $ref: '#/components/parameters/FiltroHasta'
+        - name: actorId
+          in: query
+          required: false
+          schema:
+            $ref: '#/components/schemas/Uuid'
+        - name: operacion
+          in: query
+          required: false
+          schema:
+            $ref: './comun.v1.yaml#/components/schemas/OperacionAuditoriaUsuarios'
+        - name: usuarioAfectadoId
+          in: query
+          required: false
+          schema:
+            $ref: '#/components/schemas/Uuid'
+        - $ref: '#/components/parameters/Pagina'
+        - $ref: '#/components/parameters/TamanoPaginaBandeja'
+      responses:
+        '200':
+          description: Página de la auditoría de usuarios.
+          content:
+            application/json:
+              schema:
+                $ref: './comun.v1.yaml#/components/schemas/PaginaAuditoriaUsuarios'
+        '400':
+          $ref: '#/components/responses/Validacion'
+        '401':
+          $ref: '#/components/responses/NoAutenticado'
+        '403':
+          $ref: '#/components/responses/AccesoDenegado'
+        '500':
+          $ref: '#/components/responses/ErrorInterno'
+
+  /v1/auditor/exportaciones/hdu:
+    get:
+      operationId: exportarHduAuditor
+      tags: [Auditor]
+      summary: Exportar a CSV la pestaña HDU del Auditor
+      description: |
+        Mismos filtros que `GET /v1/bandeja/auditor` y las columnas de la
+        pestaña: código, título, célula, sprint, estado, QE, analista, avance,
+        certificado y actualizada. Avance y certificado salen de
+        Certificaciones: si no responde, 503 sin archivo (no se exporta un
+        avance vacío, D48). Registra `EXPORTAR` con recurso `HDU`.
+      x-roles: [AUDITOR]
+      x-hdu: [E7-F06#2, E7-B04#2, E7-B04#3]
+      parameters:
+        - $ref: '#/components/parameters/FiltroCelula'
+        - $ref: '#/components/parameters/FiltroSprint'
+        - $ref: '#/components/parameters/FiltroEstadoHdu'
+        - $ref: '#/components/parameters/FiltroQe'
+        - $ref: '#/components/parameters/FiltroAnalista'
+        - name: certificado
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [con, sin]
+        - $ref: '#/components/parameters/FiltroDesde'
+        - $ref: '#/components/parameters/FiltroHasta'
+        - $ref: '#/components/parameters/FiltroBusqueda'
+      responses:
+        '200':
+          $ref: '#/components/responses/ExportacionCsv'
+        '400':
+          $ref: '#/components/responses/Validacion'
+        '401':
+          $ref: '#/components/responses/NoAutenticado'
+        '403':
+          $ref: '#/components/responses/AccesoDenegado'
+        '422':
+          $ref: '#/components/responses/ExportacionExcedeLimite'
+        '500':
+          $ref: '#/components/responses/ErrorInterno'
+        '503':
+          $ref: '#/components/responses/ServicioNoDisponible'
+
+  /v1/auditor/exportaciones/auditoria-usuarios:
+    get:
+      operationId: exportarAuditoriaUsuarios
+      tags: [Auditor]
+      summary: Exportar a CSV la auditoría de usuarios
+      description: |
+        Mismos filtros y columnas que `GET /v1/auditor/auditoria-usuarios`
+        (fecha, actor, operación, usuario afectado, cambios, motivo). La
+        propia exportación queda como última entrada (E7-B04-T10).
+      x-roles: [AUDITOR]
+      x-hdu: [E7-F06#2, E7-B04#2, E7-B04#3]
+      parameters:
+        - $ref: '#/components/parameters/FiltroDesde'
+        - $ref: '#/components/parameters/FiltroHasta'
+        - name: actorId
+          in: query
+          required: false
+          schema:
+            $ref: '#/components/schemas/Uuid'
+        - name: operacion
+          in: query
+          required: false
+          schema:
+            $ref: './comun.v1.yaml#/components/schemas/OperacionAuditoriaUsuarios'
+        - name: usuarioAfectadoId
+          in: query
+          required: false
+          schema:
+            $ref: '#/components/schemas/Uuid'
+      responses:
+        '200':
+          $ref: '#/components/responses/ExportacionCsv'
+        '400':
+          $ref: '#/components/responses/Validacion'
+        '401':
+          $ref: '#/components/responses/NoAutenticado'
+        '403':
+          $ref: '#/components/responses/AccesoDenegado'
+        '422':
+          $ref: '#/components/responses/ExportacionExcedeLimite'
         '500':
           $ref: '#/components/responses/ErrorInterno'
 
@@ -393,9 +887,9 @@ paths:
       operationId: listarUsuarios
       tags: [Usuarios]
       summary: Listar y buscar usuarios
-      description: Igual que en el gateway. Orden por `nombre`; `q` busca en nombre o correo sin distinguir mayúsculas.
+      description: Igual que en el gateway. Orden por `nombre`; `q` busca en nombre o correo sin distinguir mayúsculas. Cada fila trae `celulasVigentes` (D44).
       x-roles: [ADMINISTRADOR]
-      x-hdu: [E1-F09#1, E1-F10#1]
+      x-hdu: [E1-F09#1, E1-F10#1, E7-F05#3, E7-F07#1]
       parameters:
         - name: q
           in: query
@@ -440,8 +934,11 @@ paths:
         `auth.admin.inviteUserByEmail` → registro con `id = sub` y auditoría
         `CREAR_USUARIO` en una transacción. Si falla el registro local tras
         crear la cuenta, se elimina la cuenta creada (compensación).
+        Con `rol: LIDER_QA` y `celulaIds`, las células se asignan en la misma
+        transacción y se audita además `ASIGNAR_CELULAS_LIDER` (D42). Una
+        célula inexistente → 422 `CATALOGO_INVALIDO` antes de crear la cuenta.
       x-roles: [ADMINISTRADOR]
-      x-hdu: [E1-F09#2, E1-B06#3, E1-B07#1, E1-B12#1]
+      x-hdu: [E1-F09#2, E1-B06#3, E1-B07#1, E1-B12#1, E7-F07#1, E7-F07#2, E7-B01#1, E7-B01#2, E7-B01#3, E7-B02#3]
       requestBody:
         required: true
         content:
@@ -473,6 +970,13 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
+        '422':
+          description: Alguna célula de `celulaIds` no existe.
+          x-codigos: [CATALOGO_INVALIDO]
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
         '500':
           $ref: '#/components/responses/ErrorInterno'
         '503':
@@ -481,6 +985,28 @@ paths:
   /v1/usuarios/{id}:
     parameters:
       - $ref: '#/components/parameters/UsuarioIdPath'
+    get:
+      operationId: obtenerUsuario
+      tags: [Usuarios]
+      summary: Un usuario por id
+      description: Para la preselección `?usuario=<id>` de `/admin/usuarios` (D44). Inexistente → 404.
+      x-roles: [ADMINISTRADOR]
+      x-hdu: [E7-F05#3]
+      responses:
+        '200':
+          description: Usuario.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Usuario'
+        '401':
+          $ref: '#/components/responses/NoAutenticado'
+        '403':
+          $ref: '#/components/responses/AccesoDenegado'
+        '404':
+          $ref: '#/components/responses/NoEncontrado'
+        '500':
+          $ref: '#/components/responses/ErrorInterno'
     patch:
       operationId: actualizarUsuario
       tags: [Usuarios]
@@ -530,9 +1056,13 @@ paths:
       operationId: cambiarRolUsuario
       tags: [Usuarios]
       summary: Asignar o cambiar el rol de un usuario
-      description: Mismas reglas que en el gateway (catálogo cerrado, último administrador, relaciones de supervisión incompatibles).
+      description: |
+        Mismas reglas que en el gateway: catálogo cerrado (400), último
+        administrador, relaciones incompatibles (D31, D40, D43) y cambio
+        atómico con `celulaIds` (D42). Todo en una transacción con bloqueo de
+        la fila del usuario (`SELECT … FOR UPDATE`).
       x-roles: [ADMINISTRADOR]
-      x-hdu: [E1-F09#3, E1-F11#2, E1-B08#1, E1-B08#2, E1-B08#3, E1-B12#1]
+      x-hdu: [E1-F09#3, E1-F11#2, E1-B08#1, E1-B08#2, E1-B08#3, E1-B12#1, E7-F07#1, E7-F07#2, E7-B01#1, E7-B01#2, E7-B01#3, E7-B02#3]
       requestBody:
         required: true
         content:
@@ -563,6 +1093,119 @@ paths:
                 anyOf:
                   - $ref: '#/components/schemas/ErrorRelacionesIncompatibles'
                   - $ref: '#/components/schemas/Error'
+        '422':
+          description: Alguna célula de `celulaIds` no existe. No se aplica el cambio de rol.
+          x-codigos: [CATALOGO_INVALIDO]
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          $ref: '#/components/responses/ErrorInterno'
+
+  /v1/usuarios/{id}/celulas-lider:
+    parameters:
+      - $ref: '#/components/parameters/UsuarioIdPath'
+    get:
+      operationId: obtenerCelulasLider
+      tags: [Usuarios]
+      summary: Células vigentes e historial de un Líder QA
+      description: |
+        Vigentes e historial con fechas, quién asignó y quién retiró (E7-F07#3).
+        Para un usuario que no es Líder QA responde 200 con `vigentes` vacío y
+        el historial que tenga (puede haber sido líder antes). Inexistente → 404.
+      x-roles: [ADMINISTRADOR]
+      x-hdu: [E7-F07#3, E7-B01#1, E7-B01#2]
+      responses:
+        '200':
+          description: Células del líder.
+          content:
+            application/json:
+              schema:
+                $ref: './comun.v1.yaml#/components/schemas/CelulasLider'
+        '401':
+          $ref: '#/components/responses/NoAutenticado'
+        '403':
+          $ref: '#/components/responses/AccesoDenegado'
+        '404':
+          $ref: '#/components/responses/NoEncontrado'
+        '500':
+          $ref: '#/components/responses/ErrorInterno'
+    put:
+      operationId: reemplazarCelulasLider
+      tags: [Usuarios]
+      summary: Fijar las células vigentes de un Líder QA
+      description: |
+        Reemplaza el conjunto vigente en una transacción (D30): cierra con
+        `fecha_hasta = now()` las que sobran (se conservan en el historial) y
+        abre las nuevas; las que siguen no se tocan. Lista vacía = quitar
+        todas.
+
+        - El usuario debe tener rol `LIDER_QA`; si no, 409
+          `ROL_INCOMPATIBLE` sin cambios (E7-B01-T04).
+        - Célula inexistente → 422 `CATALOGO_INVALIDO` sin cambios.
+        - Sin diferencias → 200 sin auditar. Con diferencias, auditoría
+          `ASIGNAR_CELULAS_LIDER` con `antes` y `despues` (`celulas`).
+        - El nuevo ámbito rige en la siguiente solicitud del líder (E7-B02-T05).
+      x-roles: [ADMINISTRADOR]
+      x-hdu: [E7-F05#3, E7-F07#2, E7-F07#3, E7-B01#1, E7-B01#2, E7-B01#3, E7-B02#3]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: './comun.v1.yaml#/components/schemas/SolicitudCelulasLider'
+      responses:
+        '200':
+          description: Células después del cambio.
+          content:
+            application/json:
+              schema:
+                $ref: './comun.v1.yaml#/components/schemas/CelulasLider'
+        '400':
+          $ref: '#/components/responses/Validacion'
+        '401':
+          $ref: '#/components/responses/NoAutenticado'
+        '403':
+          $ref: '#/components/responses/AccesoDenegado'
+        '404':
+          $ref: '#/components/responses/NoEncontrado'
+        '409':
+          description: El usuario no es Líder QA.
+          x-codigos: [ROL_INCOMPATIBLE]
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '422':
+          description: Alguna célula no existe.
+          x-codigos: [CATALOGO_INVALIDO]
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          $ref: '#/components/responses/ErrorInterno'
+
+  /v1/roles:
+    get:
+      operationId: listarRoles
+      tags: [Catálogos]
+      summary: Catálogo de roles
+      description: Los 5 roles de D28 con su nombre visible, en el orden del selector (E7-B01-T01).
+      x-roles: [ADMINISTRADOR]
+      x-hdu: [E7-F07#1, E7-B01#1]
+      responses:
+        '200':
+          description: Catálogo de roles.
+          content:
+            application/json:
+              schema:
+                $ref: './comun.v1.yaml#/components/schemas/ListaRoles'
+        '401':
+          $ref: '#/components/responses/NoAutenticado'
+        '403':
+          $ref: '#/components/responses/AccesoDenegado'
         '500':
           $ref: '#/components/responses/ErrorInterno'
 
@@ -579,7 +1222,7 @@ paths:
         por un índice único parcial sobre `analista_id WHERE hasta IS NULL`.
         La semilla la usa con `credencialServicio`.
       x-roles: [ADMINISTRADOR, SERVICIO]
-      x-hdu: [E1-F10#1, E1-F10#2, E1-B09#1, E1-B09#2, E1-B09#3, E1-B12#1, E1-B12#2]
+      x-hdu: [E1-F10#1, E1-F10#2, E1-B09#1, E1-B09#2, E1-B09#3, E1-B12#1, E1-B12#2, E7-B02#3]
       security:
         - sesionSupabase: []
         - credencialServicio: []
@@ -695,8 +1338,8 @@ paths:
       operationId: listarCelulas
       tags: [Catálogos]
       summary: Células
-      x-roles: [ADMINISTRADOR, QE, ANALISTA_QA]
-      x-hdu: [E2-F01#1, E2-F03#1]
+      x-roles: [ADMINISTRADOR, QE, ANALISTA_QA, LIDER_QA, AUDITOR]
+      x-hdu: [E2-F01#1, E2-F03#1, E7-F06#2, E7-F07#1]
       responses:
         '200':
           description: Células ordenadas por nombre.
@@ -716,8 +1359,8 @@ paths:
       operationId: listarSprints
       tags: [Catálogos]
       summary: Sprints
-      x-roles: [ADMINISTRADOR, QE, ANALISTA_QA]
-      x-hdu: [E2-F01#1, E2-F03#1]
+      x-roles: [ADMINISTRADOR, QE, ANALISTA_QA, LIDER_QA, AUDITOR]
+      x-hdu: [E2-F01#1, E2-F03#1, E7-F06#2]
       responses:
         '200':
           description: Sprints ordenados por fecha de inicio.
@@ -737,9 +1380,12 @@ paths:
       operationId: listarHdu
       tags: [HDU]
       summary: Listar HDU del ámbito del usuario
-      description: Ámbito por rol aplicado antes de los filtros, igual que en el gateway (E2-B03).
-      x-roles: [ADMINISTRADOR, QE, ANALISTA_QA]
-      x-hdu: [E2-F03#1, E2-F03#2, E2-F03#3, E2-B03#1, E2-B03#2, E2-B03#3]
+      description: |
+        Ámbito por rol aplicado antes de los filtros, igual que en el gateway
+        (E2-B03, E7-B02): Líder QA, HDU de sus células vigentes (sin células,
+        lista vacía con 200; `celulaId` de otra célula → 403); Auditor, todas.
+      x-roles: [ADMINISTRADOR, QE, ANALISTA_QA, LIDER_QA, AUDITOR]
+      x-hdu: [E2-F03#1, E2-F03#2, E2-F03#3, E2-B03#1, E2-B03#2, E2-B03#3, E7-B02#1, E7-B02#2]
       parameters:
         - name: celulaId
           in: query
@@ -779,7 +1425,7 @@ paths:
       summary: Registrar una HDU
       description: Mismas reglas que en el gateway. Código único con índice sobre `lower(codigo)`.
       x-roles: [QE]
-      x-hdu: [E2-F01#1, E2-F01#2, E2-F01#3, E2-B01#1, E2-B01#2, E2-B01#3]
+      x-hdu: [E2-F01#1, E2-F01#2, E2-F01#3, E2-B01#1, E2-B01#2, E2-B01#3, E7-B02#3]
       requestBody:
         required: true
         content:
@@ -828,9 +1474,9 @@ paths:
       operationId: obtenerHdu
       tags: [HDU]
       summary: Detalle de una HDU (sin checklist)
-      description: Fuera de ámbito, o inexistente para QE y Analista QA, → 403. Inexistente para Administrador → 404. El gateway agrega el bloque `checklist`.
-      x-roles: [ADMINISTRADOR, QE, ANALISTA_QA]
-      x-hdu: [E1-B02#2, E2-F04#1, E2-F04#2, E2-B03#1, E2-B03#2]
+      description: Fuera de ámbito, o inexistente para QE, Analista QA y Líder QA, → 403. Inexistente para Administrador o Auditor → 404. El gateway agrega el bloque `checklist`. Para Líder QA y Auditor, `permisos` y `transicionesPermitidas` vienen en `false` y vacío (D39).
+      x-roles: [ADMINISTRADOR, QE, ANALISTA_QA, LIDER_QA, AUDITOR]
+      x-hdu: [E1-B02#2, E2-F04#1, E2-F04#2, E2-B03#1, E2-B03#2, E7-B02#1, E7-B02#2]
       responses:
         '200':
           description: Detalle de la HDU.
@@ -858,7 +1504,7 @@ paths:
         Mismas reglas que en el gateway. Con `credencialServicio` se valida
         el equipo del QE responsable de la HDU, como si asignara ese QE.
       x-roles: [QE, ADMINISTRADOR, SERVICIO]
-      x-hdu: [E2-F02#1, E2-F02#2, E2-F02#3, E2-B04#2]
+      x-hdu: [E2-F02#1, E2-F02#2, E2-F02#3, E2-B04#2, E7-B02#3]
       security:
         - sesionSupabase: []
         - credencialServicio: []
@@ -914,7 +1560,7 @@ paths:
         (`CERTIFICACIONES_TIMEOUT_MS`). Con `credencialServicio` no puede pedir
         `CERRADA`.
       x-roles: [ADMINISTRADOR, QE, ANALISTA_QA, SERVICIO]
-      x-hdu: [E2-F04#3, E2-B02#1, E2-B02#2, E2-B02#3, E2-B04#1]
+      x-hdu: [E2-F04#3, E2-B02#1, E2-B02#2, E2-B02#3, E2-B04#1, E7-B02#3]
       security:
         - sesionSupabase: []
         - credencialServicio: []
@@ -959,8 +1605,8 @@ paths:
       tags: [HDU]
       summary: Historial de estados y asignaciones de una HDU
       description: Mismo acceso que el detalle. Orden cronológico ascendente.
-      x-roles: [ADMINISTRADOR, QE, ANALISTA_QA]
-      x-hdu: [E2-B04#1, E2-B04#2, E2-B04#3]
+      x-roles: [ADMINISTRADOR, QE, ANALISTA_QA, LIDER_QA, AUDITOR]
+      x-hdu: [E2-B04#1, E2-B04#2, E2-B04#3, E7-B02#2, E7-F06#1]
       responses:
         '200':
           description: Historial.
@@ -1188,6 +1834,16 @@ components:
     UsuarioIdPath: {$ref: './comun.v1.yaml#/components/parameters/UsuarioIdPath'}
     AnalistaIdPath: {$ref: './comun.v1.yaml#/components/parameters/AnalistaIdPath'}
     HduIdPath: {$ref: './comun.v1.yaml#/components/parameters/HduIdPath'}
+    TamanoPaginaBandeja: {$ref: './comun.v1.yaml#/components/parameters/TamanoPaginaBandeja'}
+    FiltroCelula: {$ref: './comun.v1.yaml#/components/parameters/FiltroCelula'}
+    FiltroSprint: {$ref: './comun.v1.yaml#/components/parameters/FiltroSprint'}
+    FiltroEstadoHdu: {$ref: './comun.v1.yaml#/components/parameters/FiltroEstadoHdu'}
+    FiltroQe: {$ref: './comun.v1.yaml#/components/parameters/FiltroQe'}
+    FiltroAnalista: {$ref: './comun.v1.yaml#/components/parameters/FiltroAnalista'}
+    FiltroBusqueda: {$ref: './comun.v1.yaml#/components/parameters/FiltroBusqueda'}
+    FiltroDesde: {$ref: './comun.v1.yaml#/components/parameters/FiltroDesde'}
+    FiltroHasta: {$ref: './comun.v1.yaml#/components/parameters/FiltroHasta'}
+    Orden: {$ref: './comun.v1.yaml#/components/parameters/Orden'}
 
   schemas:
     Salud:
@@ -1211,7 +1867,7 @@ components:
           type: boolean
         ambito:
           type: object
-          required: [qeSupervisorId, analistasSupervisadosIds]
+          required: [qeSupervisorId, analistasSupervisadosIds, celulasIds]
           additionalProperties: false
           properties:
             qeSupervisorId:
@@ -1222,6 +1878,11 @@ components:
             analistasSupervisadosIds:
               type: array
               description: Analistas vigentes si el rol es `QE`; si no, vacío.
+              items:
+                $ref: './comun.v1.yaml#/components/schemas/Uuid'
+            celulasIds:
+              type: array
+              description: Células vigentes si el rol es `LIDER_QA` (D30); si no, vacío.
               items:
                 $ref: './comun.v1.yaml#/components/schemas/Uuid'
 
@@ -1249,6 +1910,9 @@ components:
           minLength: 12
           maxLength: 72
           description: Solo para cuentas de demo locales. Se envía a Supabase Auth y nunca se guarda ni se audita.
+        celulaIds:
+          $ref: './comun.v1.yaml#/components/schemas/CelulaIdsLider'
+          description: 'Solo con `rol: LIDER_QA` (fixture E7). Se aplica al crear; si el usuario ya existía, sus células no cambian.'
     ResultadoCargaUsuario:
       type: object
       required: [creado, usuario]
@@ -1379,4 +2043,7 @@ components:
     AccesoDenegado: {$ref: './comun.v1.yaml#/components/responses/AccesoDenegado'}
     NoEncontrado: {$ref: './comun.v1.yaml#/components/responses/NoEncontrado'}
     ErrorInterno: {$ref: './comun.v1.yaml#/components/responses/ErrorInterno'}
+    ServicioNoDisponible: {$ref: './comun.v1.yaml#/components/responses/ServicioNoDisponible'}
     ProveedorIdentidadNoDisponible: {$ref: './comun.v1.yaml#/components/responses/ProveedorIdentidadNoDisponible'}
+    ExportacionCsv: {$ref: './comun.v1.yaml#/components/responses/ExportacionCsv'}
+    ExportacionExcedeLimite: {$ref: './comun.v1.yaml#/components/responses/ExportacionExcedeLimite'}

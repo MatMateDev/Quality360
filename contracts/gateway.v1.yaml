@@ -7,7 +7,15 @@ info:
     identifier: LicenseRef-Capstone-Duoc-UC
   description: |
     API que consume el portal (`apps/web`). Es el único punto de entrada
-    público. Alcance: épicas E1, E2 y E3.
+    público. Alcance: épicas E1, E2, E3 y E7 (bandejas por rol).
+
+    - **E7.** `/v1/bandeja/*`, `/v1/roles`, `/v1/usuarios/{id}/celulas-lider`,
+      `/v1/auditor/auditoria-usuarios` y `/v1/auditor/exportaciones/{hdu,
+      auditoria-usuarios}` se reenvían a Organización, que compone las
+      bandejas con Certificaciones (D46). `/v1/auditor/{bitacora,
+      certificados}` y sus exportaciones se reenvían a Certificaciones. Las
+      exportaciones devuelven `text/csv` tal cual, sin almacenarlo. Líder QA y
+      Auditor son de solo lectura (D32).
 
     - **Sesión.** El portal se autentica directo con Supabase Auth y envía
       `Authorization: Bearer <access token>`. El gateway verifica firma,
@@ -55,6 +63,14 @@ tags:
     description: Células y sprints cargados por la semilla.
   - name: HDU
     description: Historias de usuario bajo certificación (E2).
+  - name: Bandejas
+    description: Bandeja de inicio de cada rol (E7-B03).
+  - name: Auditor
+    description: Consultas y exportaciones de solo lectura del Auditor (E7-B04).
+  - name: Checklist
+    description: Entregables, evidencias y aprobaciones de una HDU (E3).
+  - name: Certificado
+    description: Certificado PDF y verificación pública (E3).
 
 x-hdu-transversal: [E1-B02#1, E1-B07#3, E1-B11#1]
 x-escenarios-sin-operacion:
@@ -82,6 +98,20 @@ x-escenarios-sin-operacion:
     motivo: '`signOut` de Supabase Auth revoca el refresh token. Tras ello, el access token vencido responde 401 en toda operación.'
   - id: E1-B11#3
     motivo: Alcance de revocación del proveedor documentado y probado en `apps/gateway/README.md`.
+  - id: E1-F13#1
+    motivo: El portal llama a `resetPasswordForEmail` de Supabase Auth y muestra siempre la misma confirmación; no pasa por el gateway.
+  - id: E1-F13#2
+    motivo: El portal llama a `updateUser` y luego a `signOut` de Supabase Auth; validación de la contraseña en el cliente.
+  - id: E1-F13#3
+    motivo: Supabase Auth devuelve `otp_expired` en el fragmento del enlace; el portal lo informa sin dar acceso.
+  - id: E1-B13#1
+    motivo: Envío del enlace de un solo uso a cargo de Supabase Auth (`/recover`), con respuesta idéntica para correos registrados e inexistentes.
+  - id: E1-B13#2
+    motivo: Supabase Auth revoca la renovación de las demás sesiones al cambiar la contraseña; ninguna operación del gateway interviene.
+  - id: E1-B13#3
+    motivo: Lista de redirecciones y límite de envíos configurados en Supabase Auth (`infrastructure/supabase/config.toml`).
+  - id: E7-F01#2
+    motivo: Menú del portal según el `rol` de `GET /v1/me` (D29); la API lo respalda con 403 en toda ruta ajena (D33) y en toda escritura para Líder QA y Auditor (D32).
 
 paths:
   /health:
@@ -114,8 +144,8 @@ paths:
         (`/admin`, `/qe`, `/qa`). Un usuario registrado en Supabase pero
         inactivo, o sin registro en Organización, recibe 403 genérico: el portal
         cierra la sesión y muestra el mismo mensaje del login (E1-B01#2).
-      x-roles: [ADMINISTRADOR, QE, ANALISTA_QA]
-      x-hdu: [E1-F02#1, E1-F05#1, E1-F07#1, E1-F11#1, E1-F11#3, E1-F12#3, E1-B01#1, E1-B01#2, E1-B10#1, E1-B10#2, E1-B10#3]
+      x-roles: [ADMINISTRADOR, QE, ANALISTA_QA, LIDER_QA, AUDITOR]
+      x-hdu: [E1-F02#1, E1-F05#1, E1-F07#1, E1-F11#1, E1-F11#3, E1-F12#3, E1-B01#1, E1-B01#2, E1-B10#1, E1-B10#2, E1-B10#3, E7-F01#1, E7-F01#3]
       responses:
         '200':
           description: Perfil vigente.
@@ -161,7 +191,7 @@ paths:
                     usuarios:
                       fuente: organizacion.usuarios
                       estado: ok
-                      datos: {total: 10, activos: 9, inactivos: 1, porRol: {ADMINISTRADOR: 1, QE: 3, ANALISTA_QA: 6}}
+                      datos: {total: 10, activos: 9, inactivos: 1, porRol: {ADMINISTRADOR: 1, QE: 3, ANALISTA_QA: 5, LIDER_QA: 0, AUDITOR: 0}}
                     supervision:
                       fuente: organizacion.supervision
                       estado: ok
@@ -172,7 +202,7 @@ paths:
                     usuarios:
                       fuente: organizacion.usuarios
                       estado: ok
-                      datos: {total: 10, activos: 9, inactivos: 1, porRol: {ADMINISTRADOR: 1, QE: 3, ANALISTA_QA: 6}}
+                      datos: {total: 10, activos: 9, inactivos: 1, porRol: {ADMINISTRADOR: 1, QE: 3, ANALISTA_QA: 5, LIDER_QA: 0, AUDITOR: 0}}
                     supervision:
                       fuente: organizacion.supervision
                       estado: indisponible
@@ -198,7 +228,7 @@ paths:
         QE autenticado; 0 significa consulta exitosa sin registros (E1-B03#2).
         Los listados están en `GET /v1/qe/analistas` y `GET /v1/hdu`.
       x-roles: [QE]
-      x-hdu: [E1-F02#1, E1-F03#1, E1-F03#2, E1-F03#3, E1-F05#3, E1-F07#3, E1-B03#1, E1-B03#2, E1-B03#3]
+      x-hdu: [E1-F02#1, E1-F03#1, E1-F03#2, E1-F03#3, E1-F05#3, E1-F07#3, E1-B03#1, E1-B03#2, E1-B03#3, E7-F03#1]
       responses:
         '200':
           description: Bloques del panel; cada uno `ok` o `indisponible`.
@@ -333,7 +363,7 @@ paths:
         `supervisorVigente`, que el portal muestra antes de confirmar un cambio
         de supervisor (E1-F10#1).
       x-roles: [ADMINISTRADOR]
-      x-hdu: [E1-F09#1, E1-F10#1]
+      x-hdu: [E1-F09#1, E1-F10#1, E7-F05#3, E7-F07#1]
       parameters:
         - name: q
           in: query
@@ -384,8 +414,10 @@ paths:
         API enviando una invitación, y usa su `sub` como `id`. Si Supabase
         falla, no se persiste nada (503 `PROVEEDOR_IDENTIDAD_NO_DISPONIBLE`).
         Registra auditoría `CREAR_USUARIO` en la misma transacción (E1-B12#1).
+        Con `rol: LIDER_QA`, `celulaIds` asigna sus células en la misma
+        transacción (D42); una célula inexistente → 422 sin crear nada.
       x-roles: [ADMINISTRADOR]
-      x-hdu: [E1-F09#2, E1-B06#3, E1-B07#1, E1-B12#1]
+      x-hdu: [E1-F09#2, E1-B06#3, E1-B07#1, E1-B12#1, E7-F07#1, E7-F07#2, E7-B01#1, E7-B01#2, E7-B01#3, E7-B02#3]
       requestBody:
         required: true
         content:
@@ -423,6 +455,13 @@ paths:
                 traceId: 4bf92f3577b34da6a3ce929d0e0e4736
                 detalles:
                   - {campo: correo, codigo: DUPLICADO, mensaje: Ya existe un usuario con ese correo.}
+        '422':
+          description: Alguna célula de `celulaIds` no existe.
+          x-codigos: [CATALOGO_INVALIDO]
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
         '429':
           $ref: '#/components/responses/DemasiadasSolicitudes'
         '500':
@@ -438,6 +477,32 @@ paths:
   /v1/usuarios/{id}:
     parameters:
       - $ref: '#/components/parameters/UsuarioIdPath'
+    get:
+      operationId: obtenerUsuario
+      tags: [Usuarios]
+      summary: Un usuario por id
+      description: Para la preselección `?usuario=<id>` de `/admin/usuarios` (D44). Inexistente → 404.
+      x-roles: [ADMINISTRADOR]
+      x-hdu: [E7-F05#3]
+      responses:
+        '200':
+          description: Usuario, con sus células vigentes si es Líder QA.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Usuario'
+        '401':
+          $ref: '#/components/responses/NoAutenticado'
+        '403':
+          $ref: '#/components/responses/AccesoDenegado'
+        '404':
+          $ref: '#/components/responses/NoEncontrado'
+        '429':
+          $ref: '#/components/responses/DemasiadasSolicitudes'
+        '500':
+          $ref: '#/components/responses/ErrorInterno'
+        '503':
+          $ref: '#/components/responses/ServicioNoDisponible'
     patch:
       operationId: actualizarUsuario
       tags: [Usuarios]
@@ -509,13 +574,22 @@ paths:
           `{campo: rol, codigo: VALOR_NO_PERMITIDO}` (E1-B08#1).
         - `ULTIMO_ADMINISTRADOR` si quita el rol al único administrador activo
           (E1-B08#2).
-        - `RELACIONES_INCOMPATIBLES` si un QE con analistas vigentes deja de ser
-          QE, o si un Analista QA con QE vigente deja de ser Analista QA. La
-          respuesta lista qué reasignar (E1-B08#3).
-        - Mismo rol: 200 sin auditar. Con cambio registra `CAMBIAR_ROL`.
+        - `RELACIONES_INCOMPATIBLES` (E1-B08#3, D31, D40, D43) si al dejar su
+          rol el usuario conserva relaciones de trabajo: un QE con analistas
+          vigentes o HDU no cerradas como responsable; un Analista QA con QE
+          vigente o HDU no cerradas asignadas; un Líder QA con células
+          vigentes. `relaciones` las lista todas a la vez.
+        - Cambio atómico (D42): con `rol: LIDER_QA`, `celulaIds` fija sus
+          células en la misma transacción. Célula inexistente → 422
+          `CATALOGO_INVALIDO`; `celulaIds` no vacío con otro rol → 400. Si algo
+          falla no cambia nada.
+        - Mismo rol: 200 sin auditar (con `celulaIds` en un Líder, reemplaza
+          sus células). Con cambio registra `CAMBIAR_ROL` y, si hay células,
+          `ASIGNAR_CELULAS_LIDER`.
         - Solo Administrador: nadie cambia su rol desde el perfil (E1-F11#2).
+          Líder QA y Auditor reciben 403 (E7-B01#3).
       x-roles: [ADMINISTRADOR]
-      x-hdu: [E1-F09#3, E1-F11#2, E1-B08#1, E1-B08#2, E1-B08#3, E1-B12#1]
+      x-hdu: [E1-F09#3, E1-F11#2, E1-B08#1, E1-B08#2, E1-B08#3, E1-B12#1, E7-F07#1, E7-F07#2, E7-B01#1, E7-B01#2, E7-B01#3, E7-B02#3]
       requestBody:
         required: true
         content:
@@ -558,6 +632,44 @@ paths:
                       analistasVigentes:
                         - {id: 9d7e1a52-0b7c-4f3e-8a55-2c4b6d8e9f10, nombre: Diego Soto, correo: diego.soto@quality360.local}
                       supervisorVigente: null
+                      hduAbiertas: {total: 0, items: []}
+                      celulasVigentes: []
+                hduAbiertas:
+                  summary: Analista con HDU no cerradas pasa a QE (D40)
+                  value:
+                    codigo: RELACIONES_INCOMPATIBLES
+                    mensaje: Ana Pérez tiene 2 HDU abiertas. Resuélvelas antes de cambiar el rol.
+                    traceId: 4bf92f3577b34da6a3ce929d0e0e4736
+                    detalles: []
+                    relaciones:
+                      analistasVigentes: []
+                      supervisorVigente: {id: 5b0c2f0e-8f1e-4c47-9a57-3a0f5d1e2b11, nombre: Camila Rojas, correo: camila.rojas@quality360.local}
+                      hduAbiertas:
+                        total: 2
+                        items:
+                          - {id: 0f8c2d1e-3a4b-4c5d-8e9f-001122334455, codigo: PAGOS-1042, titulo: Pago con tarjeta, estado: EN_EJECUCION}
+                          - {id: 1a2b3c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d, codigo: PAGOS-1050, titulo: Reembolso, estado: PENDIENTE_CIERRE}
+                      celulasVigentes: []
+                celulas:
+                  summary: Líder QA con células vigentes pasa a Analista QA (D31)
+                  value:
+                    codigo: RELACIONES_INCOMPATIBLES
+                    mensaje: Quita las células del líder antes de cambiar su rol.
+                    traceId: 4bf92f3577b34da6a3ce929d0e0e4736
+                    detalles: []
+                    relaciones:
+                      analistasVigentes: []
+                      supervisorVigente: null
+                      hduAbiertas: {total: 0, items: []}
+                      celulasVigentes:
+                        - {id: 7c1d2e3f-4a5b-4c6d-9e8f-102938475610, nombre: CEL-A}
+        '422':
+          description: Alguna célula de `celulaIds` no existe. No se aplica el cambio de rol.
+          x-codigos: [CATALOGO_INVALIDO]
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
         '429':
           $ref: '#/components/responses/DemasiadasSolicitudes'
         '500':
@@ -583,7 +695,7 @@ paths:
         - Mismo QE vigente: 200 con `cambio: false`, sin historial.
         - Auditoría `ASIGNAR_SUPERVISOR` o `CAMBIAR_SUPERVISOR` (E1-B12#1).
       x-roles: [ADMINISTRADOR]
-      x-hdu: [E1-F10#1, E1-F10#2, E1-B09#1, E1-B09#2, E1-B09#3, E1-B12#1, E1-B12#2]
+      x-hdu: [E1-F10#1, E1-F10#2, E1-B09#1, E1-B09#2, E1-B09#3, E1-B12#1, E1-B12#2, E7-B02#3]
       requestBody:
         required: true
         content:
@@ -729,8 +841,8 @@ paths:
       tags: [Catálogos]
       summary: Células
       description: Catálogo cargado por la semilla. Alimenta el formulario de HDU y los filtros.
-      x-roles: [ADMINISTRADOR, QE, ANALISTA_QA]
-      x-hdu: [E2-F01#1, E2-F03#1]
+      x-roles: [ADMINISTRADOR, QE, ANALISTA_QA, LIDER_QA, AUDITOR]
+      x-hdu: [E2-F01#1, E2-F03#1, E7-F06#2, E7-F07#1]
       responses:
         '200':
           description: Células ordenadas por nombre.
@@ -755,8 +867,8 @@ paths:
       tags: [Catálogos]
       summary: Sprints
       description: Catálogo cargado por la semilla. Alimenta el formulario de HDU y los filtros.
-      x-roles: [ADMINISTRADOR, QE, ANALISTA_QA]
-      x-hdu: [E2-F01#1, E2-F03#1]
+      x-roles: [ADMINISTRADOR, QE, ANALISTA_QA, LIDER_QA, AUDITOR]
+      x-hdu: [E2-F01#1, E2-F03#1, E7-F06#2]
       responses:
         '200':
           description: Sprints ordenados por fecha de inicio.
@@ -817,8 +929,8 @@ paths:
         Los filtros se combinan con Y. `items` vacío solo si la consulta
         terminó bien sin coincidencias (E2-F03#2). Un filtro con un UUID que no
         existe devuelve lista vacía; un UUID o estado mal formado, 400.
-      x-roles: [ADMINISTRADOR, QE, ANALISTA_QA]
-      x-hdu: [E2-F01#1, E2-F02#1, E2-F03#1, E2-F03#2, E2-F03#3, E2-B03#1, E2-B03#2, E2-B03#3]
+      x-roles: [ADMINISTRADOR, QE, ANALISTA_QA, LIDER_QA, AUDITOR]
+      x-hdu: [E2-F01#1, E2-F02#1, E2-F03#1, E2-F03#2, E2-F03#3, E2-B03#1, E2-B03#2, E2-B03#3, E7-B02#1, E7-B02#2]
       parameters:
         - name: celulaId
           in: query
@@ -870,7 +982,7 @@ paths:
         transacción registra el evento de historial `ESTADO` (`null` →
         `PENDIENTE`) y la auditoría `CREAR_HDU`.
       x-roles: [QE]
-      x-hdu: [E2-F01#1, E2-F01#2, E2-F01#3, E2-B01#1, E2-B01#2, E2-B01#3]
+      x-hdu: [E2-F01#1, E2-F01#2, E2-F01#3, E2-B01#1, E2-B01#2, E2-B01#3, E7-B02#3]
       requestBody:
         required: true
         content:
@@ -941,8 +1053,8 @@ paths:
         `ACCESO_DENEGADO` (E2-F04#2, D12). Para QE y Analista QA una HDU
         inexistente también responde 403; el 404 solo lo recibe el
         Administrador.
-      x-roles: [ADMINISTRADOR, QE, ANALISTA_QA]
-      x-hdu: [E1-B02#2, E2-F02#1, E2-F04#1, E2-F04#2, E2-F04#3, E2-B03#1, E2-B03#2]
+      x-roles: [ADMINISTRADOR, QE, ANALISTA_QA, LIDER_QA, AUDITOR]
+      x-hdu: [E1-B02#2, E2-F02#1, E2-F04#1, E2-F04#2, E2-F04#3, E2-B03#1, E2-B03#2, E7-F02#3, E7-F04#3, E7-F06#1, E7-B02#1, E7-B02#2]
       responses:
         '200':
           description: Detalle con responsables, estado, fecha del último cambio, transiciones permitidas, permisos y checklist.
@@ -985,7 +1097,7 @@ paths:
           `REASIGNAR_ANALISTA`. La HDU pasa a ser visible para el nuevo
           analista (E2-F02#1).
       x-roles: [QE, ADMINISTRADOR]
-      x-hdu: [E2-F02#1, E2-F02#2, E2-F02#3, E2-B04#2]
+      x-hdu: [E2-F02#1, E2-F02#2, E2-F02#3, E2-B04#2, E7-B02#3]
       requestBody:
         required: true
         content:
@@ -1058,7 +1170,7 @@ paths:
           registra el evento `ESTADO` (anterior, nuevo, actor, fecha) y la
           auditoría `CAMBIAR_ESTADO_HDU` (E2-B02#1, E2-B04#1, E2-F04#3).
       x-roles: [ADMINISTRADOR, QE, ANALISTA_QA]
-      x-hdu: [E2-F04#3, E2-B02#1, E2-B02#2, E2-B02#3, E2-B04#1]
+      x-hdu: [E2-F04#3, E2-B02#1, E2-B02#2, E2-B02#3, E2-B04#1, E7-B02#3]
       requestBody:
         required: true
         content:
@@ -1123,8 +1235,8 @@ paths:
       tags: [HDU]
       summary: Historial de estados y asignaciones de una HDU
       description: Mismo acceso que el detalle. Eventos en orden cronológico ascendente (E2-B04#3).
-      x-roles: [ADMINISTRADOR, QE, ANALISTA_QA]
-      x-hdu: [E2-B04#1, E2-B04#2, E2-B04#3]
+      x-roles: [ADMINISTRADOR, QE, ANALISTA_QA, LIDER_QA, AUDITOR]
+      x-hdu: [E2-B04#1, E2-B04#2, E2-B04#3, E7-B02#2, E7-F06#1]
       responses:
         '200':
           description: Historial de la HDU.
@@ -1169,6 +1281,39 @@ paths:
     $ref: './certificaciones.v1.yaml#/paths/~1v1~1hdu~1{hduId}~1certificado'
   /v1/certificados/{folio}/verificacion:
     $ref: './certificaciones.v1.yaml#/paths/~1v1~1certificados~1{folio}~1verificacion'
+
+  # ---------------------------------------------------------------- E7
+  # Reenvío a la misma ruta del servicio dueño, sin composición en el gateway (D46).
+  # Organización (ORGANIZACION_URL):
+  /v1/roles:
+    $ref: './organizacion.v1.yaml#/paths/~1v1~1roles'
+  /v1/usuarios/{id}/celulas-lider:
+    $ref: './organizacion.v1.yaml#/paths/~1v1~1usuarios~1{id}~1celulas-lider'
+  /v1/bandeja/analista:
+    $ref: './organizacion.v1.yaml#/paths/~1v1~1bandeja~1analista'
+  /v1/bandeja/qe:
+    $ref: './organizacion.v1.yaml#/paths/~1v1~1bandeja~1qe'
+  /v1/bandeja/lider:
+    $ref: './organizacion.v1.yaml#/paths/~1v1~1bandeja~1lider'
+  /v1/bandeja/admin:
+    $ref: './organizacion.v1.yaml#/paths/~1v1~1bandeja~1admin'
+  /v1/bandeja/auditor:
+    $ref: './organizacion.v1.yaml#/paths/~1v1~1bandeja~1auditor'
+  /v1/auditor/auditoria-usuarios:
+    $ref: './organizacion.v1.yaml#/paths/~1v1~1auditor~1auditoria-usuarios'
+  /v1/auditor/exportaciones/hdu:
+    $ref: './organizacion.v1.yaml#/paths/~1v1~1auditor~1exportaciones~1hdu'
+  /v1/auditor/exportaciones/auditoria-usuarios:
+    $ref: './organizacion.v1.yaml#/paths/~1v1~1auditor~1exportaciones~1auditoria-usuarios'
+  # Certificaciones (CERTIFICACIONES_URL):
+  /v1/auditor/bitacora:
+    $ref: './certificaciones.v1.yaml#/paths/~1v1~1auditor~1bitacora'
+  /v1/auditor/certificados:
+    $ref: './certificaciones.v1.yaml#/paths/~1v1~1auditor~1certificados'
+  /v1/auditor/exportaciones/bitacora:
+    $ref: './certificaciones.v1.yaml#/paths/~1v1~1auditor~1exportaciones~1bitacora'
+  /v1/auditor/exportaciones/certificados:
+    $ref: './certificaciones.v1.yaml#/paths/~1v1~1auditor~1exportaciones~1certificados'
 
 components:
   securitySchemes:

@@ -1,4 +1,4 @@
-// Verifica que los contratos cubren los escenarios de E1, E2 y E3 del backlog.
+// Verifica que los contratos cubren los escenarios de E1, E2, E3 y E7 del backlog.
 // Uso: npm run contracts:check
 // Un escenario está cubierto si su ID aparece en `x-hdu` de alguna operación,
 // en `x-hdu-transversal` o en `x-escenarios-sin-operacion` de algún contrato.
@@ -7,7 +7,9 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const raiz = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
-const EPICAS = ['E1', 'E2', 'E3'];
+// Escenarios esperados por épica: protege contra un backlog mal leído (3 por HDU).
+const ESPERADOS_POR_EPICA = { E1: 78, E2: 24, E3: 24, E7: 33 };
+const EPICAS = Object.keys(ESPERADOS_POR_EPICA);
 const ID = /E\d-[FB]\d{2}#\d+/g;
 
 // 1. Escenarios del backlog
@@ -59,11 +61,14 @@ for (const archivo of readdirSync(dirContratos).filter((f) => /\.v\d+\.yaml$/.te
 // 3. Resultado
 const faltantes = [...esperados].filter((id) => !declarados.has(id));
 const desconocidos = [...declarados.keys()].filter((id) => !esperados.has(id));
-console.log(`Escenarios ${EPICAS.join('-')} en el backlog: ${esperados.size}`);
+const porEpica = Object.fromEntries(EPICAS.map((e) => [e, [...esperados].filter((id) => id.startsWith(e)).length]));
+const epicasIncompletas = EPICAS.filter((e) => porEpica[e] !== ESPERADOS_POR_EPICA[e]);
+console.log(`Escenarios ${EPICAS.join('-')} en el backlog: ${esperados.size} (${EPICAS.map((e) => `${e}: ${porEpica[e]}`).join(', ')})`);
+if (epicasIncompletas.length) console.log(`Épicas con un número de escenarios inesperado: ${epicasIncompletas.map((e) => `${e} (${porEpica[e]}, se esperaban ${ESPERADOS_POR_EPICA[e]})`).join(', ')}`);
 console.log(`Escenarios cubiertos por contratos: ${esperados.size - faltantes.length}`);
 if (faltantes.length) console.log(`Sin cobertura (${faltantes.length}): ${faltantes.join(', ')}`);
 if (desconocidos.length) console.log(`IDs que no existen en el backlog (${desconocidos.length}): ${desconocidos.join(', ')}`);
 if (process.argv.includes('--detalle')) {
   for (const id of [...esperados].sort()) console.log(`${id}\t${[...(declarados.get(id) ?? [])].join(', ')}`);
 }
-process.exit(faltantes.length || desconocidos.length || esperados.size !== 96 ? 1 : 0);
+process.exit(faltantes.length || desconocidos.length || epicasIncompletas.length ? 1 : 0);

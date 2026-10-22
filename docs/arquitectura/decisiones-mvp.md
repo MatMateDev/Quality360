@@ -245,3 +245,126 @@ Tablas que no están en el modelo y se conservan porque las exige el backlog: `h
 - **Evidencia:** cada marca agrega una fila. La vigente es la última cargada desde que se marcó (`fecha_carga >= completado_en`); al rechazar o desmarcar deja de estar vigente, pero se conserva.
 - **Asignación de certificación:** el analista que marca o desmarca queda como el asignado vigente del ciclo; si cambia, la asignación anterior se cierra con `fecha_hasta`.
 - **Largos del modelo en la API:** el correo admite 150 caracteres (antes 254) y el enlace de evidencia 500 (antes 2000). La carga semilla de sprints exige `celulaId`.
+
+---
+
+# Corrida E7 · Bandejas por rol
+
+- **Alcance:** 11 HDU (E7-F01–F07, E7-B01–B04) y 33 escenarios. Fuente: `docs/backlog/e7-bandejas-por-rol.md` (reglas, fixture y 100 casos); los escenarios también están en `docs/backlog/historias-quality360.md` para `npm run contracts:check`. Diseño: `docs/diseno/e7-bandejas-por-rol.md`.
+- **Decisiones del usuario (2026-10-21):** el Líder QA es dueño de células: ve todas las HDU de las células que le asigna el Administrador, solo lectura, no aprueba ni exporta. El Auditor lee todo y exporta CSV. Un rol por usuario. El Administrador asigna rol y células.
+- **D28–D40** están en el backlog E7 y se mantienen. Las precisiones están en D43 (sobre D40) y D50 (sobre el texto del backlog).
+- **Precedencia:** igual que en E1 y E2.
+- **Reparto:** `docs/arquitectura/e7-plan-construccion.md`. **ADR:** `adr/0013-bandejas-por-rol-y-roles-de-lectura.md`.
+
+## Decisiones
+
+| ID | Decisión | Motivo |
+| --- | --- | --- |
+| D41 | **Acceso a un portal ajeno.** Se muestra «No tienes acceso a esta sección» con «Ir a mi bandeja» en la **URL pedida**, dentro del `Layout`. No se redirige y no se hace ninguna petición de datos: el guard actúa antes de montar la página. Sin sesión: login y luego la bandeja propia, aunque la ruta pedida fuera de otro rol. Las pruebas certificadas que esperan la redirección se reescriben (lista abajo). | E7-F01#3 y conflicto 1 del diseño. E1-F02#2 y E1-F05#3 aceptan «acceso denegado o redirección», así que el escenario sigue cumplido; solo cambia lo que afirman las pruebas |
+| D42 | **El cambio de rol es atómico.** `PUT /v1/usuarios/{id}/rol` y `POST /v1/usuarios` aceptan `celulaIds` opcional, solo con `rol: LIDER_QA`. Rol, células y auditoría (`CAMBIAR_ROL` y `ASIGNAR_CELULAS_LIDER`) se aplican en **una transacción** que bloquea la fila del usuario (`SELECT … FOR UPDATE`), o no se aplica nada. `celulaIds` no vacío con otro rol → 400. `PUT /v1/usuarios/{id}/celulas-lider` sigue existiendo para cambiar las células de un Líder vigente. El aviso `aviso-parcial` del diseño ya no hace falta | E7-F07#2 («ningún cambio parcial»), conflicto 4 |
+| D43 | **El 409 `RELACIONES_INCOMPATIBLES` trae detalles estructurados.** `relaciones` siempre trae 4 campos y los informa todos a la vez, no solo el primero que falla: `analistasVigentes`, `supervisorVigente`, `hduAbiertas {total, items ≤ 20}` (código, título y estado) y `celulasVigentes`. El orden de validación es: catálogo (400) → célula existente (422) → último administrador (409) → relaciones (409). D40 aplica al **cambio de rol**; la desactivación conserva la regla certificada de E1-B07 (solo QE con analistas) | Conflicto 5. El portal arma «tiene N HDU abiertas…» sin otra consulta |
+| D44 | **Los parámetros de preselección son aditivos y solo del portal:**<br>• `/admin/usuarios?usuario=<id>&rol=<ROL>&nuevo=1`<br>• `/admin/supervision?analista=<id>` o `?qe=<id>`<br>• `/qe/aprobaciones?hdu=<id>`<br>Sin parámetro, la pantalla es la certificada. Un id inexistente o inválido muestra un aviso, nunca un error ni un 403. Para soportarlos se agregan `GET /v1/usuarios/{id}` y `Usuario.celulasVigentes` (también en el listado: resuelve el conflicto 11 sin consultas por fila) | Conflictos 7, 11 y 12 |
+| D45 | **Catálogos que faltaban:**<br>• **Validez del certificado:** booleano `valido`, con el mismo valor que la verificación pública del folio (D21). No hay revocación en el alcance, así que hoy siempre es `true`; el portal muestra «Válido» o «No válido».<br>• **Operación de auditoría:** `AccionAuditoria` suma `ASIGNAR_CELULAS_LIDER` y `EXPORTAR`, y `EntidadAuditoria` suma `EXPORTACION`. La «auditoría de usuarios» abarca las entidades `USUARIO`, `SUPERVISION` y `EXPORTACION` (enum `OperacionAuditoriaUsuarios`). Las etiquetas en español están en `comun.v1.yaml`.<br>• **Acción de bitácora:** enum `AccionChecklist` con códigos estables. El Auditor ve el infinitivo (Marcar, Desmarcar, Aprobar, Rechazar, Certificar) y el historial de la HDU, el pasado | Conflicto 10 |
+| D46 | **Las bandejas se componen en Organización.** El gateway solo reenvía `/v1/bandeja/*`. Organización calcula sobre su ámbito y pide el estado del checklist en lote con `POST /v1/interno/checklist/estados` de Certificaciones (token propagado, 2 s). Si Certificaciones no responde:<br>• Sus contadores y el `seguimiento` de cada fila vienen `indisponible` y la respuesta es 200.<br>• Un **filtro** que depende de Certificaciones (`soloConObservaciones`, `tipoAccion` distinto de `ASIGNAR`, `certificado`) deja la lista `indisponible`, nunca la devuelve sin filtrar.<br>• Un **orden** que depende de Certificaciones cae a un orden de respaldo, que se informa en `orden`.<br>• En la del QE solo vienen las acciones `ASIGNAR`, con `calculoParcial: true`.<br>El resumen de equipo del QE sigue en `GET /v1/inicio/qe` | El backlog asigna la bandeja a Organización (E7-B03). Ordenar, filtrar y paginar con datos de ambos servicios no cabe en un gateway sin dominio. Regla no negociable 4 |
+| D47 | **Ámbitos de lectura internos que usa Certificaciones.** Cada servicio autoriza por sí mismo:<br>• `GET /v1/interno/acceso` suma `ambito.celulasIds`.<br>• `GET /v1/interno/hdu/{id}/acceso` suma `LECTOR_CELULA` y `LECTOR_AUDITORIA`, que no habilitan ninguna escritura.<br>• `GET /v1/interno/hdu/ambito` (nuevo): `{todas, hduIds}`, para autorizar lotes con una sola llamada.<br>• `POST /v1/interno/hdu/consulta` (nuevo): datos de hasta 1000 HDU, para la bitácora global.<br>Un id fuera de ámbito en un lote → 403 completo, sin datos parciales. `/v1/auditor/*` exige `rol: AUDITOR`: el Administrador recibe 403 | Reglas no negociables 1–3; E7-B02, E7-B04#2 |
+| D48 | **Cada servicio exporta lo suyo.**<br>• Organización: `hdu` y `auditoria-usuarios`. Certificaciones: `bitacora` y `certificados`, que registra en Organización con `POST /v1/interno/auditoria/exportaciones` (token del Auditor) **antes** de entregar el archivo; si el registro falla, 503 sin CSV.<br>• CSV en UTF-8 con BOM, separador `;`, fechas ISO 8601 en UTC y cabecera `X-Q360-Filas`. Sin coincidencias, solo el encabezado.<br>• El límite es configurable (`EXPORTACION_LIMITE_FILAS`, 50.000 por defecto) para E7-B04-T11.<br>• Exportar HDU exige Certificaciones (avance y certificado): si no responde, 503 | D35; auditoría sin escribir en esquemas ajenos |
+| D49 | **Parámetros de bandejas y consultas:** `celulaId`, `sprintId`, `estado`, `qeId`, `analistaId`, `q` (mínimo 2 caracteres), `orden=columna:asc\|desc`, `pagina` y `tamanoPagina` (25 por defecto; si pasa de 100 se recorta, sin error, y la respuesta informa el tamaño efectivo). La URL del portal conserva `?celula=`, `?tamano=`, etc., y `src/api` hace la conversión | Convención de `comun.v1.yaml` (corrige `celula`/`tamano` del backlog E7-B03) |
+| D50 | **Correcciones al texto del backlog E7, ya aplicadas en `e7-bandejas-por-rol.md`:**<br>• Un rol fuera del catálogo responde **400 `VALIDACION`**, no 422, como en la E1-B08#1 certificada (E7-B01#2, T03).<br>• E7-B04-T04 filtra con `operacion=CAMBIAR_ROL`.<br>• Una fuente caída en `/v1/auditor/*` responde **503 `SERVICIO_NO_DISPONIBLE`**; no se crea `FUENTE_NO_DISPONIBLE`.<br>• Se mantiene `GET /v1/roles`.<br>• Para el Auditor, una HDU inexistente responde 404, como para el Administrador; para el Líder, 403 | Coherencia con lo certificado y con `comun.v1.yaml` |
+| D51 | **Pendientes del Administrador:** 4 tipos, solo con usuarios activos y células activas. Cada uno tiene su destino:<br>• Analista sin QE → `/admin/supervision?analista=<id>`<br>• QE sin analistas → `/admin/supervision?qe=<id>`<br>• Líder sin células → `/admin/usuarios?usuario=<id>`, con el diálogo de células abierto<br>• Célula sin líder → `/admin/usuarios?rol=LIDER_QA` (no hay pantalla de células)<br>«Últimos cambios» = las 10 entradas más recientes de la auditoría de usuarios | Conflictos 6 y 8. El contador certificado «Analistas sin supervisor» y `analistas-sin-qe` son el mismo dato |
+| D52 | **Modelo de datos.** Se agregan 2 filas de rol y la tabla `organizacion.celula_lider`, con llaves foráneas solo dentro de `organizacion` y vigencia por índice único parcial (detalle abajo). Que el usuario sea `LIDER_QA` se valida en la aplicación, dentro de la misma transacción, no con un trigger. En Certificaciones solo se agregan índices de lectura global | D24, D30; reglas no negociables 1 y 3 |
+| D53 | **Alcance de D38.** D38 rige para las pantallas y para `/v1/auditor/*`. `GET /v1/auditoria` (E1-B12, certificado por API) sigue siendo del Administrador y no tiene pantalla | No romper E1-B12 |
+
+## Modelo de datos (lo escribe `q360-backend`)
+
+**Migración de Organización** `20261021000000_e7_roles_celula_lider`: se escribe, se aplica en local con `prisma migrate deploy` y se prueba. En la nube se aplica al cerrar la corrida, como en D13.
+
+1. **Roles.** `INSERT INTO rol (nombre, descripcion) VALUES ('LIDER_QA', …), ('AUDITOR', …) ON CONFLICT (nombre) DO NOTHING`. Los 3 códigos actuales no cambian (D28).
+2. **Enums.** `ALTER TYPE "AccionAuditoria" ADD VALUE 'ASIGNAR_CELULAS_LIDER'`, `… ADD VALUE 'EXPORTAR'` y `ALTER TYPE "EntidadAuditoria" ADD VALUE 'EXPORTACION'`. Postgres no deja usar un valor nuevo de un enum en la misma transacción en que se agrega: la migración no inserta filas con esos valores.
+3. **Tabla `celula_lider`** (modelo Prisma `CelulaLider`, `@@map("celula_lider")`):
+
+| Columna | Tipo | Regla |
+| --- | --- | --- |
+| `id_celula_lider` | `uuid` PK | `DEFAULT gen_random_uuid()` |
+| `id_usuario` | `uuid NOT NULL` | FK → `usuario(id_usuario)`, `ON DELETE RESTRICT ON UPDATE CASCADE` |
+| `id_celula` | `uuid NOT NULL` | FK → `celula(id_celula)`, `ON DELETE RESTRICT ON UPDATE CASCADE` |
+| `fecha_desde` | `timestamptz(6) NOT NULL` | `DEFAULT now()` |
+| `fecha_hasta` | `timestamptz(6) NULL` | `NULL` = vigente |
+| `asignado_por_tipo`, `asignado_por_id`, `asignado_por_nombre` | `"TipoActor" NOT NULL`, `text NOT NULL`, `text NOT NULL` | Mismo patrón `actor_*` de `supervision` (D30 dice `asignado_por`) |
+| `retirado_por_tipo`, `retirado_por_id`, `retirado_por_nombre` | Igual, `NULL` | Se llenan al cerrar |
+
+- **CHECK** `celula_lider_fechas_ck`: `fecha_hasta IS NULL OR fecha_hasta >= fecha_desde`.
+- **CHECK** `celula_lider_retiro_ck`: `(fecha_hasta IS NULL) = (retirado_por_id IS NULL)`.
+- **Índices:**
+  - `celula_lider_vigente_key`: `UNIQUE (id_usuario, id_celula) WHERE fecha_hasta IS NULL`. Es parcial, va en SQL y se documenta en el modelo Prisma, como el de `supervision`.
+  - `celula_lider_celula_vigente_idx`: `(id_celula) WHERE fecha_hasta IS NULL`, para las células sin líder.
+  - `celula_lider_usuario_historial_idx`: `(id_usuario, fecha_desde DESC)`.
+- **Auditoría:** índices `auditoria_actor_fecha_idx (actor_id, fecha)` y `auditoria_accion_fecha_idx (accion, fecha)`, para los filtros del Auditor.
+- **Sin cambios** en `historia_usuario`: ya tiene índices por célula, QE, analista y estado.
+
+**Migración de Certificaciones** `20261021000000_e7_lectura_global`, solo índices:
+
+- `evento_checklist (fecha)`
+- `evento_checklist (accion, fecha)`
+- `evento_checklist (actor_id, fecha)`
+- `certificado (emitido_en)`
+- `certificado (emitido_por_id)`
+
+Ninguna llave foránea sale de su esquema: `hdu_id` sigue siendo un UUID por contrato (D24).
+
+**Semilla** (`q360-integraciones`): agrega el fixture de la sección 3 del backlog E7 (LID1, LID2, AUD1, INACT1, CEL-A/B/C y H1–H8 con su estado de checklist). `CargaUsuario.rol` acepta los 5 roles y `CargaUsuario.celulaIds` carga las células del Líder al crearlo. Así ninguna ruta publicada por el gateway necesita admitir `SERVICIO`.
+
+## Pruebas certificadas que deben reescribirse (dueño `q360-qa`, con `q360-frontend` en las unitarias)
+
+| Prueba | Hoy afirma | Después (D41, D29) |
+| --- | --- | --- |
+| `apps/web/src/test/routeGuard.test.tsx` · «un QE que abre una ruta administrativa vuelve a su propio portal» | Vuelve a «Portal QE» | Ve `acceso-denegado` («No tienes acceso a esta sección») en `/admin/usuarios`, con «Ir a mi bandeja» y sin el `h1` «Usuarios» |
+| `apps/web/src/test/routeGuard.test.tsx` · «un Analista QA que abre una ruta de QE vuelve a su propio portal» | Vuelve a «Portal Analista QA» | Acceso denegado en `/qe/equipo` |
+| `tests/e2e/e1-f02-portal-qe.spec.ts` · `[E1-F02#2]` ×2 | `toHaveURL(/\/qe$/)` | URL `/admin/usuarios` o `/qa/hdu` y `acceso-denegado` visible; ninguna petición de datos del portal ajeno |
+| `tests/e2e/e1-f02-portal-qe.spec.ts` · `[E1-F02#3]` | Menú `["Inicio", …]` | `["Bandeja", "Equipo", "Historias supervisadas", "Perfil"]` |
+| `tests/e2e/e1-f05-portal-qa.spec.ts` · `[E1-F05#3]` ×2 | `toHaveURL(/\/qa$/)` | Acceso denegado en la URL pedida |
+| `tests/e2e/e1-f05-portal-qa.spec.ts` · `[E1-F05#2]` | Menú `["Inicio", …]` | `["Bandeja", "Mis HDU", "Perfil"]` |
+| `tests/e2e/login-redireccion-rol.spec.ts` · `[LOGIN-UI]` «tras ingresar, se vuelve a ella» | Vuelve a `/admin/supervision` | Sin cambio (es ruta del propio rol). Se agrega E7-F01-T06 para una ruta ajena |
+| `apps/web/src/mocks/handlers.ts` | `porRol` con 3 roles; `relaciones` con 2 campos | 5 roles; 4 campos en `relaciones` (D43). No es una prueba certificada, pero alimenta las unitarias |
+
+Las pruebas de API certificadas no cambian de resultado esperado:
+
+- `e1-b08-cambio-rol` usa `SUPERADMIN_INEXISTENTE` como rol inválido, que sigue siendo inválido.
+- `e1-b08`, `e1-b12` y `e1-f11` cambian el rol de usuarios recién creados, sin HDU, así que D40 no las afecta.
+- Si alguna prueba valida el esquema estricto de `Usuario`, `ResumenUsuariosAdmin.porRol` o `ResolucionAcceso`, debe aceptar los campos nuevos: `celulasVigentes`, `LIDER_QA`, `AUDITOR` y `celulasIds`.
+
+## Resolución de los conflictos del diseño (sección 6)
+
+| # | Resolución |
+| --- | --- |
+| 1 | D41. Las pruebas a reescribir están en la tabla anterior |
+| 2 | Se acepta: dos variantes de `AccesoDenegado` («sección» y «recurso») y el botón en ambas |
+| 3 | Se acepta `BloqueDatos`, que envuelve y no cambia los testids certificados |
+| 4 | D42 |
+| 5 | D43 |
+| 6 | D51 |
+| 7 | D44 |
+| 8 | Se acepta una sola tarjeta con ambos testids (D51) |
+| 9 | Se acepta: `/auditor` muestra la pestaña HDU sin redirigir |
+| 10 | D45 |
+| 11 | D44 (`Usuario.celulasVigentes`) |
+| 12 | Se acepta: sin `<form>` ni `button[type=submit]` en el Auditor. `?hdu=` en aprobaciones es aditivo (D44). `QaHduListPage` y `QeHduListPage` no se tocan |
+| 13 | `q360-qa` corre axe sobre las 5 bandejas antes de certificar |
+| 14 | D36 sin cambios |
+
+## Trazabilidad E7
+
+| Capacidad | Frontend | Backend | Contrato |
+| --- | --- | --- | --- |
+| Ingreso por rol y acceso denegado | E7-F01 | E7-B03#3, B02 | `GET /v1/me`, `/v1/bandeja/*` (403) |
+| Bandeja del Analista | E7-F02 | E7-B03 | `GET /v1/bandeja/analista`, `POST /v1/interno/checklist/estados` |
+| Bandeja del QE | E7-F03 | E7-B03 | `GET /v1/bandeja/qe`, `GET /v1/inicio/qe` |
+| Bandeja del Líder | E7-F04 | E7-B01, B02, B03 | `GET /v1/bandeja/lider`, `GET /v1/interno/hdu/ambito` |
+| Bandeja del Administrador | E7-F05 | E7-B03 | `GET /v1/bandeja/admin`, `GET /v1/usuarios/{id}` |
+| Bandeja del Auditor | E7-F06 | E7-B02, B03, B04 | `GET /v1/bandeja/auditor`, `/v1/auditor/*` |
+| Rol y células | E7-F07 | E7-B01 | `GET /v1/roles`, `PUT /v1/usuarios/{id}/rol`, `GET\|PUT /v1/usuarios/{id}/celulas-lider` |
+
+## Preguntas abiertas
+
+1. **QE con HDU abiertas (D40).** Ninguna operación reasigna el QE responsable de una HDU. Mientras sea así, un QE no puede cambiar de rol hasta que todas sus HDU estén cerradas. ¿Se agrega `PUT /v1/hdu/{id}/qe-responsable` (Administrador) en esta ronda o en la siguiente?
+2. **Volumen.** Las bandejas leen el ámbito completo para ordenar y filtrar con datos de Certificaciones (lotes de hasta 1000 HDU). Alcanza para el MVP; con más de unos pocos miles de HDU por ámbito, conviene una proyección del avance en Organización (por eventos).
+3. **Validez del certificado (D45).** Hoy siempre es `true`. Si se quiere revocar certificados, hace falta una HDU nueva que defina quién revoca y cómo se ve.
