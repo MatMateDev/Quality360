@@ -30,6 +30,13 @@ type Opciones = Omit<RequestInit, "body"> & { body?: unknown };
 
 let manejadorSesionExpirada: (() => void) | null = null;
 
+let manejadorAccesoDenegado: (() => void) | null = null;
+
+/** El contexto registra aquí la reconsulta de `/v1/me` ante un 403 (el rol pudo cambiar, E7-F01-T07). */
+export function registrarManejadorAccesoDenegado(manejador: (() => void) | null): void {
+  manejadorAccesoDenegado = manejador;
+}
+
 /** El contexto de autenticación registra aquí qué hacer ante un 401 `SESION_EXPIRADA`. */
 export function registrarManejadorSesionExpirada(manejador: (() => void) | null): void {
   manejadorSesionExpirada = manejador;
@@ -75,10 +82,60 @@ export async function solicitar<T>(ruta: string, opciones: Opciones = {}): Promi
       limpiarSesion();
       manejadorSesionExpirada?.();
     }
+    if (respuesta.status === 403 && ruta !== "/v1/me") manejadorAccesoDenegado?.();
     throw error;
   }
 
   return cuerpo as T;
+}
+
+export interface ArchivoDescargado {
+  blob: Blob;
+  /** Cabecera `X-Q360-Filas` (cantidad de filas exportadas), si viene. */
+  filas: number | null;
+  /** Nombre sugerido por `Content-Disposition`, si viene. */
+  nombre: string | null;
+}
+
+/** Descarga autenticada (CSV del Auditor): mismo Bearer y mismo manejo de errores, pero devuelve un `Blob`. */
+export async function descargar(ruta: string): Promise<ArchivoDescargado> {
+  const token = obtenerAccessToken();
+  const encabezados = new Headers();
+  if (token) encabezados.set("Authorization", `Bearer ${token}`);
+  let respuesta: Response;
+  try {
+    respuesta = await fetch(`${env.gatewayUrl}${ruta}`, { headers: encabezados });
+  } catch {
+    throw new ErrorApi(503, {
+      codigo: "SERVICIO_NO_DISPONIBLE",
+      mensaje: "El servicio no está disponible. Intenta nuevamente.",
+      traceId: "",
+      detalles: [],
+    });
+  }
+  if (!respuesta.ok) {
+    const texto = await respuesta.text();
+    let cuerpo: Partial<ErrorApiCuerpo> | undefined;
+    try {
+      cuerpo = texto ? (JSON.parse(texto) as Partial<ErrorApiCuerpo>) : undefined;
+    } catch {
+      cuerpo = undefined;
+    }
+    const error = new ErrorApi(respuesta.status, cuerpo);
+    if (respuesta.status === 401 && error.codigo === "SESION_EXPIRADA") {
+      limpiarSesion();
+      manejadorSesionExpirada?.();
+    }
+    if (respuesta.status === 403) manejadorAccesoDenegado?.();
+    throw error;
+  }
+  const cabeceraFilas = respuesta.headers.get("X-Q360-Filas");
+  const disposicion = respuesta.headers.get("Content-Disposition") ?? "";
+  return {
+    blob: await respuesta.blob(),
+    filas: cabeceraFilas !== null && Number.isFinite(Number(cabeceraFilas)) ? Number(cabeceraFilas) : null,
+    nombre: /filename="?([^";]+)"?/i.exec(disposicion)?.[1] ?? null,
+  };
 }
 
 export const http = {

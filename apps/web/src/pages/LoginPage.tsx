@@ -7,6 +7,7 @@ import { BotonAcceso } from "@/components/acceso/BotonAcceso";
 import { CampoContrasena } from "@/components/acceso/CampoContrasena";
 import { CampoCorreo } from "@/components/acceso/CampoCorreo";
 import { validarCorreo } from "@/lib/validacionAcceso";
+import { rutaPermitidaParaRol } from "@/types/dominio";
 
 interface ErroresCampo {
   correo?: string;
@@ -26,7 +27,7 @@ interface EstadoLogin {
  * inactivo, mismo mensaje genérico), E1-B01#3 (demasiados intentos) y E1-B11#1 (sesión expirada).
  */
 export function LoginPage() {
-  const { iniciarSesion, ingresando, estado, avisoSesion, errorAcceso, limpiarAviso, limpiarErrorAcceso } = useAuth();
+  const { iniciarSesion, ingresando, estado, perfil, avisoSesion, errorAcceso, limpiarAviso, limpiarErrorAcceso } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
   const estadoNavegacion = location.state as EstadoLogin | null;
@@ -50,9 +51,12 @@ export function LoginPage() {
 
   useEffect(() => {
     if (estado === "autenticado") {
-      navigate(estadoNavegacion?.desde ?? "/", { replace: true });
+      // D41 / E7-F01-T06: la ruta pedida antes del login solo se reutiliza si es del portal del propio rol.
+      const desde = estadoNavegacion?.desde;
+      const destino = desde && perfil && rutaPermitidaParaRol(desde, perfil.rol) ? desde : "/";
+      navigate(destino, { replace: true });
     }
-  }, [estado, navigate, estadoNavegacion?.desde]);
+  }, [estado, navigate, estadoNavegacion?.desde, perfil]);
 
   // Tras un intento fallido se vacía solo la contraseña, el correo queda escrito y el foco vuelve a la contraseña.
   useEffect(() => {

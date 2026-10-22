@@ -3,6 +3,7 @@ import { cleanup } from "@testing-library/react";
 import { afterAll, afterEach, beforeAll } from "vitest";
 import { reiniciarSimulacionMock } from "@/auth/mockAuthProvider";
 import { limpiarSesion } from "@/auth/sessionStore";
+import { reiniciarFuentes } from "@/mocks/dataE7";
 import { server } from "@/mocks/server";
 
 beforeAll(() => server.listen({ onUnhandledRequest: "error" }));
@@ -15,6 +16,7 @@ afterEach(async () => {
   await new Promise((resolver) => setTimeout(resolver, 0));
   limpiarSesion();
   reiniciarSimulacionMock();
+  reiniciarFuentes();
 });
 
 afterAll(() => server.close());

@@ -32,6 +32,25 @@
   --q360-color-indisponible: #5b5f66;
   --q360-color-indisponible-suave: #eceef1;
 
+  /* Roles nuevos (texto sobre fondo >= 6:1) */
+  --q360-color-lider: #5b21b6;
+  --q360-color-lider-suave: #f1eafe;
+  --q360-color-auditor: #0f5f6b;
+  --q360-color-auditor-suave: #e0f4f6;
+  /* Solo lectura */
+  --q360-color-solo-lectura: #3b4658;
+  --q360-color-solo-lectura-suave: #eef1f5;
+  /* Observaciones / atención */
+  --q360-color-observacion: var(--q360-color-alerta);
+  --q360-color-observacion-suave: var(--q360-color-alerta-suave);
+  --q360-color-atencion-borde: #c98a00;
+  /* Esqueleto */
+  --q360-color-esqueleto: #e6eaf0;
+  --q360-color-esqueleto-brillo: #f3f5f8;
+  /* Interacción */
+  --q360-objetivo-tactil: 44px;
+  --q360-ancho-tabla-titulo: 260px;
+
   /* Forma */
   --q360-radio: 8px;
   --q360-radio-grande: 12px;

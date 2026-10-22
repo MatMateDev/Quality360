@@ -4,6 +4,8 @@ const CLASE_ROL: Record<Rol, string> = {
   ADMINISTRADOR: "badge-administrador",
   QE: "badge-qe",
   ANALISTA_QA: "badge-analista-qa",
+  LIDER_QA: "badge-lider-qa",
+  AUDITOR: "badge-auditor",
 };
 
 export function InsigniaRol({ rol }: { rol: Rol }) {

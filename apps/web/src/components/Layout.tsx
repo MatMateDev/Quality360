@@ -1,5 +1,7 @@
+import { useEffect, useRef, useState } from "react";
 import { NavLink, Outlet, useNavigate } from "react-router-dom";
 import { useAuth } from "@/auth/AuthContext";
+import { rutaPortal, type Rol } from "@/types/dominio";
 import { InsigniaRol } from "./Etiquetas";
 
 interface EnlaceNav {
@@ -8,27 +10,43 @@ interface EnlaceNav {
   fin?: boolean;
 }
 
-const ENLACES_POR_ROL: Record<string, EnlaceNav[]> = {
+/** Menú por rol (diseño E7 §4.1). «Bandeja» va primero; «Perfil» se agrega al final para todos. */
+const ENLACES_POR_ROL: Record<Rol, EnlaceNav[]> = {
   ADMINISTRADOR: [
-    { a: "/admin", etiqueta: "Inicio", fin: true },
+    { a: "/admin", etiqueta: "Bandeja", fin: true },
     { a: "/admin/usuarios", etiqueta: "Usuarios" },
     { a: "/admin/supervision", etiqueta: "Supervisión" },
   ],
   QE: [
-    { a: "/qe", etiqueta: "Inicio", fin: true },
+    { a: "/qe", etiqueta: "Bandeja", fin: true },
     { a: "/qe/equipo", etiqueta: "Equipo" },
     { a: "/qe/hdu", etiqueta: "Historias supervisadas" },
   ],
   ANALISTA_QA: [
-    { a: "/qa", etiqueta: "Inicio", fin: true },
+    { a: "/qa", etiqueta: "Bandeja", fin: true },
     { a: "/qa/hdu", etiqueta: "Mis HDU" },
   ],
+  // Sin `fin`: queda activo en las cuatro pestañas del Auditor.
+  LIDER_QA: [{ a: "/lider", etiqueta: "Bandeja" }],
+  AUDITOR: [{ a: "/auditor", etiqueta: "Bandeja" }],
 };
 
 /** Barra superior y navegación por portal (E1-F02#3: el menú del QE solo trae equipo, historias supervisadas, perfil y cerrar sesión). */
 export function Layout() {
   const { perfil, cerrarSesion } = useAuth();
   const navigate = useNavigate();
+  const rolAnterior = useRef<Rol | null>(null);
+  const [avisoRol, setAvisoRol] = useState(false);
+
+  const rol = perfil?.rol ?? null;
+  useEffect(() => {
+    // E7-F01-T07: si `/v1/me` devuelve otro rol con la sesión abierta, se lleva al usuario a su nueva bandeja.
+    if (rol && rolAnterior.current && rolAnterior.current !== rol) {
+      setAvisoRol(true);
+      navigate(rutaPortal(rol), { replace: true });
+    }
+    rolAnterior.current = rol;
+  }, [rol, navigate]);
 
   if (!perfil) return null;
 
@@ -41,6 +59,9 @@ export function Layout() {
 
   return (
     <div className="capa-app">
+      <a className="saltar-contenido" href="#contenido">
+        Saltar al contenido
+      </a>
       <header className="barra-superior">
         <a className="marca" href="/">
           Quality360
@@ -66,7 +87,12 @@ export function Layout() {
         </div>
       </header>
 
-      <main className="contenedor">
+      <main className="contenedor" id="contenido" tabIndex={-1}>
+        {avisoRol ? (
+          <p className="mensaje-aviso" role="status" data-testid="aviso-rol-cambio">
+            Tu rol cambió. Te llevamos a tu nueva bandeja.
+          </p>
+        ) : null}
         <Outlet />
       </main>
     </div>

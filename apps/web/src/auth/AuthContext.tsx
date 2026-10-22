@@ -1,6 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { ErrorApi, http, registrarManejadorSesionExpirada } from "@/lib/httpClient";
+import { ErrorApi, http, registrarManejadorAccesoDenegado, registrarManejadorSesionExpirada } from "@/lib/httpClient";
 import type { Perfil } from "@/types/dominio";
 import {
   cerrarSesion as cerrarSesionProveedor,
@@ -91,6 +91,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setAvisoSesion(MENSAJE_SESION_EXPIRADA);
     });
     return () => registrarManejadorSesionExpirada(null);
+  }, [queryClient]);
+
+  useEffect(() => {
+    // Un 403 en cualquier consulta puede deberse a que el rol cambió: se vuelve a pedir `/v1/me` (E7-F01-T07).
+    registrarManejadorAccesoDenegado(() => {
+      void queryClient.invalidateQueries({ queryKey: ["perfil"] });
+    });
+    return () => registrarManejadorAccesoDenegado(null);
   }, [queryClient]);
 
   const perfilQuery = useQuery({

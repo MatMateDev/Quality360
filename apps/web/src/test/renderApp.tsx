@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen } from "@testing-library/react";
+import { cleanup, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, type InitialEntry } from "react-router-dom";
 import { AuthProvider } from "@/auth/AuthContext";
@@ -33,6 +33,18 @@ export function renderAppConEstado(entrada: InitialEntry) {
       </AuthProvider>
     </QueryClientProvider>,
   );
+}
+
+/**
+ * Inicia sesión con una cuenta de demostración y abre `ruta` con la sesión ya vigente (el `sessionStore` es un
+ * singleton, igual que en el resto de las pruebas).
+ */
+export async function abrirComo(correo: string, ruta: string) {
+  renderApp("/login");
+  await iniciarSesionUi(correo);
+  await screen.findByRole("navigation", { name: "Portal" });
+  cleanup();
+  return renderApp(ruta);
 }
 
 /** Llena y envía el formulario de login (credenciales de demostración en `mocks/data.ts`). */

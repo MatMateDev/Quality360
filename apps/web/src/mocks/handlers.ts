@@ -18,48 +18,31 @@ import {
 } from "./data";
 import {
   ERROR_ACCESO_DENEGADO,
-  ERROR_NO_AUTENTICADO,
   ERROR_NO_ENCONTRADO,
   aCatalogoRef,
   aHduResumen,
   aUsuarioResumen,
   cuerpoError,
-  decodificarToken,
   leerNumero,
   paginar,
   transicionesDesde,
 } from "./utils";
+import { analistaEnEquipoDe, autenticar, esUsuarioMock, exigirRol } from "./comun";
+import { aplicarCelulasLider, celulasVigentesDe } from "./dataE7";
+import { handlersE7 } from "./handlersE7";
 
 const BASE = env.gatewayUrl;
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-function autenticar(request: Request): UsuarioMock | HttpResponse<any> {
-  const usuario = decodificarToken(request.headers.get("Authorization"));
-  if (!usuario) return HttpResponse.json(ERROR_NO_AUTENTICADO(), { status: 401 });
-  if (!usuario.activo) return HttpResponse.json(ERROR_ACCESO_DENEGADO(), { status: 403 });
-  return usuario;
-}
-
-function esUsuarioMock(valor: UsuarioMock | HttpResponse<any>): valor is UsuarioMock {
-  return "id" in valor;
-}
-
-function exigirRol(usuario: UsuarioMock, ...roles: Rol[]): HttpResponse<any> | null {
-  if (!roles.includes(usuario.rol)) return HttpResponse.json(ERROR_ACCESO_DENEGADO(), { status: 403 });
-  return null;
-}
-
-function analistaEnEquipoDe(qeId: string, analistaId: string): boolean {
-  return analistasVigentesDe(qeId).some((relacion) => relacion.analistaId === analistaId);
-}
-
 function estaEnAmbito(hdu: HduMock, usuario: UsuarioMock): boolean {
-  if (usuario.rol === "ADMINISTRADOR") return true;
+  if (usuario.rol === "ADMINISTRADOR" || usuario.rol === "AUDITOR") return true;
+  if (usuario.rol === "LIDER_QA") return celulasVigentesDe(usuario.id).includes(hdu.celulaId);
   if (usuario.rol === "ANALISTA_QA") return hdu.analistaId === usuario.id;
   return hdu.qeResponsableId === usuario.id || analistaEnEquipoDe(usuario.id, hdu.analistaId ?? "");
 }
 
 function puedeCambiarEstado(hdu: HduMock, usuario: UsuarioMock): boolean {
+  if (usuario.rol === "LIDER_QA" || usuario.rol === "AUDITOR") return false;
   if (usuario.rol === "ADMINISTRADOR") return true;
   if (usuario.rol === "ANALISTA_QA") return hdu.analistaId === usuario.id;
   return estaEnAmbito(hdu, usuario);
@@ -81,6 +64,32 @@ function construirHduDetalle(hdu: HduMock, usuario: UsuarioMock) {
   };
 }
 
+/** D43: el 409 trae siempre las 4 claves y las informa todas a la vez. */
+function cuerpoRelaciones(usuario: UsuarioMock, incluirHduAbiertas: boolean) {
+  const analistas = usuario.rol === "QE" ? analistasVigentesDe(usuario.id).map((r) => aUsuarioResumen(buscarUsuario(r.analistaId)!)) : [];
+  const supervisor = usuario.rol === "ANALISTA_QA" ? supervisorVigenteDe(usuario.id) : undefined;
+  const abiertas = incluirHduAbiertas
+    ? hdus.filter(
+        (h) => h.estado !== "CERRADA" && (usuario.rol === "QE" ? h.qeResponsableId === usuario.id : usuario.rol === "ANALISTA_QA" ? h.analistaId === usuario.id : false),
+      )
+    : [];
+  const celulasVig =
+    usuario.rol === "LIDER_QA" ? celulasVigentesDe(usuario.id).map((id) => aCatalogoRef(celulas.find((c) => c.id === id)!)) : [];
+  return {
+    analistasVigentes: analistas,
+    supervisorVigente: supervisor ? aUsuarioResumen(buscarUsuario(supervisor.qeId)!) : null,
+    hduAbiertas: {
+      total: abiertas.length,
+      items: abiertas.slice(0, 20).map((h) => ({ id: h.id, codigo: h.codigo, titulo: h.titulo, estado: h.estado })),
+    },
+    celulasVigentes: celulasVig,
+  };
+}
+
+function hayRelaciones(r: ReturnType<typeof cuerpoRelaciones>): boolean {
+  return r.analistasVigentes.length > 0 || r.supervisorVigente !== null || r.hduAbiertas.total > 0 || r.celulasVigentes.length > 0;
+}
+
 function usuarioAAudiencia(usuario: UsuarioMock) {
   const relacion = supervisorVigenteDe(usuario.id);
   const qe = relacion ? buscarUsuario(relacion.qeId) : undefined;
@@ -92,6 +101,12 @@ function usuarioAAudiencia(usuario: UsuarioMock) {
     activo: usuario.activo,
     supervisorVigente: usuario.rol === "ANALISTA_QA" && qe ? aUsuarioResumen(qe) : null,
     analistasVigentes: usuario.rol === "QE" ? analistasVigentesDe(usuario.id).length : 0,
+    celulasVigentes:
+      usuario.rol === "LIDER_QA"
+        ? celulasVigentesDe(usuario.id)
+            .map((id) => aCatalogoRef(celulas.find((c) => c.id === id)!))
+            .sort((a, b) => a.nombre.localeCompare(b.nombre))
+        : [],
     creadoEn: usuario.creadoEn,
     actualizadoEn: usuario.actualizadoEn,
   };
@@ -115,7 +130,7 @@ export const handlers = [
     if (denegado) return denegado;
 
     const activos = usuarios.filter((u) => u.activo);
-    const porRol = { ADMINISTRADOR: 0, QE: 0, ANALISTA_QA: 0 };
+    const porRol = { ADMINISTRADOR: 0, QE: 0, ANALISTA_QA: 0, LIDER_QA: 0, AUDITOR: 0 };
     for (const usuario of usuarios) porRol[usuario.rol] += 1;
 
     const analistasQaActivos = usuarios.filter((u) => u.rol === "ANALISTA_QA" && u.activo);
@@ -281,13 +296,23 @@ export const handlers = [
     return HttpResponse.json({ ...pagina_, items: pagina_.items.map(usuarioAAudiencia) });
   }),
 
+  http.get(`${BASE}/v1/usuarios/:id`, ({ request, params }) => {
+    const actor = autenticar(request);
+    if (!esUsuarioMock(actor)) return actor;
+    const denegado = exigirRol(actor, "ADMINISTRADOR");
+    if (denegado) return denegado;
+    const usuario = buscarUsuario(String(params.id));
+    if (!usuario) return HttpResponse.json(ERROR_NO_ENCONTRADO(), { status: 404 });
+    return HttpResponse.json(usuarioAAudiencia(usuario));
+  }),
+
   http.post(`${BASE}/v1/usuarios`, async ({ request }) => {
     const actor = autenticar(request);
     if (!esUsuarioMock(actor)) return actor;
     const denegado = exigirRol(actor, "ADMINISTRADOR");
     if (denegado) return denegado;
 
-    const cuerpo = (await request.json()) as { nombre?: string; correo?: string; rol?: Rol };
+    const cuerpo = (await request.json()) as { nombre?: string; correo?: string; rol?: Rol; celulaIds?: string[] };
     const detalles: { campo: string; codigo: "REQUERIDO" | "FORMATO_INVALIDO" | "VALOR_NO_PERMITIDO"; mensaje: string }[] = [];
     const nombre = cuerpo.nombre?.trim() ?? "";
     const correo = cuerpo.correo?.trim().toLowerCase() ?? "";
@@ -320,6 +345,7 @@ export const handlers = [
       contrasena: "",
     };
     usuarios.push(nuevo);
+    if (nuevo.rol === "LIDER_QA") aplicarCelulasLider(nuevo, cuerpo.celulaIds ?? [], actor.id);
     return HttpResponse.json(usuarioAAudiencia(nuevo), { status: 201, headers: { Location: `/v1/usuarios/${nuevo.id}` } });
   }),
 
@@ -359,10 +385,7 @@ export const handlers = [
           return HttpResponse.json(
             {
               ...cuerpoError("RELACIONES_INCOMPATIBLES", "Resuelve las relaciones de supervisión antes de continuar."),
-              relaciones: {
-                analistasVigentes: vigentes.map((r) => aUsuarioResumen(buscarUsuario(r.analistaId)!)),
-                supervisorVigente: null,
-              },
+              relaciones: cuerpoRelaciones(usuario, false),
             },
             { status: 409 },
           );
@@ -387,7 +410,7 @@ export const handlers = [
     const usuario = buscarUsuario(String(params.id));
     if (!usuario) return HttpResponse.json(ERROR_NO_ENCONTRADO(), { status: 404 });
 
-    const cuerpo = (await request.json()) as { rol?: Rol };
+    const cuerpo = (await request.json()) as { rol?: Rol; celulaIds?: string[] };
     if (!cuerpo.rol || !ROLES_CATALOGO.includes(cuerpo.rol)) {
       return HttpResponse.json(
         cuerpoError("VALIDACION", "Selecciona un rol válido.", [
@@ -397,9 +420,27 @@ export const handlers = [
       );
     }
 
-    if (cuerpo.rol === usuario.rol) return HttpResponse.json(usuarioAAudiencia(usuario));
+    if (cuerpo.rol === usuario.rol && cuerpo.rol !== "LIDER_QA") return HttpResponse.json(usuarioAAudiencia(usuario));
 
-    if (usuario.rol === "ADMINISTRADOR") {
+    // D43: catálogo (400) -> célula existente (422) -> último administrador (409) -> relaciones (409).
+    const celulaIds = cuerpo.celulaIds ?? [];
+    if (celulaIds.length > 0 && cuerpo.rol !== "LIDER_QA") {
+      return HttpResponse.json(
+        cuerpoError("VALIDACION", "Solo un Líder QA puede tener células.", [
+          { campo: "celulaIds", codigo: "NO_PERMITIDO", mensaje: "Solo un Líder QA puede tener células." },
+        ]),
+        { status: 400 },
+      );
+    }
+    if (celulaIds.some((id) => !celulas.some((c) => c.id === id))) {
+      return HttpResponse.json(
+        cuerpoError("CATALOGO_INVALIDO", "Alguna de las células indicadas no existe.", [
+          { campo: "celulaIds", codigo: "NO_EXISTE", mensaje: "Alguna de las células indicadas no existe." },
+        ]),
+        { status: 422 },
+      );
+    }
+    if (usuario.rol === "ADMINISTRADOR" && cuerpo.rol !== usuario.rol) {
       const otrosAdminsActivos = usuarios.some((u) => u.rol === "ADMINISTRADOR" && u.activo && u.id !== usuario.id);
       if (!otrosAdminsActivos) {
         return HttpResponse.json(
@@ -408,31 +449,18 @@ export const handlers = [
         );
       }
     }
-    if (usuario.rol === "QE") {
-      const vigentes = analistasVigentesDe(usuario.id);
-      if (vigentes.length > 0) {
+    if (cuerpo.rol !== usuario.rol) {
+      const relaciones = cuerpoRelaciones(usuario, true);
+      if (hayRelaciones(relaciones)) {
         return HttpResponse.json(
-          {
-            ...cuerpoError("RELACIONES_INCOMPATIBLES", "Resuelve las relaciones de supervisión antes de continuar."),
-            relaciones: { analistasVigentes: vigentes.map((r) => aUsuarioResumen(buscarUsuario(r.analistaId)!)), supervisorVigente: null },
-          },
-          { status: 409 },
-        );
-      }
-    }
-    if (usuario.rol === "ANALISTA_QA") {
-      const relacion = supervisorVigenteDe(usuario.id);
-      if (relacion) {
-        return HttpResponse.json(
-          {
-            ...cuerpoError("RELACIONES_INCOMPATIBLES", "Resuelve las relaciones de supervisión antes de continuar."),
-            relaciones: { analistasVigentes: [], supervisorVigente: aUsuarioResumen(buscarUsuario(relacion.qeId)!) },
-          },
+          { ...cuerpoError("RELACIONES_INCOMPATIBLES", "Resuelve las relaciones de trabajo antes de cambiar el rol."), relaciones },
           { status: 409 },
         );
       }
     }
 
+    // D42: rol + células en una sola operación.
+    aplicarCelulasLider(usuario, cuerpo.rol === "LIDER_QA" ? celulaIds : [], actor.id);
     usuario.rol = cuerpo.rol;
     usuario.actualizadoEn = new Date().toISOString();
     return HttpResponse.json(usuarioAAudiencia(usuario));
@@ -620,7 +648,7 @@ export const handlers = [
 
     const hdu = hdus.find((h) => h.id === params.id);
     if (!hdu) {
-      return actor.rol === "ADMINISTRADOR"
+      return actor.rol === "ADMINISTRADOR" || actor.rol === "AUDITOR"
         ? HttpResponse.json(ERROR_NO_ENCONTRADO(), { status: 404 })
         : HttpResponse.json(ERROR_ACCESO_DENEGADO(), { status: 403 });
     }
@@ -713,7 +741,7 @@ export const handlers = [
 
     const hdu = hdus.find((h) => h.id === params.id);
     if (!hdu) {
-      return actor.rol === "ADMINISTRADOR"
+      return actor.rol === "ADMINISTRADOR" || actor.rol === "AUDITOR"
         ? HttpResponse.json(ERROR_NO_ENCONTRADO(), { status: 404 })
         : HttpResponse.json(ERROR_ACCESO_DENEGADO(), { status: 403 });
     }
@@ -779,13 +807,15 @@ export const handlers = [
     });
   }),
 
+  ...handlersE7,
+
   http.get(`${BASE}/v1/hdu/:id/historial`, ({ request, params }) => {
     const actor = autenticar(request);
     if (!esUsuarioMock(actor)) return actor;
 
     const hdu = hdus.find((h) => h.id === params.id);
     if (!hdu) {
-      return actor.rol === "ADMINISTRADOR"
+      return actor.rol === "ADMINISTRADOR" || actor.rol === "AUDITOR"
         ? HttpResponse.json(ERROR_NO_ENCONTRADO(), { status: 404 })
         : HttpResponse.json(ERROR_ACCESO_DENEGADO(), { status: 403 });
     }
