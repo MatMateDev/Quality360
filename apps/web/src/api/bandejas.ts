@@ -115,14 +115,60 @@ export function useBandejaLider(filtros: FiltrosUrl) {
   return useQuery({ queryKey: ["bandeja", "lider", query], queryFn: () => http.get<BandejaLider>(`/v1/bandeja/lider${query}`) });
 }
 
-export function useBandejaAdmin() {
-  return useQuery({ queryKey: ["bandeja", "admin"], queryFn: () => http.get<BandejaAdmin>("/v1/bandeja/admin") });
+/** `pagina` y `tamano` paginan «Pendientes de configuración» (DEF-10); el resto de la bandeja no cambia. */
+export function useBandejaAdmin(pagina = 1, tamano = 25) {
+  const query = new URLSearchParams();
+  if (pagina > 1) query.set("pagina", String(pagina));
+  if (tamano !== 25) query.set("tamanoPagina", String(Math.min(tamano, 100)));
+  const texto = query.toString();
+  return useQuery({
+    queryKey: ["bandeja", "admin", pagina, tamano],
+    queryFn: () => http.get<BandejaAdmin>(`/v1/bandeja/admin${texto ? `?${texto}` : ""}`),
+    placeholderData: (anterior) => anterior,
+  });
 }
 
 /** `filtros = null` pide la bandeja sin filtros (contadores globales del Auditor, que no dependen de la pestaña). */
 export function useBandejaAuditor(filtros: FiltrosUrl | null) {
   const query = aQueryApi(filtros, { claves: CLAVES_AUDITOR_HDU, ordenables: ORDEN_HDU });
   return useQuery({ queryKey: ["bandeja", "auditor", query], queryFn: () => http.get<BandejaAuditor>(`/v1/bandeja/auditor${query}`) });
+}
+
+export interface CatalogoAuditor {
+  hdus: Array<readonly [id: string, codigo: string]>;
+  /** QE responsables y analistas de esas HDU: los actores posibles de la bitácora de checklist. */
+  actores: Array<readonly [id: string, nombre: string]>;
+}
+
+const PAGINAS_CATALOGO_MAXIMAS = 30;
+
+/**
+ * Catálogo completo de HDU y actores del Auditor (DEF-04). El contrato no trae un catálogo para este rol, así que
+ * se recorre `GET /v1/bandeja/auditor` (tamanoPagina=100) hasta cubrir el total; así los filtros de la bitácora no
+ * dependen de la página cargada. Si falla, los filtros siguen con lo que ya aparece en las filas.
+ */
+export function useCatalogoAuditor() {
+  return useQuery({
+    queryKey: ["auditor", "catalogo"],
+    staleTime: 60_000,
+    retry: 0,
+    queryFn: async (): Promise<CatalogoAuditor> => {
+      const hdus = new Map<string, string>();
+      const actores = new Map<string, string>();
+      for (let pagina = 1; pagina <= PAGINAS_CATALOGO_MAXIMAS; pagina += 1) {
+        const bandeja = await http.get<BandejaAuditor>(`/v1/bandeja/auditor?tamanoPagina=100&pagina=${pagina}`);
+        if (bandeja.hdu.estado !== "ok") break;
+        const { items, total } = bandeja.hdu.datos;
+        for (const h of items) {
+          hdus.set(h.id, h.codigo);
+          actores.set(h.qeResponsable.id, h.qeResponsable.nombre);
+          if (h.analista) actores.set(h.analista.id, h.analista.nombre);
+        }
+        if (items.length === 0 || hdus.size >= total) break;
+      }
+      return { hdus: [...hdus.entries()], actores: [...actores.entries()] };
+    },
+  });
 }
 
 export function useCertificadosAuditor(filtros: FiltrosUrl) {

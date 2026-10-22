@@ -194,7 +194,7 @@ export function ChecklistEntregables({ hduId, hduCerrada = false }: { hduId: str
           <span data-testid="checklist-completados">
             {resumen.completados} de {resumen.totalEntregables} aprobados
           </span>
-          <div className="barra-progreso" role="progressbar" aria-valuenow={resumen.porcentajeCumplimiento} aria-valuemin={0} aria-valuemax={100}>
+          <div className="barra-progreso" role="progressbar" aria-label="Avance del checklist" aria-valuetext={`${resumen.porcentajeCumplimiento}% de cumplimiento`} aria-valuenow={resumen.porcentajeCumplimiento} aria-valuemin={0} aria-valuemax={100}>
             <div style={{ width: `${resumen.porcentajeCumplimiento}%` }} />
           </div>
         </div>

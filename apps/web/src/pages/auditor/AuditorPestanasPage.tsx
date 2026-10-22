@@ -1,6 +1,6 @@
 import { useMemo } from "react";
 import { Link } from "react-router-dom";
-import { useAuditoriaUsuarios, useBitacoraAuditor, useCertificadosAuditor } from "@/api/bandejas";
+import { useAuditoriaUsuarios, useBitacoraAuditor, useCatalogoAuditor, useCertificadosAuditor } from "@/api/bandejas";
 import type { CampoFiltro } from "@/components/bandeja/BarraFiltros";
 import { BotonDescargaCertificado } from "@/components/bandeja/BotonDescargaCertificado";
 import { PanelAuditor } from "@/components/bandeja/PanelAuditor";
@@ -90,13 +90,19 @@ export function AuditorBitacoraPage() {
   const filtros = useFiltrosUrl();
   const consulta = useBitacoraAuditor(filtros);
   const items = consulta.data?.items;
-  const hdus = useOpcionesAcumuladas(useMemo(() => items?.map((e) => [e.hdu.id, e.hdu.codigo] as const), [items]));
-  const actores = useOpcionesAcumuladas(useMemo(() => items?.map((e) => [e.actor.id, e.actor.nombre] as const), [items]));
+  const catalogo = useCatalogoAuditor().data;
+  // Catálogo completo (DEF-04) más lo que ya aparece en las filas, por si el catálogo no cargó.
+  const hdus = useOpcionesAcumuladas(
+    useMemo(() => [...(catalogo?.hdus ?? []), ...(items?.map((e) => [e.hdu.id, e.hdu.codigo] as const) ?? [])], [catalogo, items]),
+  );
+  const actores = useOpcionesAcumuladas(
+    useMemo(() => [...(catalogo?.actores ?? []), ...(items?.map((e) => [e.actor.id, e.actor.nombre] as const) ?? [])], [catalogo, items]),
+  );
 
   const campos: CampoFiltro[] = [
     ...FECHAS,
-    { clave: "hdu", id: "filtro-hdu", etiqueta: "HDU", tipo: "select", opciones: hdus },
-    { clave: "actor", id: "filtro-actor", etiqueta: "Actor", tipo: "select", opciones: actores },
+    { clave: "hdu", id: "filtro-hdu", etiqueta: "HDU", tipo: "select", opciones: hdus, buscable: true },
+    { clave: "actor", id: "filtro-actor", etiqueta: "Actor", tipo: "select", opciones: actores, buscable: true },
     {
       clave: "accion",
       id: "filtro-accion",

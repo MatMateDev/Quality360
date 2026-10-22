@@ -215,68 +215,23 @@ export function AdminUsuariosPage() {
   const relacionesError = relacionesDe(errorRol);
   const cambiaALider = rolSeleccionado === "LIDER_QA";
 
-  return (
-    <div>
-      <div className="encabezado">
-        <p className="etiqueta">Portal Administrador</p>
-        <h1>Usuarios</h1>
-        <p>Registro, datos, rol, células y acceso de cada participante.</p>
-      </div>
+  const usuarioFueraDePagina =
+    usuarioUrl.data && usuariosQuery.data && !usuariosQuery.data.items.some((u) => u.id === usuarioUrl.data!.id) ? usuarioUrl.data : null;
 
-      {exito ? <MensajeExito mensaje={exito} onCerrar={() => setExito(null)} /> : null}
-      {idUsuarioUrl && usuarioUrl.isError ? (
-        <p className="mensaje-aviso" role="status" data-testid="aviso-usuario-no-encontrado">
-          No encontramos al usuario indicado
-        </p>
-      ) : null}
-
-      <div className="panel">
-        <div className="panel-cabecera">
-          <div>
-            <h2>Listado</h2>
-          </div>
-          <button type="button" className="boton boton--primario" onClick={abrirCrear}>
-            + Nuevo usuario
-          </button>
-        </div>
-
-        <BarraFiltros filtros={url} campos={campos} clave="usuarios" total={usuariosQuery.data?.total} etiquetaPlural="usuarios" />
-
-        {usuariosQuery.isLoading ? <BloqueEstado id="usuarios-lista" estado="cargando" /> : null}
-        {usuariosQuery.isError ? (
-          <BloqueEstado id="usuarios-lista" estado="error" onReintentar={() => usuariosQuery.refetch()} />
-        ) : null}
-
-        {usuariosQuery.data ? (
-          usuariosQuery.data.items.length === 0 ? (
-            <BloqueEstado id="usuarios-lista" estado="vacio" mensaje="No hay usuarios que coincidan con la búsqueda." />
-          ) : (
-            <>
-              <div className="tabla-contenedor">
-                <table>
-                  <caption className="sr-only">Usuarios de la plataforma</caption>
-                  <thead>
-                    <tr>
-                      <th scope="col">Nombre</th>
-                      <th scope="col">Correo</th>
-                      <th scope="col">Rol</th>
-                      <th scope="col">Células</th>
-                      <th scope="col">Acceso</th>
-                      <th scope="col">Acciones</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {usuariosQuery.data.items.map((usuario) => {
-                      const resaltado = usuario.id === idResaltado;
-                      return (
-                        <tr
-                          key={usuario.id}
-                          ref={resaltado ? filaResaltada : undefined}
-                          data-testid={`fila-usuario-${usuario.id}`}
-                          className={resaltado ? "fila-usuario--seleccionada" : undefined}
-                          aria-current={resaltado ? "true" : undefined}
-                        >
-                          <td>{usuario.nombre}</td>
+  function filaUsuario(usuario: Usuario, fueraDePagina: boolean) {
+    const resaltado = usuario.id === idResaltado;
+    return (
+      <tr
+        key={usuario.id}
+        ref={resaltado ? filaResaltada : undefined}
+        data-testid={`fila-usuario-${usuario.id}`}
+        className={resaltado ? "fila-usuario--seleccionada" : undefined}
+        aria-current={resaltado ? "true" : undefined}
+      >
+        <td>
+          {usuario.nombre}
+          {fueraDePagina ? <small data-testid="usuario-fuera-de-pagina"> (usuario indicado en el enlace; no está en esta página)</small> : null}
+        </td>
                           <td>{usuario.correo}</td>
                           <td>
                             <InsigniaRol rol={usuario.rol} />
@@ -325,9 +280,63 @@ export function AdminUsuariosPage() {
                               </button>
                             </div>
                           </td>
-                        </tr>
-                      );
-                    })}
+      </tr>
+    );
+  }
+
+  return (
+    <div>
+      <div className="encabezado">
+        <p className="etiqueta">Portal Administrador</p>
+        <h1>Usuarios</h1>
+        <p>Registro, datos, rol, células y acceso de cada participante.</p>
+      </div>
+
+      {exito ? <MensajeExito mensaje={exito} onCerrar={() => setExito(null)} /> : null}
+      {idUsuarioUrl && usuarioUrl.isError ? (
+        <p className="mensaje-aviso" role="status" data-testid="aviso-usuario-no-encontrado">
+          No encontramos al usuario indicado
+        </p>
+      ) : null}
+
+      <div className="panel">
+        <div className="panel-cabecera">
+          <div>
+            <h2>Listado</h2>
+          </div>
+          <button type="button" className="boton boton--primario" onClick={abrirCrear}>
+            + Nuevo usuario
+          </button>
+        </div>
+
+        <BarraFiltros filtros={url} campos={campos} clave="usuarios" total={usuariosQuery.data?.total} etiquetaPlural="usuarios" />
+
+        {usuariosQuery.isLoading ? <BloqueEstado id="usuarios-lista" estado="cargando" /> : null}
+        {usuariosQuery.isError ? (
+          <BloqueEstado id="usuarios-lista" estado="error" onReintentar={() => usuariosQuery.refetch()} />
+        ) : null}
+
+        {usuariosQuery.data ? (
+          usuariosQuery.data.items.length === 0 ? (
+            <BloqueEstado id="usuarios-lista" estado="vacio" mensaje="No hay usuarios que coincidan con la búsqueda." />
+          ) : (
+            <>
+              <div className="tabla-contenedor" role="region" tabIndex={0} aria-label="Tabla desplazable">
+                <table aria-label="Usuarios de la plataforma">
+                  <thead>
+                    <tr>
+                      <th scope="col">Nombre</th>
+                      <th scope="col">Correo</th>
+                      <th scope="col">Rol</th>
+                      <th scope="col">Células</th>
+                      <th scope="col">Acceso</th>
+                      <th scope="col">Acciones</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {/* DEF-08: el usuario de ?usuario=<id> (resuelto con GET /v1/usuarios/{id}) se destaca arriba si no está en esta página. */}
+                    {usuarioFueraDePagina ? filaUsuario(usuarioFueraDePagina, true) : null}
+                    {usuariosQuery.data.items.map((usuario) => filaUsuario(usuario, false))}
                   </tbody>
                 </table>
               </div>

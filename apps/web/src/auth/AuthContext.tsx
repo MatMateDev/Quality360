@@ -1,7 +1,8 @@
 import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { ErrorApi, http, registrarManejadorAccesoDenegado, registrarManejadorSesionExpirada } from "@/lib/httpClient";
-import type { Perfil } from "@/types/dominio";
+import type { Perfil, Rol } from "@/types/dominio";
+import { guardarRolConocido, leerRolConocido, olvidarRolConocido } from "./rolConocido";
 import {
   cerrarSesion as cerrarSesionProveedor,
   cerrarSesionLocal as cerrarSesionLocalProveedor,
@@ -51,6 +52,12 @@ export interface AuthContextValor {
   /** Cierra solo la sesión de este navegador. */
   cerrarSesionLocal: () => Promise<void>;
   limpiarAviso: () => void;
+  /**
+   * D56: rol anterior del usuario cuando `/v1/me` devuelve uno distinto al último conocido (al cargar o con la
+   * sesión abierta). Mientras no se reconozca, las rutas de ese portal no muestran «acceso denegado».
+   */
+  cambioRol: { anterior: Rol } | null;
+  reconocerCambioRol: () => void;
   limpiarErrorAcceso: () => void;
   /**
    * RECUPERACION: mientras es verdadero la sesión que dejó el enlace del correo no se usa como sesión de
@@ -70,6 +77,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [avisoSesion, setAvisoSesion] = useState<string | null>(null);
   const [errorAcceso, setErrorAcceso] = useState<AlertaAcceso | null>(null);
   const [modoRecuperacion, setModoRecuperacion] = useState(false);
+  const [cambioRol, setCambioRol] = useState<{ anterior: Rol } | null>(null);
 
   useEffect(() => {
     const limpiar = inicializarSesion(() => {
@@ -108,6 +116,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     enabled: Boolean(tokenActual) && !modoRecuperacion,
     retry: 0,
   });
+
+  const perfilActual = modoRecuperacion ? null : (perfilQuery.data ?? null);
+  useEffect(() => {
+    // D56: compara con el último rol conocido de este usuario; si difiere, el rol cambió (E7-F01-T07).
+    if (!perfilActual) return;
+    const anterior = leerRolConocido(perfilActual.id);
+    if (anterior && anterior !== perfilActual.rol) setCambioRol({ anterior });
+    guardarRolConocido(perfilActual.id, perfilActual.rol);
+  }, [perfilActual]);
 
   useEffect(() => {
     // `/v1/me` responde 403 genérico si el usuario está inactivo o sin registro en Organización
@@ -153,15 +170,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const cerrarSesion = useCallback(async () => {
     await cerrarSesionProveedor();
+    olvidarRolConocido();
+    setCambioRol(null);
     queryClient.clear();
   }, [queryClient]);
 
   const cerrarSesionLocal = useCallback(async () => {
     await cerrarSesionLocalProveedor();
+    olvidarRolConocido();
+    setCambioRol(null);
     queryClient.clear();
   }, [queryClient]);
 
   const limpiarAviso = useCallback(() => setAvisoSesion(null), []);
+  const reconocerCambioRol = useCallback(() => setCambioRol(null), []);
   const limpiarErrorAcceso = useCallback(() => setErrorAcceso(null), []);
   const establecerModoRecuperacion = useCallback((activo: boolean) => setModoRecuperacion(activo), []);
 
@@ -185,6 +207,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     cerrarSesion,
     cerrarSesionLocal,
     limpiarAviso,
+    cambioRol,
+    reconocerCambioRol,
     limpiarErrorAcceso,
     establecerModoRecuperacion,
   };

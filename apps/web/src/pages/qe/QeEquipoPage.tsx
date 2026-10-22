@@ -24,7 +24,7 @@ export function QeEquipoPage() {
           equipoQuery.data.items.length === 0 ? (
             <BloqueEstado id="equipo-lista" estado="vacio" mensaje="No tienes analistas asignados." />
           ) : (
-            <div className="tabla-contenedor">
+            <div className="tabla-contenedor" role="region" tabIndex={0} aria-label="Tabla desplazable">
               <table>
                 <thead>
                   <tr>

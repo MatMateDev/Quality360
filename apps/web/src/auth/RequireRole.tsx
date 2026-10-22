@@ -13,10 +13,12 @@ interface Props {
  * dentro del Layout y sin que se monte la página (no se hace ninguna petición de datos).
  */
 export function RequireRole({ roles }: Props) {
-  const { perfil } = useAuth();
+  const { perfil, cambioRol } = useAuth();
 
   if (!perfil) return null;
   if (!roles.includes(perfil.rol)) {
+    // D56: si ese portal era del usuario (su rol cambió), el Layout lo redirige con el aviso; no es un acceso ajeno.
+    if (cambioRol && roles.includes(cambioRol.anterior)) return null;
     return <AccesoDenegado variante="seccion" />;
   }
 

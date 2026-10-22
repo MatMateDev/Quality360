@@ -7,6 +7,8 @@ import { TarjetaMetrica } from "@/components/TarjetaMetrica";
 import { BloqueDatos, EncabezadoBandeja, GrupoContadores, type EstadoDatos } from "@/components/bandeja/Estructura";
 import { TablaBandeja, type Columna } from "@/components/bandeja/TablaBandeja";
 import { TarjetaContador } from "@/components/bandeja/TarjetaContador";
+import { Paginacion } from "@/components/bandeja/Paginacion";
+import { useFiltrosUrl } from "@/lib/filtrosUrl";
 import { formatearFecha } from "@/lib/formato";
 import {
   ETIQUETAS_OPERACION,
@@ -56,7 +58,8 @@ function accionPendiente(p: PendienteConfiguracion): { a: string; texto: string;
  */
 export function AdminInicioPage() {
   const inicioQuery = useInicioAdmin();
-  const bandeja = useBandejaAdmin();
+  const filtros = useFiltrosUrl();
+  const bandeja = useBandejaAdmin(filtros.pagina, filtros.tamano);
   const idPendientes = useId();
   const idCambios = useId();
   const datos = bandeja.data;
@@ -77,7 +80,7 @@ export function AdminInicioPage() {
     ) : undefined;
 
   const pend = datos?.pendientes;
-  const estadoPend: EstadoDatos = bandeja.isError ? "error" : bandeja.isLoading || !pend ? "cargando" : pend.estado !== "ok" ? "indisponible" : pend.datos.items.length === 0 ? "vacio" : "ok";
+  const estadoPend: EstadoDatos = bandeja.isError ? "error" : bandeja.isLoading || !pend ? "cargando" : pend.estado !== "ok" ? "indisponible" : pend.datos.total === 0 ? "vacio" : "ok";
   const cambios = datos?.ultimosCambios;
   const estadoCambios: EstadoDatos = bandeja.isError ? "error" : bandeja.isLoading || !cambios ? "cargando" : cambios.estado !== "ok" ? "indisponible" : cambios.datos.items.length === 0 ? "vacio" : "ok";
 
@@ -187,6 +190,11 @@ export function AdminInicioPage() {
               onReintentar={() => bandeja.refetch()}
             >
               {pend?.estado === "ok" ? (
+                <p role="status" data-testid="total-pendientes" style={{ margin: "0 0 8px" }}>
+                  {pend.datos.total} {pend.datos.total === 1 ? "pendiente" : "pendientes"} en total
+                </p>
+              ) : null}
+              {pend?.estado === "ok" ? (
                 <TablaBandeja
                   testId="lista-pendientes"
                   caption="Usuarios y células con configuración pendiente"
@@ -194,6 +202,18 @@ export function AdminInicioPage() {
                   items={pend.datos.items}
                   clave={(p) => `${p.tipo}-${idPendiente(p)}`}
                   testIdFila={(p) => `fila-pendiente-${SEGMENTO_TIPO[p.tipo]}-${idPendiente(p)}`}
+                  focoPagina={filtros.pagina}
+                />
+              ) : null}
+              {pend?.estado === "ok" && pend.datos.total > pend.datos.tamanoPagina ? (
+                <Paginacion
+                  clave="pendientes"
+                  etiqueta="pendientes de configuración"
+                  total={pend.datos.total}
+                  pagina={pend.datos.pagina}
+                  tamano={pend.datos.tamanoPagina}
+                  onPagina={(p) => filtros.set({ pagina: String(p) })}
+                  onTamano={(t) => filtros.set({ tamano: t === 25 ? undefined : String(t) })}
                 />
               ) : null}
             </BloqueDatos>

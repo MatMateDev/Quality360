@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { NavLink, Outlet, useNavigate } from "react-router-dom";
 import { useAuth } from "@/auth/AuthContext";
 import { rutaPortal, type Rol } from "@/types/dominio";
@@ -33,20 +33,20 @@ const ENLACES_POR_ROL: Record<Rol, EnlaceNav[]> = {
 
 /** Barra superior y navegación por portal (E1-F02#3: el menú del QE solo trae equipo, historias supervisadas, perfil y cerrar sesión). */
 export function Layout() {
-  const { perfil, cerrarSesion } = useAuth();
+  const { perfil, cerrarSesion, cambioRol, reconocerCambioRol } = useAuth();
   const navigate = useNavigate();
-  const rolAnterior = useRef<Rol | null>(null);
   const [avisoRol, setAvisoRol] = useState(false);
 
   const rol = perfil?.rol ?? null;
   useEffect(() => {
-    // E7-F01-T07: si `/v1/me` devuelve otro rol con la sesión abierta, se lleva al usuario a su nueva bandeja.
-    if (rol && rolAnterior.current && rolAnterior.current !== rol) {
+    // E7-F01-T07 y D56: si `/v1/me` devuelve un rol distinto al último conocido (con la sesión abierta o al
+    // recargar), se lleva al usuario a su nueva bandeja con el aviso.
+    if (rol && cambioRol) {
       setAvisoRol(true);
       navigate(rutaPortal(rol), { replace: true });
+      reconocerCambioRol();
     }
-    rolAnterior.current = rol;
-  }, [rol, navigate]);
+  }, [rol, cambioRol, navigate, reconocerCambioRol]);
 
   if (!perfil) return null;
 

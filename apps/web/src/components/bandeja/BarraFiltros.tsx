@@ -16,6 +16,8 @@ export interface CampoFiltro {
   opciones?: OpcionFiltro[];
   /** Texto de la opción vacía de un select. */
   vacio?: string;
+  /** Un select con muchas opciones (p. ej. HDU) suma un campo de texto que las acota por nombre o código (DEF-04). */
+  buscable?: boolean;
 }
 
 interface Props {
@@ -44,6 +46,42 @@ function BuscadorTexto({ campo, valor, onCambio }: { campo: CampoFiltro; valor: 
       value={local}
       onChange={(evento) => setLocal(evento.target.value)}
     />
+  );
+}
+
+function SelectFiltro({ campo, valor, onCambio }: { campo: CampoFiltro; valor: string; onCambio: (valor: string) => void }) {
+  const [texto, setTexto] = useState("");
+  const opciones = campo.opciones ?? [];
+  const termino = texto.trim().toLowerCase();
+  const visibles = termino ? opciones.filter((o) => o.valor === valor || o.etiqueta.toLowerCase().includes(termino)) : opciones;
+  const seleccionada = opciones.some((o) => o.valor === valor);
+  return (
+    <>
+      {campo.buscable ? (
+        <input
+          id={`${campo.id}-buscar`}
+          data-testid={`${campo.id}-buscar`}
+          type="search"
+          aria-label={`Buscar en la lista de ${campo.etiqueta}`}
+          placeholder="Buscar por código o nombre"
+          value={texto}
+          onChange={(evento) => setTexto(evento.target.value)}
+        />
+      ) : null}
+      <select id={campo.id} data-testid={campo.id} value={seleccionada ? valor : ""} onChange={(evento) => onCambio(evento.target.value)}>
+        <option value="">{campo.vacio ?? "Todos"}</option>
+        {visibles.map((opcion) => (
+          <option key={opcion.valor} value={opcion.valor}>
+            {opcion.etiqueta}
+          </option>
+        ))}
+      </select>
+      {campo.buscable && termino && visibles.length === (seleccionada ? 1 : 0) ? (
+        <span role="status" data-testid={`${campo.id}-sin-coincidencias`}>
+          Sin coincidencias en la lista.
+        </span>
+      ) : null}
+    </>
   );
 }
 
@@ -101,19 +139,7 @@ export function BarraFiltros({ filtros, campos, clave, total, etiquetaPlural = "
             <div className="campo" key={campo.clave}>
               <label htmlFor={campo.id}>{campo.etiqueta}</label>
               {campo.tipo === "select" ? (
-                <select
-                  id={campo.id}
-                  data-testid={campo.id}
-                  value={campo.opciones?.some((o) => o.valor === valor) ? valor : ""}
-                  onChange={(evento) => filtros.set({ [campo.clave]: evento.target.value || undefined })}
-                >
-                  <option value="">{campo.vacio ?? "Todos"}</option>
-                  {campo.opciones?.map((opcion) => (
-                    <option key={opcion.valor} value={opcion.valor}>
-                      {opcion.etiqueta}
-                    </option>
-                  ))}
-                </select>
+                <SelectFiltro campo={campo} valor={valor} onCambio={(v) => filtros.set({ [campo.clave]: v || undefined })} />
               ) : campo.tipo === "fecha" ? (
                 <input
                   id={campo.id}

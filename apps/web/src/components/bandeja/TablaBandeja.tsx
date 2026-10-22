@@ -1,4 +1,4 @@
-import { useEffect, useRef, type MouseEvent, type ReactNode } from "react";
+import { useEffect, useId, useRef, type MouseEvent, type ReactNode } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import type { OrdenUrl } from "@/lib/filtrosUrl";
 
@@ -34,7 +34,8 @@ interface Props<T> {
 export function TablaBandeja<T>({ testId, caption, columnas, items, clave, testIdFila, hrefFila, resaltar, orden, onOrden, focoPagina }: Props<T>) {
   const navigate = useNavigate();
   const ubicacion = useLocation();
-  const captionRef = useRef<HTMLTableCaptionElement>(null);
+  const captionRef = useRef<HTMLHeadingElement>(null);
+  const idTitulo = useId();
   const primeraVez = useRef(true);
 
   useEffect(() => {
@@ -58,10 +59,11 @@ export function TablaBandeja<T>({ testId, caption, columnas, items, clave, testI
 
   return (
     <div className="tabla-contenedor">
-      <table className="tabla--apilable" data-testid={testId} role="table">
-        <caption className="sr-only" ref={captionRef} tabIndex={-1}>
-          {caption}
-        </caption>
+      {/* El foco al paginar va a este encabezado, fuera de la tabla (un caption con tabindex rompe aria-required-children). */}
+      <h3 className="sr-only" id={idTitulo} ref={captionRef} tabIndex={-1}>
+        {caption}
+      </h3>
+      <table className="tabla--apilable" data-testid={testId} role="table" aria-labelledby={idTitulo}>
         <thead role="rowgroup">
           <tr role="row">
             {columnas.map((columna) => {

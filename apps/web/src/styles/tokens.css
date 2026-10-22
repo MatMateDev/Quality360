@@ -11,7 +11,8 @@
 
   /* Texto */
   --q360-color-texto: #172033;
-  --q360-color-texto-secundario: #687386;
+  /* DEF-06: #566174 da >= 5.7:1 sobre el fondo #f4f6f8 y >= 6:1 sobre blanco (antes #687386, 4.42:1). */
+  --q360-color-texto-secundario: #566174;
   --q360-color-texto-terciario: #465267;
 
   /* Marca / acento */

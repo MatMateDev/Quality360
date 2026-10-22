@@ -13,18 +13,39 @@ const ETIQUETA_CAMPO: Record<string, string> = {
   celulas: "Células",
 };
 
+const PROFUNDIDAD_MAXIMA = 3;
+
+/** Texto legible de un valor anidado (objetos y listas), sin claves sensibles; «…» solo al pasar la profundidad máxima (DEF-05). */
+function textoAnidado(valor: unknown, profundidad = 0): string {
+  if (valor === null || valor === undefined) return "—";
+  if (Array.isArray(valor)) {
+    if (profundidad >= PROFUNDIDAD_MAXIMA) return "…";
+    return valor.map((v) => textoAnidado(v, profundidad + 1)).join(", ");
+  }
+  if (typeof valor === "object") {
+    const objeto = valor as Record<string, unknown>;
+    // Una referencia (célula, usuario…) se muestra por su nombre.
+    if (typeof objeto.nombre === "string") return objeto.nombre;
+    if (profundidad >= PROFUNDIDAD_MAXIMA) return "…";
+    const partes = Object.entries(objeto)
+      .filter(([clave]) => !CLAVE_SENSIBLE.test(clave))
+      .map(([clave, v]) => `${clave}: ${textoAnidado(v, profundidad + 1)}`);
+    return partes.length ? partes.join("; ") : "—";
+  }
+  return String(valor);
+}
+
 function textoValor(clave: string, valor: unknown): string {
   if (valor === null || valor === undefined) return "—";
   if (clave === "rol" && typeof valor === "string") return ETIQUETAS_ROL[valor as Rol] ?? valor;
   if (clave === "activo") return valor ? "Activo" : "Inactivo";
-  if (Array.isArray(valor)) return valor.length === 0 ? "sin células" : valor.map((v) => (typeof v === "object" ? "…" : String(v))).join(", ");
-  if (typeof valor === "object") return "…";
-  return String(valor);
+  if (Array.isArray(valor) && valor.length === 0) return clave === "celulas" ? "sin células" : "sin elementos";
+  return textoAnidado(valor);
 }
 
 /**
  * «Rol: Analista QA → Líder QA» en lenguaje natural (no JSON). Solo describe campos de la lista blanca y nunca
- * una clave que contenga `password`, `token` o `secret`.
+ * una clave que contenga `password`, `token` o `secret`. Las células se muestran por nombre.
  */
 export function describirCambios(antes: Record<string, unknown> | null, despues: Record<string, unknown> | null): string[] {
   const claves = new Set([...Object.keys(antes ?? {}), ...Object.keys(despues ?? {})]);
@@ -38,11 +59,11 @@ export function describirCambios(antes: Record<string, unknown> | null, despues:
   return lineas;
 }
 
-/** Valores de la bitácora de checklist (`estado`, `completado`…) como texto, sin claves sensibles. */
+/** Valores de la bitácora de checklist (`estado`, `completado`, `evidencia`…) como texto, sin claves sensibles. */
 export function describirValor(valor: Record<string, unknown> | null): string {
   if (!valor) return "—";
   const partes = Object.entries(valor)
     .filter(([clave]) => !CLAVE_SENSIBLE.test(clave))
-    .map(([clave, v]) => `${clave}: ${typeof v === "object" ? "…" : String(v)}`);
+    .map(([clave, v]) => `${clave}: ${textoAnidado(v)}`);
   return partes.length ? partes.join(", ") : "—";
 }

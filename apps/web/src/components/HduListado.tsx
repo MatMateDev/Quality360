@@ -103,7 +103,7 @@ export function HduListado({ titulo, descripcion, idBloque, mostrarColumnaAnalis
           hduQuery.data.items.length === 0 ? (
             <BloqueEstado id={idBloque} estado="vacio" mensaje="No hay historias de usuario con esos criterios." />
           ) : (
-            <div className="tabla-contenedor">
+            <div className="tabla-contenedor" role="region" tabIndex={0} aria-label="Tabla desplazable">
               <table>
                 <thead>
                   <tr>

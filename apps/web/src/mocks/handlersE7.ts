@@ -484,7 +484,15 @@ export const handlersE7 = [
         hduTotal: contadorOrg(hdus.length),
       },
       pendientes: fuentes.pendientesAdmin
-        ? { fuente: "organizacion.usuarios", estado: "ok", datos: { items: pendientes, total: pendientes.length, pagina: 1, tamanoPagina: 25 } }
+        ? {
+            fuente: "organizacion.usuarios",
+            estado: "ok",
+            datos: paginar(
+              pendientes,
+              leerNumero(new URL(request.url).searchParams.get("pagina"), 1),
+              Math.min(leerNumero(new URL(request.url).searchParams.get("tamanoPagina"), 25), 100),
+            ),
+          }
         : bloqueIndisponible("organizacion.usuarios"),
       ultimosCambios: fuentes.cambiosAdmin
         ? {

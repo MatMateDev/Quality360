@@ -15,6 +15,7 @@ afterEach(async () => {
   // turno para que no alcance a la sesión de la prueba siguiente.
   await new Promise((resolver) => setTimeout(resolver, 0));
   limpiarSesion();
+  sessionStorage.clear();
   reiniciarSimulacionMock();
   reiniciarFuentes();
 });
