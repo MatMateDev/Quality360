@@ -1,4 +1,4 @@
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import { useBandejaAprobaciones } from "@/api/checklist";
 import { BloqueEstado } from "@/components/BloqueEstado";
 import { formatearFecha } from "@/lib/formato";
@@ -6,6 +6,9 @@ import { formatearFecha } from "@/lib/formato";
 /** E3-F03#3: bandeja del QE con entregables por aprobar agrupados por HDU. */
 export function QeAprobacionesPage() {
   const bandejaQuery = useBandejaAprobaciones();
+  // E7-F03 / D44: `?hdu=<id>` deja visible esa HDU; un id que no está en la bandeja muestra un aviso, nunca un error.
+  const [params] = useSearchParams();
+  const hduParam = params.get("hdu");
 
   return (
     <div>
@@ -28,7 +31,21 @@ export function QeAprobacionesPage() {
             <p data-testid="bandeja-total">
               {bandejaQuery.data.total} {bandejaQuery.data.total === 1 ? "entregable por aprobar" : "entregables por aprobar"}
             </p>
-            {bandejaQuery.data.grupos.map((grupo) => (
+            {hduParam && !bandejaQuery.data.grupos.some((g) => g.hdu.id === hduParam) ? (
+              <p className="mensaje-aviso" role="status" data-testid="aviso-hdu-sin-pendientes">
+                Esa HDU no tiene entregables por aprobar.
+              </p>
+            ) : null}
+            {hduParam && bandejaQuery.data.grupos.some((g) => g.hdu.id === hduParam) ? (
+              <p>
+                <Link to="/qe/aprobaciones" data-testid="enlace-ver-todas-aprobaciones">
+                  Ver todas las HDU con aprobaciones pendientes
+                </Link>
+              </p>
+            ) : null}
+            {bandejaQuery.data.grupos
+              .filter((grupo) => !hduParam || grupo.hdu.id === hduParam || !bandejaQuery.data.grupos.some((g) => g.hdu.id === hduParam))
+              .map((grupo) => (
               <section key={grupo.hdu.id} className="panel" data-testid={`grupo-bandeja-${grupo.hdu.codigo}`}>
                 <div className="panel-cabecera">
                   <div>

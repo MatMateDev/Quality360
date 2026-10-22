@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { useAsignarSupervisor, useHistorialSupervision } from "@/api/supervision";
 import { useUsuarios } from "@/api/usuarios";
 import { BloqueEstado } from "@/components/BloqueEstado";
@@ -18,6 +19,22 @@ export function AdminSupervisionPage() {
   const [dialogoAbierto, setDialogoAbierto] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [avisoSinCambios, setAvisoSinCambios] = useState<string | null>(null);
+
+  // D44: `?analista=<id>` y `?qe=<id>` preseleccionan; un id inexistente muestra un aviso, nunca un error.
+  const [params] = useSearchParams();
+  const analistaUrl = params.get("analista");
+  const qeUrl = params.get("qe");
+  const [avisoUrl, setAvisoUrl] = useState<string | null>(null);
+  useEffect(() => {
+    if (!analistaUrl || !analistasQuery.data) return;
+    if (analistasQuery.data.items.some((u) => u.id === analistaUrl)) setAnalistaId(analistaUrl);
+    else setAvisoUrl("No encontramos al analista indicado");
+  }, [analistaUrl, analistasQuery.data]);
+  useEffect(() => {
+    if (!qeUrl || !qesQuery.data) return;
+    if (qesQuery.data.items.some((u) => u.id === qeUrl)) setQeId(qeUrl);
+    else setAvisoUrl("No encontramos al QE indicado");
+  }, [qeUrl, qesQuery.data]);
 
   const historialQuery = useHistorialSupervision(analistaId || null);
   const analistaSeleccionado = analistasQuery.data?.items.find((usuario) => usuario.id === analistaId);
@@ -84,6 +101,12 @@ export function AdminSupervisionPage() {
             </select>
           </div>
         </div>
+
+        {avisoUrl ? (
+          <p className="mensaje-aviso" role="status" data-testid="aviso-preseleccion">
+            {avisoUrl}
+          </p>
+        ) : null}
 
         {analistaSeleccionado ? (
           <p data-testid="relacion-vigente-supervision">
