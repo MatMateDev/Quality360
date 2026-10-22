@@ -13,6 +13,8 @@ export interface ConfiguracionCertificaciones {
   /** Base pública del portal, para el enlace de verificación impreso en el certificado (D21). */
   portalUrl: string;
   verificador: OpcionesVerificador;
+  /** Máximo de filas de una exportación CSV del Auditor (D35, D48, `EXPORTACION_LIMITE_FILAS`). */
+  exportacionLimiteFilas: number;
 }
 
 function requerido(valor: string | undefined, nombre: string): string {
@@ -47,5 +49,6 @@ export function cargarConfiguracion(entorno: NodeJS.ProcessEnv = process.env): C
     supabaseServiceRoleKey: requerido(entorno.SUPABASE_SERVICE_ROLE_KEY, 'SUPABASE_SERVICE_ROLE_KEY'),
     portalUrl: leerUrl(entorno.PORTAL_URL, 'http://localhost:5173', 'PORTAL_URL'),
     verificador: opcionesDesdeEntorno(entorno),
+    exportacionLimiteFilas: leerEntero(entorno.EXPORTACION_LIMITE_FILAS, 50_000, 'EXPORTACION_LIMITE_FILAS'),
   };
 }

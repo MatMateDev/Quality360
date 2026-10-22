@@ -24,8 +24,18 @@ export interface HduParaCertificacion {
   readonly analista: Persona | null;
 }
 
+export type RolUsuario = 'ADMINISTRADOR' | 'QE' | 'ANALISTA_QA' | 'LIDER_QA' | 'AUDITOR';
+
 export interface ActorHdu extends Persona {
-  readonly rol: 'ADMINISTRADOR' | 'QE' | 'ANALISTA_QA';
+  readonly rol: RolUsuario;
+}
+
+/** HDU que el usuario del token puede leer (D47): `todas` para Administrador y Auditor. */
+export interface AmbitoLecturaHdu {
+  readonly usuarioId: string;
+  readonly rol: RolUsuario;
+  readonly todas: boolean;
+  readonly hduIds: readonly string[];
 }
 
 /** Acceso permitido a una HDU, con quién consulta y los datos de la HDU. */
@@ -64,16 +74,59 @@ export class OrganizacionCliente {
     return cuerpo.items as HduParaCertificacion[];
   }
 
-  private async consultar(ruta: string, contexto: ContextoSolicitud): Promise<unknown> {
+  /** `GET /v1/interno/hdu/ambito`: autoriza lecturas en lote con una sola llamada (D47). */
+  async ambito(contexto: ContextoSolicitud): Promise<AmbitoLecturaHdu> {
+    const cuerpo = (await this.consultar('/v1/interno/hdu/ambito', contexto)) as Partial<AmbitoLecturaHdu>;
+    if (typeof cuerpo.todas !== 'boolean' || !Array.isArray(cuerpo.hduIds)) {
+      throw servicioNoDisponible('Organización devolvió un ámbito de lectura incompleto');
+    }
+    return cuerpo as AmbitoLecturaHdu;
+  }
+
+  /**
+   * `POST /v1/interno/hdu/consulta`: datos de las HDU pedidas, en el orden pedido. Si alguna está
+   * fuera de ámbito o no existe, Organización responde 403 completo (D12, D47).
+   */
+  async consultarHdu(hduIds: readonly string[], contexto: ContextoSolicitud): Promise<HduParaCertificacion[]> {
+    const items: HduParaCertificacion[] = [];
+    for (let desde = 0; desde < hduIds.length; desde += 1000) {
+      const cuerpo = (await this.consultar('/v1/interno/hdu/consulta', contexto, { hduIds: hduIds.slice(desde, desde + 1000) })) as { items?: unknown };
+      if (!Array.isArray(cuerpo.items)) throw servicioNoDisponible('Organización devolvió una consulta de HDU ilegible');
+      items.push(...(cuerpo.items as HduParaCertificacion[]));
+    }
+    return items;
+  }
+
+  /**
+   * Registra la exportación en la auditoría de Organización con el token del Auditor (D48). Si
+   * Organización no responde o la rechaza, 503: Certificaciones no entrega el archivo.
+   */
+  async registrarExportacion(
+    exportacion: { recurso: 'BITACORA' | 'CERTIFICADOS'; filtros: Record<string, unknown>; filas: number },
+    contexto: ContextoSolicitud,
+  ): Promise<void> {
+    try {
+      await this.consultar('/v1/interno/auditoria/exportaciones', contexto, exportacion);
+    } catch (error) {
+      if (error instanceof ExcepcionQ360 && error.getStatus() === 503) throw error;
+      const motivo = error instanceof Error ? error.message : 'desconocido';
+      throw servicioNoDisponible(`Organización no registró la exportación: ${motivo}`);
+    }
+  }
+
+  private async consultar(ruta: string, contexto: ContextoSolicitud, cuerpo?: unknown): Promise<unknown> {
     const url = new URL(ruta, this.configuracion.organizacionUrl);
     let respuesta: Response;
     try {
       respuesta = await fetch(url, {
+        method: cuerpo === undefined ? 'GET' : 'POST',
         headers: {
           authorization: `Bearer ${contexto.token}`,
           accept: 'application/json',
           [CABECERA_TRAZA]: contexto.traceId,
+          ...(cuerpo === undefined ? {} : { 'content-type': 'application/json' }),
         },
+        body: cuerpo === undefined ? undefined : JSON.stringify(cuerpo),
         redirect: 'error',
         signal: AbortSignal.timeout(this.configuracion.tiempoLimiteOrganizacionMs),
       });

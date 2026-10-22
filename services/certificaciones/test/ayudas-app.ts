@@ -15,6 +15,7 @@ export function configuracionPrueba(organizacionUrl: string): ConfiguracionCerti
     supabaseServiceRoleKey: 'clave-de-servicio-falsa-para-pruebas',
     portalUrl: 'http://localhost:5173',
     verificador: resolverOpcionesVerificador({ emisor: EMISOR, audiencia: AUDIENCIA, secretoHs256: SECRETO }),
+    exportacionLimiteFilas: 50_000,
   };
 }
 

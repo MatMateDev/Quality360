@@ -2,7 +2,9 @@ import { Module, type DynamicModule, type Provider } from '@nestjs/common';
 import { AuthNestModule, ResolutorDeAccesoRemoto } from '@quality360/auth-nest';
 
 import { BandejaController, ChecklistController, VerificacionController } from './api/controladores/checklist.controller.js';
+import { AuditorController, InternoController } from './api/controladores/auditoria-global.controller.js';
 import { SaludController } from './api/controladores/salud.controller.js';
+import { AuditorAplicacion, SeguimientoAplicacion } from './aplicacion/auditoria-global.servicio.js';
 import { ChecklistAplicacion } from './aplicacion/checklist.servicio.js';
 import { CONFIGURACION, type ConfiguracionCertificaciones } from './configuracion.js';
 import { ALMACEN_ARCHIVOS, AlmacenSupabase } from './infraestructura/almacen.js';
@@ -32,7 +34,7 @@ export class AppModule {
           filtroErroresGlobal: true,
         }),
       ],
-      controllers: [SaludController, ChecklistController, BandejaController, VerificacionController],
+      controllers: [SaludController, ChecklistController, BandejaController, VerificacionController, InternoController, AuditorController],
       providers: [
         { provide: CONFIGURACION, useValue: configuracion },
         PrismaService,
@@ -41,6 +43,8 @@ export class AppModule {
         GeneradorCertificadoPdf,
         opciones.almacen ?? { provide: ALMACEN_ARCHIVOS, useClass: AlmacenSupabase },
         ChecklistAplicacion,
+        SeguimientoAplicacion,
+        AuditorAplicacion,
       ],
     };
   }

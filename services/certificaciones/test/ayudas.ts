@@ -23,6 +23,8 @@ export const PERSONAS = {
   otroQe: { id: '0a000000-0000-4000-8000-000000000003', nombre: 'Marcos QE', rol: 'QE' },
   analista: { id: '0a000000-0000-4000-8000-000000000004', nombre: 'Ana Analista', rol: 'ANALISTA_QA' },
   otroAnalista: { id: '0a000000-0000-4000-8000-000000000005', nombre: 'Beatriz Analista', rol: 'ANALISTA_QA' },
+  lider: { id: '0a000000-0000-4000-8000-000000000006', nombre: 'Lidia Líder', rol: 'LIDER_QA' },
+  auditor: { id: '0a000000-0000-4000-8000-000000000007', nombre: 'Aurelio Auditor', rol: 'AUDITOR' },
 } as const;
 
 export type ClavePersona = keyof typeof PERSONAS;
@@ -51,9 +53,24 @@ export interface HduFalsa {
   estado: 'PENDIENTE' | 'DISENO_PRUEBAS' | 'EN_EJECUCION' | 'PENDIENTE_CIERRE' | 'CERRADA';
   qeResponsableId: string;
   analistaId: string | null;
+  /** La HDU pertenece a una célula del Líder QA de prueba (relación LECTOR_CELULA). */
+  deLider?: boolean;
+}
+
+export interface ExportacionRegistrada {
+  recurso: string;
+  filtros: Record<string, unknown>;
+  filas: number;
+  sub: string | null;
 }
 
 export interface OrganizacionFalsa {
+  /** Exportaciones que Certificaciones registró en la auditoría. */
+  readonly exportaciones: ExportacionRegistrada[];
+  /** Con `true`, el registro de exportaciones responde 500 (Organización falla). */
+  fallarRegistro: boolean;
+  /** Con `true`, `POST /v1/interno/hdu/consulta` responde 500 (Organización falla solo ahí). */
+  fallarConsulta: boolean;
   url: string;
   /** Fuerza la respuesta de `/v1/interno/acceso`; `null` vuelve al comportamiento por persona. */
   responder(cuerpo: unknown, estado?: number): void;
@@ -71,6 +88,8 @@ function sujetoDe(authorization: string | undefined): string | null {
 
 function relacionCon(persona: Persona, hdu: HduFalsa): string | null {
   if (persona.rol === 'ADMINISTRADOR') return 'ADMINISTRADOR';
+  if (persona.rol === 'AUDITOR') return 'LECTOR_AUDITORIA';
+  if (persona.rol === 'LIDER_QA') return hdu.deLider === true ? 'LECTOR_CELULA' : null;
   if (hdu.qeResponsableId === persona.id) return 'QE_RESPONSABLE';
   if (hdu.analistaId === persona.id) return 'ANALISTA_ASIGNADO';
   return null;
@@ -93,10 +112,18 @@ export async function iniciarOrganizacionFalsa(): Promise<OrganizacionFalsa> {
     analista: hdu.analistaId === null ? null : { id: hdu.analistaId, nombre: porId.get(hdu.analistaId)?.nombre ?? 'Analista' },
   });
 
+  const exportaciones: ExportacionRegistrada[] = [];
+  const estado = { fallarRegistro: false, fallarConsulta: false };
+
   const servidor: Server = createServer((peticion, res) => {
     const enviar = (estado: number, cuerpo: unknown): void => {
       res.writeHead(estado, { 'content-type': 'application/json' });
       res.end(JSON.stringify(cuerpo));
+    };
+    const conCuerpo = (accion: (cuerpo: Record<string, unknown>) => void): void => {
+      const partes: Buffer[] = [];
+      peticion.on('data', (parte: Buffer) => partes.push(parte));
+      peticion.on('end', () => accion(JSON.parse(Buffer.concat(partes).toString('utf8') || '{}') as Record<string, unknown>));
     };
     const sub = sujetoDe(peticion.headers.authorization);
     const persona = sub === null ? undefined : porId.get(sub);
@@ -110,6 +137,26 @@ export async function iniciarOrganizacionFalsa(): Promise<OrganizacionFalsa> {
     }
     if (persona === undefined) return enviar(403, { codigo: 'ACCESO_DENEGADO' });
 
+    if (ruta === '/v1/interno/hdu/ambito') {
+      const visibles = persona.rol === 'ADMINISTRADOR' || persona.rol === 'AUDITOR' ? null : [...hdus.values()].filter((hdu) => relacionCon(persona, hdu) !== null);
+      return enviar(200, { usuarioId: persona.id, rol: persona.rol, todas: visibles === null, hduIds: (visibles ?? []).map((hdu) => hdu.id) });
+    }
+    if (ruta === '/v1/interno/hdu/consulta' && peticion.method === 'POST') {
+      return conCuerpo((cuerpo) => {
+        if (estado.fallarConsulta) return enviar(500, { codigo: 'ERROR_INTERNO' });
+        const pedidas = (cuerpo.hduIds as string[]).map((id) => hdus.get(id));
+        if (pedidas.some((hdu) => hdu === undefined || relacionCon(persona, hdu) === null)) return enviar(403, { codigo: 'ACCESO_DENEGADO' });
+        enviar(200, { items: pedidas.map((hdu) => vista(hdu as HduFalsa)) });
+      });
+    }
+    if (ruta === '/v1/interno/auditoria/exportaciones' && peticion.method === 'POST') {
+      return conCuerpo((cuerpo) => {
+        if (persona.rol !== 'AUDITOR') return enviar(403, { codigo: 'ACCESO_DENEGADO' });
+        if (estado.fallarRegistro) return enviar(500, { codigo: 'ERROR_INTERNO' });
+        exportaciones.push({ recurso: cuerpo.recurso as string, filtros: cuerpo.filtros as Record<string, unknown>, filas: cuerpo.filas as number, sub });
+        enviar(201, { id: randomUUID() });
+      });
+    }
     if (ruta === '/v1/interno/hdu/responsable') {
       return enviar(200, { items: [...hdus.values()].filter((hdu) => hdu.qeResponsableId === persona.id).map(vista) });
     }
@@ -135,6 +182,19 @@ export async function iniciarOrganizacionFalsa(): Promise<OrganizacionFalsa> {
 
   let contador = 0;
   return {
+    exportaciones,
+    get fallarRegistro() {
+      return estado.fallarRegistro;
+    },
+    set fallarRegistro(valor: boolean) {
+      estado.fallarRegistro = valor;
+    },
+    get fallarConsulta() {
+      return estado.fallarConsulta;
+    },
+    set fallarConsulta(valor: boolean) {
+      estado.fallarConsulta = valor;
+    },
     url: `http://127.0.0.1:${direccion.port}`,
     responder: (cuerpo, estado = 200) => {
       forzada = cuerpo === null ? null : { cuerpo, estado };

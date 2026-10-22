@@ -32,6 +32,7 @@ import {
   type EstadosPorClave,
   type ResumenChecklist,
 } from '../dominio/entregables.js';
+import { certificadoEsValido } from '../dominio/seguimiento.js';
 import { ALMACEN_ARCHIVOS, BUCKET_CERTIFICADOS, BUCKET_EVIDENCIAS, type AlmacenArchivos } from '../infraestructura/almacen.js';
 import { GeneradorCertificadoPdf } from '../infraestructura/certificado-pdf.js';
 import {
@@ -459,7 +460,7 @@ export class ChecklistAplicacion {
     if (certificado === null) throw noEncontrado(`folio ${folio} inexistente`);
     return {
       folio: certificado.folio,
-      valido: true,
+      valido: certificadoEsValido(certificado),
       hdu: { codigo: certificado.hduCodigo, titulo: certificado.hduTitulo },
       emitidoEn: certificado.emitidoEn.toISOString(),
       emitidoPor: certificado.emitidoPorNombre,

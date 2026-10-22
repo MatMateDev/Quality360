@@ -10,7 +10,11 @@ import { ChecklistAplicacion } from '../../aplicacion/checklist.servicio.js';
 import type { ContextoSolicitud } from '../../infraestructura/organizacion.cliente.js';
 import { claveDeRuta, hduIdDeRuta, leerMarca, leerSubida, leerTexto } from '../validacion.js';
 
-const ROLES_TODOS = ['ADMINISTRADOR', 'QE', 'ANALISTA_QA'] as const;
+/**
+ * Las lecturas admiten los 5 roles (E7-B02): el Líder QA y el Auditor leen y descargan. Toda
+ * escritura lista sus roles de forma explícita y ninguna incluye Líder ni Auditor (D32).
+ */
+const ROLES_TODOS = ['ADMINISTRADOR', 'QE', 'ANALISTA_QA', 'LIDER_QA', 'AUDITOR'] as const;
 
 function contexto(identidad: Identidad | undefined, solicitud: Request): ContextoSolicitud {
   if (identidad === undefined) throw noAutenticado('ruta sin identidad verificada');

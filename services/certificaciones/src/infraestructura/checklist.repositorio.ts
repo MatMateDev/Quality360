@@ -14,6 +14,7 @@ import { ExcepcionQ360, MENSAJES } from '@quality360/auth-nest';
 import { Prisma, type Certificado, type TipoEvidencia } from '#prisma';
 
 import { CLAVES_ENTREGABLE, NOMBRES_ENTREGABLE, type ClaveEntregable, type EstadoEntregable } from '../dominio/entregables.js';
+import { calcularSeguimiento, type SeguimientoHdu } from '../dominio/seguimiento.js';
 import { PrismaService } from './prisma/prisma.service.js';
 
 /** Entregable con su evidencia vigente, tal como lo usan las reglas de E3. */
@@ -94,6 +95,49 @@ export interface NuevoCertificado {
 }
 
 type Tx = Prisma.TransactionClient;
+
+/** Filtros de la bitácora global del Auditor (E7-B04). */
+export interface FiltroBitacoraGlobal {
+  readonly desde?: Date;
+  readonly hasta?: Date;
+  readonly hduId?: string;
+  readonly actorId?: string;
+  readonly accion?: AccionChecklist;
+}
+
+/** Filtros de los certificados del Auditor (E7-B04). */
+export interface FiltroCertificadosGlobal {
+  readonly desde?: Date;
+  readonly hasta?: Date;
+  readonly emitidoPorId?: string;
+  readonly q?: string;
+}
+
+function whereBitacora(filtro: FiltroBitacoraGlobal): Prisma.EventoChecklistWhereInput {
+  const where: Prisma.EventoChecklistWhereInput = {};
+  if (filtro.hduId !== undefined) where.hduId = filtro.hduId;
+  if (filtro.actorId !== undefined) where.actorId = filtro.actorId;
+  if (filtro.accion !== undefined) where.accion = filtro.accion;
+  if (filtro.desde !== undefined || filtro.hasta !== undefined) {
+    where.fecha = { ...(filtro.desde !== undefined ? { gte: filtro.desde } : {}), ...(filtro.hasta !== undefined ? { lte: filtro.hasta } : {}) };
+  }
+  return where;
+}
+
+function whereCertificados(filtro: FiltroCertificadosGlobal): Prisma.CertificadoWhereInput {
+  const where: Prisma.CertificadoWhereInput = {};
+  if (filtro.emitidoPorId !== undefined) where.emitidoPorId = filtro.emitidoPorId;
+  if (filtro.desde !== undefined || filtro.hasta !== undefined) {
+    where.emitidoEn = { ...(filtro.desde !== undefined ? { gte: filtro.desde } : {}), ...(filtro.hasta !== undefined ? { lte: filtro.hasta } : {}) };
+  }
+  if (filtro.q !== undefined) {
+    where.OR = [
+      { folio: { contains: filtro.q, mode: 'insensitive' } },
+      { hduCodigo: { contains: filtro.q, mode: 'insensitive' } },
+    ];
+  }
+  return where;
+}
 
 /** La última evidencia cargada; si es vigente lo decide `aRegistro`. */
 const INCLUYE_EVIDENCIA = { evidencias: { orderBy: { fechaCarga: 'desc' }, take: 1 } } as const satisfies Prisma.EntregableInclude;
@@ -238,6 +282,87 @@ export class ChecklistRepositorio {
       include: { ...INCLUYE_EVIDENCIA, certificacion: { select: { hduId: true } } },
     });
     return filas.map((fila) => aRegistro(fila, fila.certificacion.hduId));
+  }
+
+  /**
+   * Seguimiento de varias HDU en pocas consultas (D46): entregables del ciclo activo, último
+   * evento de cada entregable, certificado y última actividad. Una HDU sin ciclo devuelve 0
+   * aprobados. Mantiene el orden de `hduIds`.
+   */
+  async seguimientoLote(hduIds: readonly string[]): Promise<SeguimientoHdu[]> {
+    if (hduIds.length === 0) return [];
+    const ids = [...hduIds];
+    const [entregables, ultimosEventos, certificados, actividad] = await Promise.all([
+      this.prisma.entregable.findMany({
+        where: { certificacion: { hduId: { in: ids }, activo: true } },
+        select: { clave: true, estado: true, fechaValidacion: true, completadoEn: true, certificacion: { select: { hduId: true } } },
+      }),
+      this.prisma.eventoChecklist.findMany({
+        where: { hduId: { in: ids } },
+        distinct: ['hduId', 'clave'],
+        orderBy: [{ hduId: 'asc' }, { clave: 'asc' }, { fecha: 'desc' }, { id: 'desc' }],
+        select: { hduId: true, clave: true, accion: true },
+      }),
+      this.prisma.certificado.findMany({ where: { hduId: { in: ids } }, select: { hduId: true, folio: true, emitidoEn: true } }),
+      this.prisma.eventoChecklist.groupBy({ by: ['hduId'], where: { hduId: { in: ids } }, _max: { fecha: true } }),
+    ]);
+
+    const entregablesPorHdu = new Map<string, Array<{ clave: ClaveEntregable; estado: EstadoEntregable; completadoEn: Date | null; aprobadoEn: Date | null }>>();
+    for (const fila of entregables) {
+      const lista = entregablesPorHdu.get(fila.certificacion.hduId) ?? [];
+      lista.push({ clave: fila.clave, estado: fila.estado, completadoEn: fila.completadoEn, aprobadoEn: fila.fechaValidacion });
+      entregablesPorHdu.set(fila.certificacion.hduId, lista);
+    }
+    const accionesPorHdu = new Map<string, Map<ClaveEntregable, string>>();
+    for (const evento of ultimosEventos) {
+      const mapa = accionesPorHdu.get(evento.hduId) ?? new Map<ClaveEntregable, string>();
+      mapa.set(evento.clave, evento.accion);
+      accionesPorHdu.set(evento.hduId, mapa);
+    }
+    const certificadoPorHdu = new Map(certificados.map((fila) => [fila.hduId, { folio: fila.folio, emitidoEn: fila.emitidoEn }]));
+    const actividadPorHdu = new Map(actividad.map((fila) => [fila.hduId, fila._max.fecha]));
+
+    return ids.map((hduId) =>
+      calcularSeguimiento({
+        hduId,
+        entregables: entregablesPorHdu.get(hduId) ?? [],
+        ultimaAccionPorClave: accionesPorHdu.get(hduId) ?? new Map(),
+        certificado: certificadoPorHdu.get(hduId) ?? null,
+        ultimaActividad: actividadPorHdu.get(hduId) ?? null,
+      }),
+    );
+  }
+
+  /** Certificados emitidos y eventos de los últimos 7 días, sobre todo el sistema (bandeja del Auditor). */
+  async resumenAuditoria(ahora: Date): Promise<{ certificados: number; eventosUltimos7Dias: number }> {
+    const hace7Dias = new Date(ahora.getTime() - 7 * 24 * 60 * 60 * 1000);
+    const [certificados, eventosUltimos7Dias] = await Promise.all([
+      this.prisma.certificado.count(),
+      this.prisma.eventoChecklist.count({ where: { fecha: { gte: hace7Dias } } }),
+    ]);
+    return { certificados, eventosUltimos7Dias };
+  }
+
+  async bitacoraGlobal(filtro: FiltroBitacoraGlobal, desde: number, cantidad: number) {
+    const where = whereBitacora(filtro);
+    const [items, total] = await this.prisma.$transaction([
+      this.prisma.eventoChecklist.findMany({ where, orderBy: [{ fecha: 'desc' }, { id: 'desc' }], skip: desde, take: cantidad }),
+      this.prisma.eventoChecklist.count({ where }),
+    ]);
+    return { items, total };
+  }
+
+  contarBitacora(filtro: FiltroBitacoraGlobal): Promise<number> {
+    return this.prisma.eventoChecklist.count({ where: whereBitacora(filtro) });
+  }
+
+  async certificadosGlobal(filtro: FiltroCertificadosGlobal, desde: number, cantidad: number) {
+    const where = whereCertificados(filtro);
+    const [items, total] = await this.prisma.$transaction([
+      this.prisma.certificado.findMany({ where, orderBy: [{ emitidoEn: 'desc' }, { id: 'desc' }], skip: desde, take: cantidad }),
+      this.prisma.certificado.count({ where }),
+    ]);
+    return { items, total };
   }
 
   buscarCertificado(hduId: string): Promise<RegistroCertificado | null> {

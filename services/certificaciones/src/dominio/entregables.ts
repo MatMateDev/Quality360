@@ -19,7 +19,17 @@ export const CLAVES_ENTREGABLE = [
 
 export type ClaveEntregable = (typeof CLAVES_ENTREGABLE)[number];
 export type EstadoEntregable = 'PENDIENTE' | 'POR_APROBAR' | 'APROBADO';
-export type RelacionHdu = 'ADMINISTRADOR' | 'QE_RESPONSABLE' | 'QE_SUPERVISOR_DEL_ANALISTA' | 'ANALISTA_ASIGNADO';
+/**
+ * Relación del usuario con la HDU (D18, D32). `LECTOR_CELULA` (Líder QA) y `LECTOR_AUDITORIA`
+ * (Auditor) solo permiten leer y descargar: ninguna operación del checklist las acepta.
+ */
+export type RelacionHdu =
+  | 'ADMINISTRADOR'
+  | 'QE_RESPONSABLE'
+  | 'QE_SUPERVISOR_DEL_ANALISTA'
+  | 'ANALISTA_ASIGNADO'
+  | 'LECTOR_CELULA'
+  | 'LECTOR_AUDITORIA';
 export type EstadoHdu = 'PENDIENTE' | 'DISENO_PRUEBAS' | 'EN_EJECUCION' | 'PENDIENTE_CIERRE' | 'CERRADA';
 
 export const NOMBRES_ENTREGABLE: Readonly<Record<ClaveEntregable, string>> = Object.freeze({
