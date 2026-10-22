@@ -10,7 +10,7 @@ Alcance de esta ronda: diseño, HDU, construcción y certificación.
 
 - **Qué se pide:** cada usuario entra, según su rol, a una bandeja con lo que le toca ver o hacer. El Administrador asigna los roles.
 - **Roles (5, uno por usuario):** Analista QA, QE, Líder QA (nuevo), Administrador, Auditor (nuevo).
-- **Conjunto de esta ronda:** 11 HDU nuevas (7 de frontend, 4 de backend), 33 escenarios y 100 casos de prueba.
+- **Conjunto de esta ronda:** 12 HDU nuevas (7 de frontend, 5 de backend), 36 escenarios y 105 casos de prueba. E7-B05 (reasignación del QE responsable, D54) se agregó después de la revisión de arquitectura.
 - **HDU existentes que se modifican:** 12, sin romper ningún escenario certificado (sección 4).
 
 ### Decisiones de esta épica
@@ -512,6 +512,31 @@ Casos de prueba:
 | E7-B04-T11 | api | #3 | AUD1, límite de prueba reducido a 2 filas por configuración | Exporta la bitácora con más de 2 filas | 422 `EXPORTACION_EXCEDE_LIMITE` |
 | E7-B04-T12 | api | #1 | AUD1, Certificaciones detenido | Consulta bitácora y auditoría de usuarios | Bitácora 503 `SERVICIO_NO_DISPONIBLE`; auditoría de usuarios 200 |
 
+### E7-B05 · Administrador
+
+Quiero reasignar el QE responsable de una HDU. Para liberar a un QE (por ejemplo, antes de cambiarle el rol) sin dejar HDU huérfanas.
+
+| # | Criterio | Contexto | Evento | Resultado esperado |
+| --- | --- | --- | --- | --- |
+| 1 | Reasignación con motivo | Una HDU abierta tiene un QE responsable y existe otro QE activo. | El Administrador reasigna el QE responsable e indica el motivo. | La HDU queda con el nuevo QE responsable. El historial de la HDU registra el cambio (QE anterior, QE nuevo, motivo, actor y fecha) y la auditoría guarda `REASIGNAR_QE_RESPONSABLE` con antes, después y motivo, en una sola transacción. Si el QE indicado ya era el responsable, responde 200 sin registrar nada. |
+| 2 | Solo el Administrador | Un usuario que no es Administrador intenta reasignar. | Invoca la operación. | Responde 403 `ACCESO_DENEGADO` al QE (también al responsable), al Analista QA, al Líder QA y al Auditor; sin sesión, 401. No cambia nada. |
+| 3 | Destino inválido o HDU cerrada | El destino no es un QE activo, falta el motivo o la HDU está cerrada. | Invoca la operación. | Destino inexistente, que no es QE o inactivo: 422 `QE_INVALIDO`. Sin motivo: 400 (en blanco: 422 `MOTIVO_REQUERIDO`). HDU cerrada: 409 `HDU_CERRADA`. HDU inexistente: 404. No cambia nada. |
+
+Reglas de negocio:
+- Contrato: `PUT /v1/hdu/{id}/qe-responsable` con `{ qeResponsableId, motivo }` (D54). `GET /v1/catalogos/personas?rol=QE` (solo Administrador) alimenta el selector del portal.
+- Resuelve el 409 `RELACIONES_INCOMPATIBLES` de D43 (`hduAbiertas`): el Administrador reasigna las HDU del QE y recién entonces cambia su rol (D40).
+- No modifica el analista asignado ni la supervisión del equipo.
+
+Casos de prueba:
+
+| ID | Tipo | Escenario | Datos | Pasos | Resultado esperado |
+| --- | --- | --- | --- | --- | --- |
+| E7-B05-T01 | api | #1 | ADM1, H2, QE2 | `PUT /v1/hdu/{H2}/qe-responsable` con QE2 y un motivo | 200 `cambio: true`; H2 queda con QE2; la auditoría tiene `REASIGNAR_QE_RESPONSABLE` con antes, después, motivo y actor ADM1; el historial trae el evento `QE_RESPONSABLE`; con el mismo QE, 200 `cambio: false` y sin registros nuevos |
+| E7-B05-T02 | api | #2 negativo | QE1 (responsable), QE2, ANA3, LID1, AUD1 | Cada uno invoca la operación sobre H3 | 403 `ACCESO_DENEGADO` en los 5; H3 conserva su QE y no hay historial nuevo |
+| E7-B05-T03 | api | #3 negativo | ADM1 | Reasigna a ANA1, LID1, INACT1 (QE desactivado) y a un id inexistente; reasigna H7 (CERRADA); envía motivo ausente, de 2 caracteres, de 501 y en blanco | 422 `QE_INVALIDO` ×4; 409 `HDU_CERRADA`; 400, 400, 400 y 422 `MOTIVO_REQUERIDO`; ningún cambio |
+| E7-B05-T04 | api | #1 | ADM1, QE1 | Reasigna a QE2 las 5 HDU abiertas de QE1 y pide cambiar el rol de QE1 | El 409 de D43 ya no informa `hduAbiertas`, solo los analistas por reasignar |
+| E7-B05-T05 | api | #1 | ADM1 | `GET /v1/catalogos/personas?rol=QE` | QE1 y QE2 (INACT1 solo con `activo=false`); QE1, ANA1, LID1 y AUD1 reciben 403 |
+
 ## 9. Totales y trazabilidad
 
 | HDU | Escenarios | Casos de prueba | Servicio / dueño |
@@ -527,7 +552,8 @@ Casos de prueba:
 | E7-B02 | 3 | 10 | Organización, Certificaciones y gateway (`q360-backend`, `q360-seguridad-gateway`) |
 | E7-B03 | 3 | 14 | Organización con Certificaciones (`q360-backend`) |
 | E7-B04 | 3 | 12 | Certificaciones y Organización (`q360-backend`) |
-| **Total** | **33** | **100** | |
+| E7-B05 | 3 | 5 | Organización (`q360-backend`); añadida el 2026-10-21 con D54 |
+| **Total** | **36** | **105** | |
 
 Dentro del total de casos, 4 son regresión de HDU ya certificadas (E7-F03-T07, E7-F05-T07, E7-F07-T07, E7-B02-T10) y los negativos de acceso son: E7-F01-T04, T05, T08, E7-F02-T06, E7-F04-T08, E7-F06-T09, E7-B01-T09, T10, E7-B02-T02, T08, E7-B03-T12, T13, T14 y E7-B04-T07, T08.
 

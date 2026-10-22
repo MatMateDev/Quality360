@@ -8,7 +8,7 @@ import { fileURLToPath } from 'node:url';
 
 const raiz = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 // Escenarios esperados por épica: protege contra un backlog mal leído (3 por HDU).
-const ESPERADOS_POR_EPICA = { E1: 78, E2: 24, E3: 24, E7: 33 };
+const ESPERADOS_POR_EPICA = { E1: 78, E2: 24, E3: 24, E7: 36 };
 const EPICAS = Object.keys(ESPERADOS_POR_EPICA);
 const ID = /E\d-[FB]\d{2}#\d+/g;
 

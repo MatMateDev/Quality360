@@ -1220,6 +1220,64 @@ components:
           minLength: 3
           maxLength: 500
           description: Obligatorio si la HDU ya tiene otro analista (422 `MOTIVO_REQUERIDO`).
+    ReasignacionQeResponsable:
+      type: object
+      required: [qeResponsableId, motivo]
+      additionalProperties: false
+      properties:
+        qeResponsableId:
+          $ref: '#/components/schemas/Uuid'
+        motivo:
+          type: string
+          minLength: 3
+          maxLength: 500
+          description: Obligatorio. En blanco tras recortar espacios, 422 `MOTIVO_REQUERIDO`.
+    ResultadoReasignacionQe:
+      type: object
+      required: [cambio, hdu, qeAnterior, qeNuevo, motivo, fecha, actor]
+      additionalProperties: false
+      properties:
+        cambio:
+          type: boolean
+          description: '`false` si el QE indicado ya era el responsable; no se registra historial ni auditoría.'
+        hdu:
+          $ref: '#/components/schemas/HduResumen'
+        qeAnterior:
+          $ref: '#/components/schemas/UsuarioResumen'
+        qeNuevo:
+          $ref: '#/components/schemas/UsuarioResumen'
+        motivo:
+          oneOf:
+            - type: string
+            - type: 'null'
+        fecha:
+          $ref: '#/components/schemas/FechaHora'
+        actor:
+          $ref: '#/components/schemas/Actor'
+    PersonaCatalogo:
+      type: object
+      required: [id, nombre, correo, rol]
+      additionalProperties: false
+      properties:
+        id:
+          $ref: '#/components/schemas/Uuid'
+        nombre:
+          type: string
+        correo:
+          type: string
+          format: email
+        rol:
+          $ref: '#/components/schemas/Rol'
+    ListaPersonas:
+      type: object
+      required: [items]
+      additionalProperties: false
+      properties:
+        items:
+          type: array
+          description: Ordenadas por nombre.
+          items:
+            $ref: '#/components/schemas/PersonaCatalogo'
     ResultadoAsignacion:
       type: object
       required: [cambio, hdu, analistaAnterior, analistaNuevo, motivo, fecha, actor]
@@ -1313,15 +1371,36 @@ components:
           oneOf:
             - type: string
             - type: 'null'
+    EventoResponsableHdu:
+      type: object
+      description: Reasignación del QE responsable (D54, E7-B05).
+      required: [tipo, fecha, actor, qeAnterior, qeNuevo, motivo]
+      additionalProperties: false
+      properties:
+        tipo:
+          type: string
+          const: QE_RESPONSABLE
+        fecha:
+          $ref: '#/components/schemas/FechaHora'
+        actor:
+          $ref: '#/components/schemas/Actor'
+        qeAnterior:
+          $ref: '#/components/schemas/UsuarioResumen'
+        qeNuevo:
+          $ref: '#/components/schemas/UsuarioResumen'
+        motivo:
+          type: string
     EventoHistorialHdu:
       oneOf:
         - $ref: '#/components/schemas/EventoEstadoHdu'
         - $ref: '#/components/schemas/EventoAsignacionHdu'
+        - $ref: '#/components/schemas/EventoResponsableHdu'
       discriminator:
         propertyName: tipo
         mapping:
           ESTADO: '#/components/schemas/EventoEstadoHdu'
           ASIGNACION: '#/components/schemas/EventoAsignacionHdu'
+          QE_RESPONSABLE: '#/components/schemas/EventoResponsableHdu'
     HistorialHdu:
       type: object
       required: [hduId, items]
@@ -1331,7 +1410,7 @@ components:
           $ref: '#/components/schemas/Uuid'
         items:
           type: array
-          description: Cambios de estado y de asignación en orden cronológico ascendente por `fecha` (E2-B04#3). El primero es la creación.
+          description: Cambios de estado, de asignación y de QE responsable en orden cronológico ascendente por `fecha` (E2-B04#3, D54). El primero es la creación.
           items:
             $ref: '#/components/schemas/EventoHistorialHdu'
     AccesoHdu:
@@ -1493,7 +1572,8 @@ components:
         | `CAMBIAR_ESTADO_HDU` | Cambio de estado de HDU | no |
         | `ASIGNAR_ANALISTA` | Asignación de analista | no |
         | `REASIGNAR_ANALISTA` | Reasignación de analista | no |
-      enum: [CREAR_USUARIO, ACTUALIZAR_USUARIO, ACTIVAR_USUARIO, DESACTIVAR_USUARIO, CAMBIAR_ROL, ASIGNAR_SUPERVISOR, CAMBIAR_SUPERVISOR, CREAR_HDU, CAMBIAR_ESTADO_HDU, ASIGNAR_ANALISTA, REASIGNAR_ANALISTA, ASIGNAR_CELULAS_LIDER, EXPORTAR]
+        | `REASIGNAR_QE_RESPONSABLE` | Reasignación de QE responsable (D54) | no |
+      enum: [CREAR_USUARIO, ACTUALIZAR_USUARIO, ACTIVAR_USUARIO, DESACTIVAR_USUARIO, CAMBIAR_ROL, ASIGNAR_SUPERVISOR, CAMBIAR_SUPERVISOR, CREAR_HDU, CAMBIAR_ESTADO_HDU, ASIGNAR_ANALISTA, REASIGNAR_ANALISTA, ASIGNAR_CELULAS_LIDER, EXPORTAR, REASIGNAR_QE_RESPONSABLE]
     OperacionAuditoriaUsuarios:
       type: string
       description: Subconjunto de `AccionAuditoria` que forma la auditoría de usuarios (entidades `USUARIO`, `SUPERVISION` y `EXPORTACION`). Es el filtro `operacion` del Auditor (D45).

@@ -1289,6 +1289,10 @@ paths:
     $ref: './organizacion.v1.yaml#/paths/~1v1~1roles'
   /v1/usuarios/{id}/celulas-lider:
     $ref: './organizacion.v1.yaml#/paths/~1v1~1usuarios~1{id}~1celulas-lider'
+  /v1/hdu/{id}/qe-responsable:
+    $ref: './organizacion.v1.yaml#/paths/~1v1~1hdu~1{id}~1qe-responsable'
+  /v1/catalogos/personas:
+    $ref: './organizacion.v1.yaml#/paths/~1v1~1catalogos~1personas'
   /v1/bandeja/analista:
     $ref: './organizacion.v1.yaml#/paths/~1v1~1bandeja~1analista'
   /v1/bandeja/qe:

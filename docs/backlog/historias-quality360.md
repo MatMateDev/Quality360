@@ -805,3 +805,13 @@ Quiero que el sistema entregue la bitácora de checklist, la auditoría de usuar
 | 1 | Consulta con filtros | Existen eventos de checklist, cambios de usuarios y certificados. | El auditor consulta cada recurso con filtros de fecha, HDU, actor, acción u operación. | Devuelve solo los registros que cumplen los filtros, ordenados del más reciente al más antiguo, paginados, con los campos de la sección 6.5. Un filtro sin coincidencias devuelve 200 con lista vacía. |
 | 2 | Contenido seguro y acceso | El auditor consulta la auditoría de usuarios; otro rol intenta consultar. | Invoca los endpoints. | Ninguna fila incluye contraseñas, tokens ni secretos (E1-B12#3). Cualquier rol distinto de Auditor, incluido el Administrador, recibe 403; sin sesión, 401. |
 | 3 | Exportación | El auditor pide exportar con filtros. | Invoca la exportación. | Genera un CSV con los mismos filtros y columnas que la consulta, UTF-8 con BOM, separador `;` y fechas ISO 8601. Con más de 50.000 filas responde 422 `EXPORTACION_EXCEDE_LIMITE`. Cada exportación queda registrada con actor, recurso, filtros y cantidad de filas. |
+
+### E7-B05 · Administrador
+
+Quiero reasignar el QE responsable de una HDU. Para liberar a un QE (por ejemplo, antes de cambiarle el rol) sin dejar HDU huérfanas.
+
+| # | Criterio | Contexto | Evento | Resultado esperado |
+| --- | --- | --- | --- | --- |
+| 1 | Reasignación con motivo | Una HDU abierta tiene un QE responsable y existe otro QE activo. | El Administrador reasigna el QE responsable e indica el motivo. | La HDU queda con el nuevo QE responsable. El historial de la HDU registra el cambio (QE anterior, QE nuevo, motivo, actor y fecha) y la auditoría guarda `REASIGNAR_QE_RESPONSABLE` con antes, después y motivo, en una sola transacción. Si el QE indicado ya era el responsable, responde 200 sin registrar nada. |
+| 2 | Solo el Administrador | Un usuario que no es Administrador intenta reasignar. | Invoca la operación. | Responde 403 `ACCESO_DENEGADO` al QE (también al responsable), al Analista QA, al Líder QA y al Auditor; sin sesión, 401. No cambia nada. |
+| 3 | Destino inválido o HDU cerrada | El destino no es un QE activo, falta el motivo o la HDU está cerrada. | Invoca la operación. | Destino inexistente, que no es QE o inactivo: 422 `QE_INVALIDO`. Sin motivo: 400 (en blanco: 422 `MOTIVO_REQUERIDO`). HDU cerrada: 409 `HDU_CERRADA`. HDU inexistente: 404. No cambia nada. |

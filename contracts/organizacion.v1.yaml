@@ -1354,6 +1354,45 @@ paths:
         '500':
           $ref: '#/components/responses/ErrorInterno'
 
+  /v1/catalogos/personas:
+    get:
+      operationId: listarPersonas
+      tags: [Catálogos]
+      summary: Personas por rol
+      description: |
+        Usuarios por rol, ordenados por nombre, para elegir al QE de una
+        reasignación (D54). Solo el Administrador, porque trae correos. Por
+        defecto solo activos.
+      x-roles: [ADMINISTRADOR]
+      x-hdu: [E7-B05#1]
+      parameters:
+        - name: rol
+          in: query
+          required: false
+          schema:
+            $ref: './comun.v1.yaml#/components/schemas/Rol'
+        - name: activo
+          in: query
+          required: false
+          description: 'Por defecto `true`.'
+          schema:
+            type: boolean
+      responses:
+        '200':
+          description: Personas.
+          content:
+            application/json:
+              schema:
+                $ref: './comun.v1.yaml#/components/schemas/ListaPersonas'
+        '400':
+          $ref: '#/components/responses/Validacion'
+        '401':
+          $ref: '#/components/responses/NoAutenticado'
+        '403':
+          $ref: '#/components/responses/AccesoDenegado'
+        '500':
+          $ref: '#/components/responses/ErrorInterno'
+
   /v1/catalogos/sprints:
     get:
       operationId: listarSprints
@@ -1539,6 +1578,66 @@ paths:
         '422':
           description: Analista no válido, fuera del equipo, o falta el motivo.
           x-codigos: [ANALISTA_INVALIDO, ANALISTA_FUERA_DE_EQUIPO, MOTIVO_REQUERIDO]
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          $ref: '#/components/responses/ErrorInterno'
+
+  /v1/hdu/{id}/qe-responsable:
+    parameters:
+      - $ref: '#/components/parameters/HduIdPath'
+    put:
+      operationId: reasignarQeResponsableHdu
+      tags: [HDU]
+      summary: Reasignar el QE responsable de una HDU
+      description: |
+        Solo el Administrador (D54); el QE —también el responsable—, el
+        analista, el Líder QA y el Auditor reciben 403. Permite liberar a un QE
+        antes de cambiarle el rol (resuelve `hduAbiertas` del 409 de D43).
+
+        - `qeResponsableId` debe ser un usuario activo con rol QE
+          (422 `QE_INVALIDO`). `motivo` es obligatorio (3 a 500 caracteres).
+        - HDU `CERRADA`: 409 `HDU_CERRADA`. HDU inexistente: 404.
+        - Mismo QE: 200 con `cambio: false`, sin historial ni auditoría.
+        - Con cambio, en una transacción: actualiza el QE responsable, agrega
+          el evento `QE_RESPONSABLE` al historial de la HDU y audita
+          `REASIGNAR_QE_RESPONSABLE` con antes, después, motivo y actor. La
+          reasignación no modifica el analista ni la supervisión.
+      x-roles: [ADMINISTRADOR]
+      x-hdu: [E7-B05#1, E7-B05#2, E7-B05#3]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: './comun.v1.yaml#/components/schemas/ReasignacionQeResponsable'
+      responses:
+        '200':
+          description: Resultado de la reasignación.
+          content:
+            application/json:
+              schema:
+                $ref: './comun.v1.yaml#/components/schemas/ResultadoReasignacionQe'
+        '400':
+          $ref: '#/components/responses/Validacion'
+        '401':
+          $ref: '#/components/responses/NoAutenticado'
+        '403':
+          $ref: '#/components/responses/AccesoDenegado'
+        '404':
+          $ref: '#/components/responses/NoEncontrado'
+        '409':
+          description: La HDU está cerrada.
+          x-codigos: [HDU_CERRADA]
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '422':
+          description: El destino no es un QE activo, o el motivo está en blanco.
+          x-codigos: [QE_INVALIDO, MOTIVO_REQUERIDO]
           content:
             application/json:
               schema:

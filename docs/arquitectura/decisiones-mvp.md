@@ -273,6 +273,7 @@ Tablas que no están en el modelo y se conservan porque las exige el backlog: `h
 | D51 | **Pendientes del Administrador:** 4 tipos, solo con usuarios activos y células activas. Cada uno tiene su destino:<br>• Analista sin QE → `/admin/supervision?analista=<id>`<br>• QE sin analistas → `/admin/supervision?qe=<id>`<br>• Líder sin células → `/admin/usuarios?usuario=<id>`, con el diálogo de células abierto<br>• Célula sin líder → `/admin/usuarios?rol=LIDER_QA` (no hay pantalla de células)<br>«Últimos cambios» = las 10 entradas más recientes de la auditoría de usuarios | Conflictos 6 y 8. El contador certificado «Analistas sin supervisor» y `analistas-sin-qe` son el mismo dato |
 | D52 | **Modelo de datos.** Se agregan 2 filas de rol y la tabla `organizacion.celula_lider`, con llaves foráneas solo dentro de `organizacion` y vigencia por índice único parcial (detalle abajo). Que el usuario sea `LIDER_QA` se valida en la aplicación, dentro de la misma transacción, no con un trigger. En Certificaciones solo se agregan índices de lectura global | D24, D30; reglas no negociables 1 y 3 |
 | D53 | **Alcance de D38.** D38 rige para las pantallas y para `/v1/auditor/*`. `GET /v1/auditoria` (E1-B12, certificado por API) sigue siendo del Administrador y no tiene pantalla | No romper E1-B12 |
+| D54 | **Reasignación del QE responsable (E7-B05).** `PUT /v1/hdu/{id}/qe-responsable` con `{qeResponsableId, motivo}`, solo Administrador (403 al QE, aunque sea el responsable, al Analista, al Líder y al Auditor). El destino debe ser un usuario activo con rol QE (422 `QE_INVALIDO`); el motivo es obligatorio, de 3 a 500 caracteres (en blanco, 422 `MOTIVO_REQUERIDO`); HDU `CERRADA`, 409 `HDU_CERRADA`; mismo QE, 200 con `cambio: false` sin historial ni auditoría. Con cambio, en una transacción que bloquea la HDU: actualiza `historia_usuario.qe_responsable_id`, inserta en la tabla nueva `hdu_historial_responsable` (QE anterior y nuevo, motivo, actor, fecha) y audita `REASIGNAR_QE_RESPONSABLE` (entidad `HDU`, antes, después y motivo). El historial de la HDU suma el evento `QE_RESPONSABLE`. No toca el analista ni la supervisión. `GET /v1/catalogos/personas?rol&activo` (solo Administrador) entrega las personas para el selector. Cierra la pregunta abierta 1 | El usuario aprobó agregarla (2026-10-21): sin ella, D40 impedía cambiar el rol de cualquier QE con HDU abiertas |
 
 ## Modelo de datos (lo escribe `q360-backend`)
 
@@ -299,6 +300,7 @@ Tablas que no están en el modelo y se conservan porque las exige el backlog: `h
   - `celula_lider_celula_vigente_idx`: `(id_celula) WHERE fecha_hasta IS NULL`, para las células sin líder.
   - `celula_lider_usuario_historial_idx`: `(id_usuario, fecha_desde DESC)`.
 - **Auditoría:** índices `auditoria_actor_fecha_idx (actor_id, fecha)` y `auditoria_accion_fecha_idx (accion, fecha)`, para los filtros del Auditor.
+- **Tabla `hdu_historial_responsable`** (D54, agregada a esta migración): `id`, `hdu_id` (FK a `historia_usuario`), `qe_anterior_id`, `qe_nuevo_id`, `motivo`, `actor_*` y `fecha`, con índice por `hdu_id`.
 - **Sin cambios** en `historia_usuario`: ya tiene índices por célula, QE, analista y estado.
 
 **Migración de Certificaciones** `20261021000000_e7_lectura_global`, solo índices:
@@ -365,6 +367,6 @@ Las pruebas de API certificadas no cambian de resultado esperado:
 
 ## Preguntas abiertas
 
-1. **QE con HDU abiertas (D40).** Ninguna operación reasigna el QE responsable de una HDU. Mientras sea así, un QE no puede cambiar de rol hasta que todas sus HDU estén cerradas. ¿Se agrega `PUT /v1/hdu/{id}/qe-responsable` (Administrador) en esta ronda o en la siguiente?
+1. **QE con HDU abiertas (D40).** Resuelta con D54: el Administrador reasigna el QE responsable con `PUT /v1/hdu/{id}/qe-responsable` y después cambia el rol.
 2. **Volumen.** Las bandejas leen el ámbito completo para ordenar y filtrar con datos de Certificaciones (lotes de hasta 1000 HDU). Alcanza para el MVP; con más de unos pocos miles de HDU por ámbito, conviene una proyección del avance en Organización (por eventos).
 3. **Validez del certificado (D45).** Hoy siempre es `true`. Si se quiere revocar certificados, hace falta una HDU nueva que defina quién revoca y cómo se ve.
