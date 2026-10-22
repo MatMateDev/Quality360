@@ -6,6 +6,9 @@ import { AdminInicioPage } from "@/pages/admin/AdminInicioPage";
 import { AdminSupervisionPage } from "@/pages/admin/AdminSupervisionPage";
 import { AdminUsuariosPage } from "@/pages/admin/AdminUsuariosPage";
 import { HduDetailPage } from "@/pages/hdu/HduDetailPage";
+import { AuditorBandejaPage } from "@/pages/auditor/AuditorBandejaPage";
+import { AuditorAuditoriaUsuariosPage, AuditorBitacoraPage, AuditorCertificadosPage } from "@/pages/auditor/AuditorPestanasPage";
+import { LiderBandejaPage } from "@/pages/lider/LiderBandejaPage";
 import { LoginPage } from "@/pages/LoginPage";
 import { PerfilPage } from "@/pages/PerfilPage";
 import { PortalRedirect } from "@/pages/PortalRedirect";
@@ -20,7 +23,7 @@ import { QeHduFormPage } from "@/pages/qe/QeHduFormPage";
 import { QeHduListPage } from "@/pages/qe/QeHduListPage";
 import { QeInicioPage } from "@/pages/qe/QeInicioPage";
 
-/** Rutas del portal: `/admin`, `/qe` y `/qa` guardadas por rol (D6, ADR 0006). */
+/** Rutas del portal: `/admin`, `/qe`, `/qa`, `/lider` y `/auditor` guardadas por rol (D6, ADR 0006, D41). */
 export function AppRoutes() {
   return (
     <Routes>
@@ -50,6 +53,18 @@ export function AppRoutes() {
             <Route path="qe/hdu" element={<QeHduListPage />} />
             <Route path="qe/hdu/nueva" element={<QeHduFormPage />} />
             <Route path="qe/aprobaciones" element={<QeAprobacionesPage />} />
+          </Route>
+
+          <Route element={<RequireRole roles={["LIDER_QA"]} />}>
+            <Route path="lider" element={<LiderBandejaPage />} />
+          </Route>
+
+          <Route element={<RequireRole roles={["AUDITOR"]} />}>
+            <Route path="auditor" element={<AuditorBandejaPage />} />
+            <Route path="auditor/hdu" element={<AuditorBandejaPage />} />
+            <Route path="auditor/certificados" element={<AuditorCertificadosPage />} />
+            <Route path="auditor/bitacora" element={<AuditorBitacoraPage />} />
+            <Route path="auditor/auditoria-usuarios" element={<AuditorAuditoriaUsuariosPage />} />
           </Route>
 
           <Route element={<RequireRole roles={["ANALISTA_QA"]} />}>

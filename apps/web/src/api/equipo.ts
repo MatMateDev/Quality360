@@ -10,8 +10,9 @@ export function useEquipoQe(qeId?: string) {
   });
 }
 
-export function useAnalistasAsignables() {
+export function useAnalistasAsignables(habilitado = true) {
   return useQuery({
+    enabled: habilitado,
     queryKey: ["analistas-asignables"],
     queryFn: () => http.get<ListaAnalistasAsignables>("/v1/qe/analistas-asignables"),
   });

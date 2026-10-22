@@ -1,22 +1,28 @@
-import { useState } from "react";
-import { useParams } from "react-router-dom";
+import { useEffect, useState } from "react";
+import { Link, useLocation, useParams } from "react-router-dom";
+import { useAuth } from "@/auth/AuthContext";
 import { useAnalistasAsignables } from "@/api/equipo";
 import { useAsignarAnalista, useCambiarEstadoHdu, useDetalleHdu, useHistorialHdu } from "@/api/hdu";
 import { AccesoDenegado } from "@/components/AccesoDenegado";
 import { BloqueEstado } from "@/components/BloqueEstado";
 import { ChecklistEntregables } from "@/components/ChecklistEntregables";
 import { DialogoConfirmacion } from "@/components/DialogoConfirmacion";
+import { DialogoReasignarQe } from "@/components/DialogoReasignarQe";
+import { AvisoSoloLectura } from "@/components/bandeja/Estructura";
 import { InsigniaEstadoHdu, InsigniaPrioridad } from "@/components/Etiquetas";
 import { ErrorApi } from "@/lib/httpClient";
 import { formatearFecha } from "@/lib/formato";
-import { ETIQUETAS_ESTADO_HDU, type EstadoHdu } from "@/types/dominio";
+import { ETIQUETAS_ESTADO_HDU, ROLES_SOLO_LECTURA, rutaPortal, type EstadoHdu } from "@/types/dominio";
 
 /** E2-F04 y E3: detalle de HDU con responsables, estado, célula, sprint, checklist de entregables, cambio de estado e historial. */
 export function HduDetailPage() {
   const { id } = useParams<{ id: string }>();
   const detalleQuery = useDetalleHdu(id);
   const historialQuery = useHistorialHdu(id);
-  const analistasQuery = useAnalistasAsignables();
+  const { perfil } = useAuth();
+  const ubicacion = useLocation();
+  const permisoAsignar = detalleQuery.data?.permisos.asignarAnalista ?? false;
+  const analistasQuery = useAnalistasAsignables(permisoAsignar);
   const asignarAnalista = useAsignarAnalista(id ?? "");
   const cambiarEstado = useCambiarEstadoHdu(id ?? "");
 
@@ -25,11 +31,20 @@ export function HduDetailPage() {
   const [motivo, setMotivo] = useState("");
   const [errorAsignacion, setErrorAsignacion] = useState<string | null>(null);
   const [avisoSinCambios, setAvisoSinCambios] = useState<string | null>(null);
+  const [dialogoQeAbierto, setDialogoQeAbierto] = useState(false);
+  const [avisoQe, setAvisoQe] = useState<string | null>(null);
   const [errorEstado, setErrorEstado] = useState<{ codigo: string; mensaje: string } | null>(null);
+
+  const hayDetalle = Boolean(detalleQuery.data);
+  useEffect(() => {
+    if (!hayDetalle || !ubicacion.hash) return;
+    document.getElementById(ubicacion.hash.slice(1))?.scrollIntoView?.({ block: "start" });
+  }, [hayDetalle, ubicacion.hash]);
 
   if (detalleQuery.isError) {
     const error = detalleQuery.error;
-    if (error instanceof ErrorApi && error.status === 403) return <AccesoDenegado />;
+    // 403 y 404 muestran lo mismo: no se revela si la HDU existe (D50, diseño §4.3).
+    if (error instanceof ErrorApi && (error.status === 403 || error.status === 404)) return <AccesoDenegado variante="recurso" />;
     return <BloqueEstado id="hdu-detalle" estado="error" onReintentar={() => detalleQuery.refetch()} />;
   }
 
@@ -38,6 +53,9 @@ export function HduDetailPage() {
   }
 
   const hdu = detalleQuery.data;
+  const soloLectura = perfil ? ROLES_SOLO_LECTURA.includes(perfil.rol) : false;
+  const puedeReasignarQe = perfil?.rol === "ADMINISTRADOR" && hdu.estado !== "CERRADA";
+  const desde = (ubicacion.state as { desde?: string } | null)?.desde;
 
   function abrirDialogoAsignar() {
     setAnalistaSeleccionado(hdu.analista?.id ?? "");
@@ -92,6 +110,12 @@ export function HduDetailPage() {
 
   return (
     <div>
+      <p>
+        <Link to={desde ?? (perfil ? rutaPortal(perfil.rol) : "/")} data-testid="enlace-volver-bandeja">
+          ← Volver a mi bandeja
+        </Link>
+      </p>
+      {soloLectura ? <AvisoSoloLectura /> : null}
       <div className="encabezado">
         <p className="etiqueta">{hdu.codigo}</p>
         <h1>{hdu.titulo}</h1>
@@ -143,12 +167,25 @@ export function HduDetailPage() {
           </article>
         </div>
 
-        {hdu.permisos.asignarAnalista ? (
-          <div className="enlaces-rapidos">
-            <button type="button" className="boton boton--secundario" onClick={abrirDialogoAsignar}>
-              {hdu.analista ? "Reasignar analista" : "Asignar analista"}
-            </button>
+        {hdu.permisos.asignarAnalista || puedeReasignarQe ? (
+          <div className="enlaces-rapidos" id="asignacion">
+            {hdu.permisos.asignarAnalista ? (
+              <button type="button" className="boton boton--secundario" onClick={abrirDialogoAsignar}>
+                {hdu.analista ? "Reasignar analista" : "Asignar analista"}
+              </button>
+            ) : null}
+            {puedeReasignarQe ? (
+              <button type="button" className="boton boton--secundario" data-testid="boton-reasignar-qe" onClick={() => setDialogoQeAbierto(true)}>
+                Reasignar QE responsable
+              </button>
+            ) : null}
           </div>
+        ) : null}
+
+        {avisoQe ? (
+          <p className="mensaje-aviso" role="status" data-testid="aviso-qe-reasignado">
+            {avisoQe}
+          </p>
         ) : null}
 
         {avisoSinCambios ? (
@@ -158,10 +195,12 @@ export function HduDetailPage() {
         ) : null}
       </div>
 
-      <ChecklistEntregables hduId={hdu.id} hduCerrada={hdu.estado === "CERRADA"} />
+      <div id="certificado">
+        <ChecklistEntregables hduId={hdu.id} hduCerrada={hdu.estado === "CERRADA"} />
+      </div>
 
       {hdu.permisos.cambiarEstado ? (
-        <div className="panel">
+        <div className="panel" id="estado">
           <h2>Cambiar estado</h2>
           {hdu.transicionesPermitidas.length === 0 ? (
             <p>No hay transiciones disponibles desde el estado actual.</p>
@@ -208,6 +247,12 @@ export function HduDetailPage() {
                       {evento.estadoAnterior ? ` de ${ETIQUETAS_ESTADO_HDU[evento.estadoAnterior]}` : ""} a{" "}
                       {ETIQUETAS_ESTADO_HDU[evento.estadoNuevo]}.
                     </p>
+                  ) : (evento as { tipo: string }).tipo === "QE_RESPONSABLE" ? (
+                    <p>
+                      {evento.actor.nombre} reasignó el QE responsable
+                      {eventoQe(evento).antes ? ` (antes ${eventoQe(evento).antes})` : ""} a {eventoQe(evento).nuevo}
+                      {eventoQe(evento).motivo ? ` — Motivo: ${eventoQe(evento).motivo}` : ""}.
+                    </p>
                   ) : (
                     <p>
                       {evento.actor.nombre} asignó a {evento.analistaNuevo.nombre}
@@ -221,6 +266,17 @@ export function HduDetailPage() {
           )
         ) : null}
       </div>
+
+      {perfil?.rol === "ADMINISTRADOR" ? (
+        <DialogoReasignarQe
+          abierto={dialogoQeAbierto}
+          hduId={hdu.id}
+          codigo={hdu.codigo}
+          qeActual={hdu.qeResponsable}
+          onCerrar={() => setDialogoQeAbierto(false)}
+          onReasignado={(nombre) => setAvisoQe(`QE responsable reasignado a ${nombre}.`)}
+        />
+      ) : null}
 
       <DialogoConfirmacion
         abierto={dialogoAbierto}
@@ -255,4 +311,13 @@ export function HduDetailPage() {
       </DialogoConfirmacion>
     </div>
   );
+}
+
+/**
+ * Evento de reasignación del QE responsable en el historial. El contrato aún no lo declara
+ * (PENDIENTE: tipar al regenerar los tipos al integrar E7-B05); se lee de forma defensiva.
+ */
+function eventoQe(evento: unknown): { antes: string | null; nuevo: string; motivo: string | null } {
+  const e = evento as { qeAnterior?: { nombre: string } | null; qeNuevo?: { nombre: string }; motivo?: string | null };
+  return { antes: e.qeAnterior?.nombre ?? null, nuevo: e.qeNuevo?.nombre ?? "otro QE", motivo: e.motivo ?? null };
 }
