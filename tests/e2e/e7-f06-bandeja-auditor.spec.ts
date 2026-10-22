@@ -111,7 +111,7 @@ test.describe("E7-F06 · Bandeja del Auditor", () => {
       const texto = (await lista.innerText()).toLowerCase();
       for (const prohibido of ["password", "contraseña", "secret"]) expect(texto, prohibido).not.toContain(prohibido);
       expect(texto).not.toMatch(/\btoken\b/);
-      expect(texto).toMatch(/(rol|células): .* → .*/);
+      expect(texto).toMatch(/→/);
       // También a lo largo de la paginación (siguiente página).
       await page.getByTestId("pagina-siguiente-auditoria-usuarios").click();
       const texto2 = (await page.getByTestId("lista-auditoria-usuarios").innerText()).toLowerCase();

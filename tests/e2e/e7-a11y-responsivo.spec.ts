@@ -15,6 +15,7 @@ const PANTALLAS: Array<{ nombre: string; clave: ClaveE7; ruta: string; listo: st
   { nombre: "bandeja del Auditor (HDU)", clave: "aud1", ruta: "/auditor", listo: "lista-auditor-hdu" },
   { nombre: "Auditor · Certificados", clave: "aud1", ruta: "/auditor/certificados", listo: "lista-certificados" },
   { nombre: "Auditor · Auditoría de usuarios", clave: "aud1", ruta: "/auditor/auditoria-usuarios", listo: "lista-auditoria-usuarios" },
+  { nombre: "Administrador · Usuarios (E7-F07)", clave: "adm1", ruta: "/admin/usuarios", listo: "total-usuarios" },
   { nombre: "bandeja del Líder QA sin células", clave: "lid2", ruta: "/lider", listo: "estado-vacio-celulas" },
   { nombre: "bandeja del Analista QA sin HDU", clave: "ana4", ruta: "/qa", listo: "estado-vacio-mis-hdu" },
 ];
