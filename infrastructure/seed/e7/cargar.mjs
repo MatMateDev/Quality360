@@ -65,7 +65,7 @@ const HDU = [
   { h: 'H4', celula: 'CEL-C', qe: 'qe2', analista: 'ana3', estado: 'DISENO_PRUEBAS', prioridad: 'BAJA' },
   { h: 'H5', celula: 'CEL-A', qe: 'qe1', analista: null, estado: 'PENDIENTE', prioridad: 'MEDIA' },
   { h: 'H6', celula: 'CEL-B', qe: 'qe1', analista: 'ana1', estado: 'EN_EJECUCION', prioridad: 'BAJA', checklist: { aprobados: 8 } },
-  { h: 'H7', celula: 'CEL-A', qe: 'qe2', analista: 'ana3', estado: 'CERRADA', prioridad: 'ALTA', checklist: { aprobados: 10, cierraCon: 'adm1' } },
+  { h: 'H7', celula: 'CEL-A', qe: 'qe2', analista: 'ana3', estado: 'CERRADA', prioridad: 'ALTA', checklist: { aprobados: 10, cierraCon: 'adm1', evidenciaArchivo: { entregable: 'PLAN_PRUEBAS', nombre: 'plan-pruebas-E7-H7.pdf' } } },
   { h: 'H8', celula: 'CEL-C', qe: 'qe1', analista: 'ana2', estado: 'PENDIENTE_CIERRE', prioridad: 'MEDIA', checklist: { aprobados: 10 } },
 ];
 
@@ -112,6 +112,42 @@ async function esperar(base, nombre) {
   process.exit(2);
 }
 
+/** PDF mínimo (una página en blanco) para la evidencia en archivo del fixture. */
+function pdfMinimo(titulo) {
+  const cuerpo = [
+    '%PDF-1.4',
+    '1 0 obj<</Type/Catalog/Pages 2 0 R>>endobj',
+    '2 0 obj<</Type/Pages/Kids[3 0 R]/Count 1>>endobj',
+    '3 0 obj<</Type/Page/Parent 2 0 R/MediaBox[0 0 200 200]>>endobj',
+    `% ${titulo}`,
+    'trailer<</Root 1 0 R>>',
+    '%%EOF',
+    '',
+  ].join('\n');
+  return Buffer.from(cuerpo, 'latin1');
+}
+
+/**
+ * Evidencia en archivo como la sube el portal: pide la URL firmada a Certificaciones, sube el PDF
+ * a Storage con ella y devuelve el cuerpo de `marcar` con la `ruta` (E3-F02#1, DEF-11).
+ */
+async function evidenciaEnArchivo(id, clave, nombre, analista) {
+  const contenido = pdfMinimo(nombre);
+  const firma = exigir(
+    await http(CERT, 'POST', `/v1/hdu/${id}/entregables/${clave}/evidencias`, {
+      cuerpo: { nombreArchivo: nombre, tipoContenido: 'application/pdf', tamanoBytes: contenido.length },
+      cabeceras: analista,
+    }),
+    `URL firmada de ${nombre}`,
+  );
+  const formulario = new FormData();
+  formulario.append('cacheControl', '3600');
+  formulario.append('', new Blob([contenido], { type: 'application/pdf' }));
+  const subida = await fetch(firma.urlSubida, { method: 'PUT', body: formulario, headers: { 'x-upsert': 'false' } });
+  if (!subida.ok) throw new Error(`subida de ${nombre} a Storage: HTTP ${subida.status} ${(await subida.text()).slice(0, 120)}`);
+  return { evidencia: { tipo: 'ARCHIVO', ruta: firma.ruta } };
+}
+
 /** Lleva el checklist de la HDU al punto pedido, usando las operaciones reales y retomando donde quedó. */
 async function avanzarChecklist(hdu, ids) {
   const { checklist } = hdu;
@@ -129,7 +165,11 @@ async function avanzarChecklist(hdu, ids) {
       exigir(await http(CERT, 'POST', `/v1/hdu/${id}/certificado`, { cabeceras: qe }), `certificado ${hdu.h}`);
       continue;
     }
-    if (actual.estado === 'PENDIENTE') exigir(await http(CERT, 'POST', `/v1/hdu/${id}/entregables/${clave}/marcar`, { cuerpo: enlace, cabeceras: analista }), `marcar ${clave} ${hdu.h}`);
+    if (actual.estado === 'PENDIENTE') {
+      const archivo = checklist.evidenciaArchivo?.entregable === clave;
+      const cuerpo = archivo ? await evidenciaEnArchivo(id, clave, checklist.evidenciaArchivo.nombre, analista) : enlace;
+      exigir(await http(CERT, 'POST', `/v1/hdu/${id}/entregables/${clave}/marcar`, { cuerpo, cabeceras: analista }), `marcar ${clave} ${hdu.h}`);
+    }
     exigir(await http(CERT, 'POST', `/v1/hdu/${id}/entregables/${clave}/aprobar`, { cabeceras: qe }), `aprobar ${clave} ${hdu.h}`);
   }
 

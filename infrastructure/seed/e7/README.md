@@ -22,11 +22,11 @@ Es idempotente: se puede repetir sin duplicar ni retroceder nada.
 | Células | CEL-A, CEL-B, CEL-C (y un sprint «Sprint E7») |
 | Usuarios (`<clave>@quality360.local`, contraseña de demo) | `adm1`, `qe1`, `qe2`, `ana1`..`ana4`, `lid1` (Líder de CEL-A y CEL-B), `lid2` (Líder sin células), `aud1` (Auditor), `inact1` (QE desactivado) |
 | Supervisión | QE1 supervisa a ANA1 y ANA2; QE2 supervisa a ANA3; ANA4 no tiene QE |
-| HDU `E7-H1`..`E7-H8` | Las del backlog: H1 (3 aprobados y el 4 por aprobar), H2 (entregable 2 rechazado con «Falta evidencia de datos»), H3, H4, H5 (sin analista), H6 (8 aprobados), H7 (cerrada, certificado) y H8 (pendiente de cierre, 10 aprobados y certificado) |
+| HDU `E7-H1`..`E7-H8` | Las del backlog: H1 (3 aprobados y el 4 por aprobar), H2 (entregable 2 rechazado con «Falta evidencia de datos»), H3, H4, H5 (sin analista), H6 (8 aprobados), H7 (cerrada, certificado y una evidencia en archivo: un PDF en `PLAN_PRUEBAS` subido a Storage con URL firmada) y H8 (pendiente de cierre, 10 aprobados y certificado) |
 
 El estado de cada checklist se logra con las operaciones reales de Certificaciones, con la sesión
 de la analista y del QE que corresponden (marcar con enlace, aprobar, rechazar, generar el
-certificado). H7 la cierra `adm1`, igual que en el portal. Nada se escribe en la base a mano.
+certificado). La evidencia en archivo de H7 se sube a Storage con la URL firmada, como hace el portal (requiere el bucket `evidencias`). H7 la cierra `adm1`, igual que en el portal. Nada se escribe en la base a mano.
 
 ## Valores que se pueden verificar
 
