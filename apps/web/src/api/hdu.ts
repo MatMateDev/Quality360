@@ -7,6 +7,8 @@ import type {
   HistorialHdu,
   NuevaHdu,
   PaginaHdu,
+  ReasignacionQeResponsable,
+  ResultadoReasignacionQe,
   ResultadoAsignacion,
   ResultadoCambioEstado,
   SolicitudCambioEstado,
@@ -79,6 +81,19 @@ export function useCambiarEstadoHdu(id: string) {
     mutationFn: (body: SolicitudCambioEstado) => http.post<ResultadoCambioEstado>(`/v1/hdu/${id}/estado`, body),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["hdu"] });
+      queryClient.invalidateQueries({ queryKey: ["inicio"] });
+    },
+  });
+}
+
+/** E7-B05 (solo Administrador): reasigna el QE responsable de la HDU con motivo obligatorio. */
+export function useReasignarQeResponsable(id: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (body: ReasignacionQeResponsable) => http.put<ResultadoReasignacionQe>(`/v1/hdu/${id}/qe-responsable`, body),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["hdu"] });
+      queryClient.invalidateQueries({ queryKey: ["bandeja"] });
       queryClient.invalidateQueries({ queryKey: ["inicio"] });
     },
   });

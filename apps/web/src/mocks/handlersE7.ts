@@ -16,6 +16,7 @@ import {
 import { ERROR_ACCESO_DENEGADO, ERROR_NO_ENCONTRADO, aCatalogoRef, aHduResumen, aUsuarioResumen, cuerpoError, leerNumero, paginar } from "./utils";
 
 const BASE = env.gatewayUrl;
+const ID_EMISOR = "a1000000-0000-4000-8000-000000000002";
 const PRIORIDAD_ORDEN: Record<string, number> = { CRITICA: 0, ALTA: 1, MEDIA: 2, BAJA: 3 };
 
 type Respuesta = HttpResponse<any>;
@@ -616,6 +617,45 @@ export const handlersE7 = [
     );
   }),
 
+  // ---------------------- lectura del checklist (solo lectura para Líder y Auditor, D39)
+  http.get(`${BASE}/v1/hdu/:id/entregables`, ({ request, params }) => {
+    const actor = autenticar(request);
+    if (!esUsuarioMock(actor)) return actor;
+    const hdu = hdus.find((h) => h.id === params.id);
+    if (!hdu) return HttpResponse.json(ERROR_NO_ENCONTRADO(), { status: 404 });
+    if (!fuentes.certificaciones) return servicioNoDisponible();
+    const s = seguimientoDe(hdu.id);
+    return HttpResponse.json({
+      hduId: hdu.id,
+      resumen: { hduId: hdu.id, totalEntregables: 10, completados: s.aprobados, porcentajeCumplimiento: s.aprobados * 10, completo: s.aprobados === 10 },
+      entregables: [],
+      // Los roles de lectura (Líder, Auditor) nunca reciben permisos de escritura.
+      permisos: { puedeMarcar: false, puedeAprobar: false, puedeGenerarCertificado: false },
+      certificado: s.certificado
+        ? { folio: s.certificado.folio, emitido: { id: ID_EMISOR, nombre: "Jose Seguel", fecha: s.certificado.emitidoEn }, huellaSha256: "a3f1c9d4" }
+        : null,
+      certificacion: { habilitada: false, motivo: null, faltantes: [] },
+    });
+  }),
+
+  http.get(`${BASE}/v1/hdu/:id/entregables/bitacora`, ({ request, params }) => {
+    const actor = autenticar(request);
+    if (!esUsuarioMock(actor)) return actor;
+    return HttpResponse.json({ hduId: String(params.id), eventos: [] });
+  }),
+
+  http.get(`${BASE}/v1/hdu/:id/certificado`, ({ request, params }) => {
+    const actor = autenticar(request);
+    if (!esUsuarioMock(actor)) return actor;
+    const s = seguimientoDe(String(params.id));
+    if (!s.certificado) return HttpResponse.json(ERROR_NO_ENCONTRADO(), { status: 404 });
+    return HttpResponse.json({
+      hduId: String(params.id),
+      certificado: { folio: s.certificado.folio, emitido: { id: ID_EMISOR, nombre: "Jose Seguel", fecha: s.certificado.emitidoEn }, huellaSha256: "a3f1c9d4" },
+      descarga: { url: `http://localhost/archivos/${s.certificado.folio}.pdf`, expiraEn: "2099-01-01T00:00:00Z" },
+    });
+  }),
+
   // --------------------------------------------- E7-B05 · QE responsable de la HDU
   http.put(`${BASE}/v1/hdu/:id/qe-responsable`, async ({ request, params }) => {
     const actor = autenticar(request);
@@ -672,7 +712,7 @@ function cuerpoCelulasLider(usuario: UsuarioMock) {
   const propias = celulasLider.filter((c) => c.usuarioId === usuario.id);
   return {
     usuario: aUsuarioResumen(usuario),
-    vigentes: propias.filter((c) => c.hasta === null).map(mapa),
+    vigentes: propias.filter((c) => c.hasta === null).map(mapa).sort((a, b) => a.celula.nombre.localeCompare(b.celula.nombre)),
     historial: propias.map(mapa),
   };
 }

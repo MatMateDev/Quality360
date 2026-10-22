@@ -74,7 +74,7 @@ function cuerpoRelaciones(usuario: UsuarioMock, incluirHduAbiertas: boolean) {
       )
     : [];
   const celulasVig =
-    usuario.rol === "LIDER_QA" ? celulasVigentesDe(usuario.id).map((id) => aCatalogoRef(celulas.find((c) => c.id === id)!)) : [];
+    usuario.rol === "LIDER_QA" ? celulasVigentesDe(usuario.id).map((id) => aCatalogoRef(celulas.find((c) => c.id === id)!)).sort((a, b) => a.nombre.localeCompare(b.nombre)) : [];
   return {
     analistasVigentes: analistas,
     supervisorVigente: supervisor ? aUsuarioResumen(buscarUsuario(supervisor.qeId)!) : null,

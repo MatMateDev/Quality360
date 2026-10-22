@@ -113,6 +113,7 @@ export function simularFuentes(parcial: Partial<FuentesMock>): void {
 }
 
 const celulasLiderInicial = celulasLider.map((c) => ({ ...c }));
+const cantidadUsuariosInicial = usuarios.length;
 const rolesIniciales = new Map(usuarios.map((u) => [u.id, u.rol]));
 const qeIniciales = new Map(hdus.map((h) => [h.id, h.qeResponsableId]));
 
@@ -121,6 +122,7 @@ export function reiniciarFuentes(): void {
   fuentes.certificaciones = true;
   fuentes.pendientesAdmin = true;
   fuentes.cambiosAdmin = true;
+  usuarios.splice(cantidadUsuariosInicial);
   celulasLider.splice(0, celulasLider.length, ...celulasLiderInicial.map((c) => ({ ...c })));
   for (const u of usuarios) {
     const rol = rolesIniciales.get(u.id);
