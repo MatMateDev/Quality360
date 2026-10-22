@@ -159,8 +159,12 @@ test.describe("E7-F06 · Bandeja del Auditor", () => {
     test("[E7-F06#2] T06b: el filtro HDU de la Bitácora permite elegir cualquier HDU con eventos (E7-H2), no solo las de la página cargada", async ({ page }) => {
       await page.goto(`${env.portalUrl}/auditor/bitacora`);
       await expect(page.getByTestId("lista-bitacora")).toBeVisible();
-      const opciones = await page.locator("#filtro-hdu option").allTextContents();
-      expect(opciones.map((o) => o.trim()), "opciones del filtro HDU").toContain("E7-H2");
+      // DEF-04 (corregido): el filtro es buscable y se alimenta del catálogo de HDU con eventos, no de la página cargada.
+      await page.getByTestId("filtro-hdu-buscar").fill("E7-H2");
+      await expect(page.locator("#filtro-hdu option", { hasText: "E7-H2" })).toHaveCount(1);
+      await page.locator("#filtro-hdu").selectOption({ label: "E7-H2" });
+      await expect(page).toHaveURL(/hdu=/);
+      await expect(page.getByTestId("lista-bitacora").locator("tbody tr").first()).toBeVisible();
     });
 
     test("[E7-F06#1] T06c: la Bitácora se puede recorrer completa (cada página responde y muestra filas)", async ({ page }) => {
