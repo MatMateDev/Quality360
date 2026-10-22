@@ -1,10 +1,11 @@
 /** Casos de uso de `/v1/interno/hdu/*` (D12, para Certificaciones e Impedimentos). */
 import { Inject, Injectable } from '@nestjs/common';
+import { accesoDenegado } from '@quality360/auth-nest';
 
-import { evaluarAccesoHdu } from '../dominio/reglas/ambito.js';
+import { evaluarAccesoHdu, filtroAmbitoHdu } from '../dominio/reglas/ambito.js';
 import { HDU_REPOSITORIO, type HduRepositorio } from '../dominio/repositorios/hdu.repositorio.js';
 import { USUARIO_REPOSITORIO, type UsuarioRepositorio } from '../dominio/repositorios/usuario.repositorio.js';
-import type { AmbitoAcceso, EstadoHdu, RelacionAccesoHdu, Rol } from '../dominio/tipos.js';
+import type { AmbitoAcceso, EstadoHdu, Hdu, RelacionAccesoHdu, Rol } from '../dominio/tipos.js';
 import { HduAplicacion, type HduResumenRespuesta } from './hdu.servicio.js';
 
 /** Datos de la HDU que Certificaciones necesita para sus reglas y el certificado (E3). */
@@ -17,6 +18,13 @@ export interface HduParaCertificacion {
   readonly sprint: string;
   readonly qeResponsable: { id: string; nombre: string };
   readonly analista: { id: string; nombre: string } | null;
+}
+
+export interface AmbitoLecturaHdu {
+  readonly usuarioId: string;
+  readonly rol: Rol;
+  readonly todas: boolean;
+  readonly hduIds: string[];
 }
 
 export interface AccesoHduRespuesta {
@@ -65,6 +73,33 @@ export class AccesoAplicacion {
       actor: { id: actorId, nombre: actor?.nombre ?? '(usuario no disponible)', rol },
       hdu: paraCertificacion(resumen as HduResumenRespuesta),
     };
+  }
+
+  /**
+   * Ámbito de lectura para que Certificaciones autorice lotes con una sola llamada (D47):
+   * Administrador y Auditor → `todas`; el resto, la lista explícita de su ámbito.
+   */
+  async ambitoLectura(rol: Rol, actorId: string, ambito: AmbitoAcceso): Promise<AmbitoLecturaHdu> {
+    const filtro = filtroAmbitoHdu(rol, actorId, ambito);
+    if (filtro.tipo === 'TODAS') return { usuarioId: actorId, rol, todas: true, hduIds: [] };
+    return { usuarioId: actorId, rol, todas: false, hduIds: await this.hdus.listarIdsPorAmbito(filtro) };
+  }
+
+  /**
+   * Datos de varias HDU del ámbito del usuario (D47). Si algún id está fuera de ámbito o no
+   * existe, 403 completo sin datos parciales (D12).
+   */
+  async consultarLote(ids: readonly string[], rol: Rol, actorId: string, ambito: AmbitoAcceso): Promise<{ items: HduParaCertificacion[] }> {
+    const encontradas = await this.hdus.buscarPorIds(ids);
+    const porId = new Map(encontradas.map((hdu) => [hdu.id, hdu]));
+    for (const id of ids) {
+      const hdu = porId.get(id);
+      if (hdu === undefined || !evaluarAccesoHdu(rol, actorId, ambito, hdu).permitido) {
+        throw accesoDenegado('lote con una HDU fuera de ámbito o inexistente');
+      }
+    }
+    const resumenes = await this.hduAplicacion.resumir(ids.map((id) => porId.get(id) as Hdu));
+    return { items: resumenes.map(paraCertificacion) };
   }
 
   /** HDU donde el QE es el responsable, para la bandeja de aprobaciones (E3-F03#3). */

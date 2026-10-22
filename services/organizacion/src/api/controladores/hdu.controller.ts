@@ -13,13 +13,13 @@ import { ErrorCierreRechazadoHdu, ErrorTransicionInvalidaHdu } from '../../aplic
 import { type ContextoActor, HduAplicacion } from '../../aplicacion/hdu.servicio.js';
 import type { AmbitoAcceso } from '../../dominio/tipos.js';
 import { PermiteServicio } from '../decoradores/permite-servicio.decorator.js';
-import { AsignacionAnalistaDto, ListarHduQueryDto, NuevaHduDto, SolicitudCambioEstadoDto } from '../dto/hdu.dto.js';
+import { AsignacionAnalistaDto, ListarHduQueryDto, NuevaHduDto, ReasignacionQeDto, SolicitudCambioEstadoDto } from '../dto/hdu.dto.js';
 import { responderErrorExtendido } from '../errores/responder-error-extendido.js';
 import { actorDeSolicitud } from '../guardias/obtener-actor.js';
 import { SesionOServicioGuard, type SolicitudConActor } from '../guardias/sesion-o-servicio.guard.js';
 import { uuidDeRuta } from '../validacion/uuid.js';
 
-const AMBITO_VACIO: AmbitoAcceso = { qeSupervisorId: null, analistasSupervisadosIds: [] };
+const AMBITO_VACIO: AmbitoAcceso = { qeSupervisorId: null, analistasSupervisadosIds: [], celulasIds: [] };
 
 function contextoDeSolicitud(solicitud: SolicitudConActor): ContextoActor {
   if (solicitud.actorServicio === true) return { esServicio: true, rol: null, actorId: null, ambito: AMBITO_VACIO };
@@ -34,7 +34,7 @@ export class HduController {
     private readonly usuarios: UsuariosAplicacion,
   ) {}
 
-  @Roles('ADMINISTRADOR', 'QE', 'ANALISTA_QA')
+  @Roles('ADMINISTRADOR', 'QE', 'ANALISTA_QA', 'LIDER_QA', 'AUDITOR')
   @Get()
   async listar(@AccesoActual() acceso: ResolucionAcceso, @Query() query: ListarHduQueryDto) {
     return this.hdus.listar(
@@ -53,7 +53,7 @@ export class HduController {
     respuesta.status(201).json(creada);
   }
 
-  @Roles('ADMINISTRADOR', 'QE', 'ANALISTA_QA')
+  @Roles('ADMINISTRADOR', 'QE', 'ANALISTA_QA', 'LIDER_QA', 'AUDITOR')
   @Get(':id')
   async detalle(@Param('id') id: string, @AccesoActual() acceso: ResolucionAcceso) {
     return this.hdus.obtener(uuidDeRuta(id), { esServicio: false, rol: acceso.rol, actorId: acceso.usuarioId, ambito: acceso.ambito });
@@ -112,7 +112,22 @@ export class HduController {
     }
   }
 
-  @Roles('ADMINISTRADOR', 'QE', 'ANALISTA_QA')
+  /** D54: solo el Administrador reasigna el QE responsable (403 al resto, incluido el QE). */
+  @Roles('ADMINISTRADOR')
+  @Put(':id/qe-responsable')
+  async reasignarQeResponsable(@Param('id') id: string, @Body() dto: ReasignacionQeDto, @AccesoActual() acceso: ResolucionAcceso) {
+    const identificador = uuidDeRuta(id);
+    const actor = await this.usuarios.actorDesde(acceso.usuarioId);
+    return this.hdus.reasignarQeResponsable(
+      identificador,
+      dto.qeResponsableId,
+      dto.motivo,
+      { esServicio: false, rol: acceso.rol, actorId: acceso.usuarioId, ambito: acceso.ambito },
+      actor,
+    );
+  }
+
+  @Roles('ADMINISTRADOR', 'QE', 'ANALISTA_QA', 'LIDER_QA', 'AUDITOR')
   @Get(':id/historial')
   async historial(@Param('id') id: string, @AccesoActual() acceso: ResolucionAcceso) {
     return this.hdus.historial(uuidDeRuta(id), { esServicio: false, rol: acceso.rol, actorId: acceso.usuarioId, ambito: acceso.ambito });

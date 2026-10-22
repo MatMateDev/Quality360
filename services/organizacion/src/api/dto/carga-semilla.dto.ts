@@ -3,7 +3,7 @@
  * y credencial de servicio). `CargaUsuario` exige `contrasenaInicial`, como fija el contrato:
  * crea cuentas de demo con correo confirmado; la contraseña nunca se guarda ni se audita.
  */
-import { IsBoolean, IsIn, IsISO8601, IsOptional, IsString, IsUUID, MaxLength, MinLength } from 'class-validator';
+import { ArrayMaxSize, ArrayUnique, IsArray, IsBoolean, IsIn, IsISO8601, IsOptional, IsString, IsUUID, MaxLength, MinLength } from 'class-validator';
 
 import { ROLES, type PrioridadHdu, type Rol } from '../../dominio/tipos.js';
 
@@ -32,6 +32,14 @@ export class CargaUsuarioDto {
   @MinLength(12)
   @MaxLength(72)
   contrasenaInicial!: string;
+
+  /** Células de un Líder QA (fixture E7): se aplican al crear; si el usuario ya existía, no cambian. */
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(50)
+  @ArrayUnique()
+  @IsUUID('all', { each: true })
+  celulaIds?: string[];
 }
 
 export class CargaCelulaDto {

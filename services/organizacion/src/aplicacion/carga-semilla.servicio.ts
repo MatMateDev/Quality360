@@ -19,7 +19,7 @@ import { type HduDetalleRespuesta, HduAplicacion } from './hdu.servicio.js';
 import { PROVEEDOR_IDENTIDAD, type ProveedorIdentidad } from './puertos/proveedor-identidad.js';
 import { type UsuarioRespuesta, UsuariosAplicacion } from './usuarios.servicio.js';
 
-const AMBITO_VACIO = { qeSupervisorId: null, analistasSupervisadosIds: [] };
+const AMBITO_VACIO = { qeSupervisorId: null, analistasSupervisadosIds: [], celulasIds: [] };
 const CONTEXTO_SERVICIO = { esServicio: true, rol: null, actorId: null, ambito: AMBITO_VACIO } as const;
 
 export interface ResultadoCarga<T> {
@@ -46,14 +46,31 @@ export class CargaSemillaAplicacion {
   ) {}
 
   /** Idempotente por correo (sin distinguir mayúsculas): si existe, no cambia nada, ni la contraseña. */
-  async cargarUsuario(datos: { nombre: string; correo: string; rol: Rol; activo?: boolean; contrasenaInicial: string }): Promise<{ creado: boolean; usuario: UsuarioRespuesta }> {
+  async cargarUsuario(datos: {
+    nombre: string;
+    correo: string;
+    rol: Rol;
+    activo?: boolean;
+    contrasenaInicial: string;
+    celulaIds?: string[];
+  }): Promise<{ creado: boolean; usuario: UsuarioRespuesta }> {
     const correo = datos.correo.trim().toLowerCase();
     const existente = await this.usuarios.buscarPorCorreo(correo);
     if (existente !== null) return { creado: false, usuario: await this.usuariosAplicacion.obtener(existente.id) };
 
+    if (datos.celulaIds !== undefined && datos.celulaIds.length > 0) {
+      if (datos.rol !== 'LIDER_QA') {
+        throw errorValidacion([{ campo: 'celulaIds', codigo: 'NO_PERMITIDO', mensaje: 'Solo un Líder QA puede tener células a cargo.' }]);
+      }
+      if ((await this.catalogos.buscarCelulas(datos.celulaIds)).length !== new Set(datos.celulaIds).size) throw catalogoInvalido();
+    }
+
     const cuenta = await this.identidad.crearOVincularUsuarioConContrasena({ correo, nombre: datos.nombre.trim(), contrasena: datos.contrasenaInicial });
     try {
-      await this.usuarios.crear({ id: cuenta.id, nombre: datos.nombre.trim(), correo, rol: datos.rol, activo: datos.activo ?? true }, ACTOR_SERVICIO);
+      await this.usuarios.crear(
+        { id: cuenta.id, nombre: datos.nombre.trim(), correo, rol: datos.rol, activo: datos.activo ?? true, celulaIds: datos.celulaIds },
+        ACTOR_SERVICIO,
+      );
       return { creado: true, usuario: await this.usuariosAplicacion.obtener(cuenta.id) };
     } catch (error) {
       if (error instanceof ConflictoUnicidad) {

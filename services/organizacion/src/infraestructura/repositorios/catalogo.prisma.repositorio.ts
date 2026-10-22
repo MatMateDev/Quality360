@@ -25,6 +25,11 @@ export class CatalogoPrismaRepositorio implements CatalogoRepositorio {
     return this.prisma.celula.findUnique({ where: { id }, select: CAMPOS_CELULA });
   }
 
+  async buscarCelulas(ids: readonly string[]): Promise<Celula[]> {
+    if (ids.length === 0) return [];
+    return this.prisma.celula.findMany({ where: { id: { in: [...ids] } }, select: CAMPOS_CELULA });
+  }
+
   async buscarSprint(id: string): Promise<Sprint | null> {
     return this.prisma.sprint.findUnique({ where: { id }, select: CAMPOS_SPRINT });
   }

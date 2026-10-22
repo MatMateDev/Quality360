@@ -37,6 +37,13 @@ export interface ResultadoAsignacionAnalista {
   readonly fecha: Date;
 }
 
+export interface ResultadoReasignacionQe {
+  readonly cambio: boolean;
+  readonly hdu: Hdu;
+  readonly qeAnteriorId: string;
+  readonly fecha: Date;
+}
+
 export interface ResultadoCambioEstado {
   readonly hdu: Hdu;
   readonly estadoAnterior: EstadoHdu;
@@ -51,6 +58,15 @@ export interface HduRepositorio {
   crear(datos: DatosNuevaHdu, actor: Actor): Promise<Hdu>;
   buscarPorId(id: string): Promise<Hdu | null>;
   buscarPorCodigoNormalizado(codigoNormalizado: string): Promise<Hdu | null>;
+  /** Las HDU que existen entre `ids` (sin orden garantizado). */
+  buscarPorIds(ids: readonly string[]): Promise<Hdu[]>;
+  /** Todas las HDU del ámbito, sin paginar (las bandejas filtran, ordenan y paginan en memoria). */
+  listarTodasPorAmbito(ambito: FiltroAmbitoHdu): Promise<Hdu[]>;
+  /** Ids de las HDU del ámbito (`GET /v1/interno/hdu/ambito`, D47). */
+  listarIdsPorAmbito(ambito: FiltroAmbitoHdu): Promise<string[]>;
+  contarTodas(): Promise<number>;
+  /** Fecha del último cambio de analista o de QE responsable de cada HDU que lo tuvo. */
+  ultimosCambiosAsignacion(hduIds: readonly string[]): Promise<Map<string, Date>>;
   listarPorAmbito(ambito: FiltroAmbitoHdu, filtro: FiltroHdu, paginacion: OpcionesPaginacion): Promise<Pagina<Hdu>>;
 
   /** Reasigna el analista, audita y registra el historial en la misma transacción. */
@@ -60,6 +76,12 @@ export interface HduRepositorio {
     motivo: string | null;
     actor: Actor;
   }): Promise<ResultadoAsignacionAnalista>;
+
+  /**
+   * Reasigna el QE responsable, registra el historial y audita
+   * `REASIGNAR_QE_RESPONSABLE` en la misma transacción (D54). Sin cambio si es el mismo.
+   */
+  reasignarQeResponsable(input: { hduId: string; qeNuevoId: string; motivo: string; actor: Actor }): Promise<ResultadoReasignacionQe>;
 
   /** Cambia el estado, audita y registra el historial en la misma transacción. */
   cambiarEstado(input: { hduId: string; estadoNuevo: EstadoHdu; actor: Actor }): Promise<ResultadoCambioEstado>;

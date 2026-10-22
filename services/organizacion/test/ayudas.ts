@@ -62,7 +62,7 @@ export async function crearUsuarioDePrueba(rol: Rol, opciones: { nombre?: string
 export async function limpiarBaseDeDatos(): Promise<void> {
   await prisma.$executeRawUnsafe(
     // `rol` no se trunca: es un catálogo que carga la migración.
-    'TRUNCATE TABLE auditoria, hdu_historial_asignacion, hdu_historial_estado, historia_sprint, historia_usuario, supervision, sprint, celula, usuario RESTART IDENTITY CASCADE',
+    'TRUNCATE TABLE auditoria, celula_lider, hdu_historial_responsable, hdu_historial_asignacion, hdu_historial_estado, historia_sprint, historia_usuario, supervision, sprint, celula, usuario RESTART IDENTITY CASCADE',
   );
 }
 

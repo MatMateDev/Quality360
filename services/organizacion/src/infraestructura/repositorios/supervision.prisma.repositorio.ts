@@ -143,6 +143,22 @@ export class SupervisionPrismaRepositorio implements SupervisionRepositorio {
     });
   }
 
+  async listarAnalistasActivosSinQe(): Promise<UsuarioResumen[]> {
+    return this.prisma.usuario.findMany({
+      where: { rol: { nombre: 'ANALISTA_QA' }, activo: true, supervisionesComoAnalista: { none: { hasta: null } } },
+      select: { id: true, nombre: true, correo: true },
+      orderBy: { nombre: 'asc' },
+    });
+  }
+
+  async listarQeActivosSinAnalistas(): Promise<UsuarioResumen[]> {
+    return this.prisma.usuario.findMany({
+      where: { rol: { nombre: 'QE' }, activo: true, supervisionesComoQe: { none: { hasta: null } } },
+      select: { id: true, nombre: true, correo: true },
+      orderBy: { nombre: 'asc' },
+    });
+  }
+
   async resumenAdmin(): Promise<ResumenSupervisionAdmin> {
     const [relacionesVigentes, analistasSinSupervisor, qeSinAnalistas] = await Promise.all([
       this.prisma.supervision.count({ where: { hasta: null } }),

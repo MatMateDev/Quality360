@@ -12,8 +12,9 @@ export function responderErrorExtendido(
   estado: number,
   codigo: CodigoError,
   extra: Record<string, unknown>,
+  mensaje?: string,
 ): void {
   const traceId = obtenerTraceId(solicitud);
   respuesta.setHeader(CABECERA_TRAZA, traceId);
-  respuesta.status(estado).json({ codigo, mensaje: MENSAJES[codigo], traceId, detalles: [], ...extra });
+  respuesta.status(estado).json({ codigo, mensaje: mensaje ?? MENSAJES[codigo], traceId, detalles: [], ...extra });
 }

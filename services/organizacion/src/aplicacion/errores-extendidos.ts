@@ -6,7 +6,8 @@
  * detalles}`—, así que estos NO son `ExcepcionQ360`: el controlador los
  * atrapa y arma la respuesta extendida él mismo (ver api/errores).
  */
-import type { EstadoHdu, UsuarioResumen } from '../dominio/tipos.js';
+import type { RelacionesUsuario } from '../dominio/reglas/rol-celulas.js';
+import type { EstadoHdu } from '../dominio/tipos.js';
 
 export class ErrorTransicionInvalidaHdu extends Error {
   constructor(
@@ -45,14 +46,40 @@ export class ErrorCierreRechazadoHdu extends Error {
   }
 }
 
-export interface RelacionesIncompatibles {
-  readonly analistasVigentes: UsuarioResumen[];
-  readonly supervisorVigente: UsuarioResumen | null;
+export type RelacionesIncompatibles = RelacionesUsuario;
+
+const lista = (nombres: readonly string[]): string => nombres.join(', ');
+
+/**
+ * Mensaje del 409 `RELACIONES_INCOMPATIBLES` (D43): nombra a quiénes reasignar y qué
+ * HDU o células resolver. Los mismos datos viajan estructurados en `relaciones`.
+ */
+export function mensajeRelacionesIncompatibles(relaciones: RelacionesIncompatibles): string {
+  const partes: string[] = [];
+  if (relaciones.analistasVigentes.length > 0) {
+    partes.push(`reasigna primero a sus analistas supervisados: ${lista(relaciones.analistasVigentes.map((analista) => analista.nombre))}`);
+  }
+  if (relaciones.supervisorVigente !== null) {
+    partes.push(`quítale primero el supervisor vigente (${relaciones.supervisorVigente.nombre})`);
+  }
+  if (relaciones.hduAbiertas.total > 0) {
+    const codigos = relaciones.hduAbiertas.items.map((hdu) => hdu.codigo);
+    const resto = relaciones.hduAbiertas.total - codigos.length;
+    partes.push(
+      `tiene ${relaciones.hduAbiertas.total} HDU abiertas (${lista(codigos)}${resto > 0 ? ` y ${resto} más` : ''}): ciérralas o reasígnalas`,
+    );
+  }
+  if (relaciones.celulasVigentes.length > 0) {
+    partes.push(`quítale primero las células a su cargo: ${lista(relaciones.celulasVigentes.map((celula) => celula.nombre))}`);
+  }
+  return partes.length === 0
+    ? 'Resuelve las relaciones de supervisión antes de continuar.'
+    : `Resuelve las relaciones abiertas antes de continuar: ${partes.join('; ')}.`;
 }
 
 export class ErrorRelacionesIncompatibles extends Error {
   constructor(readonly relaciones: RelacionesIncompatibles) {
-    super('Resuelve las relaciones de supervisión antes de continuar.');
+    super(mensajeRelacionesIncompatibles(relaciones));
     this.name = 'ErrorRelacionesIncompatibles';
   }
 }

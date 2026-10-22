@@ -9,6 +9,7 @@ import type {
   HduRepositorio,
   ResultadoAsignacionAnalista,
   ResultadoCambioEstado,
+  ResultadoReasignacionQe,
   ResumenHduAmbito,
 } from '../../dominio/repositorios/hdu.repositorio.js';
 import {
@@ -19,6 +20,7 @@ import {
   type EventoAsignacionHdu,
   type EventoEstadoHdu,
   type EventoHistorialHdu,
+  type EventoResponsableHdu,
   type Hdu,
   type OpcionesPaginacion,
   type Pagina,
@@ -31,6 +33,7 @@ import { PrismaService } from '../prisma/prisma.service.js';
 function whereDeAmbito(ambito: FiltroAmbitoHdu): Prisma.HduWhereInput {
   if (ambito.tipo === 'TODAS') return {};
   if (ambito.tipo === 'ANALISTA') return { analistaId: ambito.analistaId };
+  if (ambito.tipo === 'CELULAS') return { celulaId: { in: [...ambito.celulaIds] } };
   return { OR: [{ qeResponsableId: ambito.qeResponsableId }, { analistaId: { in: [...ambito.analistasSupervisadosIds] } }] };
 }
 
@@ -104,6 +107,81 @@ export class HduPrismaRepositorio implements HduRepositorio {
   async buscarPorCodigoNormalizado(codigoNormalizado: string): Promise<Hdu | null> {
     const fila = await this.prisma.hdu.findUnique({ where: { codigoNormalizado }, include: INCLUYE_SPRINT_VIGENTE });
     return fila === null ? null : aHduDominio(fila);
+  }
+
+  async buscarPorIds(ids: readonly string[]): Promise<Hdu[]> {
+    if (ids.length === 0) return [];
+    const filas = await this.prisma.hdu.findMany({ where: { id: { in: [...ids] } }, include: INCLUYE_SPRINT_VIGENTE });
+    return filas.map(aHduDominio);
+  }
+
+  async listarTodasPorAmbito(ambito: FiltroAmbitoHdu): Promise<Hdu[]> {
+    const filas = await this.prisma.hdu.findMany({ where: whereDeAmbito(ambito), include: INCLUYE_SPRINT_VIGENTE, orderBy: { codigo: 'asc' } });
+    return filas.map(aHduDominio);
+  }
+
+  async listarIdsPorAmbito(ambito: FiltroAmbitoHdu): Promise<string[]> {
+    const filas = await this.prisma.hdu.findMany({ where: whereDeAmbito(ambito), select: { id: true }, orderBy: { codigo: 'asc' } });
+    return filas.map((fila) => fila.id);
+  }
+
+  async contarTodas(): Promise<number> {
+    return this.prisma.hdu.count();
+  }
+
+  async ultimosCambiosAsignacion(hduIds: readonly string[]): Promise<Map<string, Date>> {
+    const mapa = new Map<string, Date>();
+    if (hduIds.length === 0) return mapa;
+    const [analistas, responsables] = await Promise.all([
+      this.prisma.hduHistorialAsignacion.groupBy({ by: ['hduId'], where: { hduId: { in: [...hduIds] } }, _max: { fecha: true } }),
+      this.prisma.hduHistorialResponsable.groupBy({ by: ['hduId'], where: { hduId: { in: [...hduIds] } }, _max: { fecha: true } }),
+    ]);
+    for (const fila of [...analistas, ...responsables]) {
+      const fecha = fila._max.fecha;
+      if (fecha === null) continue;
+      const previa = mapa.get(fila.hduId);
+      if (previa === undefined || previa.getTime() < fecha.getTime()) mapa.set(fila.hduId, fecha);
+    }
+    return mapa;
+  }
+
+  async reasignarQeResponsable(input: { hduId: string; qeNuevoId: string; motivo: string; actor: Actor }): Promise<ResultadoReasignacionQe> {
+    return this.prisma.$transaction(async (tx) => {
+      await tx.$queryRaw`SELECT "id_historia" FROM "historia_usuario" WHERE "id_historia" = ${input.hduId}::uuid FOR UPDATE`;
+      const antes = await tx.hdu.findUniqueOrThrow({ where: { id: input.hduId }, include: INCLUYE_SPRINT_VIGENTE });
+      if (antes.qeResponsableId === input.qeNuevoId) {
+        return { cambio: false, hdu: aHduDominio(antes), qeAnteriorId: antes.qeResponsableId, fecha: antes.estadoActualizadoEn };
+      }
+
+      const fecha = new Date();
+      const actualizada = await tx.hdu.update({ where: { id: input.hduId }, data: { qeResponsableId: input.qeNuevoId }, include: INCLUYE_SPRINT_VIGENTE });
+      await tx.hduHistorialResponsable.create({
+        data: {
+          hduId: input.hduId,
+          qeAnteriorId: antes.qeResponsableId,
+          qeNuevoId: input.qeNuevoId,
+          motivo: input.motivo,
+          actorTipo: input.actor.tipo,
+          actorId: input.actor.id,
+          actorNombre: input.actor.nombre,
+          fecha,
+        },
+      });
+      await tx.auditoria.create({
+        data: {
+          actorTipo: input.actor.tipo,
+          actorId: input.actor.id,
+          actorNombre: input.actor.nombre,
+          entidad: 'HDU',
+          entidadId: input.hduId,
+          accion: 'REASIGNAR_QE_RESPONSABLE',
+          antes: { qeResponsableId: antes.qeResponsableId },
+          despues: { qeResponsableId: input.qeNuevoId },
+          motivo: input.motivo,
+        },
+      });
+      return { cambio: true, hdu: aHduDominio(actualizada), qeAnteriorId: antes.qeResponsableId, fecha };
+    });
   }
 
   async listarPorAmbito(ambito: FiltroAmbitoHdu, filtro: FiltroHdu, paginacion: OpcionesPaginacion): Promise<Pagina<Hdu>> {
@@ -198,12 +276,17 @@ export class HduPrismaRepositorio implements HduRepositorio {
 
   async historial(hduId: string): Promise<EventoHistorialHdu[]> {
     const hdu = await this.prisma.hdu.findUniqueOrThrow({ where: { id: hduId } });
-    const [estados, asignaciones] = await Promise.all([
+    const [estados, asignaciones, responsables] = await Promise.all([
       this.prisma.hduHistorialEstado.findMany({ where: { hduId }, orderBy: { fecha: 'asc' } }),
       this.prisma.hduHistorialAsignacion.findMany({ where: { hduId }, orderBy: { fecha: 'asc' } }),
+      this.prisma.hduHistorialResponsable.findMany({ where: { hduId }, orderBy: { fecha: 'asc' } }),
     ]);
 
     const idsUsuarios = new Set<string>();
+    for (const cambio of responsables) {
+      idsUsuarios.add(cambio.qeAnteriorId);
+      idsUsuarios.add(cambio.qeNuevoId);
+    }
     for (const asignacion of asignaciones) {
       if (asignacion.analistaAnteriorId !== null) idsUsuarios.add(asignacion.analistaAnteriorId);
       idsUsuarios.add(asignacion.analistaNuevoId);
@@ -238,7 +321,16 @@ export class HduPrismaRepositorio implements HduRepositorio {
       motivo: fila.motivo,
     }));
 
-    return [eventoCreacion, ...eventosEstado, ...eventosAsignacion].sort((a, b) => a.fecha.getTime() - b.fecha.getTime());
+    const eventosResponsable: EventoResponsableHdu[] = responsables.map((fila) => ({
+      tipo: 'QE_RESPONSABLE',
+      fecha: fila.fecha,
+      actor: { tipo: fila.actorTipo, id: fila.actorId, nombre: fila.actorNombre },
+      qeAnterior: resumenDe(fila.qeAnteriorId),
+      qeNuevo: resumenDe(fila.qeNuevoId),
+      motivo: fila.motivo,
+    }));
+
+    return [eventoCreacion, ...eventosEstado, ...eventosAsignacion, ...eventosResponsable].sort((a, b) => a.fecha.getTime() - b.fecha.getTime());
   }
 
   async resumenAmbitoQe(qeResponsableId: string, analistasSupervisadosIds: readonly string[]): Promise<ResumenHduAmbito> {

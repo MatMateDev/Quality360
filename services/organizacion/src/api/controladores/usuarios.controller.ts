@@ -11,7 +11,7 @@ import type { Response } from 'express';
 import { ErrorRelacionesIncompatibles } from '../../aplicacion/errores-extendidos.js';
 import { UsuariosAplicacion } from '../../aplicacion/usuarios.servicio.js';
 import { responderErrorExtendido } from '../errores/responder-error-extendido.js';
-import { ActualizacionUsuarioDto, CambioRolDto, ListarUsuariosQueryDto, NuevoUsuarioDto } from '../dto/usuarios.dto.js';
+import { ActualizacionUsuarioDto, CambioRolDto, ListarUsuariosQueryDto, NuevoUsuarioDto, SolicitudCelulasLiderDto } from '../dto/usuarios.dto.js';
 import { uuidDeRuta } from '../validacion/uuid.js';
 
 @Controller('v1/usuarios')
@@ -25,6 +25,13 @@ export class UsuariosController {
       { q: query.q, rol: query.rol, activo: query.activo },
       { pagina: query.pagina, tamanoPagina: query.tamanoPagina },
     );
+  }
+
+  /** Para la preselección `?usuario=<id>` de `/admin/usuarios` (D44). */
+  @Roles('ADMINISTRADOR')
+  @Get(':id')
+  async obtener(@Param('id') id: string) {
+    return this.usuarios.obtener(uuidDeRuta(id));
   }
 
   @Roles('ADMINISTRADOR')
@@ -56,7 +63,7 @@ export class UsuariosController {
       respuesta.status(200).json(actualizado);
     } catch (error) {
       if (error instanceof ErrorRelacionesIncompatibles) {
-        responderErrorExtendido(respuesta, solicitud, 409, 'RELACIONES_INCOMPATIBLES', { relaciones: error.relaciones });
+        responderErrorExtendido(respuesta, solicitud, 409, 'RELACIONES_INCOMPATIBLES', { relaciones: error.relaciones }, error.message);
         return;
       }
       throw error;
@@ -75,14 +82,28 @@ export class UsuariosController {
     const identificador = uuidDeRuta(id);
     const actor = await this.usuarios.actorDesde(acceso.usuarioId);
     try {
-      const actualizado = await this.usuarios.cambiarRol(identificador, dto.rol, actor);
+      const actualizado = await this.usuarios.cambiarRol(identificador, dto.rol, dto.celulaIds, actor);
       respuesta.status(200).json(actualizado);
     } catch (error) {
       if (error instanceof ErrorRelacionesIncompatibles) {
-        responderErrorExtendido(respuesta, solicitud, 409, 'RELACIONES_INCOMPATIBLES', { relaciones: error.relaciones });
+        responderErrorExtendido(respuesta, solicitud, 409, 'RELACIONES_INCOMPATIBLES', { relaciones: error.relaciones }, error.message);
         return;
       }
       throw error;
     }
+  }
+
+  @Roles('ADMINISTRADOR')
+  @Get(':id/celulas-lider')
+  async celulasLider(@Param('id') id: string) {
+    return this.usuarios.celulasDeLider(uuidDeRuta(id));
+  }
+
+  @Roles('ADMINISTRADOR')
+  @Put(':id/celulas-lider')
+  async reemplazarCelulasLider(@Param('id') id: string, @Body() dto: SolicitudCelulasLiderDto, @AccesoActual() acceso: ResolucionAcceso) {
+    const identificador = uuidDeRuta(id);
+    const actor = await this.usuarios.actorDesde(acceso.usuarioId);
+    return this.usuarios.reemplazarCelulasDeLider(identificador, dto.celulaIds, actor);
   }
 }

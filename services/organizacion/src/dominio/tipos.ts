@@ -5,9 +5,17 @@
  */
 
 /** Catálogo cerrado de roles (comun.v1.yaml#/components/schemas/Rol). */
-export type Rol = 'ADMINISTRADOR' | 'QE' | 'ANALISTA_QA';
+export type Rol = 'ADMINISTRADOR' | 'QE' | 'ANALISTA_QA' | 'LIDER_QA' | 'AUDITOR';
 
-export const ROLES: readonly Rol[] = ['ADMINISTRADOR', 'QE', 'ANALISTA_QA'];
+/** Un rol por usuario (D28). `LIDER_QA` y `AUDITOR` son de solo lectura (D32). */
+export const ROLES: readonly Rol[] = ['ADMINISTRADOR', 'QE', 'ANALISTA_QA', 'LIDER_QA', 'AUDITOR'];
+
+/** Roles que nunca modifican datos (D32). */
+export const ROLES_SOLO_LECTURA: readonly Rol[] = ['LIDER_QA', 'AUDITOR'];
+
+export function esRolSoloLectura(rol: Rol): boolean {
+  return ROLES_SOLO_LECTURA.includes(rol);
+}
 
 /** Prioridad de una HDU. */
 export type PrioridadHdu = 'BAJA' | 'MEDIA' | 'ALTA' | 'CRITICA';
@@ -24,7 +32,7 @@ export interface Actor {
   readonly nombre: string;
 }
 
-export type EntidadAuditoria = 'USUARIO' | 'SUPERVISION' | 'HDU';
+export type EntidadAuditoria = 'USUARIO' | 'SUPERVISION' | 'HDU' | 'EXPORTACION';
 
 export type AccionAuditoria =
   | 'CREAR_USUARIO'
@@ -37,10 +45,19 @@ export type AccionAuditoria =
   | 'CREAR_HDU'
   | 'CAMBIAR_ESTADO_HDU'
   | 'ASIGNAR_ANALISTA'
-  | 'REASIGNAR_ANALISTA';
+  | 'REASIGNAR_ANALISTA'
+  | 'ASIGNAR_CELULAS_LIDER'
+  | 'EXPORTAR'
+  | 'REASIGNAR_QE_RESPONSABLE';
 
 /** Motivo del acceso a una HDU (comun.v1.yaml#/components/schemas/AccesoHdu). */
-export type RelacionAccesoHdu = 'ADMINISTRADOR' | 'QE_RESPONSABLE' | 'QE_SUPERVISOR_DEL_ANALISTA' | 'ANALISTA_ASIGNADO';
+export type RelacionAccesoHdu =
+  | 'ADMINISTRADOR'
+  | 'QE_RESPONSABLE'
+  | 'QE_SUPERVISOR_DEL_ANALISTA'
+  | 'ANALISTA_ASIGNADO'
+  | 'LECTOR_CELULA'
+  | 'LECTOR_AUDITORIA';
 
 export interface UsuarioResumen {
   readonly id: string;
@@ -130,7 +147,41 @@ export interface EventoAsignacionHdu {
   readonly motivo: string | null;
 }
 
-export type EventoHistorialHdu = EventoEstadoHdu | EventoAsignacionHdu;
+/** Reasignación del QE responsable (D54). */
+export interface EventoResponsableHdu {
+  readonly tipo: 'QE_RESPONSABLE';
+  readonly fecha: Date;
+  readonly actor: Actor;
+  readonly qeAnterior: UsuarioResumen;
+  readonly qeNuevo: UsuarioResumen;
+  readonly motivo: string;
+}
+
+export type EventoHistorialHdu = EventoEstadoHdu | EventoAsignacionHdu | EventoResponsableHdu;
+
+/** HDU citada en un error o una lista corta (comun.v1.yaml#/components/schemas/HduReferencia). */
+export interface HduReferencia {
+  readonly id: string;
+  readonly codigo: string;
+  readonly titulo: string;
+  readonly estado: EstadoHdu;
+}
+
+/** Referencia a un catálogo (célula o sprint). */
+export interface CatalogoRef {
+  readonly id: string;
+  readonly nombre: string;
+}
+
+/** Una fila de `celula_lider` (D30). Vigente si `hasta` es `null`. */
+export interface AsignacionCelulaLider {
+  readonly id: string;
+  readonly celula: CatalogoRef;
+  readonly desde: Date;
+  readonly hasta: Date | null;
+  readonly asignadoPor: Actor;
+  readonly retiradoPor: Actor | null;
+}
 
 export interface RegistroAuditoria {
   readonly id: string;
@@ -148,6 +199,8 @@ export interface RegistroAuditoria {
 export interface AmbitoAcceso {
   readonly qeSupervisorId: string | null;
   readonly analistasSupervisadosIds: readonly string[];
+  /** Células vigentes de un Líder QA (D30, D47). */
+  readonly celulasIds: readonly string[];
 }
 
 export interface Pagina<T> {

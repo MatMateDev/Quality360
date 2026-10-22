@@ -39,4 +39,9 @@ export interface SupervisionRepositorio {
   }): Promise<ResultadoCambioSupervision>;
 
   resumenAdmin(): Promise<ResumenSupervisionAdmin>;
+
+  /** Analistas activos sin QE vigente (pendientes del Administrador, D51). */
+  listarAnalistasActivosSinQe(): Promise<UsuarioResumen[]>;
+  /** QE activos sin analistas vigentes (D51). */
+  listarQeActivosSinAnalistas(): Promise<UsuarioResumen[]>;
 }

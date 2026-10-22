@@ -2,9 +2,9 @@ import './entorno.js';
 
 import type { NestExpressApplication } from '@nestjs/platform-express';
 
-import { cargarConfiguracion } from '../src/configuracion.js';
+import { cargarConfiguracion, type ConfiguracionOrganizacion } from '../src/configuracion.js';
 import { crearApp } from '../src/crear-app.js';
 
-export async function crearAppDePrueba(): Promise<NestExpressApplication> {
-  return crearApp(cargarConfiguracion(), { registro: false });
+export async function crearAppDePrueba(sobrescribir: Partial<ConfiguracionOrganizacion> = {}): Promise<NestExpressApplication> {
+  return crearApp({ ...cargarConfiguracion(), ...sobrescribir }, { registro: false });
 }

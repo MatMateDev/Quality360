@@ -3,6 +3,8 @@ import { Module } from '@nestjs/common';
 import { InfraestructuraModule } from '../infraestructura/infraestructura.module.js';
 import { AccesoAplicacion } from './acceso.servicio.js';
 import { AuditoriaAplicacion } from './auditoria.servicio.js';
+import { AuditorAplicacion } from './auditor.servicio.js';
+import { BandejasAplicacion } from './bandejas.servicio.js';
 import { CargaSemillaAplicacion } from './carga-semilla.servicio.js';
 import { CatalogosAplicacion } from './catalogos.servicio.js';
 import { HduAplicacion } from './hdu.servicio.js';
@@ -19,6 +21,8 @@ const SERVICIOS = [
   ResumenesAplicacion,
   HduAplicacion,
   CargaSemillaAplicacion,
+  BandejasAplicacion,
+  AuditorAplicacion,
 ];
 
 @Module({

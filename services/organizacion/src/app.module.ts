@@ -11,6 +11,9 @@ import { AuthNestModule } from '@quality360/auth-nest';
 import { AplicacionModule } from './aplicacion/aplicacion.module.js';
 import { AccesoInternoController } from './api/controladores/acceso-interno.controller.js';
 import { AuditoriaController } from './api/controladores/auditoria.controller.js';
+import { AuditorController } from './api/controladores/auditor.controller.js';
+import { BandejasController } from './api/controladores/bandejas.controller.js';
+import { RolesController } from './api/controladores/roles.controller.js';
 import { CargaSemillaController } from './api/controladores/carga-semilla.controller.js';
 import { CatalogosController } from './api/controladores/catalogos.controller.js';
 import { EquipoController } from './api/controladores/equipo.controller.js';
@@ -52,6 +55,9 @@ export class AppModule {
         ResumenesController,
         EquipoController,
         UsuariosController,
+        RolesController,
+        BandejasController,
+        AuditorController,
         SupervisionController,
         AuditoriaController,
         CatalogosController,

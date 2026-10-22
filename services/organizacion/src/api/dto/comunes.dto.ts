@@ -3,7 +3,9 @@ import { IsInt, IsOptional, Max, Min } from 'class-validator';
 
 /** `true`/`false` de la query string a boolean; cualquier otro valor se deja intacto (falla la validación de tipo). */
 export function TransformBooleanoQuery() {
-  return Transform(({ value }: { value: unknown }) => {
+  // Se lee el valor crudo de la query: con la conversión implícita, 'false' ya llegaría como true.
+  return Transform(({ value: convertido, obj, key }: { value: unknown; obj: Record<string, unknown>; key: string }) => {
+    const value = obj[key] ?? convertido;
     if (value === undefined) return undefined;
     if (typeof value === 'boolean') return value;
     if (value === 'true') return true;

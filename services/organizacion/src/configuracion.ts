@@ -18,6 +18,8 @@ export interface ConfiguracionOrganizacion {
   /** Base de Certificaciones, para `GET /v1/hdu/{id}/checklist` al cerrar una HDU (D11). */
   certificacionesUrl: string;
   certificacionesTimeoutMs: number;
+  /** Máximo de filas de una exportación CSV del Auditor (D35, D48, `EXPORTACION_LIMITE_FILAS`). */
+  exportacionLimiteFilas: number;
 }
 
 function requerido(valor: string | undefined, nombre: string): string {
@@ -61,5 +63,6 @@ export function cargarConfiguracion(entorno: NodeJS.ProcessEnv = process.env): C
     verificador: opcionesDesdeEntorno(entorno),
     certificacionesUrl: leerUrl(entorno.CERTIFICACIONES_URL, 'http://localhost:3002', 'CERTIFICACIONES_URL'),
     certificacionesTimeoutMs: leerEntero(entorno.CERTIFICACIONES_TIMEOUT_MS, 2000, 'CERTIFICACIONES_TIMEOUT_MS'),
+    exportacionLimiteFilas: leerEntero(entorno.EXPORTACION_LIMITE_FILAS, 50_000, 'EXPORTACION_LIMITE_FILAS'),
   };
 }

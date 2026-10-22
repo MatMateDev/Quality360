@@ -7,8 +7,8 @@ import { Inject, Injectable } from '@nestjs/common';
 import { ExcepcionQ360, MENSAJES, accesoDenegado, noEncontrado } from '@quality360/auth-nest';
 
 import { ConflictoUnicidad } from '../dominio/errores/conflicto-unicidad.js';
-import { evaluarAccesoHdu, filtroAmbitoHdu } from '../dominio/reglas/ambito.js';
-import { puedeAsignarAnalistaHdu, puedeCambiarEstadoHdu } from '../dominio/reglas/permisos-hdu.js';
+import { celulaPermitidaParaLider, evaluarAccesoHdu, filtroAmbitoHdu } from '../dominio/reglas/ambito.js';
+import { puedeAsignarAnalistaHdu, puedeCambiarEstadoHdu, puedeReasignarQeResponsable } from '../dominio/reglas/permisos-hdu.js';
 import { transicionesPermitidas, validarTransicion } from '../dominio/reglas/transiciones-hdu.js';
 import { CATALOGO_REPOSITORIO, type CatalogoRepositorio } from '../dominio/repositorios/catalogo.repositorio.js';
 import {
@@ -75,6 +75,10 @@ function hduCerrada(): ExcepcionQ360 {
   return new ExcepcionQ360(409, 'HDU_CERRADA', { mensaje: MENSAJES.HDU_CERRADA });
 }
 
+function qeInvalido(): ExcepcionQ360 {
+  return new ExcepcionQ360(422, 'QE_INVALIDO', { mensaje: MENSAJES.QE_INVALIDO });
+}
+
 function analistaInvalido(): ExcepcionQ360 {
   return new ExcepcionQ360(422, 'ANALISTA_INVALIDO', { mensaje: MENSAJES.ANALISTA_INVALIDO });
 }
@@ -107,7 +111,7 @@ export class HduAplicacion {
 
     try {
       const creada = await this.hdus.crear({ ...datos, codigo: datos.codigo.trim(), qeResponsableId }, actor);
-      return this.aDetalle(creada, { esServicio: false, rol: 'ADMINISTRADOR', actorId: qeResponsableId, ambito: { qeSupervisorId: null, analistasSupervisadosIds: [] } });
+      return this.aDetalle(creada, { esServicio: false, rol: 'ADMINISTRADOR', actorId: qeResponsableId, ambito: { qeSupervisorId: null, analistasSupervisadosIds: [], celulasIds: [] } });
     } catch (error) {
       if (error instanceof ConflictoUnicidad) throw codigoDuplicado();
       throw error;
@@ -127,6 +131,8 @@ export class HduAplicacion {
   async listar(contexto: ContextoActor, filtro: FiltroHdu, paginacion: OpcionesPaginacion): Promise<Pagina<HduResumenRespuesta>> {
     const rol = contexto.rol ?? 'ADMINISTRADOR';
     const actorId = contexto.actorId ?? '';
+    // Un Líder QA solo filtra por células de su ámbito vigente (E7-B02-T04): otra célula, 403 genérico (D12).
+    if (!celulaPermitidaParaLider(rol, contexto.ambito, filtro.celulaId)) throw accesoDenegado('celulaId fuera del ámbito del líder');
     const ambitoFiltro = filtroAmbitoHdu(rol, actorId, contexto.ambito);
     const pagina = await this.hdus.listarPorAmbito(ambitoFiltro, filtro, paginacion);
     return { ...pagina, items: await this.enriquecerResumen(pagina.items) };
@@ -183,6 +189,39 @@ export class HduAplicacion {
     };
   }
 
+  /**
+   * Reasigna el QE responsable (D54). Solo el Administrador. Orden: HDU inexistente (404) →
+   * HDU cerrada (409) → QE destino inválido (422) → motivo vacío (422) → sin cambio (200 sin auditar).
+   */
+  async reasignarQeResponsable(id: string, qeNuevoId: string, motivoCrudo: string, contexto: ContextoActor, actor: Actor) {
+    const hdu = await this.buscarParaEscritura(id, contexto);
+    if (contexto.esServicio || contexto.rol === null || !puedeReasignarQeResponsable(contexto.rol)) {
+      throw accesoDenegado('solo el Administrador reasigna el QE responsable');
+    }
+    if (hdu.estado === 'CERRADA') throw hduCerrada();
+
+    const qe = await this.usuarios.buscarPorId(qeNuevoId);
+    if (qe === null || qe.rol !== 'QE' || !qe.activo) throw qeInvalido();
+
+    const motivo = motivoCrudo.trim();
+    if (motivo.length < 3) throw motivoRequerido();
+
+    const resultado = await this.hdus.reasignarQeResponsable({ hduId: id, qeNuevoId, motivo, actor });
+    const [anterior, nuevo] = await Promise.all([
+      this.usuarios.listarResumenPorIds([resultado.qeAnteriorId]),
+      this.usuarios.listarResumenPorIds([qeNuevoId]),
+    ]);
+    return {
+      cambio: resultado.cambio,
+      hdu: (await this.enriquecerResumen([resultado.hdu]))[0],
+      qeAnterior: anterior[0] as UsuarioResumen,
+      qeNuevo: nuevo[0] as UsuarioResumen,
+      motivo: resultado.cambio ? motivo : null,
+      fecha: resultado.fecha,
+      actor,
+    };
+  }
+
   async cambiarEstado(
     id: string,
     estadoSolicitado: EstadoHdu,
@@ -229,7 +268,7 @@ export class HduAplicacion {
     const hdu = await this.hdus.buscarPorId(id);
     const rol = contexto.rol ?? 'ADMINISTRADOR';
     if (hdu === null) {
-      if (rol === 'ADMINISTRADOR' || contexto.esServicio) throw noEncontrado('HDU inexistente');
+      if (rol === 'ADMINISTRADOR' || rol === 'AUDITOR' || contexto.esServicio) throw noEncontrado('HDU inexistente');
       throw accesoDenegado('HDU fuera de ámbito');
     }
     if (!contexto.esServicio) {

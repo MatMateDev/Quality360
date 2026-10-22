@@ -7,7 +7,7 @@ import { UsuariosAplicacion, type PerfilRespuesta } from '../../aplicacion/usuar
 export class SesionController {
   constructor(private readonly usuarios: UsuariosAplicacion) {}
 
-  @Roles('ADMINISTRADOR', 'QE', 'ANALISTA_QA')
+  @Roles('ADMINISTRADOR', 'QE', 'ANALISTA_QA', 'LIDER_QA', 'AUDITOR')
   @Get()
   async perfil(@AccesoActual() acceso: ResolucionAcceso): Promise<PerfilRespuesta> {
     return this.usuarios.perfil(acceso.usuarioId);

@@ -39,6 +39,17 @@ export class AsignacionAnalistaDto {
   motivo?: string;
 }
 
+/** Reasignación del QE responsable (D54): el motivo es obligatorio. */
+export class ReasignacionQeDto {
+  @IsUUID('all')
+  qeResponsableId!: string;
+
+  @IsString()
+  @MinLength(3)
+  @MaxLength(500)
+  motivo!: string;
+}
+
 export class SolicitudCambioEstadoDto {
   @IsIn(ESTADOS)
   estado!: EstadoHdu;
