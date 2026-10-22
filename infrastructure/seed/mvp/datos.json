@@ -62,6 +62,19 @@
       "correo": "gabriela.nunez@quality360.local",
       "rol": "ANALISTA_QA",
       "activo": false
+    },
+    {
+      "clave": "lorena",
+      "nombre": "Lorena Soto",
+      "correo": "lorena.soto@quality360.local",
+      "rol": "LIDER_QA",
+      "celulas": ["pagos", "clientes"]
+    },
+    {
+      "clave": "andres",
+      "nombre": "Andres Vega",
+      "correo": "andres.vega@quality360.local",
+      "rol": "AUDITOR"
     }
   ],
   "celulas": [

@@ -71,6 +71,8 @@ for (const s of datos.sprints) {
 for (const u of datos.usuarios) {
   const cuerpo = { nombre: u.nombre, correo: u.correo, rol: u.rol, contrasenaInicial: CONTRASENA };
   if (u.activo === false) cuerpo.activo = false;
+  // Un Líder QA recibe sus células al crearse (D42); si ya existía, no cambian.
+  if (u.celulas?.length) cuerpo.celulaIds = u.celulas.map((c) => ids.celula[c]).filter(Boolean);
   const j = await paso('usuarios', u.clave, () => llamar('POST', '/v1/interno/carga/usuarios', cuerpo));
   if (j) {
     ids.usuario[u.clave] = j.usuario.id;

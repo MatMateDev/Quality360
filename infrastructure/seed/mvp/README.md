@@ -82,6 +82,8 @@ nube ni con datos reales.
 | Elena Campos | elena.campos@quality360.local | ANALISTA_QA | sí | E1-F05, E1-F06#1 (con supervisor = Marcos), E2-F03/E2-F04 (HDU-CLI-002, 004, 006) |
 | Francisco Reyes | francisco.reyes@quality360.local | ANALISTA_QA | sí | **E1-F06 escenario 2**: analista sin supervisor asignado |
 | Gabriela Núñez | gabriela.nunez@quality360.local | ANALISTA_QA | **no** | E1-F01#2 (login rechazado, usuario inactivo), E1-B02 (usuario desactivado no accede) |
+| Lorena Soto | lorena.soto@quality360.local | LIDER_QA | sí | **E7**: Líder con las células Pagos y Clientes; ve todas las HDU de la semilla, solo lectura |
+| Andrés Vega | andres.vega@quality360.local | AUDITOR | sí | **E7**: lee todo el sistema, filtra y exporta CSV; no modifica nada |
 
 ## Catálogos
 

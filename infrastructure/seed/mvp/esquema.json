@@ -24,7 +24,13 @@
           "clave": { "type": "string", "pattern": "^[a-z][a-z0-9-]*$" },
           "nombre": { "type": "string", "minLength": 1, "maxLength": 120 },
           "correo": { "type": "string", "format": "email", "pattern": "^[^@]+@quality360\\.local$", "maxLength": 254 },
-          "rol": { "enum": ["ADMINISTRADOR", "QE", "ANALISTA_QA"] },
+          "rol": { "enum": ["ADMINISTRADOR", "QE", "ANALISTA_QA", "LIDER_QA", "AUDITOR"] },
+          "celulas": {
+            "type": "array",
+            "description": "Claves de las células a cargo de un Líder QA (solo con rol LIDER_QA, D42). Se aplican al crear el usuario.",
+            "items": { "type": "string", "pattern": "^[a-z][a-z0-9-]*$" },
+            "uniqueItems": true
+          },
           "activo": { "type": "boolean", "default": true },
           "contrasenaInicial": { "type": "string", "minLength": 12, "maxLength": 72 }
         }
