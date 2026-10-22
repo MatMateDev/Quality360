@@ -5,6 +5,7 @@ import { env } from "../support/env";
 import { crearHdu, obtenerCatalogos } from "../support/fixtures";
 import { api } from "../support/api";
 import { codigoHduUnico } from "../support/unique";
+import { clicConReintentoPorLimiteTasa } from "../support/ui";
 import { USUARIOS_SEMILLA } from "../support/usuarios";
 
 test.describe("E2-F04 · Detalle de HDU (con acceso)", () => {
@@ -46,7 +47,8 @@ test.describe("E2-F04 · Detalle de HDU (con acceso)", () => {
     const filaFecha = page.locator("article", { has: page.getByText("Último cambio de estado", { exact: true }) });
     await expect(filaFecha).toBeVisible();
 
-    await page.getByRole("button", { name: "Pasar a Diseño de pruebas" }).click();
+    // E7: se reintenta si el gateway responde 429 (límite de escritura compartido con la suite); falló una vez en la corrida completa.
+    await clicConReintentoPorLimiteTasa(page, page.getByRole("button", { name: "Pasar a Diseño de pruebas" }), /\/v1\/hdu\/[^/]+\/estado$/);
 
     const filaEstado = page.locator("article", { has: page.getByText("Estado", { exact: true }) });
     await expect(filaEstado).toContainText("Diseño de pruebas");

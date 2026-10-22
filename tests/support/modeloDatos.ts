@@ -168,7 +168,8 @@ export const COLUMNAS_MODELO: Record<Esquema, Record<string, Record<string, Tipo
 
 /** Tablas que no están en el modelo y se conservan porque las exige el backlog (decisiones, «Distribución y relaciones»). */
 export const TABLAS_EXTENSION: Record<Esquema, string[]> = {
-  organizacion: ["auditoria", "hdu_historial_estado", "hdu_historial_asignacion"],
+  // E7 (D30, D52, D54): `celula_lider` (células de cada Líder QA) y `hdu_historial_responsable` (reasignación del QE responsable).
+  organizacion: ["auditoria", "hdu_historial_estado", "hdu_historial_asignacion", "celula_lider", "hdu_historial_responsable"],
   certificaciones: ["evento_checklist", "certificado"],
   impedimentos: [],
 };
@@ -206,6 +207,9 @@ export const FK_EXTENSION: Record<Esquema, string[]> = {
     "historia_usuario.analista_id -> usuario.id_usuario",
     "hdu_historial_estado.hdu_id -> historia_usuario.id_historia",
     "hdu_historial_asignacion.hdu_id -> historia_usuario.id_historia",
+    "celula_lider.id_usuario -> usuario.id_usuario",
+    "celula_lider.id_celula -> celula.id_celula",
+    "hdu_historial_responsable.hdu_id -> historia_usuario.id_historia",
   ],
   certificaciones: ["certificado.id_certificacion -> certificacion.id_certificacion"],
   impedimentos: [],

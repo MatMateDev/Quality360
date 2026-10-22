@@ -12,7 +12,7 @@ test.describe("E1-F07 · Portal Administrador", () => {
   test("[E1-F07#1] redirige al portal administrativo con los accesos habilitados", async ({ page }) => {
     await page.goto(`${env.portalUrl}/`);
     await expect(page).toHaveURL(/\/admin$/);
-    await expect(page.getByText(USUARIOS_SEMILLA.patricia.nombre)).toBeVisible();
+    await expect(page.getByRole("banner").getByText(USUARIOS_SEMILLA.patricia.nombre)).toBeVisible();
   });
 
   test("[E1-F07#2] la navegación presenta accesos a usuarios, roles y supervisión", async ({ page }) => {

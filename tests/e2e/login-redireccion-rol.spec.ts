@@ -16,7 +16,7 @@ test.describe("Login · redirección por rol con el formulario nuevo", () => {
   test("[E1-F07#1] Administrador: tras ingresar llega a /admin con su identidad y accesos", async ({ page }) => {
     await iniciarSesionUI(page, USUARIOS_SEMILLA.patricia.correo, env.contrasenaDemo);
     await esperarPortal(page, "ADMINISTRADOR");
-    await expect(page.getByText(USUARIOS_SEMILLA.patricia.nombre)).toBeVisible();
+    await expect(page.getByRole("banner").getByText(USUARIOS_SEMILLA.patricia.nombre)).toBeVisible();
     const nav = page.getByRole("navigation", { name: "Portal" });
     await expect(nav.getByRole("link", { name: "Usuarios" })).toBeVisible();
     await expect(nav.getByRole("link", { name: "Supervisión" })).toBeVisible();
@@ -26,7 +26,7 @@ test.describe("Login · redirección por rol con el formulario nuevo", () => {
   test("[E1-F02#1] QE: tras ingresar llega a /qe con su identidad y la navegación de supervisión", async ({ page }) => {
     await iniciarSesionUI(page, USUARIOS_SEMILLA.carla.correo, env.contrasenaDemo);
     await esperarPortal(page, "QE");
-    await expect(page.getByText(USUARIOS_SEMILLA.carla.nombre)).toBeVisible();
+    await expect(page.getByRole("banner").getByText(USUARIOS_SEMILLA.carla.nombre)).toBeVisible();
     const nav = page.getByRole("navigation", { name: "Portal" });
     await expect(nav.getByRole("link", { name: "Equipo" })).toBeVisible();
     await expect(nav.getByRole("link", { name: "Historias supervisadas" })).toBeVisible();
@@ -35,7 +35,7 @@ test.describe("Login · redirección por rol con el formulario nuevo", () => {
   test("[E1-F05#1] Analista QA: tras ingresar llega a /qa con su identidad y su navegación", async ({ page }) => {
     await iniciarSesionUI(page, USUARIOS_SEMILLA.ana.correo, env.contrasenaDemo);
     await esperarPortal(page, "ANALISTA_QA");
-    await expect(page.getByText(USUARIOS_SEMILLA.ana.nombre)).toBeVisible();
+    await expect(page.getByRole("banner").getByText(USUARIOS_SEMILLA.ana.nombre)).toBeVisible();
     const nav = page.getByRole("navigation", { name: "Portal" });
     await expect(nav.getByRole("link", { name: "Mis HDU" })).toBeVisible();
     await expect(nav.getByRole("link", { name: "Usuarios" })).toHaveCount(0);
@@ -47,7 +47,7 @@ test.describe("Login · redirección por rol con el formulario nuevo", () => {
     await camposLogin(page).contrasena.fill(env.contrasenaDemo);
     await camposLogin(page).contrasena.press("Enter");
     await esperarPortal(page, "QE");
-    await expect(page.getByText(USUARIOS_SEMILLA.marcos.nombre)).toBeVisible();
+    await expect(page.getByRole("banner").getByText(USUARIOS_SEMILLA.marcos.nombre)).toBeVisible();
   });
 
   test("[LOGIN-UI] al abrir una ruta protegida sin sesión se pide el login y, tras ingresar, se vuelve a ella", async ({ page }) => {

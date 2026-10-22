@@ -37,14 +37,39 @@ export default defineConfig({
     {
       name: "e2e",
       testDir: "./e2e",
-      testIgnore: /.*\.setup\.ts/,
+      testIgnore: [/.*\.setup\.ts/, /e7-.*\.spec\.ts/],
       dependencies: ["setup"],
       use: { ...devices["Desktop Chrome"], baseURL: env.portalUrl },
     },
     {
       name: "api",
       testDir: "./api",
+      testIgnore: /e7-.*\.spec\.ts/,
       use: {},
+    },
+    // Certificación de E7 · Bandejas por rol (fixture `npm run seed:e7`; usuarios adm1, qe1... @quality360.local).
+    // `e7-setup` guarda la sesión de cada usuario del fixture en tests/.auth/e7-<clave>.json.
+    {
+      name: "e7-setup",
+      testDir: "./e2e",
+      testMatch: /e7-sesiones\.ts/,
+      use: { baseURL: env.portalUrl },
+    },
+    {
+      name: "e7-api",
+      testDir: "./api",
+      testMatch: /e7-.*\.spec\.ts/,
+      dependencies: ["e7-setup"],
+      timeout: 180_000,
+      use: {},
+    },
+    {
+      name: "e7-e2e",
+      testDir: "./e2e",
+      testMatch: /e7-.*\.spec\.ts/,
+      dependencies: ["e7-setup"],
+      timeout: 180_000,
+      use: { ...devices["Desktop Chrome"], baseURL: env.portalUrl, actionTimeout: 15_000, navigationTimeout: 30_000 },
     },
   ],
 });

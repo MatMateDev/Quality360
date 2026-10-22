@@ -133,10 +133,10 @@ test.describe("[MODELO] Estructura: tablas y columnas", () => {
     expect(problemas, problemas.join("\n")).toEqual([]);
   });
 
-  test("[MODELO] organizacion.rol es un catálogo de 3 filas y cada usuario sembrado apunta a su rol por llave foránea", async () => {
+  test("[MODELO] organizacion.rol es un catálogo de 5 filas (E7 suma LIDER_QA y AUDITOR) y cada usuario sembrado apunta a su rol por llave foránea", async () => {
     await conServicio.organizacion(async (cliente) => {
       const roles = await cliente.query<{ nombre: string }>("select nombre from organizacion.rol order by nombre");
-      expect(roles.rows.map((fila) => fila.nombre)).toEqual(["ADMINISTRADOR", "ANALISTA_QA", "QE"]);
+      expect(roles.rows.map((fila) => fila.nombre)).toEqual(["ADMINISTRADOR", "ANALISTA_QA", "AUDITOR", "LIDER_QA", "QE"]);
 
       const usuarios = await cliente.query<{ email: string; rol: string }>(
         "select u.email, r.nombre as rol from organizacion.usuario u join organizacion.rol r on r.id_rol = u.id_rol",
