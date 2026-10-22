@@ -231,6 +231,9 @@ model EventoChecklist {
   motivo        String?
 
   @@index([hduId, fecha])
+  @@index([fecha], map: "evento_checklist_fecha_idx")
+  @@index([accion, fecha], map: "evento_checklist_accion_fecha_idx")
+  @@index([actorId, fecha], map: "evento_checklist_actor_id_fecha_idx")
   @@map("evento_checklist")
 }
 
@@ -251,5 +254,7 @@ model Certificado {
 
   certificacion Certificacion @relation(fields: [certificacionId], references: [id])
 
+  @@index([emitidoEn], map: "certificado_emitido_en_idx")
+  @@index([emitidoPorId], map: "certificado_emitido_por_id_idx")
   @@map("certificado")
 }

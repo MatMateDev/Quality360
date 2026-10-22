@@ -40,6 +40,9 @@ function validarResolucion(cuerpo: unknown): ResolucionAcceso {
   const supervisados = Array.isArray(ambito.analistasSupervisadosIds)
     ? ambito.analistasSupervisadosIds.filter((valor): valor is string => typeof valor === 'string')
     : [];
+  const celulas = Array.isArray(ambito.celulasIds)
+    ? ambito.celulasIds.filter((valor): valor is string => typeof valor === 'string')
+    : [];
   return {
     usuarioId: datos.usuarioId,
     rol: datos.rol,
@@ -47,6 +50,7 @@ function validarResolucion(cuerpo: unknown): ResolucionAcceso {
     ambito: {
       qeSupervisorId: typeof ambito.qeSupervisorId === 'string' ? ambito.qeSupervisorId : null,
       analistasSupervisadosIds: supervisados,
+      celulasIds: celulas,
     },
   };
 }

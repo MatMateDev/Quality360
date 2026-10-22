@@ -55,6 +55,7 @@ enum EntidadAuditoria {
   USUARIO
   SUPERVISION
   HDU
+  EXPORTACION
 }
 
 enum AccionAuditoria {
@@ -69,6 +70,9 @@ enum AccionAuditoria {
   CAMBIAR_ESTADO_HDU
   ASIGNAR_ANALISTA
   REASIGNAR_ANALISTA
+  ASIGNAR_CELULAS_LIDER
+  EXPORTAR
+  REASIGNAR_QE_RESPONSABLE
 }
 
 /// Rol (modelo de datos: Rol). Catálogo cerrado que carga la migración
@@ -99,6 +103,7 @@ model Usuario {
   supervisionesComoAnalista Supervision[] @relation("SupervisionAnalista")
   hduComoQeResponsable      Hdu[]         @relation("HduQeResponsable")
   hduComoAnalista           Hdu[]         @relation("HduAnalista")
+  celulasLider              CelulaLider[]
 
   @@index([rolId])
   @@map("usuario")
@@ -140,8 +145,35 @@ model Celula {
 
   sprints Sprint[]
   hdus    Hdu[]
+  lideres CelulaLider[]
 
   @@map("celula")
+}
+
+/// CelulaLider (D30, D52): células a cargo de un Líder QA. Vigente si `fecha_hasta`
+/// es nula. Índices parciales y CHECK en la migración 20261021000000_e7_roles_celula_lider:
+/// `celula_lider_vigente_key` UNIQUE (id_usuario, id_celula) WHERE fecha_hasta IS NULL,
+/// `celula_lider_celula_vigente_idx` (id_celula) WHERE fecha_hasta IS NULL,
+/// `celula_lider_fechas_ck` y `celula_lider_retiro_ck`. Que el usuario sea LIDER_QA se
+/// valida en la aplicación, dentro de la misma transacción.
+model CelulaLider {
+  id                String     @id @default(uuid()) @map("id_celula_lider") @db.Uuid
+  usuarioId         String     @map("id_usuario") @db.Uuid
+  celulaId          String     @map("id_celula") @db.Uuid
+  desde             DateTime   @default(now()) @map("fecha_desde") @db.Timestamptz(6)
+  hasta             DateTime?  @map("fecha_hasta") @db.Timestamptz(6)
+  asignadoPorTipo   TipoActor  @map("asignado_por_tipo")
+  asignadoPorId     String     @map("asignado_por_id")
+  asignadoPorNombre String     @map("asignado_por_nombre")
+  retiradoPorTipo   TipoActor? @map("retirado_por_tipo")
+  retiradoPorId     String?    @map("retirado_por_id")
+  retiradoPorNombre String?    @map("retirado_por_nombre")
+
+  usuario Usuario @relation(fields: [usuarioId], references: [id])
+  celula  Celula  @relation(fields: [celulaId], references: [id])
+
+  @@index([usuarioId, desde(sort: Desc)], map: "celula_lider_usuario_historial_idx")
+  @@map("celula_lider")
 }
 
 /// Estado del sprint (modelo de datos: Sprint.estado).
@@ -191,12 +223,13 @@ model Hdu {
   creadoPorId         String       @map("creado_por_id")
   creadoPorNombre     String       @map("creado_por_nombre")
 
-  celula              Celula                   @relation(fields: [celulaId], references: [id])
-  qeResponsable       Usuario                  @relation("HduQeResponsable", fields: [qeResponsableId], references: [id])
-  analista            Usuario?                 @relation("HduAnalista", fields: [analistaId], references: [id])
-  historiaSprints     HistoriaSprint[]
-  historialEstado     HduHistorialEstado[]
-  historialAsignacion HduHistorialAsignacion[]
+  celula               Celula                    @relation(fields: [celulaId], references: [id])
+  qeResponsable        Usuario                   @relation("HduQeResponsable", fields: [qeResponsableId], references: [id])
+  analista             Usuario?                  @relation("HduAnalista", fields: [analistaId], references: [id])
+  historiaSprints      HistoriaSprint[]
+  historialEstado      HduHistorialEstado[]
+  historialAsignacion  HduHistorialAsignacion[]
+  historialResponsable HduHistorialResponsable[]
 
   @@index([celulaId])
   @@index([qeResponsableId])
@@ -239,8 +272,8 @@ model HduHistorialEstado {
 
   hdu Hdu @relation(fields: [hduId], references: [id])
 
-  @@map("hdu_historial_estado")
   @@index([hduId])
+  @@map("hdu_historial_estado")
 }
 
 /// hdu_historial_asignacion(hdu_id, analista_anterior, analista_nuevo, motivo,
@@ -258,8 +291,26 @@ model HduHistorialAsignacion {
 
   hdu Hdu @relation(fields: [hduId], references: [id])
 
-  @@map("hdu_historial_asignacion")
   @@index([hduId])
+  @@map("hdu_historial_asignacion")
+}
+
+/// Reasignación del QE responsable de una HDU (D54): QE anterior y nuevo, motivo y actor.
+model HduHistorialResponsable {
+  id           String    @id @default(uuid()) @db.Uuid
+  hduId        String    @map("hdu_id") @db.Uuid
+  qeAnteriorId String    @map("qe_anterior_id") @db.Uuid
+  qeNuevoId    String    @map("qe_nuevo_id") @db.Uuid
+  motivo       String
+  actorTipo    TipoActor @map("actor_tipo")
+  actorId      String    @map("actor_id")
+  actorNombre  String    @map("actor_nombre")
+  fecha        DateTime  @default(now()) @db.Timestamptz(6)
+
+  hdu Hdu @relation(fields: [hduId], references: [id])
+
+  @@index([hduId])
+  @@map("hdu_historial_responsable")
 }
 
 /// auditoria(id, actor_id, entidad, entidad_id, accion, antes jsonb,
@@ -278,7 +329,9 @@ model Auditoria {
   motivo      String?
   fecha       DateTime         @default(now()) @db.Timestamptz(6)
 
-  @@map("auditoria")
   @@index([entidad, entidadId])
   @@index([fecha])
+  @@index([actorId, fecha], map: "auditoria_actor_fecha_idx")
+  @@index([accion, fecha], map: "auditoria_accion_fecha_idx")
+  @@map("auditoria")
 }

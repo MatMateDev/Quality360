@@ -18,6 +18,8 @@ export type CodigoError =
   | 'CODIGO_HDU_DUPLICADO'
   | 'ULTIMO_ADMINISTRADOR'
   | 'RELACIONES_INCOMPATIBLES'
+  | 'ROL_INCOMPATIBLE'
+  | 'EXPORTACION_EXCEDE_LIMITE'
   | 'TRANSICION_INVALIDA'
   | 'CHECKLIST_INCOMPLETO'
   | 'CHECKLIST_NO_DISPONIBLE'
@@ -52,6 +54,8 @@ export const MENSAJES: Readonly<Record<CodigoError, string>> = Object.freeze({
   CODIGO_HDU_DUPLICADO: 'Ya existe una HDU con ese identificador.',
   ULTIMO_ADMINISTRADOR: 'La plataforma debe conservar al menos un administrador activo.',
   RELACIONES_INCOMPATIBLES: 'Resuelve las relaciones de supervisión antes de continuar.',
+  ROL_INCOMPATIBLE: 'El usuario no tiene el rol Líder QA.',
+  EXPORTACION_EXCEDE_LIMITE: 'La exportación supera las 50.000 filas. Acota los filtros.',
   TRANSICION_INVALIDA: 'La HDU no puede pasar a ese estado.',
   CHECKLIST_INCOMPLETO: 'No se puede cerrar la HDU: el checklist de entregables está incompleto.',
   CHECKLIST_NO_DISPONIBLE:

@@ -35,7 +35,7 @@ const ACCESO_ACTIVO: ResolucionAcceso = {
   usuarioId: SUB,
   rol: 'ANALISTA_QA',
   activo: true,
-  ambito: { qeSupervisorId: null, analistasSupervisadosIds: [] },
+  ambito: { qeSupervisorId: null, analistasSupervisadosIds: [], celulasIds: [] },
 };
 
 /** Resolutor de prueba: sustituye a Organización. */
@@ -67,6 +67,12 @@ class ControladorPrueba {
   @Get('cualquier-rol')
   cualquierRol(@AccesoActual() acceso: ResolucionAcceso): { rol: string } {
     return { rol: acceso.rol };
+  }
+
+  @Roles('LIDER_QA', 'AUDITOR')
+  @Get('solo-lectura')
+  soloLectura(@AccesoActual() acceso: ResolucionAcceso): { rol: string; celulasIds: readonly string[] } {
+    return { rol: acceso.rol, celulasIds: acceso.ambito.celulasIds };
   }
 
   @Roles('ADMINISTRADOR')
@@ -200,6 +206,23 @@ describe('AccesoGuard', () => {
     const respuesta = await http().get('/cualquier-rol').set('authorization', `Bearer ${token}`);
     assert.equal(respuesta.status, 403);
     assert.equal(respuesta.body.codigo, 'ACCESO_DENEGADO');
+  });
+
+  it('los 5 roles son válidos: LIDER_QA y AUDITOR entran a rutas de lectura y no a las de administrador (E7-B01)', async () => {
+    const token = await firmarConLlave(llaveRsa);
+    const autorizacion = `Bearer ${token}`;
+    resolutor.resolucion = { ...ACCESO_ACTIVO, rol: 'LIDER_QA', ambito: { qeSupervisorId: null, analistasSupervisadosIds: [], celulasIds: ['c1'] } };
+    const lider = await http().get('/solo-lectura').set('authorization', autorizacion);
+    assert.equal(lider.status, 200);
+    assert.deepEqual(lider.body, { rol: 'LIDER_QA', celulasIds: ['c1'] });
+    assert.equal((await http().get('/solo-admin').set('authorization', autorizacion)).status, 403);
+
+    resolutor.resolucion = { ...ACCESO_ACTIVO, rol: 'AUDITOR' };
+    assert.equal((await http().get('/solo-lectura').set('authorization', autorizacion)).status, 200);
+    assert.equal((await http().get('/solo-admin').set('authorization', autorizacion)).status, 403);
+
+    resolutor.resolucion = { ...ACCESO_ACTIVO, rol: 'ADMINISTRADOR' };
+    assert.equal((await http().get('/solo-lectura').set('authorization', autorizacion)).status, 403);
   });
 
   it('rol no permitido: 403', async () => {
