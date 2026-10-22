@@ -12,8 +12,9 @@ Plataforma para supervisar la certificación QA de historias de usuario (HDU). E
 | E4 · Impedimentos y riesgos | 8 HDU | Pendiente |
 | E5 · Integración con Jira Cloud | 8 HDU | Pendiente |
 | E6 · Indicadores y dashboards | 8 HDU | Pendiente |
+| E7 · Bandejas por rol | 12 HDU, 36 escenarios | Certificada |
 
-La certificación de E1, E2 y E3 cubre los 120 escenarios de aceptación del backlog, con 178 pruebas automatizadas contra el stack real, incluidas 43 que verifican el modelo de datos (tablas, llaves foráneas y aislamiento por esquema). El dictamen por escenario y por HDU está en [`docs/validacion/certificacion-e1-e2.md`](docs/validacion/certificacion-e1-e2.md), [`docs/validacion/certificacion-e3.md`](docs/validacion/certificacion-e3.md) y [`docs/validacion/certificacion-modelo-datos.md`](docs/validacion/certificacion-modelo-datos.md).
+La certificación de E1, E2, E3 y E7 cubre los 162 escenarios de aceptación del backlog, con 440 pruebas automatizadas contra el stack real, incluidas las que verifican el modelo de datos (tablas, llaves foráneas y aislamiento por esquema) y la accesibilidad de las bandejas. El dictamen por escenario y por HDU está en [`docs/validacion/certificacion-e1-e2.md`](docs/validacion/certificacion-e1-e2.md), [`docs/validacion/certificacion-e3.md`](docs/validacion/certificacion-e3.md) [`docs/validacion/certificacion-modelo-datos.md`](docs/validacion/certificacion-modelo-datos.md) y [`docs/validacion/certificacion-e7.md`](docs/validacion/certificacion-e7.md).
 
 ## Arquitectura
 
