@@ -30,6 +30,11 @@ export interface RespuestaServicio {
   texto: string;
   tipoContenido: string | null;
   ubicacion: string | null;
+  /** Bytes tal cual llegaron: una exportación CSV conserva su BOM (D48). */
+  bytes: Buffer;
+  /** `Content-Disposition` y `X-Q360-Filas` de las exportaciones CSV. */
+  disposicion: string | null;
+  filas: string | null;
 }
 
 export type ResultadoServicio =
@@ -64,8 +69,10 @@ export async function solicitarServicio(peticion: PeticionServicio): Promise<Res
   }
 
   let texto: string;
+  let bytes: Buffer;
   try {
-    texto = await respuesta.text();
+    bytes = Buffer.from(await respuesta.arrayBuffer());
+    texto = bytes.toString('utf8');
   } catch (error) {
     return { tipo: 'fallo', motivo: error instanceof Error ? error.message : 'cuerpo ilegible' };
   }
@@ -88,6 +95,9 @@ export async function solicitarServicio(peticion: PeticionServicio): Promise<Res
       texto,
       tipoContenido,
       ubicacion: respuesta.headers.get('location'),
+      bytes,
+      disposicion: respuesta.headers.get('content-disposition'),
+      filas: respuesta.headers.get('x-q360-filas'),
     },
   };
 }

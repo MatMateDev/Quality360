@@ -108,6 +108,36 @@ export class BandejaAprobacionesController {
   }
 }
 
+/** Consultas y exportaciones del Auditor que atiende Certificaciones (E7-B04): se propaga la query. */
+@Controller('v1/auditor')
+export class AuditorCertificacionesController {
+  constructor(private readonly reenviador: Reenviador) {}
+
+  private async reenviar(solicitud: SolicitudGateway, respuesta: Response, ruta: string): Promise<void> {
+    await this.reenviador.reenviar(solicitud, respuesta, { base: this.reenviador.certificacionesUrl, ruta });
+  }
+
+  @Get('bitacora')
+  async bitacora(@Req() solicitud: SolicitudGateway, @Res() respuesta: Response): Promise<void> {
+    await this.reenviar(solicitud, respuesta, '/v1/auditor/bitacora');
+  }
+
+  @Get('certificados')
+  async certificados(@Req() solicitud: SolicitudGateway, @Res() respuesta: Response): Promise<void> {
+    await this.reenviar(solicitud, respuesta, '/v1/auditor/certificados');
+  }
+
+  @Get('exportaciones/bitacora')
+  async exportarBitacora(@Req() solicitud: SolicitudGateway, @Res() respuesta: Response): Promise<void> {
+    await this.reenviar(solicitud, respuesta, '/v1/auditor/exportaciones/bitacora');
+  }
+
+  @Get('exportaciones/certificados')
+  async exportarCertificados(@Req() solicitud: SolicitudGateway, @Res() respuesta: Response): Promise<void> {
+    await this.reenviar(solicitud, respuesta, '/v1/auditor/exportaciones/certificados');
+  }
+}
+
 @Controller('v1/certificados')
 export class VerificacionCertificadoController {
   constructor(private readonly reenviador: Reenviador) {}

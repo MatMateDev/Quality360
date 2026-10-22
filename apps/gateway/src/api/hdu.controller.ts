@@ -80,6 +80,16 @@ export class HduController {
     await this.reenviador.reenviar(solicitud, respuesta, { ruta: `/v1/hdu/${uuidDeRuta(id)}/analista` });
   }
 
+  /** Reasignar el QE responsable (D54): solo el Administrador; lo valida Organización. */
+  @Put(':id/qe-responsable')
+  async reasignarQeResponsable(
+    @Param('id') id: string,
+    @Req() solicitud: SolicitudGateway,
+    @Res() respuesta: Response,
+  ): Promise<void> {
+    await this.reenviador.reenviar(solicitud, respuesta, { ruta: `/v1/hdu/${uuidDeRuta(id)}/qe-responsable` });
+  }
+
   @Post(':id/estado')
   async cambiarEstado(
     @Param('id') id: string,

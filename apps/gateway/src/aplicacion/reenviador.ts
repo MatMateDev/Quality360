@@ -76,6 +76,14 @@ export class Reenviador {
 
   /** Copia estado, `Location` y cuerpo JSON. Nada más viaja de vuelta. */
   escribir(respuesta: Response, servicio: RespuestaServicio): void {
+    // Exportaciones: se transmite el CSV tal cual, con sus cabeceras, sin convertirlo a JSON (D48).
+    if (servicio.estado === 200 && servicio.tipoContenido !== null && servicio.tipoContenido.startsWith('text/csv')) {
+      respuesta.setHeader('content-type', servicio.tipoContenido);
+      if (servicio.disposicion !== null) respuesta.setHeader('content-disposition', servicio.disposicion);
+      if (servicio.filas !== null) respuesta.setHeader('x-q360-filas', servicio.filas);
+      respuesta.status(200).send(servicio.bytes);
+      return;
+    }
     if (servicio.json === undefined && servicio.texto.length > 0) {
       throw servicioNoDisponible(`el servicio respondió ${servicio.estado} sin JSON`);
     }
