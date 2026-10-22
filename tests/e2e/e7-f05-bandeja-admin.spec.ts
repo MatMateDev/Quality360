@@ -126,20 +126,44 @@ test.describe("E7-F05 · Bandeja del Administrador", () => {
   });
 
   test("[E7-F05#2] T03: sin pendientes de configuración se muestra «No hay pendientes de configuración» y los contadores de pendientes en 0", async ({ browser, request }) => {
-    const bd = await contarOrganizacion();
-    const bandeja = await api.get<{ pendientes: { datos: { total: number } } }>(request, "/v1/bandeja/admin", { token: await tokenE7("adm1") });
-    test.skip(
-      bandeja.body.pendientes.datos.total > 0,
-      `La base compartida tiene ${bandeja.body.pendientes.datos.total} pendientes de configuración (${bd.analistasSinQe} analistas sin QE, ${bd.lideresSinCelulas} líderes sin células…) y no se pueden resolver sin alterar el fixture de los demás escenarios; este escenario solo se ejecuta sobre una base sin pendientes.`,
-    );
-    const ctx = await browser.newContext({ storageState: estadoSesion("adm1") });
-    const page = await ctx.newPage();
-    await page.goto(`${env.portalUrl}/admin`);
-    await expect(page.getByTestId("estado-vacio-pendientes")).toContainText("No hay pendientes de configuración");
-    for (const clave of ["analistas-sin-qe", "qe-sin-analistas", "lideres-sin-celulas", "celulas-sin-lider"]) {
-      await expect(page.getByTestId(`contador-${clave}`)).toHaveText("0");
+    // Se resuelven los pendientes de forma REVERSIBLE (sin tocar supervisiones): los usuarios con pendiente se desactivan
+    // y las células sin líder se suman temporalmente a LID1; todo se restaura en `finally`.
+    test.setTimeout(300_000);
+    const adm = await tokenE7("adm1");
+    const desactivados: string[] = [];
+    const lid1 = (await api.get<{ items: Array<{ id: string }> }>(request, `/v1/usuarios?q=${encodeURIComponent(USUARIOS_E7.lid1.correo)}`, { token: adm })).body.items[0];
+    const celulasLid1 = (await api.get<{ vigentes: Array<{ celula: { id: string } }> }>(request, `/v1/usuarios/${lid1.id}/celulas-lider`, { token: adm })).body.vigentes.map((v) => v.celula.id);
+    let celulasExtra = false;
+    try {
+      for (let vuelta = 0; vuelta < 4; vuelta += 1) {
+        const b = await api.get<{ pendientes: { datos: { items: Array<{ tipo: string; usuario: { id: string } | null; celula: { id: string } | null }> } } }>(request, "/v1/bandeja/admin?tamanoPagina=100", { token: adm });
+        const items = b.body.pendientes.datos.items;
+        if (items.length === 0) break;
+        const celulasSinLider = items.filter((i) => i.tipo === "CELULA_SIN_LIDER" && i.celula).map((i) => i.celula!.id);
+        if (celulasSinLider.length > 0) {
+          celulasExtra = true;
+          await api.put(request, `/v1/usuarios/${lid1.id}/celulas-lider`, { token: adm, body: { celulaIds: [...new Set([...celulasLid1, ...celulasSinLider])] } });
+        }
+        for (const i of items.filter((x) => x.usuario)) {
+          await api.patch(request, `/v1/usuarios/${i.usuario!.id}`, { token: adm, body: { activo: false } });
+          desactivados.push(i.usuario!.id);
+        }
+      }
+      const final = await api.get<{ pendientes: { datos: { total: number } } }>(request, "/v1/bandeja/admin", { token: adm });
+      expect(final.body.pendientes.datos.total, "no se pudieron resolver todos los pendientes").toBe(0);
+
+      const ctx = await browser.newContext({ storageState: estadoSesion("adm1") });
+      const page = await ctx.newPage();
+      await page.goto(`${env.portalUrl}/admin`);
+      await expect(page.getByTestId("estado-vacio-pendientes")).toContainText("No hay pendientes de configuración");
+      for (const clave of ["analistas-sin-qe", "qe-sin-analistas", "lideres-sin-celulas", "celulas-sin-lider"]) {
+        await expect(page.getByTestId(`contador-${clave}`)).toHaveText("0");
+      }
+      await ctx.close();
+    } finally {
+      for (const id of desactivados) await api.patch(request, `/v1/usuarios/${id}`, { token: adm, body: { activo: true } });
+      if (celulasExtra) await api.put(request, `/v1/usuarios/${lid1.id}/celulas-lider`, { token: adm, body: { celulaIds: celulasLid1 } });
     }
-    await ctx.close();
   });
 
   test.describe("con el servicio de Organización sin responder en las bandejas", () => {

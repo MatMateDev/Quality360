@@ -21,7 +21,7 @@ test.describe("E1-F08 · Inicio del Administrador", () => {
     await page.goto(`${env.portalUrl}/admin`);
     await page.getByRole("link", { name: "Gestionar usuarios" }).click();
     await expect(page).toHaveURL(/\/admin\/usuarios$/);
-    await expect(page.getByRole("heading", { name: "Usuarios" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Usuarios", level: 1 })).toBeVisible();
 
     await page.goto(`${env.portalUrl}/admin`);
     await page.getByRole("link", { name: "Gestionar supervisión" }).click();
