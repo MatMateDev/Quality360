@@ -5,6 +5,7 @@ import { ConfiguracionIncompleta } from "./components/ConfiguracionIncompleta";
 import { variablesFaltantes } from "./lib/env";
 import "./styles/global.css";
 import "./styles/bandejas.css";
+import "./styles/impedimentos.css";
 
 async function iniciar() {
   if (import.meta.env.VITE_USAR_MOCKS === "true") {

@@ -29,6 +29,7 @@ import {
 } from "./utils";
 import { analistaEnEquipoDe, autenticar, esUsuarioMock, exigirRol } from "./comun";
 import { aplicarCelulasLider, celulasVigentesDe } from "./dataE7";
+import { handlersE4, verificarImpedimentosCierre } from "./handlersE4";
 import { handlersE7 } from "./handlersE7";
 
 const BASE = env.gatewayUrl;
@@ -779,16 +780,21 @@ export const handlers = [
           { status: 409 },
         );
       }
-      return HttpResponse.json(
-        {
-          ...cuerpoError(
-            "CHECKLIST_NO_DISPONIBLE",
-            "No se puede cerrar la HDU: el checklist de entregables no está disponible para verificarse.",
-          ),
-          checklist: { fuente: "certificaciones.checklist", estado: "indisponible" },
-        },
-        { status: 409 },
-      );
+      if (!hdu.simularChecklistCompleto) {
+        return HttpResponse.json(
+          {
+            ...cuerpoError(
+              "CHECKLIST_NO_DISPONIBLE",
+              "No se puede cerrar la HDU: el checklist de entregables no está disponible para verificarse.",
+            ),
+            checklist: { fuente: "certificaciones.checklist", estado: "indisponible" },
+          },
+          { status: 409 },
+        );
+      }
+      // E4: con el checklist completo, el cierre depende de los impedimentos (el orden es D10, D11 y D77).
+      const bloqueo = verificarImpedimentosCierre(hdu.id);
+      if (bloqueo) return bloqueo;
     }
 
     const anterior = hdu.estado;
@@ -808,6 +814,7 @@ export const handlers = [
   }),
 
   ...handlersE7,
+  ...handlersE4,
 
   http.get(`${BASE}/v1/hdu/:id/historial`, ({ request, params }) => {
     const actor = autenticar(request);

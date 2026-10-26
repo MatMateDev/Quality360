@@ -3,6 +3,9 @@ import type { FiltrosUrl } from "@/lib/filtrosUrl";
 import { http } from "@/lib/httpClient";
 import {
   ESTADOS_HDU,
+  ESTADOS_IMPEDIMENTO,
+  NIVELES_RIESGO,
+  TIPOS_IMPEDIMENTO,
   ETIQUETAS_ACCION_BITACORA,
   ETIQUETAS_OPERACION,
   type AccionChecklist,
@@ -20,7 +23,22 @@ import {
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const FECHA_RE = /^\d{4}-\d{2}-\d{2}$/;
-const COLUMNAS_ORDEN = ["codigo", "celula", "sprint", "prioridad", "estado", "avance", "actualizada", "fecha"];
+const COLUMNAS_ORDEN = [
+  "codigo",
+  "celula",
+  "sprint",
+  "prioridad",
+  "estado",
+  "avance",
+  "actualizada",
+  "fecha",
+  // E4
+  "riesgo",
+  "diasAbierto",
+  "fechaRegistro",
+  "impedimentosAbiertos",
+];
+const ACCIONES_GESTION = ["REGISTRAR", "ESCALAR", "RESOLVER", "REABRIR", "SEGUIMIENTO", "FIJAR_RIESGO"];
 const TIPOS_ACCION: TipoAccionQe[] = ["APROBAR", "ASIGNAR", "CERTIFICAR", "CERRAR"];
 
 type Conversion = (valor: string) => string | undefined;
@@ -55,6 +73,18 @@ const CONVERSIONES: Record<string, [parametroApi: string, convertir: Conversion]
   operacion: ["operacion", entre(Object.keys(ETIQUETAS_OPERACION))],
   usuario: ["usuarioAfectadoId", uuid],
   emisor: ["emitidoPorId", uuid],
+  // E4: filtros de impedimentos y riesgo.
+  "solo-bloq": ["soloBloqueadas", verdadero],
+  resueltos: ["incluirResueltos", verdadero],
+  riesgo: ["riesgo", entre(NIVELES_RIESGO)],
+  nivel: ["nivel", entre(NIVELES_RIESGO)],
+};
+
+/** E4: en las consultas de impedimentos, `estado`, `tipo` y `accion` no son los de la HDU ni los del checklist. */
+const CONVERSIONES_IMPEDIMENTO: Record<string, [parametroApi: string, convertir: Conversion]> = {
+  estado: ["estado", entre(ESTADOS_IMPEDIMENTO)],
+  tipo: ["tipo", entre(TIPOS_IMPEDIMENTO)],
+  accion: ["accion", entre(ACCIONES_GESTION)],
 };
 
 export interface OpcionesQuery {
@@ -64,6 +94,8 @@ export interface OpcionesQuery {
   paginar?: boolean;
   /** Columnas de orden aceptadas por el API de esta consulta; vacío = no admite `orden`. */
   ordenables?: string[];
+  /** Usa las conversiones de `estado`, `tipo` y `accion` de los impedimentos (E4). */
+  impedimentos?: boolean;
 }
 
 /** Construye el `?query` del API desde los filtros de la URL. */
@@ -71,7 +103,7 @@ export function aQueryApi(filtros: FiltrosUrl | null, opciones: OpcionesQuery): 
   if (!filtros) return "";
   const params = new URLSearchParams();
   for (const clave of opciones.claves) {
-    const conversion = CONVERSIONES[clave];
+    const conversion = (opciones.impedimentos ? CONVERSIONES_IMPEDIMENTO[clave] : undefined) ?? CONVERSIONES[clave];
     const valor = filtros.get(clave);
     if (!conversion || !valor) continue;
     const convertido = conversion[1](valor);
@@ -92,13 +124,15 @@ export function aQueryApi(filtros: FiltrosUrl | null, opciones: OpcionesQuery): 
 
 const ORDEN_HDU = COLUMNAS_ORDEN;
 
-export const CLAVES_ANALISTA = ["estado", "celula", "sprint", "solo-obs", "q"];
+export const CLAVES_ANALISTA = ["estado", "celula", "sprint", "solo-obs", "solo-bloq", "q"];
 export const CLAVES_QE = ["tipo", "celula", "sprint", "analista", "q"];
-export const CLAVES_LIDER = ["celula", "sprint", "estado", "qe", "analista", "sin-analista", "q"];
+export const CLAVES_LIDER = ["celula", "sprint", "estado", "qe", "analista", "sin-analista", "solo-bloq", "q"];
 export const CLAVES_AUDITOR_HDU = ["celula", "sprint", "estado", "qe", "analista", "certificado", "desde", "hasta", "q"];
 export const CLAVES_CERTIFICADOS = ["desde", "hasta", "emisor", "q"];
 export const CLAVES_BITACORA = ["desde", "hasta", "hdu", "actor", "accion"];
 export const CLAVES_AUDITORIA = ["desde", "hasta", "actor", "operacion", "usuario"];
+export const CLAVES_AUDITOR_IMPEDIMENTOS = ["desde", "hasta", "hdu", "estado", "tipo", "q"];
+export const CLAVES_AUDITOR_GESTION = ["desde", "hasta", "hdu", "actor", "estado", "tipo", "accion"];
 
 export function useBandejaAnalista(filtros: FiltrosUrl) {
   const query = aQueryApi(filtros, { claves: CLAVES_ANALISTA, ordenables: ORDEN_HDU });
@@ -189,18 +223,21 @@ export function useAuditoriaUsuarios(filtros: FiltrosUrl) {
   });
 }
 
-export type RecursoExportable = "hdu" | "certificados" | "bitacora" | "auditoria-usuarios";
+export type RecursoExportable = "hdu" | "certificados" | "bitacora" | "auditoria-usuarios" | "impedimentos" | "gestion-impedimentos";
 
 const CLAVES_EXPORTACION: Record<RecursoExportable, string[]> = {
   hdu: CLAVES_AUDITOR_HDU,
   certificados: CLAVES_CERTIFICADOS,
   bitacora: CLAVES_BITACORA,
   "auditoria-usuarios": CLAVES_AUDITORIA,
+  impedimentos: CLAVES_AUDITOR_IMPEDIMENTOS,
+  "gestion-impedimentos": CLAVES_AUDITOR_GESTION,
 };
 
 /** Ruta del CSV con los mismos filtros de la pestaña (exporta todo lo filtrado, no solo la página visible). */
 export function rutaExportacion(recurso: RecursoExportable, filtros: FiltrosUrl): string {
-  return `/v1/auditor/exportaciones/${recurso}${aQueryApi(filtros, { claves: CLAVES_EXPORTACION[recurso], paginar: false })}`;
+  const deImpedimentos = recurso === "impedimentos" || recurso === "gestion-impedimentos";
+  return `/v1/auditor/exportaciones/${recurso}${aQueryApi(filtros, { claves: CLAVES_EXPORTACION[recurso], paginar: false, impedimentos: deImpedimentos })}`;
 }
 
 export type { AccionChecklist, OperacionAuditoriaUsuarios };

@@ -216,6 +216,98 @@ export function rolDePortal(ruta: string): Rol | null {
   return ROL_POR_PORTAL[primero] ?? null;
 }
 
+// E4 · impedimentos y riesgos
+export type TipoImpedimento = components["schemas"]["TipoImpedimento"];
+export type EstadoImpedimento = components["schemas"]["EstadoImpedimento"];
+export type OperacionImpedimento = components["schemas"]["OperacionImpedimento"];
+export type TipoAccionImpedimento = components["schemas"]["TipoAccionImpedimento"];
+export type Impedimento = components["schemas"]["Impedimento"];
+export type ImpedimentosHdu = components["schemas"]["ImpedimentosHdu"];
+export type PermisosImpedimentosHdu = components["schemas"]["PermisosImpedimentosHdu"];
+export type NuevoImpedimento = components["schemas"]["NuevoImpedimento"];
+export type ImpedimentoDetalle = components["schemas"]["ImpedimentoDetalle"];
+export type AccionImpedimentoRegistro = components["schemas"]["AccionImpedimentoRegistro"];
+export type ResponsableImpedimento = components["schemas"]["ResponsableImpedimento"];
+export type CandidatosResponsable = components["schemas"]["CandidatosResponsable"];
+export type PropositoResponsable = components["schemas"]["PropositoResponsable"];
+export type ItemListaImpedimento = components["schemas"]["ItemListaImpedimento"];
+export type PaginaImpedimentos = components["schemas"]["PaginaImpedimentos"];
+export type ResultadoAccionImpedimento = components["schemas"]["ResultadoAccionImpedimento"];
+export type ErrorTransicionImpedimento = components["schemas"]["ErrorTransicionImpedimento"];
+export type ErrorHduBloqueada = components["schemas"]["ErrorHduBloqueada"];
+export type ListaImpedimentosBloqueantes = components["schemas"]["ListaImpedimentosBloqueantes"];
+export type ImpedimentoBloqueante = components["schemas"]["ImpedimentoBloqueante"];
+export type NivelRiesgo = components["schemas"]["NivelRiesgo"];
+export type OrigenRiesgo = components["schemas"]["OrigenRiesgo"];
+export type RiesgoResumen = components["schemas"]["RiesgoResumen"];
+export type RiesgoHdu = components["schemas"]["RiesgoHdu"];
+export type RiesgoFijado = components["schemas"]["RiesgoFijado"];
+export type CodigoFactorRiesgo = components["schemas"]["CodigoFactorRiesgo"];
+export type FactorRiesgo = components["schemas"]["FactorRiesgo"];
+export type CambioRiesgo = components["schemas"]["CambioRiesgo"];
+export type ResultadoCambioRiesgo = components["schemas"]["ResultadoCambioRiesgo"];
+export type ItemRiesgoHdu = components["schemas"]["ItemRiesgoHdu"];
+export type PaginaRiesgoHdu = components["schemas"]["PaginaRiesgoHdu"];
+export type EntradaGestion = components["schemas"]["EntradaGestion"];
+export type HistorialGestionHdu = components["schemas"]["HistorialGestionHdu"];
+export type PaginaAuditorImpedimentos = components["schemas"]["PaginaAuditorImpedimentos"];
+export type PaginaGestionImpedimentos = components["schemas"]["PaginaGestionImpedimentos"];
+export type ItemImpedimentoBandeja = components["schemas"]["ItemImpedimentoBandeja"];
+export type BloqueListaImpedimentos = components["schemas"]["BloqueListaImpedimentos"];
+export type BloqueBloqueoFila = components["schemas"]["BloqueBloqueoFila"];
+export type BloqueRiesgoFila = components["schemas"]["BloqueRiesgoFila"];
+
+export const TIPOS_IMPEDIMENTO: TipoImpedimento[] = [
+  "AMBIENTE",
+  "DATOS_PRUEBA",
+  "ACCESO",
+  "REQUISITOS",
+  "DEPENDENCIA",
+  "DEFECTO_BLOQUEANTE",
+  "HERRAMIENTA",
+  "RECURSOS",
+  "OTRO",
+];
+
+/** Etiquetas del catálogo 3.1 del backlog E4 (el servidor también las entrega en `/v1/catalogos/tipos-impedimento`). */
+export const ETIQUETAS_TIPO_IMPEDIMENTO: Record<TipoImpedimento, string> = {
+  AMBIENTE: "Ambiente de pruebas",
+  DATOS_PRUEBA: "Datos de prueba",
+  ACCESO: "Accesos y permisos",
+  REQUISITOS: "Requisitos",
+  DEPENDENCIA: "Dependencia de otro equipo",
+  DEFECTO_BLOQUEANTE: "Defecto bloqueante",
+  HERRAMIENTA: "Herramienta o integración",
+  RECURSOS: "Personas o tiempo",
+  OTRO: "Otro",
+};
+
+export const ESTADOS_IMPEDIMENTO: EstadoImpedimento[] = ["ABIERTO", "ESCALADO", "RESUELTO"];
+
+export const ETIQUETAS_ESTADO_IMPEDIMENTO: Record<EstadoImpedimento, string> = {
+  ABIERTO: "Abierto",
+  ESCALADO: "Escalado",
+  RESUELTO: "Resuelto",
+};
+
+/** Glifo de forma del estado (nunca solo color, diseño E4 §2.1). */
+export const GLIFO_ESTADO_IMPEDIMENTO: Record<EstadoImpedimento, string> = { ABIERTO: "○", ESCALADO: "⇧", RESUELTO: "✓" };
+
+export const ETIQUETAS_ACCION_IMPEDIMENTO: Record<TipoAccionImpedimento, string> = {
+  REGISTRAR: "Registró",
+  ESCALAR: "Escaló",
+  RESOLVER: "Resolvió",
+  REABRIR: "Reabrió",
+  SEGUIMIENTO: "Agregó seguimiento",
+};
+
+export const NIVELES_RIESGO: NivelRiesgo[] = ["ALTO", "MEDIO", "BAJO"];
+
+export const ETIQUETAS_NIVEL_RIESGO: Record<NivelRiesgo, string> = { ALTO: "Alto", MEDIO: "Medio", BAJO: "Bajo" };
+
+/** Forma del semáforo: triángulo, rombo y círculo (diseño E4 §3.1). */
+export const GLIFO_NIVEL_RIESGO: Record<NivelRiesgo, string> = { ALTO: "▲", MEDIO: "◆", BAJO: "●" };
+
 /** Una ruta pedida antes del login solo se reutiliza si pertenece al portal del propio rol (D41). */
 export function rutaPermitidaParaRol(ruta: string, rol: Rol): boolean {
   const duenio = rolDePortal(ruta);

@@ -2,6 +2,7 @@
 // Líder QA con células, Líder sin células, Auditor, estado de checklist por HDU, certificados,
 // bitácora y auditoría de usuarios. Nada de esto es fuente de datos del portal real.
 import { ID, hdus, usuarios, type UsuarioMock } from "./data";
+import { reiniciarE4 } from "./dataE4";
 
 export interface CelulaLiderMock {
   id: string;
@@ -103,9 +104,11 @@ export interface FuentesMock {
   /** Fuente de Organización de la bandeja del Administrador, bloque por bloque. */
   pendientesAdmin: boolean;
   cambiosAdmin: boolean;
+  /** E4: servicio Impedimentos caído. Las secciones y los bloques de E4 quedan `indisponible`; el resto sigue (D87). */
+  impedimentos: boolean;
 }
 
-export const fuentes: FuentesMock = { certificaciones: true, pendientesAdmin: true, cambiosAdmin: true };
+export const fuentes: FuentesMock = { certificaciones: true, pendientesAdmin: true, cambiosAdmin: true, impedimentos: true };
 
 /** Pruebas: deja caída una o más fuentes. `reiniciarFuentes` las restaura entre pruebas. */
 export function simularFuentes(parcial: Partial<FuentesMock>): void {
@@ -122,6 +125,8 @@ export function reiniciarFuentes(): void {
   fuentes.certificaciones = true;
   fuentes.pendientesAdmin = true;
   fuentes.cambiosAdmin = true;
+  fuentes.impedimentos = true;
+  reiniciarE4();
   usuarios.splice(cantidadUsuariosInicial);
   celulasLider.splice(0, celulasLider.length, ...celulasLiderInicial.map((c) => ({ ...c })));
   for (const u of usuarios) {
@@ -131,6 +136,7 @@ export function reiniciarFuentes(): void {
   for (const h of hdus) {
     const qe = qeIniciales.get(h.id);
     if (qe) h.qeResponsableId = qe;
+    delete h.simularChecklistCompleto;
   }
 }
 
