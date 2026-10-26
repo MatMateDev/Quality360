@@ -392,6 +392,25 @@
   margin-bottom: 12px;
 }
 
+/* D81: la insignia «Con impedimento abierto» vive dentro de la celda de acción; debe poder bajar de línea. */
+.badge-accion {
+  max-width: 100%;
+  white-space: normal;
+}
+
+.badge-accion .badge-bloqueada--suave {
+  margin-top: 4px;
+}
+
+/* Las tarjetas «No disponible» con «Reintentar» no deben ensanchar la rejilla de 2 columnas a 375 px. */
+.tarjetas-resumen > * {
+  min-width: 0;
+}
+
+.tarjeta-resumen .bloque-estado {
+  overflow-wrap: anywhere;
+}
+
 @media (max-width: 900px) {
   .panel-riesgo__rejilla {
     grid-template-columns: 1fr;
