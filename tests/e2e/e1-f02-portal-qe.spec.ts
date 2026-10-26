@@ -41,7 +41,7 @@ test.describe("E1-F02 · Portal QE", () => {
   test("[E1-F02#3] el menú solo trae bandeja, equipo, historias supervisadas, perfil y cerrar sesión", async ({ page }) => {
     await page.goto(`${env.portalUrl}/qe`);
     const nav = page.getByRole("navigation", { name: "Portal" });
-    await expect(nav.getByRole("link")).toHaveText(["Bandeja", "Equipo", "Historias supervisadas", "Perfil"]);
+    await expect(nav.getByRole("link")).toHaveText(["Bandeja", "Equipo", "Historias supervisadas", "Impedimentos", "Perfil"]);
     await expect(page.getByRole("button", { name: "Cerrar sesión" })).toBeVisible();
     await expect(nav.getByRole("link", { name: "Usuarios" })).toHaveCount(0);
     await expect(nav.getByRole("link", { name: "Supervisión" })).toHaveCount(0);
