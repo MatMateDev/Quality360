@@ -17,7 +17,8 @@ describe("Reasignar el QE responsable de una HDU [E7-B05 · solo Administrador]"
       if (request.method === "PUT" && request.url.endsWith("/qe-responsable")) cuerpo = await request.clone().json();
     });
     await abrirComo(ADMIN, `/hdu/${ID.hdu1}`);
-    expect(await screen.findByText("Jose Seguel")).toBeInTheDocument();
+    // E4: el nombre del QE también aparece como responsable de un impedimento de la HDU, así que puede repetirse.
+    expect((await screen.findAllByText("Jose Seguel")).length).toBeGreaterThan(0);
     await user.click(await screen.findByTestId("boton-reasignar-qe"));
 
     const dialogo = within(await screen.findByTestId("dialogo-reasignar-qe"));

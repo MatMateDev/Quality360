@@ -1,8 +1,10 @@
 import { useEffect, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { Link, useLocation, useParams } from "react-router-dom";
 import { useAuth } from "@/auth/AuthContext";
 import { useAnalistasAsignables } from "@/api/equipo";
 import { useAsignarAnalista, useCambiarEstadoHdu, useDetalleHdu, useHistorialHdu } from "@/api/hdu";
+import { useImpedimentosHdu } from "@/api/impedimentos";
 import { AccesoDenegado } from "@/components/AccesoDenegado";
 import { BloqueEstado } from "@/components/BloqueEstado";
 import { ChecklistEntregables } from "@/components/ChecklistEntregables";
@@ -10,9 +12,19 @@ import { DialogoConfirmacion } from "@/components/DialogoConfirmacion";
 import { DialogoReasignarQe } from "@/components/DialogoReasignarQe";
 import { AvisoSoloLectura } from "@/components/bandeja/Estructura";
 import { InsigniaEstadoHdu, InsigniaPrioridad } from "@/components/Etiquetas";
+import { AvisoHduBloqueada } from "@/components/impedimentos/AvisoHduBloqueada";
+import { ErrorCierreBloqueado } from "@/components/impedimentos/ErrorCierreBloqueado";
+import { SeccionImpedimentos } from "@/components/impedimentos/SeccionImpedimentos";
 import { ErrorApi } from "@/lib/httpClient";
 import { formatearFecha } from "@/lib/formato";
-import { ETIQUETAS_ESTADO_HDU, ROLES_SOLO_LECTURA, rutaPortal, type EstadoHdu } from "@/types/dominio";
+import { ETIQUETAS_ESTADO_HDU, ROLES_SOLO_LECTURA, rutaPortal, type EstadoHdu, type ListaImpedimentosBloqueantes } from "@/types/dominio";
+
+/** Error de «Cambiar estado»: además del código certificado, el 409 de E4 trae la lista de impedimentos (D77). */
+interface ErrorEstado {
+  codigo: string;
+  mensaje: string;
+  bloqueo?: ListaImpedimentosBloqueantes;
+}
 
 /** E2-F04 y E3: detalle de HDU con responsables, estado, célula, sprint, checklist de entregables, cambio de estado e historial. */
 export function HduDetailPage() {
@@ -25,6 +37,8 @@ export function HduDetailPage() {
   const analistasQuery = useAnalistasAsignables(permisoAsignar);
   const asignarAnalista = useAsignarAnalista(id ?? "");
   const cambiarEstado = useCambiarEstadoHdu(id ?? "");
+  const impedimentosQuery = useImpedimentosHdu(id);
+  const queryClient = useQueryClient();
 
   const [dialogoAbierto, setDialogoAbierto] = useState(false);
   const [analistaSeleccionado, setAnalistaSeleccionado] = useState("");
@@ -33,7 +47,7 @@ export function HduDetailPage() {
   const [avisoSinCambios, setAvisoSinCambios] = useState<string | null>(null);
   const [dialogoQeAbierto, setDialogoQeAbierto] = useState(false);
   const [avisoQe, setAvisoQe] = useState<string | null>(null);
-  const [errorEstado, setErrorEstado] = useState<{ codigo: string; mensaje: string } | null>(null);
+  const [errorEstado, setErrorEstado] = useState<ErrorEstado | null>(null);
 
   const hayDetalle = Boolean(detalleQuery.data);
   useEffect(() => {
@@ -56,6 +70,9 @@ export function HduDetailPage() {
   const soloLectura = perfil ? ROLES_SOLO_LECTURA.includes(perfil.rol) : false;
   const puedeReasignarQe = perfil?.rol === "ADMINISTRADOR" && hdu.estado !== "CERRADA";
   const desde = (ubicacion.state as { desde?: string } | null)?.desde;
+  // D78: `?impedimento=<id>` resalta la tarjeta; un id que no está en la lista se ignora sin aviso ni error.
+  const resaltarId = new URLSearchParams(ubicacion.search).get("impedimento");
+  const bloqueoImpedimentos = impedimentosQuery.data?.bloqueada ? impedimentosQuery.data.abiertos + impedimentosQuery.data.escalados : 0;
 
   function abrirDialogoAsignar() {
     setAnalistaSeleccionado(hdu.analista?.id ?? "");
@@ -91,7 +108,15 @@ export function HduDetailPage() {
     try {
       await cambiarEstado.mutateAsync({ estado: nuevoEstado });
     } catch (error) {
-      if (error instanceof ErrorApi) {
+      if (error instanceof ErrorApi && error.status === 409 && error.codigo === "HDU_BLOQUEADA") {
+        const cuerpo = error.cuerpo as { impedimentos?: ListaImpedimentosBloqueantes } | undefined;
+        setErrorEstado({ codigo: error.codigo, mensaje: error.mensaje, bloqueo: cuerpo?.impedimentos });
+        // La sección se recarga para quedar sincronizada con lo que dijo el servidor.
+        void queryClient.invalidateQueries({ queryKey: ["impedimentos"] });
+      } else if (error instanceof ErrorApi && error.status === 503 && (error.cuerpo as { impedimentos?: { estado?: string } } | undefined)?.impedimentos?.estado === "indisponible") {
+        // Impedimentos no respondió (D60): se distingue de una caída del gateway o de Organización.
+        setErrorEstado({ codigo: "IMPEDIMENTOS_NO_DISPONIBLES", mensaje: error.mensaje });
+      } else if (error instanceof ErrorApi) {
         setErrorEstado({ codigo: error.codigo, mensaje: error.mensaje });
       } else {
         setErrorEstado({ codigo: "ERROR_INTERNO", mensaje: "No fue posible cambiar el estado." });
@@ -116,6 +141,7 @@ export function HduDetailPage() {
         </Link>
       </p>
       {soloLectura ? <AvisoSoloLectura /> : null}
+      {bloqueoImpedimentos > 0 && perfil ? <AvisoHduBloqueada abiertos={bloqueoImpedimentos} rol={perfil.rol} /> : null}
       <div className="encabezado">
         <p className="etiqueta">{hdu.codigo}</p>
         <h1>{hdu.titulo}</h1>
@@ -199,9 +225,17 @@ export function HduDetailPage() {
         <ChecklistEntregables hduId={hdu.id} hduCerrada={hdu.estado === "CERRADA"} />
       </div>
 
+      <SeccionImpedimentos hduId={hdu.id} resaltarId={resaltarId} />
+
       {hdu.permisos.cambiarEstado ? (
         <div className="panel" id="estado">
           <h2>Cambiar estado</h2>
+          {hdu.transicionesPermitidas.includes("CERRADA") && bloqueoImpedimentos > 0 ? (
+            <p className="mensaje-aviso" role="note" data-testid="pista-cierre-bloqueado">
+              Esta HDU tiene {bloqueoImpedimentos} {bloqueoImpedimentos === 1 ? "impedimento abierto" : "impedimentos abiertos"}. No podrá cerrarse hasta resolverlos.{" "}
+              <a href="#impedimentos">Ver impedimentos</a>
+            </p>
+          ) : null}
           {hdu.transicionesPermitidas.length === 0 ? (
             <p>No hay transiciones disponibles desde el estado actual.</p>
           ) : (
@@ -219,7 +253,13 @@ export function HduDetailPage() {
               ))}
             </div>
           )}
-          {errorEstado ? (
+          {errorEstado?.codigo === "HDU_BLOQUEADA" ? (
+            <ErrorCierreBloqueado bloqueo={errorEstado.bloqueo} />
+          ) : errorEstado?.codigo === "IMPEDIMENTOS_NO_DISPONIBLES" ? (
+            <p className="mensaje-error-global" role="alert" data-testid="error-impedimentos-no-disponible">
+              No pudimos verificar los impedimentos de la HDU. Intenta de nuevo en unos minutos.
+            </p>
+          ) : errorEstado ? (
             <p className="mensaje-error-global" role="alert" data-testid={testIdErrorEstado}>
               {errorEstado.mensaje}
             </p>
