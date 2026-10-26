@@ -29,6 +29,8 @@ export function AuditorLayout({ children }: { children: ReactNode }) {
           titulo="Cambios de usuarios (7 días)"
           contador={datos?.contadores.cambiosUsuarios7d}
         />
+        <TarjetaContador consulta={contadores} id="impedimentos-abiertos" clave="impedimentos-abiertos" titulo="Impedimentos abiertos" contador={datos?.impedimentos?.contadores.impedimentosAbiertos} />
+        <TarjetaContador consulta={contadores} id="hdu-bloqueadas" clave="hdu-bloqueadas" titulo="HDU bloqueadas" contador={datos?.impedimentos?.contadores.hduBloqueadas} />
       </GrupoContadores>
 
       <PestanasAuditor />

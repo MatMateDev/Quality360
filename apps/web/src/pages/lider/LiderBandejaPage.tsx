@@ -8,6 +8,7 @@ import { CeldaNoDisponible } from "@/components/bandeja/Celdas";
 import { AvisoSoloLectura, BloqueDatos, EncabezadoBandeja, GrupoContadores, type EstadoDatos } from "@/components/bandeja/Estructura";
 import { PanelListaHdu } from "@/components/bandeja/PanelListaHdu";
 import { TablaBandeja, type Columna } from "@/components/bandeja/TablaBandeja";
+import { BloqueImpedimentosBandeja } from "@/components/impedimentos/BloqueImpedimentosBandeja";
 import { TarjetaContador } from "@/components/bandeja/TarjetaContador";
 import { columnasHdu } from "@/components/bandeja/columnasHdu";
 import { useOpcionesCatalogo } from "@/components/bandeja/opciones";
@@ -39,6 +40,7 @@ export function LiderBandejaPage() {
     { clave: "qe", id: "filtro-qe", etiqueta: "QE responsable", tipo: "select", opciones: opcionesQe },
     { clave: "analista", id: "filtro-analista", etiqueta: "Analista", tipo: "select", opciones: opcionesAnalista },
     { clave: "sin-analista", id: "filtro-sin-analista", etiqueta: "Sin analista", tipo: "casilla" },
+    { clave: "solo-bloq", id: "filtro-solo-bloqueadas", etiqueta: "Solo bloqueadas", tipo: "casilla" },
     { clave: "q", id: "filtro-busqueda", etiqueta: "Buscar por código o título", tipo: "texto" },
   ];
 
@@ -111,6 +113,30 @@ export function LiderBandejaPage() {
             <TarjetaContador consulta={bandeja} id="certificados" clave="certificados" titulo="Certificados" contador={datos.contadores.certificados} />
           </GrupoContadores>
 
+          <GrupoContadores titulo="Impedimentos y riesgo" compacto>
+            <TarjetaContador
+              consulta={bandeja}
+              id="impedimentos-abiertos"
+              clave="impedimentos-abiertos"
+              titulo="Impedimentos abiertos"
+              contador={datos.impedimentos?.contadores.impedimentosAbiertos}
+              atencion
+            />
+            <TarjetaContador consulta={bandeja} id="hdu-bloqueadas" clave="hdu-bloqueadas" titulo="HDU bloqueadas" contador={datos.impedimentos?.contadores.hduBloqueadas} atencion />
+            <TarjetaContador consulta={bandeja} id="escalados-a-mi" clave="escalados-a-mi" titulo="Escalados a mí" contador={datos.impedimentos?.contadores.escaladosAMi} atencion />
+          </GrupoContadores>
+          <BloqueImpedimentosBandeja
+            variante="lider"
+            titulo="Impedimentos de mis células"
+            descripcion="Solo lectura. Los escalados a ti van primero."
+            clave="impedimentos"
+            testIdTabla="lista-impedimentos"
+            consulta={bandeja}
+            bloque={datos.impedimentos?.lista}
+            vacio="Tus células no tienen bloqueos"
+            tonoVacio="exito"
+          />
+
           <section className="panel" aria-labelledby={idResumen}>
             <div className="panel-cabecera">
               <h2 id={idResumen}>Resumen por célula</h2>
@@ -139,7 +165,7 @@ export function LiderBandejaPage() {
             caption="HDU de mis células"
             testIdTabla="lista-hdu-lider"
             vacioSinFiltros="Tus células aún no tienen HDU"
-            columnas={[c.codigo, c.titulo, c.celula, c.sprint, c.prioridad, c.estado, c.qe, c.analista, c.avance, certificado, c.actualizada]}
+            columnas={[c.codigo, c.titulo, c.celula, c.sprint, c.prioridad, c.estado, c.qe, c.analista, c.avance, certificado, c.actualizada, c.bloqueo, c.riesgo]}
           />
         </>
       ) : null}

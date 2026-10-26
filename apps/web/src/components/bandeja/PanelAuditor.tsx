@@ -25,10 +25,13 @@ interface Props<T> {
   columnas: Columna<T>[];
   caption: string;
   clavefila: (item: T) => string;
+  /** Para quien reutiliza el panel con otra convención de testids (vistas de impedimentos del Auditor). */
+  testIdPanel?: string;
+  testIdTabla?: string;
 }
 
 /** Pestaña genérica del Auditor: filtros, exportación, tabla, paginación y los cuatro estados. */
-export function PanelAuditor<T>({ clave, titulo, consulta, filtros, campos, columnas, caption, clavefila }: Props<T>) {
+export function PanelAuditor<T>({ clave, titulo, consulta, filtros, campos, columnas, caption, clavefila, testIdPanel, testIdTabla }: Props<T>) {
   const idTitulo = useId();
   const datos = consulta.data;
   // Fuente caída (503 `SERVICIO_NO_DISPONIBLE`): indisponible, no error (E7-F06-T08).
@@ -42,7 +45,7 @@ export function PanelAuditor<T>({ clave, titulo, consulta, filtros, campos, colu
   const conFiltros = hayFiltrosActivos(filtros, campos.map((c) => c.clave));
 
   return (
-    <section className="panel" aria-labelledby={idTitulo} data-testid={`panel-${clave}`} aria-busy={estado === "cargando"}>
+    <section className="panel" aria-labelledby={idTitulo} data-testid={testIdPanel ?? `panel-${clave}`} aria-busy={estado === "cargando"}>
       <div className="panel-cabecera">
         <h2 id={idTitulo}>{titulo}</h2>
         <BotonExportarCsv
@@ -61,7 +64,7 @@ export function PanelAuditor<T>({ clave, titulo, consulta, filtros, campos, colu
       >
         {datos ? (
           <>
-            <TablaBandeja testId={`lista-${clave}`} caption={caption} columnas={columnas} items={datos.items} clave={clavefila} focoPagina={filtros.pagina} />
+            <TablaBandeja testId={testIdTabla ?? `lista-${clave}`} caption={caption} columnas={columnas} items={datos.items} clave={clavefila} focoPagina={filtros.pagina} />
             <Paginacion
               clave={clave}
               etiqueta={titulo}

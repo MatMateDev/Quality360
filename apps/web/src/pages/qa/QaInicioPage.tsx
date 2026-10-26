@@ -27,6 +27,7 @@ export function QaInicioPage() {
     { clave: "celula", id: "filtro-celula", etiqueta: "Célula", tipo: "select", opciones: opcionesCelula, vacio: "Todas" },
     { clave: "sprint", id: "filtro-sprint", etiqueta: "Sprint", tipo: "select", opciones: opcionesSprint },
     { clave: "solo-obs", id: "filtro-solo-observaciones", etiqueta: "Solo con observaciones", tipo: "casilla" },
+    { clave: "solo-bloq", id: "filtro-solo-bloqueadas", etiqueta: "Solo bloqueadas", tipo: "casilla" },
     { clave: "q", id: "filtro-busqueda", etiqueta: "Buscar por código o título", tipo: "texto" },
   ];
 
@@ -82,6 +83,18 @@ export function QaInicioPage() {
         />
       </GrupoContadores>
 
+      {/* E4: sin riesgo (D73). Debajo de los contadores certificados. */}
+      <GrupoContadores titulo="Impedimentos" compacto>
+        <TarjetaContador
+          consulta={bandeja}
+          id="impedimentos-abiertos"
+          clave="impedimentos-abiertos"
+          titulo="Impedimentos abiertos"
+          contador={datos?.impedimentos?.contadores.impedimentosAbiertos}
+          atencion
+        />
+      </GrupoContadores>
+
       <PanelListaHdu
         clave="mis-hdu"
         titulo="Mis HDU"
@@ -93,7 +106,7 @@ export function QaInicioPage() {
         caption="Mis HDU, ordenadas por lo que te falta hacer"
         testIdTabla="lista-mis-hdu"
         vacioSinFiltros="No tienes HDU asignadas"
-        columnas={[c.codigo, c.titulo, c.celula, c.sprint, c.prioridad, c.estado, c.avance, c.siguiente, c.observaciones, c.actualizada]}
+        columnas={[c.codigo, c.titulo, c.celula, c.sprint, c.prioridad, c.estado, c.avance, c.siguiente, c.observaciones, c.actualizada, c.bloqueo]}
       />
 
       <div className="panel">

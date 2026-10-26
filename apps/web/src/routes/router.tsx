@@ -7,6 +7,7 @@ import { AdminSupervisionPage } from "@/pages/admin/AdminSupervisionPage";
 import { AdminUsuariosPage } from "@/pages/admin/AdminUsuariosPage";
 import { HduDetailPage } from "@/pages/hdu/HduDetailPage";
 import { AuditorBandejaPage } from "@/pages/auditor/AuditorBandejaPage";
+import { AuditorImpedimentosPage } from "@/pages/auditor/AuditorImpedimentosPage";
 import { AuditorAuditoriaUsuariosPage, AuditorBitacoraPage, AuditorCertificadosPage } from "@/pages/auditor/AuditorPestanasPage";
 import { LiderBandejaPage } from "@/pages/lider/LiderBandejaPage";
 import { LoginPage } from "@/pages/LoginPage";
@@ -69,6 +70,7 @@ export function AppRoutes() {
             <Route path="auditor/certificados" element={<AuditorCertificadosPage />} />
             <Route path="auditor/bitacora" element={<AuditorBitacoraPage />} />
             <Route path="auditor/auditoria-usuarios" element={<AuditorAuditoriaUsuariosPage />} />
+            <Route path="auditor/impedimentos" element={<AuditorImpedimentosPage />} />
           </Route>
 
           <Route element={<RequireRole roles={["ANALISTA_QA"]} />}>
