@@ -16,6 +16,7 @@ import {
   VerificacionCertificadoController,
 } from './api/certificaciones.controller.js';
 import { HduController } from './api/hdu.controller.js';
+import { ImpedimentosController } from './api/impedimentos.controller.js';
 import { InicioController } from './api/inicio.controller.js';
 import { NoImplementadoController } from './api/no-implementado.controller.js';
 import {
@@ -64,6 +65,7 @@ export class AppModule {
         ChecklistController,
         BandejaAprobacionesController,
         VerificacionCertificadoController,
+        ImpedimentosController,
         NoImplementadoController,
       ],
       providers: [{ provide: CONFIGURACION, useValue: configuracion }, Reenviador, Compositor],

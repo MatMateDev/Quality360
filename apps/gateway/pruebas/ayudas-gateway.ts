@@ -104,6 +104,8 @@ export async function urlCaida(): Promise<string> {
 export interface OpcionesAppPrueba {
   organizacionUrl: string;
   certificacionesUrl?: string;
+  impedimentosUrl?: string;
+  tiempoLimiteImpedimentosMs?: number;
   fuentes?: Partial<FuentesComposicion>;
   tiempoLimiteFuenteMs?: number;
   tiempoLimiteServicioMs?: number;
@@ -120,6 +122,8 @@ export function configuracionPrueba(opciones: OpcionesAppPrueba): ConfiguracionG
     confiarProxy: 0,
     organizacionUrl,
     certificacionesUrl,
+    impedimentosUrl: opciones.impedimentosUrl ?? organizacionUrl,
+    tiempoLimiteImpedimentosMs: opciones.tiempoLimiteImpedimentosMs ?? opciones.tiempoLimiteServicioMs ?? 5000,
     fuentes: {
       usuarios: organizacionUrl,
       supervision: organizacionUrl,

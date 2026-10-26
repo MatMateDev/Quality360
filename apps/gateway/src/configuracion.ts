@@ -42,6 +42,10 @@ export interface ConfiguracionGateway {
   confiarProxy: number;
   organizacionUrl: string;
   certificacionesUrl: string;
+  /** Impedimentos (E4, D85). Obligatoria con `NODE_ENV=production`. */
+  impedimentosUrl: string;
+  /** Tiempo límite al reenviar a Impedimentos; por defecto, `tiempoLimiteServicioMs`. */
+  tiempoLimiteImpedimentosMs: number;
   fuentes: FuentesComposicion;
   /** Tiempo límite por fuente en la composición. */
   tiempoLimiteFuenteMs: number;
@@ -94,12 +98,27 @@ export function cargarConfiguracion(entorno: NodeJS.ProcessEnv = process.env): C
     'CERTIFICACIONES_URL',
   );
 
+  // En la nube no hay un valor por defecto razonable: sin Impedimentos el cierre de HDU
+  // responde 503 (D60, D91), así que se exige explícitamente en lugar de apuntar a localhost.
+  const impedimentosCrudo = entorno.IMPEDIMENTOS_URL;
+  if (entorno.NODE_ENV === 'production' && (impedimentosCrudo === undefined || impedimentosCrudo.trim().length === 0)) {
+    throw errorInterno('IMPEDIMENTOS_URL es obligatoria con NODE_ENV=production');
+  }
+  const impedimentosUrl = leerUrl(impedimentosCrudo, 'http://localhost:3003', 'IMPEDIMENTOS_URL');
+  const tiempoLimiteServicioMs = leerEntero(entorno.TIEMPO_LIMITE_SERVICIO_MS, 10_000, 'TIEMPO_LIMITE_SERVICIO_MS');
+
   return {
     puerto: leerEntero(entorno.PORT, 3000, 'PORT'),
     origenesPortal: leerLista(entorno.PORTAL_ORIGENES, ['http://localhost:5173']),
     confiarProxy: leerEntero(entorno.CONFIAR_PROXY, 0, 'CONFIAR_PROXY', 0),
     organizacionUrl,
     certificacionesUrl,
+    impedimentosUrl,
+    tiempoLimiteImpedimentosMs: leerEntero(
+      entorno.IMPEDIMENTOS_TIMEOUT_MS,
+      tiempoLimiteServicioMs,
+      'IMPEDIMENTOS_TIMEOUT_MS',
+    ),
     fuentes: {
       usuarios: leerUrl(entorno.FUENTE_RESUMEN_USUARIOS_URL, organizacionUrl, 'FUENTE_RESUMEN_USUARIOS_URL'),
       supervision: leerUrl(
@@ -117,7 +136,7 @@ export function cargarConfiguracion(entorno: NodeJS.ProcessEnv = process.env): C
       checklist: leerUrl(entorno.FUENTE_CHECKLIST_URL, certificacionesUrl, 'FUENTE_CHECKLIST_URL'),
     },
     tiempoLimiteFuenteMs: leerEntero(entorno.TIEMPO_LIMITE_FUENTE_MS, 2000, 'TIEMPO_LIMITE_FUENTE_MS'),
-    tiempoLimiteServicioMs: leerEntero(entorno.TIEMPO_LIMITE_SERVICIO_MS, 10_000, 'TIEMPO_LIMITE_SERVICIO_MS'),
+    tiempoLimiteServicioMs,
     limiteTasa: {
       ventanaMs: leerEntero(entorno.LIMITE_TASA_VENTANA_MS, 60_000, 'LIMITE_TASA_VENTANA_MS'),
       maximo: leerEntero(entorno.LIMITE_TASA_MAX, 300, 'LIMITE_TASA_MAX'),
