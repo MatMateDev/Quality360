@@ -137,6 +137,14 @@ export class CelulaLiderPrismaRepositorio implements CelulaLiderRepositorio {
     });
   }
 
+  async lideresActivosDeCelula(celulaId: string): Promise<UsuarioResumen[]> {
+    return this.prisma.usuario.findMany({
+      where: { rol: { nombre: 'LIDER_QA' }, activo: true, celulasLider: { some: { celulaId, hasta: null } } },
+      select: { id: true, nombre: true, correo: true },
+      orderBy: { nombre: 'asc' },
+    });
+  }
+
   async lideresActivosSinCelulas(): Promise<UsuarioResumen[]> {
     return this.prisma.usuario.findMany({
       where: { rol: { nombre: 'LIDER_QA' }, activo: true, celulasLider: { none: { hasta: null } } },

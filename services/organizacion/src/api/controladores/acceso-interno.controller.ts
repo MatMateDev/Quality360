@@ -5,8 +5,8 @@
  * la resolución (que además llenó `solicitud.acceso`). Cada servicio autoriza
  * por sí mismo: estos endpoints entregan ámbito y relación, no deciden por el llamador.
  */
-import { Body, Controller, Get, HttpCode, Param, Post } from '@nestjs/common';
-import { AccesoActual, Roles, type ResolucionAcceso } from '@quality360/auth-nest';
+import { Body, Controller, Get, HttpCode, Param, Post, Query } from '@nestjs/common';
+import { AccesoActual, Roles, errorValidacion, type ResolucionAcceso } from '@quality360/auth-nest';
 
 import {
   AccesoAplicacion,
@@ -55,10 +55,30 @@ export class AccesoInternoController {
     return this.acceso.consultarLote(dto.hduIds, acceso.rol, acceso.usuarioId, acceso.ambito);
   }
 
+  /**
+   * Datos de todas las HDU del ámbito (E4, D86), para «Riesgo por HDU» de Impedimentos. Ordenadas por
+   * código; las cerradas solo con `incluirCerradas=true`. El Analista QA no la usa.
+   */
+  @Roles('ADMINISTRADOR', 'QE', 'LIDER_QA', 'AUDITOR')
+  @Get('hdu/ambito/detalle')
+  async ambitoDetalle(@Query('incluirCerradas') incluirCerradas: string | undefined, @AccesoActual() acceso: ResolucionAcceso): Promise<{ items: HduParaCertificacion[] }> {
+    if (incluirCerradas !== undefined && incluirCerradas !== 'true' && incluirCerradas !== 'false') {
+      throw errorValidacion([{ campo: 'incluirCerradas', codigo: 'FORMATO_INVALIDO', mensaje: 'Debe ser true o false.' }]);
+    }
+    return this.acceso.ambitoDetalle(acceso.rol, acceso.usuarioId, acceso.ambito, incluirCerradas === 'true');
+  }
+
   @Roles(...ROLES_TODOS)
   @Get('hdu/:id/acceso')
-  async resolverAccesoHdu(@Param('id') id: string, @AccesoActual() acceso: ResolucionAcceso): Promise<AccesoHduRespuesta> {
-    return this.acceso.accesoHdu(uuidDeRuta(id), acceso.rol, acceso.usuarioId, acceso.ambito);
+  async resolverAccesoHdu(
+    @Param('id') id: string,
+    @Query('incluirCandidatos') incluirCandidatos: string | undefined,
+    @AccesoActual() acceso: ResolucionAcceso,
+  ): Promise<AccesoHduRespuesta> {
+    if (incluirCandidatos !== undefined && incluirCandidatos !== 'true' && incluirCandidatos !== 'false') {
+      throw errorValidacion([{ campo: 'incluirCandidatos', codigo: 'FORMATO_INVALIDO', mensaje: 'Debe ser true o false.' }]);
+    }
+    return this.acceso.accesoHdu(uuidDeRuta(id), acceso.rol, acceso.usuarioId, acceso.ambito, incluirCandidatos === 'true');
   }
 
   /**

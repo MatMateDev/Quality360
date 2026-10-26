@@ -62,8 +62,15 @@ export function sanitizarCambios(cambios: Record<string, unknown> | null): Recor
   return visible;
 }
 
-export type RecursoExportacion = 'HDU' | 'AUDITORIA_USUARIOS' | 'BITACORA' | 'CERTIFICADOS';
-export const RECURSOS_EXPORTACION: readonly RecursoExportacion[] = ['HDU', 'AUDITORIA_USUARIOS', 'BITACORA', 'CERTIFICADOS'];
+export type RecursoExportacion = 'HDU' | 'AUDITORIA_USUARIOS' | 'BITACORA' | 'CERTIFICADOS' | 'IMPEDIMENTOS' | 'GESTION_IMPEDIMENTOS';
+export const RECURSOS_EXPORTACION: readonly RecursoExportacion[] = [
+  'HDU',
+  'AUDITORIA_USUARIOS',
+  'BITACORA',
+  'CERTIFICADOS',
+  'IMPEDIMENTOS',
+  'GESTION_IMPEDIMENTOS',
+];
 
 /** Un rango con `hasta` anterior a `desde` es inválido (400). */
 export function rangoValido(desde: Date | undefined, hasta: Date | undefined): boolean {

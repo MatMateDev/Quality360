@@ -11,6 +11,8 @@ export interface CatalogoRepositorio {
   /** Las células que existen entre `ids`. */
   buscarCelulas(ids: readonly string[]): Promise<Celula[]>;
   buscarSprint(id: string): Promise<Sprint | null>;
+  /** Célula dueña del sprint (`sprint.id_celula`), o `null` si el sprint no existe. */
+  celulaDeSprint(id: string): Promise<string | null>;
 
   /** Alta idempotente por nombre (sin distinguir mayúsculas) — carga semilla. */
   crearCelulaSiNoExiste(nombre: string): Promise<{ creado: boolean; celula: Celula }>;

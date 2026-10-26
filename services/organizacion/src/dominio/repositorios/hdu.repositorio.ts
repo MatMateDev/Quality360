@@ -86,6 +86,12 @@ export interface HduRepositorio {
   /** Cambia el estado, audita y registra el historial en la misma transacción. */
   cambiarEstado(input: { hduId: string; estadoNuevo: EstadoHdu; actor: Actor }): Promise<ResultadoCambioEstado>;
 
+  /**
+   * Fija el sprint vigente (`historia_sprint`): cierra la fila vigente y abre una nueva; el mismo sprint
+   * no cambia nada. Solo para la semilla E4 (D88): no audita ni toca el historial de la HDU.
+   */
+  fijarSprintVigente(hduId: string, sprintId: string): Promise<{ cambio: boolean }>;
+
   historial(hduId: string): Promise<EventoHistorialHdu[]>;
 
   /** HDU en el ámbito del QE (responsable o de sus analistas), por estado. */

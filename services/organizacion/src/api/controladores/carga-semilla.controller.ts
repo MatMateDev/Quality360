@@ -5,12 +5,13 @@
  * el navegador). `@Publico()` en la clase apaga los guards globales de
  * sesión: esta ruta no usa `sesionSupabase`.
  */
-import { Body, Controller, Post, Res, UseGuards } from '@nestjs/common';
+import { Body, Controller, Param, Post, Put, Res, UseGuards } from '@nestjs/common';
 import { Publico } from '@quality360/auth-nest';
 import type { Response } from 'express';
 
 import { CargaSemillaAplicacion } from '../../aplicacion/carga-semilla.servicio.js';
-import { CargaCelulaDto, CargaHduDto, CargaSprintDto, CargaUsuarioDto } from '../dto/carga-semilla.dto.js';
+import { CargaCelulaDto, CargaHduDto, CargaSprintDto, CargaSprintHduDto, CargaUsuarioDto } from '../dto/carga-semilla.dto.js';
+import { uuidDeRuta } from '../validacion/uuid.js';
 import { CargaSemillaGuard } from '../guardias/carga-semilla.guard.js';
 
 @Publico()
@@ -35,6 +36,12 @@ export class CargaSemillaController {
   async sprints(@Body() dto: CargaSprintDto, @Res() respuesta: Response): Promise<void> {
     const resultado = await this.carga.cargarSprint(dto);
     respuesta.status(resultado.creado ? 201 : 200).json(resultado);
+  }
+
+  /** E4 (D88): sprint vigente de una HDU, para el fixture de riesgo. */
+  @Put('hdu/:id/sprint')
+  async sprintDeHdu(@Param('id') id: string, @Body() dto: CargaSprintHduDto) {
+    return this.carga.cargarSprintHdu(uuidDeRuta(id), dto.sprintId);
   }
 
   @Post('hdu')

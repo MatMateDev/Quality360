@@ -30,6 +30,11 @@ export class PaginacionBandejaDto {
 
 export class BandejaAnalistaQueryDto extends PaginacionBandejaDto {
   @IsOptional()
+  @TransformBooleanoQuery()
+  @IsBoolean()
+  soloBloqueadas?: boolean;
+
+  @IsOptional()
   @IsIn(ESTADOS)
   estado?: EstadoHdu;
 
@@ -81,6 +86,11 @@ export class BandejaQeQueryDto extends PaginacionBandejaDto {
 }
 
 export class BandejaLiderQueryDto extends PaginacionBandejaDto {
+  @IsOptional()
+  @TransformBooleanoQuery()
+  @IsBoolean()
+  soloBloqueadas?: boolean;
+
   @IsOptional()
   @IsUUID('all')
   celulaId?: string;

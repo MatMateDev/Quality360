@@ -129,6 +129,17 @@ export class HduPrismaRepositorio implements HduRepositorio {
     return this.prisma.hdu.count();
   }
 
+  async fijarSprintVigente(hduId: string, sprintId: string): Promise<{ cambio: boolean }> {
+    return this.prisma.$transaction(async (tx) => {
+      await tx.$queryRaw`SELECT "id_historia" FROM "historia_usuario" WHERE "id_historia" = ${hduId}::uuid FOR UPDATE`;
+      const vigente = await tx.historiaSprint.findFirst({ where: { hduId, fechaRetiro: null } });
+      if (vigente?.sprintId === sprintId) return { cambio: false };
+      if (vigente !== null) await tx.historiaSprint.update({ where: { id: vigente.id }, data: { fechaRetiro: new Date() } });
+      await tx.historiaSprint.create({ data: { hduId, sprintId } });
+      return { cambio: true };
+    });
+  }
+
   async ultimosCambiosAsignacion(hduIds: readonly string[]): Promise<Map<string, Date>> {
     const mapa = new Map<string, Date>();
     if (hduIds.length === 0) return mapa;

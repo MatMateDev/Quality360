@@ -28,6 +28,8 @@ export function seguimientoVacio(hduId: string): SeguimientoHdu {
 export class CertificacionesFalsa {
   readonly seguimientos = new Map<string, SeguimientoHdu>();
   caida = false;
+  /** Respuesta de `GET /v1/hdu/{id}/checklist` (cierre de la HDU, D11). */
+  checklistCompleto = true;
   resumen = { certificados: 2, eventosUltimos7Dias: 5 };
   /** Cuerpos recibidos en `POST /v1/interno/checklist/estados`. */
   readonly lotes: string[][] = [];
@@ -46,6 +48,11 @@ export class CertificacionesFalsa {
         respuesta.writeHead(estado, { 'content-type': 'application/json' });
         respuesta.end(JSON.stringify(cuerpo));
       };
+      const checklist = peticion.url?.match(/^\/v1\/hdu\/([^/]+)\/checklist$/);
+      if (peticion.method === 'GET' && checklist !== null && checklist !== undefined) {
+        const completo = this.checklistCompleto;
+        return enviar(200, { hduId: checklist[1], totalEntregables: 10, completados: completo ? 10 : 9, porcentajeCumplimiento: completo ? 100 : 90, completo });
+      }
       if (peticion.method === 'GET' && peticion.url === '/v1/interno/resumen-auditoria') return enviar(200, this.resumen);
       if (peticion.method === 'POST' && peticion.url === '/v1/interno/checklist/estados') {
         const partes: Buffer[] = [];

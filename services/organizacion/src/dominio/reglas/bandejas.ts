@@ -48,6 +48,8 @@ export interface FilaHdu {
   readonly sprintId: string;
   readonly sprintNombre: string;
   readonly sprintInicio: Date;
+  /** Fin del sprint vigente (AAAA-MM-DD) para el riesgo de Impedimentos (E4, D68). */
+  readonly sprintFin?: string | null;
   readonly qeResponsableId: string;
   readonly analistaId: string | null;
   readonly estadoActualizadoEn: Date;

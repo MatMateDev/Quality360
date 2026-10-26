@@ -33,8 +33,15 @@ import type {
   Sprint,
   UsuarioResumen,
 } from '../dominio/tipos.js';
-import { ErrorCierreRechazadoHdu, ErrorTransicionInvalidaHdu, type BloqueChecklist } from './errores-extendidos.js';
+import {
+  ErrorCierreRechazadoHdu,
+  ErrorHduBloqueada,
+  ErrorImpedimentosNoVerificables,
+  ErrorTransicionInvalidaHdu,
+  type BloqueChecklist,
+} from './errores-extendidos.js';
 import { PROVEEDOR_CHECKLIST, type ProveedorChecklist } from './puertos/proveedor-checklist.js';
+import { PROVEEDOR_IMPEDIMENTOS, type ProveedorImpedimentos } from './puertos/proveedor-impedimentos.js';
 
 export interface HduResumenRespuesta {
   readonly id: string;
@@ -99,6 +106,7 @@ export class HduAplicacion {
     @Inject(USUARIO_REPOSITORIO) private readonly usuarios: UsuarioRepositorio,
     @Inject(SUPERVISION_REPOSITORIO) private readonly supervision: SupervisionRepositorio,
     @Inject(PROVEEDOR_CHECKLIST) private readonly checklist: ProveedorChecklist,
+    @Inject(PROVEEDOR_IMPEDIMENTOS) private readonly impedimentos: ProveedorImpedimentos,
   ) {}
 
   async crear(datos: Omit<DatosNuevaHdu, 'qeResponsableId'>, qeResponsableId: string, actor: Actor): Promise<HduDetalleRespuesta> {
@@ -250,6 +258,11 @@ export class HduAplicacion {
         : { fuente: 'certificaciones.checklist', estado: 'indisponible' };
       if (!consulta.disponible) throw new ErrorCierreRechazadoHdu('CHECKLIST_NO_DISPONIBLE', bloque);
       if (!consulta.datos.completo) throw new ErrorCierreRechazadoHdu('CHECKLIST_INCOMPLETO', bloque);
+
+      // Orden de validación: transición (D10) → checklist (D11) → impedimentos (D60, D77). La HDU no cambia.
+      const abiertos = await this.impedimentos.abiertos(id, solicitud.token, solicitud.traceId);
+      if (!abiertos.disponible) throw new ErrorImpedimentosNoVerificables();
+      if (abiertos.total > 0) throw new ErrorHduBloqueada(abiertos.total, abiertos.items.slice(0, 20));
     }
 
     const resultado = await this.hdus.cambiarEstado({ hduId: id, estadoNuevo: estadoSolicitado, actor });

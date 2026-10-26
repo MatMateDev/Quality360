@@ -66,6 +66,11 @@ export class CargaSprintDto {
   celulaId!: string;
 }
 
+export class CargaSprintHduDto {
+  @IsUUID('4')
+  sprintId!: string;
+}
+
 export class CargaHduDto {
   @IsString()
   @MinLength(1)
