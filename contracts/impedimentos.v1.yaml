@@ -1,0 +1,1295 @@
+openapi: 3.1.0
+info:
+  title: Quality360 · Servicio de Impedimentos y riesgos
+  version: 1.0.0
+  license:
+    name: Uso académico · Capstone Duoc UC
+    identifier: LicenseRef-Capstone-Duoc-UC
+  description: |
+    Impedimentos de cada HDU, su ciclo de vida, el nivel de riesgo (fijado y
+    sugerido) y su historial de gestión (E4, decisiones D57–D74 y D75–D92).
+    Lo consumen el gateway, que publica estas mismas rutas salvo
+    `/v1/interno/*`, y Organización, que verifica el cierre de una HDU (D60)
+    y compone los bloques de impedimentos de las bandejas (D87).
+
+    - **Acceso (D57, D89).** No lee el esquema `organizacion`. Cada operación
+      sobre una HDU consulta `GET /v1/interno/hdu/{id}/acceso` de
+      Organización con el token del usuario; los listados resuelven el ámbito
+      con una sola llamada a `GET /v1/interno/hdu/ambito`; el catálogo y
+      `/v1/auditor/*` usan `GET /v1/interno/acceso`. La relación decide:
+
+      | Relación (Organización) | Ver impedimentos | Registrar | Gestionar | Ver riesgo | Fijar riesgo |
+      | --- | --- | --- | --- | --- | --- |
+      | `ANALISTA_ASIGNADO` | Sí | Sí | No | No (D73) | No |
+      | `QE_RESPONSABLE` | Sí | Sí | Sí | Sí | Sí |
+      | `QE_SUPERVISOR_DEL_ANALISTA` | Sí | No | No | Sí | No |
+      | `LECTOR_CELULA` (Líder QA) | Sí | No | No | Sí | No |
+      | `ADMINISTRADOR` | Sí | No | No | Sí | No |
+      | `LECTOR_AUDITORIA` (Auditor) | Sí | No | No | Sí | No |
+
+      Sin relación: 403 `ACCESO_DENEGADO` con mensaje genérico (D12). Un id
+      inexistente responde 403 al Analista, al QE y al Líder, y 404 al
+      Administrador y al Auditor, que leen todo (D50).
+    - **Orden de validación (D89).** 401 → 403 → 400 → 409 `HDU_CERRADA` →
+      422 → 409 `TRANSICION_INVALIDA`. Un intento rechazado no deja registro
+      (E4-B04#1).
+    - **Bloqueo (D59).** Una HDU está bloqueada si tiene al menos un
+      impedimento `ABIERTO` o `ESCALADO`. No es un estado de la HDU.
+    - **Riesgo (D66–D69).** El sugerido se calcula al consultar, con el avance
+      de Certificaciones (`POST /v1/interno/checklist/estados`) y el fin del
+      sprint de Organización. Una fuente caída nunca da `BAJO` (D68).
+    - **Auditoría propia (D70).** `accion_impedimento` y `riesgo_hdu` son de
+      solo inserción. Las exportaciones se registran en Organización con
+      `POST /v1/interno/auditoria/exportaciones` antes de entregar el CSV (D48).
+servers:
+  - url: http://impedimentos:3003
+    description: Red interna de Docker Compose
+  - url: http://localhost:3003
+    description: Desarrollo local
+security:
+  - sesionSupabase: []
+tags:
+  - name: Salud
+    description: Estado del proceso.
+  - name: Catálogos
+    description: Tipos de impedimento (D61).
+  - name: Impedimentos
+    description: Registro, consulta y ciclo de vida (E4-F01–F03, E4-B01, E4-B02).
+  - name: Riesgo
+    description: Nivel de riesgo fijado y sugerido (E4-F04, E4-B03).
+  - name: Gestión
+    description: Historial de impedimentos y riesgo (E4-B04).
+  - name: Auditor
+    description: Consultas y exportaciones de solo lectura del Auditor (E4-B04).
+  - name: Interno
+    description: Consultas de Organización para el cierre y las bandejas (D86).
+  - name: Carga semilla
+    description: Altas idempotentes para Integraciones con credencial de servicio (fixture E4).
+
+paths:
+  /health:
+    get:
+      operationId: obtenerSaludImpedimentos
+      tags: [Salud]
+      summary: Estado del servicio
+      security: []
+      x-roles: [PUBLICO]
+      x-hdu: []
+      responses:
+        '200':
+          description: El proceso responde.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [estado]
+                additionalProperties: false
+                properties:
+                  estado:
+                    type: string
+                    const: ok
+        '500':
+          $ref: './comun.v1.yaml#/components/responses/ErrorInterno'
+
+  /v1/catalogos/tipos-impedimento:
+    get:
+      operationId: listarTiposImpedimento
+      tags: [Catálogos]
+      summary: Catálogo de tipos de impedimento
+      description: Los 9 tipos de D61 en el orden del catálogo, con su etiqueta y la descripción mínima exigida. Cualquier usuario activo.
+      x-roles: [ADMINISTRADOR, QE, ANALISTA_QA, LIDER_QA, AUDITOR]
+      x-hdu: [E4-F01#1, E4-F01#2, E4-B01#1]
+      responses:
+        '200':
+          description: Catálogo.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                additionalProperties: false
+                properties:
+                  items:
+                    type: array
+                    items:
+                      type: object
+                      required: [codigo, etiqueta, descripcionMinima]
+                      additionalProperties: false
+                      properties:
+                        codigo:
+                          $ref: './comun.v1.yaml#/components/schemas/TipoImpedimento'
+                        etiqueta:
+                          type: string
+                        descripcionMinima:
+                          type: integer
+                          description: 10, o 20 para `OTRO`.
+        '401':
+          $ref: './comun.v1.yaml#/components/responses/NoAutenticado'
+        '403':
+          $ref: './comun.v1.yaml#/components/responses/AccesoDenegado'
+        '500':
+          $ref: './comun.v1.yaml#/components/responses/ErrorInterno'
+        '503':
+          $ref: './comun.v1.yaml#/components/responses/ServicioNoDisponible'
+
+  /v1/hdu/{hduId}/impedimentos:
+    parameters:
+      - $ref: '#/components/parameters/HduId'
+    get:
+      operationId: listarImpedimentosHdu
+      tags: [Impedimentos]
+      summary: Impedimentos de una HDU, bloqueo y permisos
+      description: |
+        Sección «Impedimentos» del detalle (E4-F01#1, E4-F03). Quien ve la HDU.
+        Trae `bloqueada`, los conteos, `hduCerrada` y `permisos`, y cada
+        impedimento con `esNuevo` y `operacionesPermitidas` (D75): el portal no
+        deduce la relación. Una HDU cerrada conserva y muestra todo su
+        historial (E4-B04#3).
+      x-roles: [ADMINISTRADOR, QE, ANALISTA_QA, LIDER_QA, AUDITOR]
+      x-hdu: [E4-F01#1, E4-F03#1, E4-F03#3, E4-B01#2, E4-B02#2, E4-B04#3]
+      responses:
+        '200':
+          description: Impedimentos de la HDU.
+          content:
+            application/json:
+              schema:
+                $ref: './comun.v1.yaml#/components/schemas/ImpedimentosHdu'
+        '401':
+          $ref: './comun.v1.yaml#/components/responses/NoAutenticado'
+        '403':
+          $ref: './comun.v1.yaml#/components/responses/AccesoDenegado'
+        '404':
+          $ref: './comun.v1.yaml#/components/responses/NoEncontrado'
+        '500':
+          $ref: './comun.v1.yaml#/components/responses/ErrorInterno'
+        '503':
+          $ref: './comun.v1.yaml#/components/responses/ServicioNoDisponible'
+    post:
+      operationId: registrarImpedimento
+      tags: [Impedimentos]
+      summary: Registrar un impedimento
+      description: |
+        Solo el Analista asignado y el QE responsable (D57). Estados que lo
+        admiten: `PENDIENTE`, `DISENO_PRUEBAS`, `EN_EJECUCION` y
+        `PENDIENTE_CIERRE`; `CERRADA` → 409 `HDU_CERRADA`.
+
+        - `responsableId` debe estar entre los candidatos de `REGISTRO`; otro
+          → 422 `RESPONSABLE_INVALIDO`. Sin él, `responsableNombre` (tercero).
+        - Pide el ciclo activo a Certificaciones; si no hay o no responde,
+          `certificacionId: null`. Nunca crea un ciclo (D58).
+        - Crea el impedimento `ABIERTO` y la acción `REGISTRAR` en una sola
+          transacción, con autor (id, nombre y rol) y fechas (E4-B01#1).
+      x-roles: [ANALISTA_QA, QE]
+      x-hdu: [E4-F01#1, E4-F01#2, E4-B01#1, E4-B01#2, E4-B01#3, E4-B04#1]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: './comun.v1.yaml#/components/schemas/NuevoImpedimento'
+      responses:
+        '201':
+          description: Impedimento registrado.
+          content:
+            application/json:
+              schema:
+                $ref: './comun.v1.yaml#/components/schemas/ImpedimentoDetalle'
+        '400':
+          $ref: './comun.v1.yaml#/components/responses/Validacion'
+        '401':
+          $ref: './comun.v1.yaml#/components/responses/NoAutenticado'
+        '403':
+          $ref: './comun.v1.yaml#/components/responses/AccesoDenegado'
+        '409':
+          $ref: '#/components/responses/HduCerrada'
+        '422':
+          $ref: '#/components/responses/ResponsableInvalido'
+        '500':
+          $ref: './comun.v1.yaml#/components/responses/ErrorInterno'
+        '503':
+          $ref: './comun.v1.yaml#/components/responses/ServicioNoDisponible'
+
+  /v1/hdu/{hduId}/impedimentos/responsables:
+    parameters:
+      - $ref: '#/components/parameters/HduId'
+    get:
+      operationId: listarResponsablesImpedimento
+      tags: [Impedimentos]
+      summary: Candidatos a responsable de un impedimento
+      description: |
+        Tabla 3.5 del backlog E4, desde `candidatosResponsable` de
+        `GET /v1/interno/hdu/{id}/acceso?incluirCandidatos=true`. `REGISTRO`:
+        Analista asignado y QE responsable. `ESCALAMIENTO`: solo QE
+        responsable. Otro rol o relación → 403.
+      x-roles: [ANALISTA_QA, QE]
+      x-hdu: [E4-F01#1, E4-F03#2, E4-B01#1, E4-B02#1]
+      parameters:
+        - name: proposito
+          in: query
+          required: true
+          schema:
+            $ref: './comun.v1.yaml#/components/schemas/PropositoResponsable'
+      responses:
+        '200':
+          description: Candidatos activos.
+          content:
+            application/json:
+              schema:
+                $ref: './comun.v1.yaml#/components/schemas/CandidatosResponsable'
+        '400':
+          $ref: './comun.v1.yaml#/components/responses/Validacion'
+        '401':
+          $ref: './comun.v1.yaml#/components/responses/NoAutenticado'
+        '403':
+          $ref: './comun.v1.yaml#/components/responses/AccesoDenegado'
+        '500':
+          $ref: './comun.v1.yaml#/components/responses/ErrorInterno'
+        '503':
+          $ref: './comun.v1.yaml#/components/responses/ServicioNoDisponible'
+
+  /v1/impedimentos:
+    get:
+      operationId: listarImpedimentos
+      tags: [Impedimentos]
+      summary: Impedimentos del ámbito, priorizados
+      description: |
+        Pantalla `/qe/impedimentos` (E4-F02). Ámbito del rol según
+        `GET /v1/interno/hdu/ambito`: QE (responsable o analista supervisado;
+        las filas donde no es responsable traen `soloLectura`), Líder QA (sus
+        células), Administrador y Auditor (todas). Analista QA → 403.
+
+        - Por defecto excluye los `RESUELTO` (`incluirResueltos=false`); un
+          `estado` explícito manda sobre ese valor.
+        - Orden por defecto (D74): no resueltos primero, riesgo vigente (Alto,
+          Medio, Bajo), días abiertos descendente. Columnas de `orden`:
+          `riesgo`, `diasAbierto`, `fechaRegistro`.
+        - Si Certificaciones no responde, el riesgo de cada fila sin nivel
+          fijado viene `indisponible` y el orden por riesgo cae a
+          `diasAbierto:desc`, informado en `orden`. Un filtro `riesgo` en esa
+          situación → 503 (no se devuelve una lista mal filtrada).
+        - Si Organización no responde → 503. Nunca una lista vacía falsa.
+      x-roles: [QE, LIDER_QA, ADMINISTRADOR, AUDITOR]
+      x-hdu: [E4-F02#1, E4-F02#2, E4-F02#3]
+      parameters:
+        - name: estado
+          in: query
+          required: false
+          schema:
+            $ref: './comun.v1.yaml#/components/schemas/EstadoImpedimento'
+        - name: tipo
+          in: query
+          required: false
+          schema:
+            $ref: './comun.v1.yaml#/components/schemas/TipoImpedimento'
+        - $ref: './comun.v1.yaml#/components/parameters/FiltroCelula'
+        - $ref: './comun.v1.yaml#/components/parameters/FiltroAnalista'
+        - name: riesgo
+          in: query
+          required: false
+          schema:
+            $ref: './comun.v1.yaml#/components/schemas/NivelRiesgo'
+        - name: incluirResueltos
+          in: query
+          required: false
+          schema:
+            type: boolean
+            default: false
+        - $ref: '#/components/parameters/BusquedaImpedimento'
+        - $ref: '#/components/parameters/OrdenImpedimentos'
+        - $ref: './comun.v1.yaml#/components/parameters/Pagina'
+        - $ref: './comun.v1.yaml#/components/parameters/TamanoPaginaBandeja'
+      responses:
+        '200':
+          description: Página de impedimentos con contadores del ámbito.
+          content:
+            application/json:
+              schema:
+                $ref: './comun.v1.yaml#/components/schemas/PaginaImpedimentos'
+        '400':
+          $ref: './comun.v1.yaml#/components/responses/Validacion'
+        '401':
+          $ref: './comun.v1.yaml#/components/responses/NoAutenticado'
+        '403':
+          $ref: './comun.v1.yaml#/components/responses/AccesoDenegado'
+        '500':
+          $ref: './comun.v1.yaml#/components/responses/ErrorInterno'
+        '503':
+          $ref: './comun.v1.yaml#/components/responses/ServicioNoDisponible'
+
+  /v1/impedimentos/{id}:
+    parameters:
+      - $ref: '#/components/parameters/ImpedimentoId'
+    get:
+      operationId: obtenerImpedimento
+      tags: [Impedimentos]
+      summary: Detalle de un impedimento con su historial
+      description: Quien ve la HDU del impedimento. `acciones` en orden cronológico, más antigua primero (E4-F03, E4-B01-T03).
+      x-roles: [ADMINISTRADOR, QE, ANALISTA_QA, LIDER_QA, AUDITOR]
+      x-hdu: [E4-F03#1, E4-F03#3, E4-B01#1, E4-B04#2]
+      responses:
+        '200':
+          description: Impedimento.
+          content:
+            application/json:
+              schema:
+                $ref: './comun.v1.yaml#/components/schemas/ImpedimentoDetalle'
+        '401':
+          $ref: './comun.v1.yaml#/components/responses/NoAutenticado'
+        '403':
+          $ref: './comun.v1.yaml#/components/responses/AccesoDenegado'
+        '404':
+          $ref: './comun.v1.yaml#/components/responses/NoEncontrado'
+        '500':
+          $ref: './comun.v1.yaml#/components/responses/ErrorInterno'
+        '503':
+          $ref: './comun.v1.yaml#/components/responses/ServicioNoDisponible'
+
+  /v1/impedimentos/{id}/resolver:
+    parameters:
+      - $ref: '#/components/parameters/ImpedimentoId'
+    post:
+      operationId: resolverImpedimento
+      tags: [Impedimentos]
+      summary: Resolver un impedimento
+      description: |
+        `ABIERTO` o `ESCALADO` → `RESUELTO`. Solo el QE responsable. Fija
+        `fecha_resolucion` y registra `RESOLVER` en la misma transacción, con
+        la fila tomada con `SELECT … FOR UPDATE` (D62): de dos solicitudes
+        simultáneas una responde 200 y la otra 409. Si era el último abierto,
+        la HDU deja de estar bloqueada (E4-B02#2).
+      x-roles: [QE]
+      x-hdu: [E4-F03#1, E4-B02#1, E4-B02#2, E4-B04#1]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: './comun.v1.yaml#/components/schemas/SolicitudComentarioImpedimento'
+      responses:
+        '200':
+          $ref: '#/components/responses/AccionAceptada'
+        '400':
+          $ref: './comun.v1.yaml#/components/responses/Validacion'
+        '401':
+          $ref: './comun.v1.yaml#/components/responses/NoAutenticado'
+        '403':
+          $ref: './comun.v1.yaml#/components/responses/AccesoDenegado'
+        '404':
+          $ref: './comun.v1.yaml#/components/responses/NoEncontrado'
+        '409':
+          $ref: '#/components/responses/ConflictoImpedimento'
+        '422':
+          $ref: '#/components/responses/ComentarioRequerido'
+        '500':
+          $ref: './comun.v1.yaml#/components/responses/ErrorInterno'
+        '503':
+          $ref: './comun.v1.yaml#/components/responses/ServicioNoDisponible'
+
+  /v1/impedimentos/{id}/escalar:
+    parameters:
+      - $ref: '#/components/parameters/ImpedimentoId'
+    post:
+      operationId: escalarImpedimento
+      tags: [Impedimentos]
+      summary: Escalar un impedimento
+      description: |
+        `ABIERTO` o `ESCALADO` → `ESCALADO`. Solo el QE responsable. El
+        destino es un candidato de `ESCALAMIENTO` (Líder QA con la célula
+        vigente o Administrador activo) o un tercero (`responsableNombre`); un
+        QE, un Analista, un Líder sin la célula o el mismo responsable actual
+        → 422 `RESPONSABLE_INVALIDO` (D64). Cambia el responsable y deja
+        `detalle {responsableAnterior, responsableNuevo}` en la acción. Un
+        `RESUELTO` → 409 «Un impedimento resuelto solo puede reabrirse»
+        (E4-B02#3).
+      x-roles: [QE]
+      x-hdu: [E4-F03#2, E4-B02#1, E4-B02#3, E4-B04#1]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: './comun.v1.yaml#/components/schemas/SolicitudEscalamiento'
+      responses:
+        '200':
+          $ref: '#/components/responses/AccionAceptada'
+        '400':
+          $ref: './comun.v1.yaml#/components/responses/Validacion'
+        '401':
+          $ref: './comun.v1.yaml#/components/responses/NoAutenticado'
+        '403':
+          $ref: './comun.v1.yaml#/components/responses/AccesoDenegado'
+        '404':
+          $ref: './comun.v1.yaml#/components/responses/NoEncontrado'
+        '409':
+          $ref: '#/components/responses/ConflictoImpedimento'
+        '422':
+          $ref: '#/components/responses/EscalamientoInvalido'
+        '500':
+          $ref: './comun.v1.yaml#/components/responses/ErrorInterno'
+        '503':
+          $ref: './comun.v1.yaml#/components/responses/ServicioNoDisponible'
+
+  /v1/impedimentos/{id}/reabrir:
+    parameters:
+      - $ref: '#/components/parameters/ImpedimentoId'
+    post:
+      operationId: reabrirImpedimento
+      tags: [Impedimentos]
+      summary: Reabrir un impedimento resuelto
+      description: |
+        `RESUELTO` → `ABIERTO`. Solo el QE responsable. Borra
+        `fecha_resolucion`, reinicia `abierto_desde` y conserva
+        `fecha_registro` y todas las acciones previas (E4-F03#3). La HDU
+        vuelve a quedar bloqueada.
+      x-roles: [QE]
+      x-hdu: [E4-F03#3, E4-B02#1, E4-B04#1, E4-B04#3]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: './comun.v1.yaml#/components/schemas/SolicitudReapertura'
+      responses:
+        '200':
+          $ref: '#/components/responses/AccionAceptada'
+        '400':
+          $ref: './comun.v1.yaml#/components/responses/Validacion'
+        '401':
+          $ref: './comun.v1.yaml#/components/responses/NoAutenticado'
+        '403':
+          $ref: './comun.v1.yaml#/components/responses/AccesoDenegado'
+        '404':
+          $ref: './comun.v1.yaml#/components/responses/NoEncontrado'
+        '409':
+          $ref: '#/components/responses/ConflictoImpedimento'
+        '422':
+          $ref: '#/components/responses/MotivoRequerido'
+        '500':
+          $ref: './comun.v1.yaml#/components/responses/ErrorInterno'
+        '503':
+          $ref: './comun.v1.yaml#/components/responses/ServicioNoDisponible'
+
+  /v1/impedimentos/{id}/seguimiento:
+    parameters:
+      - $ref: '#/components/parameters/ImpedimentoId'
+    post:
+      operationId: agregarSeguimientoImpedimento
+      tags: [Impedimentos]
+      summary: Agregar un seguimiento
+      description: Solo agrega una acción `SEGUIMIENTO`; el estado no cambia. `ABIERTO` o `ESCALADO`; un `RESUELTO` → 409. Solo el QE responsable.
+      x-roles: [QE]
+      x-hdu: [E4-F03#1, E4-B02#1, E4-B02#3]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: './comun.v1.yaml#/components/schemas/SolicitudComentarioImpedimento'
+      responses:
+        '200':
+          $ref: '#/components/responses/AccionAceptada'
+        '400':
+          $ref: './comun.v1.yaml#/components/responses/Validacion'
+        '401':
+          $ref: './comun.v1.yaml#/components/responses/NoAutenticado'
+        '403':
+          $ref: './comun.v1.yaml#/components/responses/AccesoDenegado'
+        '404':
+          $ref: './comun.v1.yaml#/components/responses/NoEncontrado'
+        '409':
+          $ref: '#/components/responses/ConflictoImpedimento'
+        '422':
+          $ref: '#/components/responses/ComentarioRequerido'
+        '500':
+          $ref: './comun.v1.yaml#/components/responses/ErrorInterno'
+        '503':
+          $ref: './comun.v1.yaml#/components/responses/ServicioNoDisponible'
+
+  /v1/hdu/{hduId}/riesgo:
+    parameters:
+      - $ref: '#/components/parameters/HduId'
+    get:
+      operationId: obtenerRiesgoHdu
+      tags: [Riesgo]
+      summary: Nivel de riesgo vigente, sugerido y sus factores
+      description: |
+        Panel «Riesgo» (E4-F04#1–#2, E4-B03). Todos los que ven la HDU salvo
+        el Analista QA, que recibe 403 (D73). `factores[].detalle` trae los
+        valores y umbrales para la frase del portal (D76). Si Certificaciones
+        no responde, la respuesta es 200 con `factoresNoEvaluados` y, si no se
+        llega a `ALTO`, `nivelSugerido: null` y `estado: indisponible` (D68).
+      x-roles: [QE, LIDER_QA, ADMINISTRADOR, AUDITOR]
+      x-hdu: [E4-F04#1, E4-F04#2, E4-B03#1, E4-B03#2, E4-B03#3]
+      responses:
+        '200':
+          description: Riesgo de la HDU.
+          content:
+            application/json:
+              schema:
+                $ref: './comun.v1.yaml#/components/schemas/RiesgoHdu'
+        '401':
+          $ref: './comun.v1.yaml#/components/responses/NoAutenticado'
+        '403':
+          $ref: './comun.v1.yaml#/components/responses/AccesoDenegado'
+        '404':
+          $ref: './comun.v1.yaml#/components/responses/NoEncontrado'
+        '500':
+          $ref: './comun.v1.yaml#/components/responses/ErrorInterno'
+        '503':
+          $ref: './comun.v1.yaml#/components/responses/ServicioNoDisponible'
+    put:
+      operationId: fijarRiesgoHdu
+      tags: [Riesgo]
+      summary: Fijar el nivel de riesgo
+      description: |
+        Solo el QE responsable, con la HDU no cerrada (409 `HDU_CERRADA`).
+        Agrega una fila a `riesgo_hdu` con `nivel_anterior` (el último fijado o
+        `null`), `sugerido_al_fijar`, actor y fecha (E4-B03#3, E4-B04#1). El
+        mismo nivel con la misma justificación responde 200 con
+        `cambio: false` y no agrega fila.
+      x-roles: [QE]
+      x-hdu: [E4-F04#1, E4-F04#2, E4-B03#3, E4-B04#1]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: './comun.v1.yaml#/components/schemas/CambioRiesgo'
+      responses:
+        '200':
+          description: Nivel fijado (o sin cambios).
+          content:
+            application/json:
+              schema:
+                $ref: './comun.v1.yaml#/components/schemas/ResultadoCambioRiesgo'
+        '400':
+          $ref: './comun.v1.yaml#/components/responses/Validacion'
+        '401':
+          $ref: './comun.v1.yaml#/components/responses/NoAutenticado'
+        '403':
+          $ref: './comun.v1.yaml#/components/responses/AccesoDenegado'
+        '409':
+          $ref: '#/components/responses/HduCerrada'
+        '422':
+          $ref: '#/components/responses/JustificacionRequerida'
+        '500':
+          $ref: './comun.v1.yaml#/components/responses/ErrorInterno'
+        '503':
+          $ref: './comun.v1.yaml#/components/responses/ServicioNoDisponible'
+
+  /v1/riesgo/hdu:
+    get:
+      operationId: listarRiesgoHdu
+      tags: [Riesgo]
+      summary: HDU del ámbito por nivel de riesgo
+      description: |
+        Pestaña «Riesgo por HDU» (E4-F04#3). Mismo ámbito que
+        `GET /v1/impedimentos`; las HDU salen de
+        `GET /v1/interno/hdu/ambito/detalle` de Organización. Por defecto, solo
+        HDU no cerradas. Orden por defecto: riesgo vigente (Alto primero),
+        impedimentos abiertos descendente, código. Columnas de `orden`:
+        `riesgo`, `impedimentosAbiertos`, `codigo`, `avance`.
+
+        Si Certificaciones no responde, las HDU con nivel fijado muestran su
+        nivel y las demás `indisponible`; un filtro `nivel` → 503 (D46).
+      x-roles: [QE, LIDER_QA, ADMINISTRADOR, AUDITOR]
+      x-hdu: [E4-F04#3, E4-F02#1]
+      parameters:
+        - name: nivel
+          in: query
+          required: false
+          schema:
+            $ref: './comun.v1.yaml#/components/schemas/NivelRiesgo'
+        - $ref: './comun.v1.yaml#/components/parameters/FiltroCelula'
+        - $ref: './comun.v1.yaml#/components/parameters/FiltroSprint'
+        - $ref: './comun.v1.yaml#/components/parameters/FiltroAnalista'
+        - name: estado
+          in: query
+          required: false
+          description: Estado de la HDU. Sin valor, todas las no cerradas.
+          schema:
+            $ref: './comun.v1.yaml#/components/schemas/EstadoHdu'
+        - $ref: './comun.v1.yaml#/components/parameters/FiltroSoloBloqueadas'
+        - $ref: './comun.v1.yaml#/components/parameters/FiltroBusqueda'
+        - $ref: '#/components/parameters/OrdenRiesgo'
+        - $ref: './comun.v1.yaml#/components/parameters/Pagina'
+        - $ref: './comun.v1.yaml#/components/parameters/TamanoPaginaBandeja'
+      responses:
+        '200':
+          description: Página de HDU con su riesgo.
+          content:
+            application/json:
+              schema:
+                $ref: './comun.v1.yaml#/components/schemas/PaginaRiesgoHdu'
+        '400':
+          $ref: './comun.v1.yaml#/components/responses/Validacion'
+        '401':
+          $ref: './comun.v1.yaml#/components/responses/NoAutenticado'
+        '403':
+          $ref: './comun.v1.yaml#/components/responses/AccesoDenegado'
+        '500':
+          $ref: './comun.v1.yaml#/components/responses/ErrorInterno'
+        '503':
+          $ref: './comun.v1.yaml#/components/responses/ServicioNoDisponible'
+
+  /v1/hdu/{hduId}/gestion-impedimentos:
+    parameters:
+      - $ref: '#/components/parameters/HduId'
+    get:
+      operationId: obtenerGestionImpedimentosHdu
+      tags: [Gestión]
+      summary: Historial de gestión de impedimentos y riesgo de una HDU
+      description: |
+        Quien ve la HDU, incluido el Administrador (E4-B04#2). Cronológico,
+        más antiguo primero (`orden=fecha:desc` para el inverso), filtrable
+        por fechas y por `tipo`. El Analista QA recibe solo las entradas
+        `IMPEDIMENTO` (D73). Se conserva completo tras el cierre (E4-B04#3).
+        El portal lo usa para el historial del panel de riesgo con
+        `tipo=RIESGO` (D82).
+      x-roles: [ADMINISTRADOR, QE, ANALISTA_QA, LIDER_QA, AUDITOR]
+      x-hdu: [E4-F04#1, E4-B04#1, E4-B04#2, E4-B04#3]
+      parameters:
+        - $ref: './comun.v1.yaml#/components/parameters/FiltroDesde'
+        - $ref: './comun.v1.yaml#/components/parameters/FiltroHasta'
+        - name: tipo
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [IMPEDIMENTO, RIESGO]
+        - name: orden
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: ['fecha:asc', 'fecha:desc']
+            default: 'fecha:asc'
+      responses:
+        '200':
+          description: Historial de la HDU.
+          content:
+            application/json:
+              schema:
+                $ref: './comun.v1.yaml#/components/schemas/HistorialGestionHdu'
+        '400':
+          $ref: './comun.v1.yaml#/components/responses/Validacion'
+        '401':
+          $ref: './comun.v1.yaml#/components/responses/NoAutenticado'
+        '403':
+          $ref: './comun.v1.yaml#/components/responses/AccesoDenegado'
+        '404':
+          $ref: './comun.v1.yaml#/components/responses/NoEncontrado'
+        '500':
+          $ref: './comun.v1.yaml#/components/responses/ErrorInterno'
+        '503':
+          $ref: './comun.v1.yaml#/components/responses/ServicioNoDisponible'
+
+  /v1/auditor/impedimentos:
+    get:
+      operationId: listarImpedimentosAuditor
+      tags: [Auditor]
+      summary: Impedimentos de todas las HDU
+      description: |
+        Solo rol `AUDITOR`; el Administrador recibe 403 (D38, D53). Vista
+        «Impedimentos» de la pestaña del Auditor, del registro más reciente al
+        más antiguo. `desde`/`hasta` filtran por `fechaRegistro`. La HDU de
+        cada fila sale de `POST /v1/interno/hdu/consulta`; una HDU que
+        Organización no conoce se muestra como en D55. Si Organización no
+        responde, 503.
+      x-roles: [AUDITOR]
+      x-hdu: [E4-B04#2]
+      parameters:
+        - $ref: './comun.v1.yaml#/components/parameters/FiltroDesde'
+        - $ref: './comun.v1.yaml#/components/parameters/FiltroHasta'
+        - name: hduId
+          in: query
+          required: false
+          schema:
+            $ref: './comun.v1.yaml#/components/schemas/Uuid'
+        - name: estado
+          in: query
+          required: false
+          schema:
+            $ref: './comun.v1.yaml#/components/schemas/EstadoImpedimento'
+        - name: tipo
+          in: query
+          required: false
+          schema:
+            $ref: './comun.v1.yaml#/components/schemas/TipoImpedimento'
+        - $ref: '#/components/parameters/BusquedaImpedimento'
+        - $ref: './comun.v1.yaml#/components/parameters/Pagina'
+        - $ref: './comun.v1.yaml#/components/parameters/TamanoPaginaBandeja'
+      responses:
+        '200':
+          description: Página de impedimentos.
+          content:
+            application/json:
+              schema:
+                $ref: './comun.v1.yaml#/components/schemas/PaginaAuditorImpedimentos'
+        '400':
+          $ref: './comun.v1.yaml#/components/responses/Validacion'
+        '401':
+          $ref: './comun.v1.yaml#/components/responses/NoAutenticado'
+        '403':
+          $ref: './comun.v1.yaml#/components/responses/AccesoDenegado'
+        '500':
+          $ref: './comun.v1.yaml#/components/responses/ErrorInterno'
+        '503':
+          $ref: './comun.v1.yaml#/components/responses/ServicioNoDisponible'
+
+  /v1/auditor/gestion-impedimentos:
+    get:
+      operationId: listarGestionImpedimentosAuditor
+      tags: [Auditor]
+      summary: Historial de gestión de todas las HDU
+      description: Solo rol `AUDITOR`. Vista «Gestión», del más reciente al más antiguo, con acciones de impedimentos y cambios de riesgo (E4-B04#2).
+      x-roles: [AUDITOR]
+      x-hdu: [E4-B04#2, E4-B04#3]
+      parameters:
+        - $ref: './comun.v1.yaml#/components/parameters/FiltroDesde'
+        - $ref: './comun.v1.yaml#/components/parameters/FiltroHasta'
+        - name: hduId
+          in: query
+          required: false
+          schema:
+            $ref: './comun.v1.yaml#/components/schemas/Uuid'
+        - name: actorId
+          in: query
+          required: false
+          schema:
+            $ref: './comun.v1.yaml#/components/schemas/Uuid'
+        - name: estado
+          in: query
+          required: false
+          description: Estado resultante de la acción (solo entradas `IMPEDIMENTO`).
+          schema:
+            $ref: './comun.v1.yaml#/components/schemas/EstadoImpedimento'
+        - name: tipo
+          in: query
+          required: false
+          description: Tipo del impedimento afectado (solo entradas `IMPEDIMENTO`).
+          schema:
+            $ref: './comun.v1.yaml#/components/schemas/TipoImpedimento'
+        - name: accion
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [REGISTRAR, ESCALAR, RESOLVER, REABRIR, SEGUIMIENTO, FIJAR_RIESGO]
+        - $ref: './comun.v1.yaml#/components/parameters/Pagina'
+        - $ref: './comun.v1.yaml#/components/parameters/TamanoPaginaBandeja'
+      responses:
+        '200':
+          description: Página del historial de gestión.
+          content:
+            application/json:
+              schema:
+                $ref: './comun.v1.yaml#/components/schemas/PaginaGestionImpedimentos'
+        '400':
+          $ref: './comun.v1.yaml#/components/responses/Validacion'
+        '401':
+          $ref: './comun.v1.yaml#/components/responses/NoAutenticado'
+        '403':
+          $ref: './comun.v1.yaml#/components/responses/AccesoDenegado'
+        '500':
+          $ref: './comun.v1.yaml#/components/responses/ErrorInterno'
+        '503':
+          $ref: './comun.v1.yaml#/components/responses/ServicioNoDisponible'
+
+  /v1/auditor/exportaciones/impedimentos:
+    get:
+      operationId: exportarImpedimentosAuditor
+      tags: [Auditor]
+      summary: Exportar a CSV los impedimentos
+      description: |
+        Mismos filtros y columnas que `GET /v1/auditor/impedimentos`. Antes de
+        responder registra la exportación en Organización (recurso
+        `IMPEDIMENTOS`); si el registro falla, 503 sin archivo (D48, D70).
+        Archivo `quality360-impedimentos-AAAA-MM-DD.csv`.
+      x-roles: [AUDITOR]
+      x-hdu: [E4-B04#2]
+      parameters:
+        - $ref: './comun.v1.yaml#/components/parameters/FiltroDesde'
+        - $ref: './comun.v1.yaml#/components/parameters/FiltroHasta'
+        - name: hduId
+          in: query
+          required: false
+          schema:
+            $ref: './comun.v1.yaml#/components/schemas/Uuid'
+        - name: estado
+          in: query
+          required: false
+          schema:
+            $ref: './comun.v1.yaml#/components/schemas/EstadoImpedimento'
+        - name: tipo
+          in: query
+          required: false
+          schema:
+            $ref: './comun.v1.yaml#/components/schemas/TipoImpedimento'
+        - $ref: '#/components/parameters/BusquedaImpedimento'
+      responses:
+        '200':
+          $ref: './comun.v1.yaml#/components/responses/ExportacionCsv'
+        '400':
+          $ref: './comun.v1.yaml#/components/responses/Validacion'
+        '401':
+          $ref: './comun.v1.yaml#/components/responses/NoAutenticado'
+        '403':
+          $ref: './comun.v1.yaml#/components/responses/AccesoDenegado'
+        '422':
+          $ref: './comun.v1.yaml#/components/responses/ExportacionExcedeLimite'
+        '500':
+          $ref: './comun.v1.yaml#/components/responses/ErrorInterno'
+        '503':
+          $ref: './comun.v1.yaml#/components/responses/ServicioNoDisponible'
+
+  /v1/auditor/exportaciones/gestion-impedimentos:
+    get:
+      operationId: exportarGestionImpedimentosAuditor
+      tags: [Auditor]
+      summary: Exportar a CSV el historial de gestión
+      description: Mismos filtros y columnas que `GET /v1/auditor/gestion-impedimentos`. Registra la exportación como el anterior (recurso `GESTION_IMPEDIMENTOS`). Archivo `quality360-gestion-impedimentos-AAAA-MM-DD.csv`.
+      x-roles: [AUDITOR]
+      x-hdu: [E4-B04#2, E4-B04#3]
+      parameters:
+        - $ref: './comun.v1.yaml#/components/parameters/FiltroDesde'
+        - $ref: './comun.v1.yaml#/components/parameters/FiltroHasta'
+        - name: hduId
+          in: query
+          required: false
+          schema:
+            $ref: './comun.v1.yaml#/components/schemas/Uuid'
+        - name: actorId
+          in: query
+          required: false
+          schema:
+            $ref: './comun.v1.yaml#/components/schemas/Uuid'
+        - name: estado
+          in: query
+          required: false
+          schema:
+            $ref: './comun.v1.yaml#/components/schemas/EstadoImpedimento'
+        - name: tipo
+          in: query
+          required: false
+          schema:
+            $ref: './comun.v1.yaml#/components/schemas/TipoImpedimento'
+        - name: accion
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [REGISTRAR, ESCALAR, RESOLVER, REABRIR, SEGUIMIENTO, FIJAR_RIESGO]
+      responses:
+        '200':
+          $ref: './comun.v1.yaml#/components/responses/ExportacionCsv'
+        '400':
+          $ref: './comun.v1.yaml#/components/responses/Validacion'
+        '401':
+          $ref: './comun.v1.yaml#/components/responses/NoAutenticado'
+        '403':
+          $ref: './comun.v1.yaml#/components/responses/AccesoDenegado'
+        '422':
+          $ref: './comun.v1.yaml#/components/responses/ExportacionExcedeLimite'
+        '500':
+          $ref: './comun.v1.yaml#/components/responses/ErrorInterno'
+        '503':
+          $ref: './comun.v1.yaml#/components/responses/ServicioNoDisponible'
+
+  # ------------------------------------------------ internos (no los publica el gateway)
+  /v1/interno/impedimentos/evaluacion:
+    post:
+      operationId: evaluarImpedimentosLote
+      tags: [Interno]
+      summary: Bloqueo, conteos y riesgo de varias HDU
+      description: |
+        Lectura en lote (POST solo para enviar hasta 1000 HDU) que usa
+        Organización al componer las bandejas (D69, D87). Organización envía
+        los datos que ya tiene (estado, fin del sprint y avance), así que
+        Impedimentos no vuelve a pedirlos. Propaga el token del usuario
+        (2 s, `IMPEDIMENTOS_TIMEOUT_MS`). Impedimentos consulta una vez
+        `GET /v1/interno/hdu/ambito` y, si algún id está fuera del ámbito,
+        responde 403 sin datos parciales (D47). Una HDU sin impedimentos
+        responde `bloqueada: false` y conteos en 0: es un dato válido.
+        Para el Analista QA, `riesgo` y los niveles vienen igual pero
+        Organización no los publica (D73).
+      x-roles: [ADMINISTRADOR, QE, ANALISTA_QA, LIDER_QA, AUDITOR]
+      x-hdu: [E4-F01#3, E4-F03#2, E4-B01#2, E4-B02#2]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: './comun.v1.yaml#/components/schemas/SolicitudEvaluacionImpedimentos'
+      responses:
+        '200':
+          description: Una evaluación por HDU, en el orden pedido.
+          content:
+            application/json:
+              schema:
+                $ref: './comun.v1.yaml#/components/schemas/ResultadoEvaluacionImpedimentos'
+        '400':
+          $ref: './comun.v1.yaml#/components/responses/Validacion'
+        '401':
+          $ref: './comun.v1.yaml#/components/responses/NoAutenticado'
+        '403':
+          $ref: './comun.v1.yaml#/components/responses/AccesoDenegado'
+        '500':
+          $ref: './comun.v1.yaml#/components/responses/ErrorInterno'
+
+  /v1/interno/hdu/{hduId}/impedimentos/abiertos:
+    parameters:
+      - $ref: '#/components/parameters/HduId'
+    get:
+      operationId: listarImpedimentosBloqueantesHdu
+      tags: [Interno]
+      summary: Impedimentos que impiden cerrar una HDU
+      description: |
+        Organización lo llama al pedir `CERRADA`, después de validar la
+        transición (D10) y el checklist (D11), con el token del usuario y 2 s
+        de tiempo límite (D60, D77). `total > 0` → Organización responde 409
+        `HDU_BLOQUEADA` con esta lista. Si no responde, Organización responde
+        503 «No pudimos verificar los impedimentos de la HDU». Autoriza con
+        `GET /v1/interno/hdu/{id}/acceso`: basta con cualquier relación.
+      x-roles: [ADMINISTRADOR, QE, ANALISTA_QA]
+      x-hdu: [E4-B02#2]
+      responses:
+        '200':
+          description: Abiertos y escalados (hasta 20) y su total.
+          content:
+            application/json:
+              schema:
+                $ref: './comun.v1.yaml#/components/schemas/ImpedimentosAbiertosHdu'
+        '401':
+          $ref: './comun.v1.yaml#/components/responses/NoAutenticado'
+        '403':
+          $ref: './comun.v1.yaml#/components/responses/AccesoDenegado'
+        '500':
+          $ref: './comun.v1.yaml#/components/responses/ErrorInterno'
+
+  # ------------------------------------------------ carga semilla (Integraciones, D88)
+  /v1/interno/carga/impedimentos:
+    post:
+      operationId: cargarImpedimento
+      tags: [Carga semilla]
+      summary: Alta idempotente de un impedimento con su historial
+      description: |
+        Solo para la semilla E4 (fixture de la sección 7 del backlog E4), con
+        `credencialServicio` y `PERMITIR_CARGA_SEMILLA=true` (si no, 403).
+        Idempotente por `hduId` + `titulo`. Inserta el impedimento y sus
+        acciones con las fechas indicadas: el estado, `abierto_desde` y
+        `fecha_resolucion` se derivan de la última acción. No valida la
+        relación con la HDU ni consulta otros servicios. Reiniciar el fixture
+        (borrar) no es posible con `svc_impedimentos` (D88): lo hace el
+        arnés de pruebas con el dueño de la base.
+      x-roles: [SERVICIO]
+      x-hdu: []
+      security:
+        - credencialServicio: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CargaImpedimento'
+      responses:
+        '200':
+          description: Ya existía.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ResultadoCarga'
+        '201':
+          description: Creado.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ResultadoCarga'
+        '400':
+          $ref: './comun.v1.yaml#/components/responses/Validacion'
+        '401':
+          $ref: './comun.v1.yaml#/components/responses/NoAutenticado'
+        '403':
+          $ref: './comun.v1.yaml#/components/responses/AccesoDenegado'
+        '500':
+          $ref: './comun.v1.yaml#/components/responses/ErrorInterno'
+
+  /v1/interno/carga/riesgo:
+    post:
+      operationId: cargarRiesgo
+      tags: [Carga semilla]
+      summary: Alta idempotente de un nivel de riesgo fijado
+      description: Solo para la semilla E4, con `credencialServicio`. Idempotente por `hduId` + `fecha`.
+      x-roles: [SERVICIO]
+      x-hdu: []
+      security:
+        - credencialServicio: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CargaRiesgo'
+      responses:
+        '200':
+          description: Ya existía.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ResultadoCarga'
+        '201':
+          description: Creado.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ResultadoCarga'
+        '400':
+          $ref: './comun.v1.yaml#/components/responses/Validacion'
+        '401':
+          $ref: './comun.v1.yaml#/components/responses/NoAutenticado'
+        '403':
+          $ref: './comun.v1.yaml#/components/responses/AccesoDenegado'
+        '500':
+          $ref: './comun.v1.yaml#/components/responses/ErrorInterno'
+
+components:
+  securitySchemes:
+    sesionSupabase:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: Access token de Supabase Auth propagado por el llamador.
+    credencialServicio:
+      type: apiKey
+      in: header
+      name: X-Q360-Servicio-Token
+      description: Credencial de servicio a servicio (ADR 0007), solo para `/v1/interno/carga/*` desde Integraciones. El gateway descarta esta cabecera si llega desde afuera.
+
+  schemas:
+    AccionCarga:
+      type: object
+      required: [tipo, estado, actor, fecha, comentario]
+      additionalProperties: false
+      properties:
+        tipo:
+          $ref: './comun.v1.yaml#/components/schemas/TipoAccionImpedimento'
+        estadoAnterior:
+          $ref: './comun.v1.yaml#/components/schemas/EstadoImpedimento'
+        estado:
+          $ref: './comun.v1.yaml#/components/schemas/EstadoImpedimento'
+        actor:
+          $ref: './comun.v1.yaml#/components/schemas/PersonaRol'
+        fecha:
+          $ref: './comun.v1.yaml#/components/schemas/FechaHora'
+        comentario:
+          type: string
+          maxLength: 500
+        responsableNuevo:
+          description: Solo en `ESCALAR`.
+          $ref: './comun.v1.yaml#/components/schemas/ResponsableImpedimento'
+    CargaImpedimento:
+      type: object
+      description: La primera acción debe ser `REGISTRAR`, con la fecha de registro.
+      required: [hduId, tipo, titulo, descripcion, responsableInicial, creadoPor, acciones]
+      additionalProperties: false
+      properties:
+        hduId:
+          $ref: './comun.v1.yaml#/components/schemas/Uuid'
+        certificacionId:
+          $ref: './comun.v1.yaml#/components/schemas/Uuid'
+        tipo:
+          $ref: './comun.v1.yaml#/components/schemas/TipoImpedimento'
+        titulo:
+          type: string
+          minLength: 5
+          maxLength: 200
+        descripcion:
+          type: string
+          minLength: 10
+          maxLength: 1000
+        responsableInicial:
+          $ref: './comun.v1.yaml#/components/schemas/ResponsableImpedimento'
+        creadoPor:
+          $ref: './comun.v1.yaml#/components/schemas/PersonaRol'
+        acciones:
+          type: array
+          minItems: 1
+          items:
+            $ref: '#/components/schemas/AccionCarga'
+    CargaRiesgo:
+      type: object
+      required: [hduId, nivel, justificacion, actor, fecha]
+      additionalProperties: false
+      properties:
+        hduId:
+          $ref: './comun.v1.yaml#/components/schemas/Uuid'
+        nivel:
+          $ref: './comun.v1.yaml#/components/schemas/NivelRiesgo'
+        nivelAnterior:
+          $ref: './comun.v1.yaml#/components/schemas/NivelRiesgo'
+        sugeridoAlFijar:
+          $ref: './comun.v1.yaml#/components/schemas/NivelRiesgo'
+        justificacion:
+          type: string
+          minLength: 3
+          maxLength: 500
+        actor:
+          $ref: './comun.v1.yaml#/components/schemas/PersonaRol'
+        fecha:
+          $ref: './comun.v1.yaml#/components/schemas/FechaHora'
+    ResultadoCarga:
+      type: object
+      required: [creado, id]
+      additionalProperties: false
+      properties:
+        creado:
+          type: boolean
+        id:
+          $ref: './comun.v1.yaml#/components/schemas/Uuid'
+
+  parameters:
+    HduId:
+      name: hduId
+      in: path
+      required: true
+      schema:
+        $ref: './comun.v1.yaml#/components/schemas/Uuid'
+    ImpedimentoId:
+      name: id
+      in: path
+      required: true
+      description: UUID del impedimento.
+      schema:
+        $ref: './comun.v1.yaml#/components/schemas/Uuid'
+    BusquedaImpedimento:
+      name: q
+      in: query
+      required: false
+      description: Coincidencia parcial en el código o título de la HDU o en el título del impedimento, sin distinguir mayúsculas.
+      schema:
+        type: string
+        minLength: 2
+        maxLength: 120
+    OrdenImpedimentos:
+      name: orden
+      in: query
+      required: false
+      description: '`columna:asc|desc` con `riesgo`, `diasAbierto` o `fechaRegistro`. Sin valor, el orden D74. Otra columna → 400.'
+      schema:
+        type: string
+        pattern: '^(riesgo|diasAbierto|fechaRegistro):(asc|desc)$'
+    OrdenRiesgo:
+      name: orden
+      in: query
+      required: false
+      description: '`columna:asc|desc` con `riesgo`, `impedimentosAbiertos`, `codigo` o `avance`. Otra columna → 400.'
+      schema:
+        type: string
+        pattern: '^(riesgo|impedimentosAbiertos|codigo|avance):(asc|desc)$'
+
+  responses:
+    AccionAceptada:
+      description: Acción registrada; impedimento y bloqueo de la HDU después del cambio.
+      headers:
+        x-trace-id:
+          $ref: './comun.v1.yaml#/components/headers/XTraceId'
+      content:
+        application/json:
+          schema:
+            $ref: './comun.v1.yaml#/components/schemas/ResultadoAccionImpedimento'
+    HduCerrada:
+      description: La HDU está cerrada y no admite impedimentos nuevos ni cambios de riesgo (D60).
+      x-codigos: [HDU_CERRADA]
+      headers:
+        x-trace-id:
+          $ref: './comun.v1.yaml#/components/headers/XTraceId'
+      content:
+        application/json:
+          schema:
+            $ref: './comun.v1.yaml#/components/schemas/Error'
+          example:
+            codigo: HDU_CERRADA
+            mensaje: La HDU está cerrada y no admite cambios.
+            traceId: 4bf92f3577b34da6a3ce929d0e0e4736
+            detalles: []
+    ConflictoImpedimento:
+      description: HDU cerrada o transición no permitida desde el estado actual (D62, E4-B02#3).
+      x-codigos: [HDU_CERRADA, TRANSICION_INVALIDA]
+      headers:
+        x-trace-id:
+          $ref: './comun.v1.yaml#/components/headers/XTraceId'
+      content:
+        application/json:
+          schema:
+            anyOf:
+              - $ref: './comun.v1.yaml#/components/schemas/ErrorTransicionImpedimento'
+              - $ref: './comun.v1.yaml#/components/schemas/Error'
+          examples:
+            resueltoNoEscala:
+              summary: Escalar un resuelto (E4-B02#3)
+              value:
+                codigo: TRANSICION_INVALIDA
+                mensaje: Un impedimento resuelto solo puede reabrirse.
+                traceId: 4bf92f3577b34da6a3ce929d0e0e4736
+                detalles: []
+                estadoActual: RESUELTO
+                operacion: ESCALAR
+                operacionesPermitidas: [REABRIR]
+    ResponsableInvalido:
+      description: El responsable no está entre los candidatos de `REGISTRO`.
+      x-codigos: [RESPONSABLE_INVALIDO]
+      headers:
+        x-trace-id:
+          $ref: './comun.v1.yaml#/components/headers/XTraceId'
+      content:
+        application/json:
+          schema:
+            $ref: './comun.v1.yaml#/components/schemas/Error'
+          example:
+            codigo: RESPONSABLE_INVALIDO
+            mensaje: El responsable indicado no está entre los candidatos de esta HDU.
+            traceId: 4bf92f3577b34da6a3ce929d0e0e4736
+            detalles:
+              - campo: responsableId
+                codigo: NO_PERMITIDO
+                mensaje: Elige a un responsable de la lista o escribe su nombre.
+    EscalamientoInvalido:
+      description: Destino fuera de los candidatos de `ESCALAMIENTO` o comentario en blanco.
+      x-codigos: [RESPONSABLE_INVALIDO, COMENTARIO_REQUERIDO]
+      headers:
+        x-trace-id:
+          $ref: './comun.v1.yaml#/components/headers/XTraceId'
+      content:
+        application/json:
+          schema:
+            $ref: './comun.v1.yaml#/components/schemas/Error'
+    ComentarioRequerido:
+      description: Comentario en blanco.
+      x-codigos: [COMENTARIO_REQUERIDO]
+      headers:
+        x-trace-id:
+          $ref: './comun.v1.yaml#/components/headers/XTraceId'
+      content:
+        application/json:
+          schema:
+            $ref: './comun.v1.yaml#/components/schemas/Error'
+    MotivoRequerido:
+      description: Motivo en blanco.
+      x-codigos: [MOTIVO_REQUERIDO]
+      headers:
+        x-trace-id:
+          $ref: './comun.v1.yaml#/components/headers/XTraceId'
+      content:
+        application/json:
+          schema:
+            $ref: './comun.v1.yaml#/components/schemas/Error'
+    JustificacionRequerida:
+      description: Justificación en blanco.
+      x-codigos: [JUSTIFICACION_REQUERIDA]
+      headers:
+        x-trace-id:
+          $ref: './comun.v1.yaml#/components/headers/XTraceId'
+      content:
+        application/json:
+          schema:
+            $ref: './comun.v1.yaml#/components/schemas/Error'

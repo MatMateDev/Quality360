@@ -8,8 +8,8 @@ info:
   description: |
     Checklist de 10 entregables, evidencias, aprobaciones del QE, bitácora y
     certificado PDF de cada HDU (E3, decisiones D15–D22). Lo consumen el
-    gateway, que publica estas mismas rutas, y Organización, que verifica el
-    cierre (D11).
+    gateway, que publica estas mismas rutas, Organización, que verifica el
+    cierre (D11), e Impedimentos, que lee el avance y el ciclo activo (E4, D86).
 
     - **Acceso.** Cada operación sobre una HDU consulta
       `GET /v1/interno/hdu/{id}/acceso` de Organización con el token del
@@ -528,8 +528,11 @@ paths:
         y, si algún id está fuera del ámbito o no existe, responde 403 sin
         datos parciales (D12). Una HDU sin ciclo de certificación responde con
         0 aprobados: es un dato válido.
+
+        E4 (D68, D86): Impedimentos también lo usa, para el avance del riesgo
+        sugerido y para el ciclo activo al registrar (`certificacionId`).
       x-roles: [ADMINISTRADOR, QE, ANALISTA_QA, LIDER_QA, AUDITOR]
-      x-hdu: [E7-F02#1, E7-F03#1, E7-F04#1, E7-B03#1, E7-B03#2]
+      x-hdu: [E7-F02#1, E7-F03#1, E7-F04#1, E7-B03#1, E7-B03#2, E4-B01#1, E4-B03#2]
       requestBody:
         required: true
         content:

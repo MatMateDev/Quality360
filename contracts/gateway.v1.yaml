@@ -7,7 +7,16 @@ info:
     identifier: LicenseRef-Capstone-Duoc-UC
   description: |
     API que consume el portal (`apps/web`). Es el único punto de entrada
-    público. Alcance: épicas E1, E2, E3 y E7 (bandejas por rol).
+    público. Alcance: épicas E1, E2, E3, E4 (impedimentos y riesgos) y E7
+    (bandejas por rol).
+
+    - **E4.** `/v1/catalogos/tipos-impedimento`, `/v1/impedimentos*`,
+      `/v1/riesgo/*`, `/v1/hdu/{id}/impedimentos*`, `/v1/hdu/{id}/riesgo`,
+      `/v1/hdu/{id}/gestion-impedimentos` y `/v1/auditor/{impedimentos,
+      gestion-impedimentos}` con sus exportaciones se reenvían a Impedimentos
+      (`IMPEDIMENTOS_URL`, D85). Las bandejas suman bloques de impedimentos
+      que compone Organización (D87). `GET /v1/hdu` y `GET /v1/hdu/{id}` no
+      cambian. El cierre de una HDU puede responder 409 `HDU_BLOQUEADA` (D60).
 
     - **E7.** `/v1/bandeja/*`, `/v1/roles`, `/v1/usuarios/{id}/celulas-lider`,
       `/v1/auditor/auditoria-usuarios` y `/v1/auditor/exportaciones/{hdu,
@@ -60,7 +69,7 @@ tags:
   - name: Auditoría
     description: Registro de cambios (E1-B12, E2-B04).
   - name: Catálogos
-    description: Células y sprints cargados por la semilla.
+    description: Células y sprints cargados por la semilla, y tipos de impedimento (E4).
   - name: HDU
     description: Historias de usuario bajo certificación (E2).
   - name: Bandejas
@@ -71,6 +80,12 @@ tags:
     description: Entregables, evidencias y aprobaciones de una HDU (E3).
   - name: Certificado
     description: Certificado PDF y verificación pública (E3).
+  - name: Impedimentos
+    description: Registro, consulta y ciclo de vida de impedimentos (E4).
+  - name: Riesgo
+    description: Nivel de riesgo fijado y sugerido de cada HDU (E4).
+  - name: Gestión
+    description: Historial de impedimentos y riesgo (E4-B04).
 
 x-hdu-transversal: [E1-B02#1, E1-B07#3, E1-B11#1]
 x-escenarios-sin-operacion:
@@ -1166,11 +1181,16 @@ paths:
           - `completo: false` → 409 `CHECKLIST_INCOMPLETO`.
           - 503, error o tiempo agotado → 409 `CHECKLIST_NO_DISPONIBLE`. Es el
             resultado de esta corrida (E2-B02#3).
+        - Con el checklist completo, Organización consulta los impedimentos
+          abiertos de la HDU (E4, D60, D77): si hay `ABIERTO` o `ESCALADO` →
+          409 `HDU_BLOQUEADA` con `impedimentos {total, items ≤ 20}`; si
+          Impedimentos no responde → 503 con `impedimentos.estado:
+          indisponible` («No pudimos verificar los impedimentos de la HDU»).
         - Aceptado: actualiza `estadoActualizadoEn` y, en la misma transacción,
           registra el evento `ESTADO` (anterior, nuevo, actor, fecha) y la
           auditoría `CAMBIAR_ESTADO_HDU` (E2-B02#1, E2-B04#1, E2-F04#3).
       x-roles: [ADMINISTRADOR, QE, ANALISTA_QA]
-      x-hdu: [E2-F04#3, E2-B02#1, E2-B02#2, E2-B02#3, E2-B04#1, E7-B02#3]
+      x-hdu: [E2-F04#3, E2-B02#1, E2-B02#2, E2-B02#3, E2-B04#1, E7-B02#3, E4-B02#2]
       requestBody:
         required: true
         content:
@@ -1194,13 +1214,14 @@ paths:
           $ref: '#/components/responses/NoEncontrado'
         '409':
           description: Transición inválida o cierre rechazado.
-          x-codigos: [TRANSICION_INVALIDA, CHECKLIST_INCOMPLETO, CHECKLIST_NO_DISPONIBLE]
+          x-codigos: [TRANSICION_INVALIDA, CHECKLIST_INCOMPLETO, CHECKLIST_NO_DISPONIBLE, HDU_BLOQUEADA]
           content:
             application/json:
               schema:
                 anyOf:
                   - $ref: '#/components/schemas/ErrorTransicionInvalida'
                   - $ref: '#/components/schemas/ErrorCierreRechazado'
+                  - $ref: '#/components/schemas/ErrorHduBloqueada'
               examples:
                 transicionInvalida:
                   summary: PENDIENTE → CERRADA (E2-B02#2)
@@ -1220,12 +1241,30 @@ paths:
                     traceId: 4bf92f3577b34da6a3ce929d0e0e4736
                     detalles: []
                     checklist: {fuente: certificaciones.checklist, estado: indisponible}
+                hduBloqueada:
+                  summary: Cierre con impedimentos abiertos (E4-B02#2, D60)
+                  value:
+                    codigo: HDU_BLOQUEADA
+                    mensaje: 'No se puede cerrar la HDU: tiene impedimentos abiertos o escalados.'
+                    traceId: 4bf92f3577b34da6a3ce929d0e0e4736
+                    detalles: []
+                    impedimentos:
+                      total: 1
+                      items:
+                        - {id: 7c6f1a52-2f0e-4b8e-9b44-0d2f8a1c9e31, titulo: Faltan cuentas de prueba con saldo, tipo: DATOS_PRUEBA, estado: ABIERTO, diasAbierto: 6}
         '429':
           $ref: '#/components/responses/DemasiadasSolicitudes'
         '500':
           $ref: '#/components/responses/ErrorInterno'
         '503':
-          $ref: '#/components/responses/ServicioNoDisponible'
+          description: El servicio de destino no respondió o Impedimentos no pudo verificar el cierre (D60).
+          x-codigos: [SERVICIO_NO_DISPONIBLE]
+          content:
+            application/json:
+              schema:
+                anyOf:
+                  - $ref: '#/components/schemas/ErrorImpedimentosNoVerificables'
+                  - $ref: '#/components/schemas/Error'
 
   /v1/hdu/{id}/historial:
     parameters:
@@ -1318,6 +1357,43 @@ paths:
     $ref: './certificaciones.v1.yaml#/paths/~1v1~1auditor~1exportaciones~1bitacora'
   /v1/auditor/exportaciones/certificados:
     $ref: './certificaciones.v1.yaml#/paths/~1v1~1auditor~1exportaciones~1certificados'
+
+  # ---------------------------------------------------------------- E4
+  # Reenvío a la misma ruta de Impedimentos (IMPEDIMENTOS_URL), sin composición (D85).
+  # Las rutas con sufijo bajo /v1/hdu/{id}/ se declaran una por una: no hay comodín
+  # /v1/hdu/** hacia Organización. /v1/interno/* no se publica.
+  /v1/catalogos/tipos-impedimento:
+    $ref: './impedimentos.v1.yaml#/paths/~1v1~1catalogos~1tipos-impedimento'
+  /v1/hdu/{hduId}/impedimentos:
+    $ref: './impedimentos.v1.yaml#/paths/~1v1~1hdu~1{hduId}~1impedimentos'
+  /v1/hdu/{hduId}/impedimentos/responsables:
+    $ref: './impedimentos.v1.yaml#/paths/~1v1~1hdu~1{hduId}~1impedimentos~1responsables'
+  /v1/impedimentos:
+    $ref: './impedimentos.v1.yaml#/paths/~1v1~1impedimentos'
+  /v1/impedimentos/{id}:
+    $ref: './impedimentos.v1.yaml#/paths/~1v1~1impedimentos~1{id}'
+  /v1/impedimentos/{id}/resolver:
+    $ref: './impedimentos.v1.yaml#/paths/~1v1~1impedimentos~1{id}~1resolver'
+  /v1/impedimentos/{id}/escalar:
+    $ref: './impedimentos.v1.yaml#/paths/~1v1~1impedimentos~1{id}~1escalar'
+  /v1/impedimentos/{id}/reabrir:
+    $ref: './impedimentos.v1.yaml#/paths/~1v1~1impedimentos~1{id}~1reabrir'
+  /v1/impedimentos/{id}/seguimiento:
+    $ref: './impedimentos.v1.yaml#/paths/~1v1~1impedimentos~1{id}~1seguimiento'
+  /v1/hdu/{hduId}/riesgo:
+    $ref: './impedimentos.v1.yaml#/paths/~1v1~1hdu~1{hduId}~1riesgo'
+  /v1/riesgo/hdu:
+    $ref: './impedimentos.v1.yaml#/paths/~1v1~1riesgo~1hdu'
+  /v1/hdu/{hduId}/gestion-impedimentos:
+    $ref: './impedimentos.v1.yaml#/paths/~1v1~1hdu~1{hduId}~1gestion-impedimentos'
+  /v1/auditor/impedimentos:
+    $ref: './impedimentos.v1.yaml#/paths/~1v1~1auditor~1impedimentos'
+  /v1/auditor/gestion-impedimentos:
+    $ref: './impedimentos.v1.yaml#/paths/~1v1~1auditor~1gestion-impedimentos'
+  /v1/auditor/exportaciones/impedimentos:
+    $ref: './impedimentos.v1.yaml#/paths/~1v1~1auditor~1exportaciones~1impedimentos'
+  /v1/auditor/exportaciones/gestion-impedimentos:
+    $ref: './impedimentos.v1.yaml#/paths/~1v1~1auditor~1exportaciones~1gestion-impedimentos'
 
 components:
   securitySchemes:
@@ -1429,6 +1505,8 @@ components:
     Error: {$ref: './comun.v1.yaml#/components/schemas/Error'}
     ErrorTransicionInvalida: {$ref: './comun.v1.yaml#/components/schemas/ErrorTransicionInvalida'}
     ErrorCierreRechazado: {$ref: './comun.v1.yaml#/components/schemas/ErrorCierreRechazado'}
+    ErrorHduBloqueada: {$ref: './comun.v1.yaml#/components/schemas/ErrorHduBloqueada'}
+    ErrorImpedimentosNoVerificables: {$ref: './comun.v1.yaml#/components/schemas/ErrorImpedimentosNoVerificables'}
     ErrorRelacionesIncompatibles: {$ref: './comun.v1.yaml#/components/schemas/ErrorRelacionesIncompatibles'}
     BloqueIndisponible: {$ref: './comun.v1.yaml#/components/schemas/BloqueIndisponible'}
     Perfil: {$ref: './comun.v1.yaml#/components/schemas/Perfil'}

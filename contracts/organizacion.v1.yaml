@@ -16,6 +16,11 @@ info:
       `/v1/resumenes/*`.
     - Certificaciones e Impedimentos: resuelven acceso con `/v1/interno/*` y
       el token propagado. Nunca leen el esquema `organizacion`.
+    - Organización llama a Impedimentos (E4) para verificar el cierre
+      (`GET /v1/interno/hdu/{hduId}/impedimentos/abiertos`, D60) y para los
+      bloques de impedimentos de las bandejas
+      (`POST /v1/interno/impedimentos/evaluacion`, D87), con el token del
+      usuario y 2 s de tiempo límite (`IMPEDIMENTOS_URL`, `IMPEDIMENTOS_TIMEOUT_MS`).
     - Integraciones: carga semilla con `credencialServicio` en
       `/v1/interno/carga/*` y en las operaciones que declaran `SERVICIO` en
       `x-roles`.
@@ -36,7 +41,9 @@ info:
 
     Las operaciones compartidas con el gateway tienen el mismo cuerpo,
     respuesta y códigos, salvo 429 y 503 `SERVICIO_NO_DISPONIBLE`, que solo
-    emite el gateway. Convenciones: `comun.v1.yaml`.
+    emite el gateway. Excepción (E4, D60): `POST /v1/hdu/{id}/estado` hacia
+    `CERRADA` responde 503 con `ErrorImpedimentosNoVerificables` si
+    Impedimentos no responde. Convenciones: `comun.v1.yaml`.
 servers:
   - url: http://organizacion:3001
     description: Red interna de Docker Compose
@@ -129,7 +136,7 @@ paths:
         Para `LIDER_QA`, `ambito.celulasIds` trae sus células vigentes (D47);
         Certificaciones exige `rol: AUDITOR` en `/v1/auditor/*`.
       x-roles: [ADMINISTRADOR, QE, ANALISTA_QA, LIDER_QA, AUDITOR]
-      x-hdu: [E1-B02#2, E1-B02#3, E7-B02#1, E7-B04#2]
+      x-hdu: [E1-B02#2, E1-B02#3, E7-B02#1, E7-B04#2, E4-B04#2]
       responses:
         '200':
           description: Resolución de acceso.
@@ -163,8 +170,20 @@ paths:
         Líder QA y la célula de la HDU está entre sus vigentes;
         `LECTOR_AUDITORIA` si es Auditor. Una célula quitada deja de dar acceso
         en la siguiente solicitud (E7-B02-T05).
+
+        E4 (D86, D89): Impedimentos la usa igual que Certificaciones. Con
+        `incluirCandidatos=true` agrega `candidatosResponsable` (personas
+        activas para el responsable de un impedimento, tabla 3.5 del backlog
+        E4). `hdu` trae además `celulaId`, `sprintId` y `sprintFin`.
       x-roles: [ADMINISTRADOR, QE, ANALISTA_QA, LIDER_QA, AUDITOR]
-      x-hdu: [E2-F04#2, E2-B03#1, E2-B03#2, E2-B03#3, E3-B01#1, E7-B02#1, E7-B02#2, E7-F04#3]
+      x-hdu: [E2-F04#2, E2-B03#1, E2-B03#2, E2-B03#3, E3-B01#1, E7-B02#1, E7-B02#2, E7-F04#3, E4-B01#3, E4-F01#1, E4-F03#2]
+      parameters:
+        - name: incluirCandidatos
+          in: query
+          required: false
+          schema:
+            type: boolean
+            default: false
       responses:
         '200':
           description: Resolución de acceso a la HDU.
@@ -214,7 +233,7 @@ paths:
         vigentes; QE y Analista QA → su ámbito de E2. Sin caché. Usuario
         inactivo o sin registro → 403.
       x-roles: [ADMINISTRADOR, QE, ANALISTA_QA, LIDER_QA, AUDITOR]
-      x-hdu: [E7-B02#1, E7-B02#2, E7-B03#1]
+      x-hdu: [E7-B02#1, E7-B02#2, E7-B03#1, E4-F02#1, E4-B04#2]
       responses:
         '200':
           description: Ámbito de lectura.
@@ -222,6 +241,43 @@ paths:
             application/json:
               schema:
                 $ref: './comun.v1.yaml#/components/schemas/AmbitoLecturaHdu'
+        '401':
+          $ref: '#/components/responses/NoAutenticado'
+        '403':
+          $ref: '#/components/responses/AccesoDenegado'
+        '500':
+          $ref: '#/components/responses/ErrorInterno'
+
+  /v1/interno/hdu/ambito/detalle:
+    get:
+      operationId: listarHduAmbito
+      tags: [Acceso interno]
+      summary: Datos de todas las HDU que el usuario del token puede leer
+      description: |
+        E4 (D86). Mismo ámbito que `GET /v1/interno/hdu/ambito`, pero con los
+        datos de cada HDU (código, título, estado, célula, sprint con su fin,
+        QE responsable y analista). Impedimentos lo usa para «Riesgo por HDU»
+        (`GET /v1/riesgo/hdu`), que incluye HDU sin impedimentos y, para
+        Administrador y Auditor, todas. Ordenadas por código. Sin caché.
+        Usuario inactivo o sin registro → 403.
+      x-roles: [ADMINISTRADOR, QE, LIDER_QA, AUDITOR]
+      x-hdu: [E4-F04#3]
+      parameters:
+        - name: incluirCerradas
+          in: query
+          required: false
+          schema:
+            type: boolean
+            default: false
+      responses:
+        '200':
+          description: HDU del ámbito.
+          content:
+            application/json:
+              schema:
+                $ref: './comun.v1.yaml#/components/schemas/ListaHduLote'
+        '400':
+          $ref: '#/components/responses/Validacion'
         '401':
           $ref: '#/components/responses/NoAutenticado'
         '403':
@@ -243,8 +299,11 @@ paths:
         Excepción (D55): para Administrador y Auditor, que leen todo, los ids
         que Organización no conoce se omiten de `items` en vez de dar 403, y
         quien llama los muestra como «HDU no disponible».
+
+        E4 (D69, D86): Impedimentos la usa para armar las filas de sus
+        listados; cada HDU trae además `celulaId`, `sprintId` y `sprintFin`.
       x-roles: [ADMINISTRADOR, QE, ANALISTA_QA, LIDER_QA, AUDITOR]
-      x-hdu: [E7-B04#1]
+      x-hdu: [E7-B04#1, E4-F02#1, E4-F04#3, E4-B04#2]
       requestBody:
         required: true
         content:
@@ -278,9 +337,10 @@ paths:
         el usuario del token sea Auditor activo y registra `EXPORTAR`
         (entidad `EXPORTACION`) con actor, recurso, filtros y filas (D35). Si
         no responde, Certificaciones no entrega el archivo. Las exportaciones
-        de Organización se registran sin pasar por aquí.
+        de Organización se registran sin pasar por aquí. Desde E4 también lo
+        llama Impedimentos (recursos `IMPEDIMENTOS` y `GESTION_IMPEDIMENTOS`, D70).
       x-roles: [AUDITOR]
-      x-hdu: [E7-B04#3]
+      x-hdu: [E7-B04#3, E4-B04#2]
       requestBody:
         required: true
         content:
@@ -330,8 +390,18 @@ paths:
           con orden de respaldo `prioridad:desc` y la respuesta es 200 (E7-B03#2).
         - `soloConObservaciones` depende de Certificaciones: si no responde, el
           bloque `hdu` viene `indisponible` en vez de una lista sin filtrar.
+
+        **E4 (D87).** El bloque `impedimentos` sale de
+        `POST /v1/interno/impedimentos/evaluacion` de Impedimentos (lotes de
+        hasta 1000 HDU, 2 s, `IMPEDIMENTOS_TIMEOUT_MS`), con el estado, el fin
+        del sprint y el avance que Organización ya tiene (D69). Si Impedimentos
+        no responde, solo esos bloques y el `bloqueo` de cada fila vienen `indisponible` y la
+        respuesta es 200. Los contadores y listas certificados de E7 no cambian (D71).
+        Contador `impedimentosAbiertos` y `bloqueo` por fila; sin riesgo (D73).
+        `soloBloqueadas` depende de Impedimentos: si no responde, `hdu` viene
+        `indisponible`.
       x-roles: [ANALISTA_QA]
-      x-hdu: [E7-F01#3, E7-F02#1, E7-F02#2, E7-F02#3, E7-B03#1, E7-B03#2, E7-B03#3]
+      x-hdu: [E7-F01#3, E7-F02#1, E7-F02#2, E7-F02#3, E7-B03#1, E7-B03#2, E7-B03#3, E4-F01#1, E4-B01#2]
       parameters:
         - $ref: '#/components/parameters/FiltroEstadoHdu'
         - $ref: '#/components/parameters/FiltroCelula'
@@ -341,6 +411,7 @@ paths:
           required: false
           schema:
             type: boolean
+        - $ref: './comun.v1.yaml#/components/parameters/FiltroSoloBloqueadas'
         - $ref: '#/components/parameters/FiltroBusqueda'
         - $ref: '#/components/parameters/Orden'
         - $ref: '#/components/parameters/Pagina'
@@ -379,8 +450,18 @@ paths:
         - Filtrar por `tipoAccion` distinto de `ASIGNAR` con Certificaciones
           caída deja el bloque `acciones` `indisponible`.
         - El resumen de equipo de E1-F03 sigue en `GET /v1/inicio/qe`.
+
+        **E4 (D87).** El bloque `impedimentos` sale de
+        `POST /v1/interno/impedimentos/evaluacion` de Impedimentos (lotes de
+        hasta 1000 HDU, 2 s, `IMPEDIMENTOS_TIMEOUT_MS`), con el estado, el fin
+        del sprint y el avance que Organización ya tiene (D69). Si Impedimentos
+        no responde, solo esos bloques vienen `indisponible` y la
+        respuesta es 200. Los contadores y listas certificados de E7 no cambian (D71).
+        Contadores `impedimentosAbiertos`, `impedimentosNuevos` (menos de 24 h,
+        D72) y `hduRiesgoAlto`; lista aparte de hasta 10 (D71: `acciones` no
+        recibe filas) y `bloqueo` en las filas `CERRAR` (D81).
       x-roles: [QE]
-      x-hdu: [E7-F01#3, E7-F03#1, E7-F03#2, E7-F03#3, E7-B03#1, E7-B03#2, E7-B03#3]
+      x-hdu: [E7-F01#3, E7-F03#1, E7-F03#2, E7-F03#3, E7-B03#1, E7-B03#2, E7-B03#3, E4-F01#3]
       parameters:
         - name: tipoAccion
           in: query
@@ -426,8 +507,18 @@ paths:
           la lista se mantiene (E7-F04#2). `hduAbiertas`, `hduCerradas` y
           `sinAnalista` no se degradan.
         - Orden por defecto: célula, sprint más reciente, código.
+
+        **E4 (D87).** El bloque `impedimentos` sale de
+        `POST /v1/interno/impedimentos/evaluacion` de Impedimentos (lotes de
+        hasta 1000 HDU, 2 s, `IMPEDIMENTOS_TIMEOUT_MS`), con el estado, el fin
+        del sprint y el avance que Organización ya tiene (D69). Si Impedimentos
+        no responde, solo esos bloques y el `bloqueo` y `riesgo` de cada fila vienen `indisponible` y la
+        respuesta es 200. Los contadores y listas certificados de E7 no cambian (D71).
+        Contadores `impedimentosAbiertos`, `hduBloqueadas` y `escaladosAMi`;
+        lista de todos los abiertos y escalados de sus células con los
+        escalados a él primero (D79); `bloqueo` y `riesgo` por fila.
       x-roles: [LIDER_QA]
-      x-hdu: [E7-F01#3, E7-F04#1, E7-F04#2, E7-F04#3, E7-B02#1, E7-B03#1, E7-B03#2, E7-B03#3]
+      x-hdu: [E7-F01#3, E7-F04#1, E7-F04#2, E7-F04#3, E7-B02#1, E7-B03#1, E7-B03#2, E7-B03#3, E4-F03#2]
       parameters:
         - $ref: '#/components/parameters/FiltroCelula'
         - $ref: '#/components/parameters/FiltroSprint'
@@ -439,6 +530,7 @@ paths:
           required: false
           schema:
             type: boolean
+        - $ref: './comun.v1.yaml#/components/parameters/FiltroSoloBloqueadas'
         - $ref: '#/components/parameters/FiltroBusqueda'
         - $ref: '#/components/parameters/Orden'
         - $ref: '#/components/parameters/Pagina'
@@ -476,8 +568,20 @@ paths:
           analistas, Líder activo sin células y célula sin líder (D51).
         - `ultimosCambios`: las 10 entradas más recientes de la auditoría de
           usuarios, sin contraseñas ni tokens.
+
+        **E4 (D87).** El bloque `impedimentos` sale de
+        `POST /v1/interno/impedimentos/evaluacion` de Impedimentos (lotes de
+        hasta 1000 HDU, 2 s, `IMPEDIMENTOS_TIMEOUT_MS`), con el estado, el fin
+        del sprint y el avance que Organización ya tiene (D69). Si Impedimentos
+        no responde, solo esos bloques vienen `indisponible` y la
+        respuesta es 200. Los contadores y listas certificados de E7 no cambian (D71).
+        Contadores `impedimentosAbiertos`, `hduBloqueadas` y `hduRiesgoAlto` y
+        lista de los escalados a él. `hduRiesgoAlto` necesita el avance de
+        Certificaciones: es el único bloque de esta bandeja que la consulta, y
+        si no responde solo ese contador queda `indisponible` (E7-B03-T11 se
+        mantiene para los bloques certificados).
       x-roles: [ADMINISTRADOR]
-      x-hdu: [E7-F01#3, E7-F05#1, E7-F05#2, E7-F05#3, E7-B03#1, E7-B03#3]
+      x-hdu: [E7-F01#3, E7-F05#1, E7-F05#2, E7-F05#3, E7-B03#1, E7-B03#3, E4-F03#2]
       parameters:
         - $ref: '#/components/parameters/Pagina'
         - $ref: '#/components/parameters/TamanoPaginaBandeja'
@@ -510,8 +614,17 @@ paths:
         `seguimiento` de cada fila vienen `indisponible`; filtrar por
         `certificado` deja el bloque `hdu` `indisponible`.
         `desde`/`hasta` filtran por `actualizadoEn`.
+
+        **E4 (D87).** El bloque `impedimentos` sale de
+        `POST /v1/interno/impedimentos/evaluacion` de Impedimentos (lotes de
+        hasta 1000 HDU, 2 s, `IMPEDIMENTOS_TIMEOUT_MS`), con el estado, el fin
+        del sprint y el avance que Organización ya tiene (D69). Si Impedimentos
+        no responde, solo esos bloques vienen `indisponible` y la
+        respuesta es 200. Los contadores y listas certificados de E7 no cambian (D71).
+        Contadores `impedimentosAbiertos` y `hduBloqueadas`. La lista `hdu` y
+        su CSV no cambian de columnas (D71, D80).
       x-roles: [AUDITOR]
-      x-hdu: [E7-F01#3, E7-F06#1, E7-F06#3, E7-B02#2, E7-B03#1, E7-B03#2, E7-B03#3]
+      x-hdu: [E7-F01#3, E7-F06#1, E7-F06#3, E7-B02#2, E7-B03#1, E7-B03#2, E7-B03#3, E4-B04#2]
       parameters:
         - $ref: '#/components/parameters/FiltroCelula'
         - $ref: '#/components/parameters/FiltroSprint'
@@ -1661,8 +1774,14 @@ paths:
         `Authorization` y `x-trace-id`, con 2 s de tiempo límite
         (`CERTIFICACIONES_TIMEOUT_MS`). Con `credencialServicio` no puede pedir
         `CERRADA`.
+
+        E4 (D60, D77): con el checklist completo llama a
+        `GET /v1/interno/hdu/{hduId}/impedimentos/abiertos` de Impedimentos
+        (2 s, `IMPEDIMENTOS_TIMEOUT_MS`). `total > 0` → 409 `HDU_BLOQUEADA`
+        con la lista; sin respuesta → 503 `SERVICIO_NO_DISPONIBLE`
+        («No pudimos verificar los impedimentos de la HDU»). La HDU no cambia.
       x-roles: [ADMINISTRADOR, QE, ANALISTA_QA, SERVICIO]
-      x-hdu: [E2-F04#3, E2-B02#1, E2-B02#2, E2-B02#3, E2-B04#1, E7-B02#3]
+      x-hdu: [E2-F04#3, E2-B02#1, E2-B02#2, E2-B02#3, E2-B04#1, E7-B02#3, E4-B02#2]
       security:
         - sesionSupabase: []
         - credencialServicio: []
@@ -1689,15 +1808,23 @@ paths:
           $ref: '#/components/responses/NoEncontrado'
         '409':
           description: Transición inválida o cierre rechazado.
-          x-codigos: [TRANSICION_INVALIDA, CHECKLIST_INCOMPLETO, CHECKLIST_NO_DISPONIBLE]
+          x-codigos: [TRANSICION_INVALIDA, CHECKLIST_INCOMPLETO, CHECKLIST_NO_DISPONIBLE, HDU_BLOQUEADA]
           content:
             application/json:
               schema:
                 anyOf:
                   - $ref: '#/components/schemas/ErrorTransicionInvalida'
                   - $ref: '#/components/schemas/ErrorCierreRechazado'
+                  - $ref: './comun.v1.yaml#/components/schemas/ErrorHduBloqueada'
         '500':
           $ref: '#/components/responses/ErrorInterno'
+        '503':
+          description: Impedimentos no respondió al verificar el cierre (D60).
+          x-codigos: [SERVICIO_NO_DISPONIBLE]
+          content:
+            application/json:
+              schema:
+                $ref: './comun.v1.yaml#/components/schemas/ErrorImpedimentosNoVerificables'
 
   /v1/hdu/{id}/historial:
     parameters:
@@ -1848,6 +1975,69 @@ paths:
           $ref: '#/components/responses/AccesoDenegado'
         '422':
           description: La célula indicada no existe.
+          x-codigos: [CATALOGO_INVALIDO]
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          $ref: '#/components/responses/ErrorInterno'
+
+  /v1/interno/carga/hdu/{id}/sprint:
+    parameters:
+      - $ref: '#/components/parameters/HduIdPath'
+    put:
+      operationId: cargarSprintHdu
+      tags: [Carga semilla]
+      summary: Fijar el sprint vigente de una HDU (semilla E4)
+      description: |
+        E4 (D88). Para el fixture de riesgo, que necesita HDU en sprints con
+        distintas fechas de fin. Cierra la fila vigente de `historia_sprint`
+        y abre una con el sprint indicado; el mismo sprint → 200 sin cambios.
+        El sprint debe ser de la célula de la HDU (422 `CATALOGO_INVALIDO`).
+        No audita ni toca el historial de la HDU. 403 si
+        `PERMITIR_CARGA_SEMILLA` no es `true`.
+      x-roles: [SERVICIO]
+      x-hdu: []
+      security:
+        - credencialServicio: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [sprintId]
+              additionalProperties: false
+              properties:
+                sprintId:
+                  $ref: './comun.v1.yaml#/components/schemas/Uuid'
+      responses:
+        '200':
+          description: Sprint vigente fijado.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [cambio, hduId, sprintId]
+                additionalProperties: false
+                properties:
+                  cambio:
+                    type: boolean
+                  hduId:
+                    $ref: './comun.v1.yaml#/components/schemas/Uuid'
+                  sprintId:
+                    $ref: './comun.v1.yaml#/components/schemas/Uuid'
+        '400':
+          $ref: '#/components/responses/Validacion'
+        '401':
+          $ref: '#/components/responses/NoAutenticado'
+        '403':
+          $ref: '#/components/responses/AccesoDenegado'
+        '404':
+          $ref: '#/components/responses/NoEncontrado'
+        '422':
+          description: El sprint no existe o no es de la célula de la HDU.
           x-codigos: [CATALOGO_INVALIDO]
           content:
             application/json:

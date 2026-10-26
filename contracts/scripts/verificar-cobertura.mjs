@@ -1,4 +1,4 @@
-// Verifica que los contratos cubren los escenarios de E1, E2, E3 y E7 del backlog.
+// Verifica que los contratos cubren los escenarios de E1, E2, E3, E4 y E7 del backlog.
 // Uso: npm run contracts:check
 // Un escenario está cubierto si su ID aparece en `x-hdu` de alguna operación,
 // en `x-hdu-transversal` o en `x-escenarios-sin-operacion` de algún contrato.
@@ -8,7 +8,7 @@ import { fileURLToPath } from 'node:url';
 
 const raiz = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 // Escenarios esperados por épica: protege contra un backlog mal leído (3 por HDU).
-const ESPERADOS_POR_EPICA = { E1: 78, E2: 24, E3: 24, E7: 36 };
+const ESPERADOS_POR_EPICA = { E1: 78, E2: 24, E3: 24, E4: 24, E7: 36 };
 const EPICAS = Object.keys(ESPERADOS_POR_EPICA);
 const ID = /E\d-[FB]\d{2}#\d+/g;
 
