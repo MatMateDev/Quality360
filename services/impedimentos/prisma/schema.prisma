@@ -1,14 +1,23 @@
-// Quality360 · Impedimentos. Las tablas siguen el modelo de datos de Quality360
-// (modelo ER y lógico, D23–D27 en docs/arquitectura/decisiones-mvp.md); la
-// funcionalidad de impedimentos y riesgos llega con E4.
+// Quality360 · Impedimentos y riesgos (E4). Las tablas siguen el modelo de datos de
+// Quality360 (D23–D27) y la corrida E4 (D57–D74, D88 en docs/arquitectura/decisiones-mvp.md).
 //
 // Las tablas de este servicio viven en el esquema `impedimentos` de Postgres
 // (infrastructure/db/001_esquemas_roles.sql): la conexión se hace SIEMPRE
 // con el rol `svc_impedimentos`, cuya DATABASE_URL debe incluir
 // `?schema=impedimentos`.
 //
-// Sin claves foráneas hacia otro esquema (regla no negociable 3):
-// `impedimento.id_certificacion` es un UUID de Certificaciones.
+// Sin claves foráneas hacia otro esquema (regla no negociable 3): `id_historia`,
+// `id_certificacion`, `responsable_id`, `creado_por_id` y `actor_id` son UUID de
+// Organización o de Certificaciones.
+//
+// Lo que Prisma no expresa vive en la migración 20261026000000_e4_impedimentos_riesgo:
+//  - CHECK: impedimento_tipo_ck, impedimento_estado_ck, impedimento_resolucion_ck
+//    ((estado = 'RESUELTO') = (fecha_resolucion IS NOT NULL)), impedimento_creado_por_rol_ck,
+//    accion_impedimento_tipo_ck, accion_impedimento_anterior_ck, riesgo_hdu_nivel_ck.
+//  - Índices parciales: impedimento_abiertos_idx (estado <> 'RESUELTO') e
+//    impedimento_responsable_escalado_idx (estado = 'ESCALADO').
+//  - REVOKE UPDATE, DELETE sobre accion_impedimento y riesgo_hdu (solo inserción, D65, D70)
+//    y REVOKE DELETE sobre impedimento (no hay borrados físicos).
 
 // `output` local (no hoisted): ver el comentario equivalente en
 // services/organizacion/prisma/schema.prisma.
@@ -22,8 +31,7 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-/// Impedimento (modelo de datos). Sin funcionalidad todavía (E4): los valores de
-/// `tipo` y `estado` se fijan cuando se construyan sus historias.
+/// Impedimento de una HDU (D58). Estado: ABIERTO, ESCALADO o RESUELTO (D62).
 model Impedimento {
   id               String    @id @default(uuid()) @map("id_impedimento") @db.Uuid
   titulo           String    @db.VarChar(200)
@@ -32,26 +40,71 @@ model Impedimento {
   estado           String    @db.VarChar(30)
   fechaRegistro    DateTime  @default(now()) @map("fecha_registro") @db.Timestamptz(6)
   fechaResolucion  DateTime? @map("fecha_resolucion") @db.Timestamptz(6)
-  /// Certificacion del servicio Certificaciones (sin llave foránea entre esquemas).
-  certificacionId  String    @map("id_certificacion") @db.Uuid
+  /// Ciclo de certificación activo al registrar, o NULL (D58). Sin llave foránea entre esquemas.
+  certificacionId  String?   @map("id_certificacion") @db.Uuid
+  /// HDU de Organización (sin llave foránea). El alcance y los permisos se resuelven por aquí.
+  historiaId       String    @map("id_historia") @db.Uuid
+  /// Usuario de Organización, o NULL si es un tercero (D63).
+  responsableId    String?   @map("responsable_id") @db.Uuid
+  responsableNombre String   @map("responsable_nombre") @db.VarChar(150)
+  creadoPorId      String    @map("creado_por_id") @db.Uuid
+  creadoPorNombre  String    @map("creado_por_nombre") @db.VarChar(150)
+  creadoPorRol     String    @map("creado_por_rol") @db.VarChar(30)
+  /// Igual a fecha_registro al registrar; se reinicia al reabrir (D74).
+  abiertoDesde     DateTime  @default(now()) @map("abierto_desde") @db.Timestamptz(6)
+  actualizadoEn    DateTime  @default(now()) @map("actualizado_en") @db.Timestamptz(6)
 
   acciones AccionImpedimento[]
 
-  @@index([certificacionId])
+  @@index([certificacionId], map: "impedimento_id_certificacion_idx")
+  @@index([historiaId, estado], map: "impedimento_historia_estado_idx")
+  @@index([fechaRegistro(sort: Desc)], map: "impedimento_fecha_registro_idx")
   @@map("impedimento")
 }
 
-/// AccionImpedimento (modelo de datos): acciones tomadas sobre un impedimento.
+/// AccionImpedimento: historial de un impedimento, de solo inserción (D65, D70).
 model AccionImpedimento {
-  id            String   @id @default(uuid()) @map("id_accion_impedimento") @db.Uuid
-  descripcion   String   @db.VarChar(500)
-  fechaAccion   DateTime @default(now()) @map("fecha_accion") @db.Timestamptz(6)
-  estado        String   @db.VarChar(30)
-  observacion   String?  @db.VarChar(500)
-  impedimentoId String   @map("id_impedimento") @db.Uuid
+  id             String   @id @default(uuid()) @map("id_accion_impedimento") @db.Uuid
+  /// Comentario o motivo; en REGISTRAR, «Registro del impedimento».
+  descripcion    String   @db.VarChar(500)
+  fechaAccion    DateTime @default(now()) @map("fecha_accion") @db.Timestamptz(6)
+  /// Estado resultante.
+  estado         String   @db.VarChar(30)
+  observacion    String?  @db.VarChar(500)
+  impedimentoId  String   @map("id_impedimento") @db.Uuid
+  tipoAccion     String   @map("tipo_accion") @db.VarChar(30)
+  /// NULL solo en REGISTRAR.
+  estadoAnterior String?  @map("estado_anterior") @db.VarChar(30)
+  actorId        String   @map("actor_id") @db.Uuid
+  actorNombre    String   @map("actor_nombre") @db.VarChar(150)
+  actorRol       String   @map("actor_rol") @db.VarChar(30)
+  /// En ESCALAR: {responsableAnterior, responsableNuevo}.
+  detalle        Json?
 
   impedimento Impedimento @relation(fields: [impedimentoId], references: [id])
 
-  @@index([impedimentoId])
+  @@index([impedimentoId, fechaAccion], map: "accion_impedimento_impedimento_fecha_idx")
+  @@index([fechaAccion(sort: Desc)], map: "accion_impedimento_fecha_idx")
+  @@index([actorId, fechaAccion], map: "accion_impedimento_actor_fecha_idx")
   @@map("accion_impedimento")
+}
+
+/// Nivel de riesgo fijado por el QE responsable (D65, D66). Solo inserción: el vigente es
+/// la última fila de la HDU.
+model RiesgoHdu {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @map("id_riesgo") @db.Uuid
+  historiaId     String   @map("id_historia") @db.Uuid
+  nivel          String   @db.VarChar(10)
+  nivelAnterior  String?  @map("nivel_anterior") @db.VarChar(10)
+  justificacion  String   @db.VarChar(500)
+  /// Sugerencia en el momento de fijar; NULL si no se pudo calcular.
+  sugeridoAlFijar String? @map("sugerido_al_fijar") @db.VarChar(10)
+  actorId        String   @map("actor_id") @db.Uuid
+  actorNombre    String   @map("actor_nombre") @db.VarChar(150)
+  actorRol       String   @map("actor_rol") @db.VarChar(30)
+  fecha          DateTime @default(now()) @db.Timestamptz(6)
+
+  @@index([historiaId, fecha(sort: Desc)], map: "riesgo_hdu_historia_fecha_idx")
+  @@index([fecha(sort: Desc)], map: "riesgo_hdu_fecha_idx")
+  @@map("riesgo_hdu")
 }
