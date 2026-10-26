@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "Quality360 · Impedimentos y riesgos (NestJS + Prisma). Solo esqueleto en E1/E2 (E4 fuera de alcance). Dueño: q360-backend.",
+  "description": "Quality360 · Impedimentos y riesgos (NestJS + Prisma). Dueño: q360-backend.",
   "license": "LicenseRef-Capstone-Duoc-UC",
   "main": "./dist/main.js",
   "imports": {

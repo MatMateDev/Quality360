@@ -31,7 +31,7 @@ export class RiesgoPrismaRepositorio extends RiesgoRepositorio {
   ): Promise<{ cambio: boolean; registro: RiesgoFijadoRegistro }> {
     return this.prisma.$transaction(async (tx) => {
       // Dos cambios simultáneos no deben tomar el mismo `nivel_anterior`: se serializan por HDU.
-      await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtextextended(${hduId}, 0))`;
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${hduId}, 0))`;
       const ultimaFila = await tx.riesgoHdu.findFirst({ where: { historiaId: hduId }, orderBy: [{ fecha: 'desc' }, { id: 'desc' }] });
       const ultimo = ultimaFila === null ? null : aRiesgo(ultimaFila);
       const plan = decidir(ultimo);
