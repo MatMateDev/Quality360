@@ -46,6 +46,8 @@ services:
       SUPABASE_SERVICE_ROLE_KEY: ${SUPABASE_SERVICE_ROLE_KEY:-}
       X_Q360_SERVICIO_TOKEN: ${X_Q360_SERVICIO_TOKEN:-}
       PERMITIR_CARGA_SEMILLA: ${PERMITIR_CARGA_SEMILLA:-false}
+      CERTIFICACIONES_URL: ${CERTIFICACIONES_URL:-http://certificaciones:3002}
+      IMPEDIMENTOS_URL: ${IMPEDIMENTOS_URL:-http://impedimentos:3003}
     healthcheck:
       <<: *healthcheck-defaults
       test: ["CMD", "wget", "-qO-", "http://127.0.0.1:3001/health"]
@@ -84,7 +86,12 @@ services:
       NODE_ENV: production
       PORT: "3003"
       DATABASE_URL: ${DATABASE_URL_IMPEDIMENTOS:?falta DATABASE_URL_IMPEDIMENTOS en tu .env}
+      SUPABASE_URL: ${SUPABASE_URL:-}
+      SUPABASE_JWT_SECRET: ${SUPABASE_JWT_SECRET:-}
+      ORGANIZACION_URL: ${ORGANIZACION_URL:-http://organizacion:3001}
+      CERTIFICACIONES_URL: ${CERTIFICACIONES_URL:-http://certificaciones:3002}
       X_Q360_SERVICIO_TOKEN: ${X_Q360_SERVICIO_TOKEN:-}
+      PERMITIR_CARGA_SEMILLA: ${PERMITIR_CARGA_SEMILLA:-false}
     healthcheck:
       <<: *healthcheck-defaults
       test: ["CMD", "wget", "-qO-", "http://127.0.0.1:3003/health"]

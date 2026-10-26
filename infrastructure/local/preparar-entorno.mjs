@@ -22,7 +22,10 @@ const ARCHIVOS = [
 // Una variable nueva en algún servicio obliga a regenerar (E3: Storage en Certificaciones).
 const completos = () =>
   ARCHIVOS.every((a) => existsSync(join(RAIZ, a))) &&
-  readFileSync(join(RAIZ, 'services/certificaciones/.env'), 'utf8').includes('SUPABASE_SERVICE_ROLE_KEY=');
+  readFileSync(join(RAIZ, 'services/certificaciones/.env'), 'utf8').includes('SUPABASE_SERVICE_ROLE_KEY=') &&
+  // E4: Impedimentos consulta Certificaciones y el gateway reenvía a Impedimentos.
+  readFileSync(join(RAIZ, 'services/impedimentos/.env'), 'utf8').includes('CERTIFICACIONES_URL=') &&
+  readFileSync(join(RAIZ, 'apps/gateway/.env'), 'utf8').includes('IMPEDIMENTOS_URL=');
 if (!forzar && completos()) {
   console.log('Configuración local ya existe (usa --forzar para regenerarla).');
   process.exit(0);
@@ -73,6 +76,7 @@ escribir('services/organizacion/.env', {
   PERMITIR_CARGA_SEMILLA: 'true',
   X_Q360_SERVICIO_TOKEN: token,
   CERTIFICACIONES_URL: 'http://localhost:3002',
+  IMPEDIMENTOS_URL: 'http://localhost:3003',
 });
 escribir('services/certificaciones/.env', {
   PORT: 3002,
@@ -90,6 +94,9 @@ escribir('services/impedimentos/.env', {
   SUPABASE_URL: api,
   SUPABASE_JWT_SECRET: sb.JWT_SECRET,
   ORGANIZACION_URL: 'http://localhost:3001',
+  CERTIFICACIONES_URL: 'http://localhost:3002',
+  PERMITIR_CARGA_SEMILLA: 'true',
+  X_Q360_SERVICIO_TOKEN: token,
 });
 escribir('apps/gateway/.env', {
   PORT: 3000,
@@ -100,6 +107,7 @@ escribir('apps/gateway/.env', {
   SUPABASE_JWT_SECRET: sb.JWT_SECRET,
   ORGANIZACION_URL: 'http://localhost:3001',
   CERTIFICACIONES_URL: 'http://localhost:3002',
+  IMPEDIMENTOS_URL: 'http://localhost:3003',
 });
 escribir('apps/web/.env.local', {
   VITE_USAR_MOCKS: 'false',
@@ -110,5 +118,6 @@ escribir('apps/web/.env.local', {
 escribir('infrastructure/seed/mvp/.env.carga', {
   X_Q360_SERVICIO_TOKEN: token,
   ORGANIZACION_URL: 'http://localhost:3001',
+  IMPEDIMENTOS_URL: 'http://localhost:3003',
 });
 console.log('Configuración local lista. Si Organización ya estaba corriendo, reinícialo para que tome el token nuevo.');
