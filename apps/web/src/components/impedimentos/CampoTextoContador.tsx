@@ -20,6 +20,8 @@ interface Props {
   /** `data-testid` del mensaje de error. */
   testIdError?: string;
   /** Si se indica, se pasa el foco al control cuando el padre lo pide (primer campo inválido). */
+  /** No aplica `maxLength`: se puede pasar del tope y el error aparece al confirmar («Máximo 500 caracteres»). */
+  sinTope?: boolean;
   refControl?: React.Ref<HTMLInputElement & HTMLTextAreaElement>;
 }
 
@@ -43,6 +45,7 @@ export function CampoTextoContador({
   testIdContador,
   testIdError,
   refControl,
+  sinTope = false,
 }: Props) {
   const base = useId();
   const idAyuda = `${base}-ayuda`;
@@ -52,7 +55,7 @@ export function CampoTextoContador({
     id,
     "data-testid": testId,
     value: valor,
-    maxLength: max,
+    maxLength: sinTope ? undefined : max,
     "aria-invalid": error ? (true as const) : undefined,
     "aria-describedby": describedBy,
     "aria-required": obligatorio ? (true as const) : undefined,
@@ -79,7 +82,7 @@ export function CampoTextoContador({
         {valor.length}/{max}
       </span>
       <span className="sr-only" role="status">
-        {valor.length >= max ? `Llegaste al máximo de ${max} caracteres.` : ""}
+        {valor.length >= max && !sinTope ? `Llegaste al máximo de ${max} caracteres.` : ""}
       </span>
       {error ? (
         <p className="campo-error" id={idError} data-testid={testIdError}>

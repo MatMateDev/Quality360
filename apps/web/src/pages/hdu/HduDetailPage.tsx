@@ -14,6 +14,7 @@ import { AvisoSoloLectura } from "@/components/bandeja/Estructura";
 import { InsigniaEstadoHdu, InsigniaPrioridad } from "@/components/Etiquetas";
 import { AvisoHduBloqueada } from "@/components/impedimentos/AvisoHduBloqueada";
 import { ErrorCierreBloqueado } from "@/components/impedimentos/ErrorCierreBloqueado";
+import { PanelRiesgo } from "@/components/impedimentos/PanelRiesgo";
 import { SeccionImpedimentos } from "@/components/impedimentos/SeccionImpedimentos";
 import { ErrorApi } from "@/lib/httpClient";
 import { formatearFecha } from "@/lib/formato";
@@ -226,6 +227,8 @@ export function HduDetailPage() {
       </div>
 
       <SeccionImpedimentos hduId={hdu.id} resaltarId={resaltarId} />
+      {/* D73: el Analista no ve el riesgo; el panel ni siquiera se monta (ninguna llamada al servicio). */}
+      {perfil && perfil.rol !== "ANALISTA_QA" ? <PanelRiesgo hduId={hdu.id} /> : null}
 
       {hdu.permisos.cambiarEstado ? (
         <div className="panel" id="estado">
