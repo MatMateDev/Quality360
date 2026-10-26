@@ -37,14 +37,14 @@ export default defineConfig({
     {
       name: "e2e",
       testDir: "./e2e",
-      testIgnore: [/.*\.setup\.ts/, /e7-.*\.spec\.ts/],
+      testIgnore: [/.*\.setup\.ts/, /e7-.*\.spec\.ts/, /e4-.*\.spec\.ts/],
       dependencies: ["setup"],
       use: { ...devices["Desktop Chrome"], baseURL: env.portalUrl },
     },
     {
       name: "api",
       testDir: "./api",
-      testIgnore: /e7-.*\.spec\.ts/,
+      testIgnore: [/e7-.*\.spec\.ts/, /e4-.*\.spec\.ts/],
       use: {},
     },
     // Certificación de E7 · Bandejas por rol (fixture `npm run seed:e7`; usuarios adm1, qe1... @quality360.local).
@@ -69,6 +69,23 @@ export default defineConfig({
       testMatch: /e7-.*\.spec\.ts/,
       dependencies: ["e7-setup"],
       timeout: 180_000,
+      use: { ...devices["Desktop Chrome"], baseURL: env.portalUrl, actionTimeout: 15_000, navigationTimeout: 30_000 },
+    },
+    // Certificación de E4 · Impedimentos y riesgos (fixture `npm run seed:e7` + `npm run seed:e4`, reutiliza las sesiones de e7-setup).
+    {
+      name: "e4-api",
+      testDir: "./api",
+      testMatch: /e4-.*.spec.ts/,
+      dependencies: ["e7-setup"],
+      timeout: 240_000,
+      use: {},
+    },
+    {
+      name: "e4-e2e",
+      testDir: "./e2e",
+      testMatch: /e4-.*.spec.ts/,
+      dependencies: ["e7-setup"],
+      timeout: 240_000,
       use: { ...devices["Desktop Chrome"], baseURL: env.portalUrl, actionTimeout: 15_000, navigationTimeout: 30_000 },
     },
   ],

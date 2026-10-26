@@ -6,12 +6,12 @@ import { RAIZ_REPO } from "./env";
 
 /**
  * Validación de respuestas contra `contracts/*.yaml` (fuente de verdad, no los bundles de `dist/`).
- * Carga los tres documentos fuente como esquemas JSON (OpenAPI 3.1 usa JSON Schema 2020-12) y resuelve
+ * Carga los documentos fuente (comun, organizacion, certificaciones, gateway e impedimentos) como esquemas JSON (OpenAPI 3.1 usa JSON Schema 2020-12) y resuelve
  * los `$ref` entre archivos (`./comun.v1.yaml#/components/schemas/X`). Las `additionalProperties: false`
  * del contrato se respetan, así que un campo no declarado en la respuesta es un incumplimiento.
  */
 const BASE = "https://quality360.local/contracts/";
-const ARCHIVOS = ["comun.v1.yaml", "organizacion.v1.yaml", "certificaciones.v1.yaml", "gateway.v1.yaml"] as const;
+const ARCHIVOS = ["comun.v1.yaml", "organizacion.v1.yaml", "certificaciones.v1.yaml", "gateway.v1.yaml", "impedimentos.v1.yaml"] as const;
 export type ArchivoContrato = (typeof ARCHIVOS)[number] extends `${infer N}.v1.yaml` ? N : never;
 
 let ajv: Ajv2020 | undefined;
