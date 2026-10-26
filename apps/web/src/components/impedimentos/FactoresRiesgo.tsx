@@ -13,7 +13,7 @@ const FRASE_GENERICA: Record<CodigoFactorRiesgo, string> = {
 const plural = (n: number, uno: string, varios: string) => (n === 1 ? uno : varios);
 
 /** Frase de un factor armada con el `detalle` del servidor (D76); si falta un campo, la frase genérica del código. */
-export function fraseFactor(f: FactorRiesgo): string {
+function fraseFactor(f: FactorRiesgo): string {
   const d = f.detalle;
   switch (f.codigo) {
     case "IMPEDIMENTO_ABIERTO":
