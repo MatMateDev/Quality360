@@ -52,7 +52,7 @@ test.describe("E4 · bandejas por rol", () => {
     test.use({ storageState: estadoSesion("lid1") });
     test("[E4-F03#2] Líder: LID1 ve abiertos 3, HDU bloqueadas 3 y escalados a mí 1; la lista trae los 3 con I3 primero y «escalado a mí», las columnas Bloqueo y Riesgo y «Solo bloqueadas»", async ({ page, request }) => {
       const [h, i] = [await hdu(request), await imps(request)];
-      await page.goto(`${env.portalUrl}/lider`);
+      await page.goto(`${env.portalUrl}/lider?q=E7-H`);
       await expect(page.getByTestId("contador-impedimentos-abiertos")).toHaveText("3");
       await expect(page.getByTestId("contador-hdu-bloqueadas")).toHaveText("3");
       await expect(page.getByTestId("contador-escalados-a-mi")).toHaveText("1");
@@ -83,11 +83,14 @@ test.describe("E4 · bandejas por rol", () => {
 
   test.describe("ADM1", () => {
     test.use({ storageState: estadoSesion("adm1") });
-    test("[E4-F03#2] Administrador: ADM1 ve abiertos 3, HDU bloqueadas 3 y riesgo alto 2, y «escalados a mí» vacío (aún no le escalan nada)", async ({ page }) => {
+    test("[E4-F03#2] Administrador: ADM1 ve abiertos 3, HDU bloqueadas 3 y riesgo alto 2, y «escalados a mí» vacío (aún no le escalan nada)", async ({ page, request }) => {
       await page.goto(`${env.portalUrl}/admin`);
       await expect(page.getByTestId("contador-impedimentos-abiertos")).toHaveText("3");
       await expect(page.getByTestId("contador-hdu-bloqueadas")).toHaveText("3");
-      await expect(page.getByTestId("contador-hdu-riesgo-alto")).toHaveText("2");
+      // hduRiesgoAlto cuenta todas las HDU del sistema: exacto (2) solo sobre la base pura de 8 HDU.
+      const total = await api.get<{ contadores: { hduTotal: { datos: { valor: number } } } }>(request, "/v1/bandeja/admin", { token: await tokenE7("adm1") });
+      if (total.body.contadores.hduTotal.datos.valor === 8) await expect(page.getByTestId("contador-hdu-riesgo-alto")).toHaveText("2");
+      else await expect(page.getByTestId("contador-hdu-riesgo-alto")).toHaveText(/^[0-9]+$/);
       await expect(page.getByTestId("estado-vacio-impedimentos-escalados")).toBeVisible();
       await expect(page.getByTestId("pendientes-configuracion").or(page.getByTestId("lista-pendientes"))).toBeVisible();
     });

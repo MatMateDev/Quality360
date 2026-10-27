@@ -139,3 +139,12 @@ export async function evaluar(
   });
   return { status: r.status, body: await r.json().catch(() => undefined) };
 }
+
+/** Días de calendario (America/Santiago) entre una fecha ISO y hoy (D74): el fixture registra I1 «hace 2 horas», que tras la medianoche ya es 1 día. */
+export function diasCalendario(iso: string): number {
+  const dia = (d: Date) => {
+    const [a, m, n] = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Santiago", year: "numeric", month: "2-digit", day: "2-digit" }).format(d).split("-").map(Number);
+    return Date.UTC(a, m - 1, n);
+  };
+  return Math.round((dia(new Date()) - dia(new Date(iso))) / 86_400_000);
+}

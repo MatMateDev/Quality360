@@ -1,7 +1,7 @@
 import { expect, test } from "@playwright/test";
 import { api } from "../support/api";
 import { celulasFixture, tokenE7 } from "../support/e7";
-import { hdu, imps, reiniciarFixtureE4 } from "../support/e4";
+import { diasCalendario, hdu, imps, reiniciarFixtureE4 } from "../support/e4";
 import { contextoDe, entrarEnPortal, estadoSesion, vigilarPeticionesE4 } from "../support/e4ui";
 import { certificacionesCaidaEnImpedimentos, type PilaE4 } from "../support/entornoE4";
 import { env } from "../support/env";
@@ -112,7 +112,9 @@ test.describe("E4-F02 · Listado de impedimentos del QE", () => {
       await expect(filas(page)).toHaveCount(1);
       const fila = filas(page).first();
       await expect(fila).toHaveAttribute("data-testid", `fila-impedimento-${i.I1.id}`);
-      for (const t of ["E7-H3", "ANA3", "Medio", "0 d"]) await expect(fila).toContainText(t);
+      // "0 d" del backlog: los días son de calendario (D74); entre 00:00 y 02:00 el «hace 2 horas» del fixture ya cuenta 1.
+      const dias = diasCalendario(i.I1.fechaRegistro);
+      for (const t of ["E7-H3", "ANA3", "Medio", `${dias} d`]) await expect(fila).toContainText(t);
       await expect(fila.getByTestId("insignia-nuevo")).toBeVisible();
       await expect(page.getByTestId(`fila-impedimento-${i.I2.id}`)).toHaveCount(0);
       await expect(page.getByTestId(`fila-impedimento-${i.I3.id}`)).toHaveCount(0);

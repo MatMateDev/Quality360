@@ -80,11 +80,13 @@ test.describe("E4-F03 · Gestión del QE responsable", () => {
       await abrirDetalle(page, h.H1.id);
       await page.getByTestId(`boton-escalar-${i.I2.id}`).click();
       await expect(page.getByTestId("dialogo-escalar")).toBeVisible();
-      await expect(page.getByTestId("campo-destino-escalamiento").locator("option")).toHaveCount(4); // «Selecciona…», LID1, ADM1, «Otro»
+      await expect.poll(async () => page.getByTestId("campo-destino-escalamiento").locator("option").count()).toBeGreaterThanOrEqual(4); // «Selecciona…», LID1, ADM1, «Otro»
       const opciones = (await page.getByTestId("campo-destino-escalamiento").locator("option").allTextContents()).map((t) => t.trim());
       expect(opciones.some((t) => t.startsWith("LID1"))).toBe(true);
       expect(opciones.some((t) => t.startsWith("ADM1"))).toBe(true);
       expect(opciones.some((t) => t.startsWith("Otro"))).toBe(true);
+      // Solo Líderes y Administradores (con la semilla MVP puede haber más de uno), «Selecciona…» y «Otro».
+      for (const t of opciones.filter((o) => !o.startsWith("Selecciona") && !o.startsWith("Otro"))) expect(t, t).toMatch(/· (Líder QA|Administrador)$/);
       for (const prohibido of ["QE1", "QE2", "ANA1", "ANA2", "ANA3", "ANA4", "LID2"]) {
         expect(opciones.some((t) => t.startsWith(prohibido)), `no debe ofrecer ${prohibido}`).toBe(false);
       }
@@ -249,7 +251,11 @@ test.describe("E4-F03 · Gestión del QE responsable", () => {
       const q2 = await contextoDe(browser, "qe2");
       try {
         await abrirDetalle(q2.page, h.H2.id);
-        await expect(q2.page.getByTestId(`boton-reabrir-${i.I4.id}`)).toBeVisible();
+        // La relación con la HDU puede tardar unos segundos en propagarse tras reasignar (D54): se recarga hasta verla.
+        await expect(async () => {
+          await q2.page.reload();
+          await expect(q2.page.getByTestId(`boton-reabrir-${i.I4.id}`)).toBeVisible({ timeout: 3000 });
+        }).toPass({ timeout: 25_000 });
       } finally {
         await q2.contexto.close();
       }

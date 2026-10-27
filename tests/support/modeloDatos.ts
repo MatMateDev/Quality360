@@ -153,7 +153,8 @@ export const COLUMNAS_MODELO: Record<Esquema, Record<string, Record<string, Tipo
       estado: "varchar(30)",
       fecha_registro: "tstz",
       fecha_resolucion: "tstz?",
-      id_certificacion: "uuid",
+      // E4 (D58): el vínculo operativo es id_historia; id_certificacion admite NULL (HDU sin ciclo).
+      id_certificacion: "uuid?",
     },
     accion_impedimento: {
       id_accion_impedimento: "uuid",
@@ -171,8 +172,12 @@ export const TABLAS_EXTENSION: Record<Esquema, string[]> = {
   // E7 (D30, D52, D54): `celula_lider` (células de cada Líder QA) y `hdu_historial_responsable` (reasignación del QE responsable).
   organizacion: ["auditoria", "hdu_historial_estado", "hdu_historial_asignacion", "celula_lider", "hdu_historial_responsable"],
   certificaciones: ["evento_checklist", "certificado"],
-  impedimentos: [],
+  // E4 (D65, D88): `riesgo_hdu`, de solo inserción.
+  impedimentos: ["riesgo_hdu"],
 };
+
+/** E4 (D65): tablas de solo inserción; `svc_impedimentos` no tiene UPDATE ni DELETE sobre ellas. */
+export const SOLO_INSERCION: Record<Esquema, string[]> = { organizacion: [], certificaciones: [], impedimentos: ["accion_impedimento"] };
 
 export const tablasDelModelo = (esquema: Esquema): string[] => Object.keys(COLUMNAS_MODELO[esquema]);
 export const TOTAL_TABLAS_MODELO = ESQUEMAS.reduce((total, esquema) => total + tablasDelModelo(esquema).length, 0);
@@ -216,10 +221,10 @@ export const FK_EXTENSION: Record<Esquema, string[]> = {
 };
 
 /** Las 3 relaciones del modelo que cruzan servicios: UUID SIN llave foránea (D24, regla no negociable 3). */
-export const RELACIONES_ENTRE_SERVICIOS: Array<{ esquema: Esquema; tabla: string; columna: string; apunta: string }> = [
-  { esquema: "certificaciones", tabla: "certificacion", columna: "id_historia", apunta: "organizacion.historia_usuario" },
-  { esquema: "certificaciones", tabla: "asignacion_certificacion", columna: "id_usuario", apunta: "organizacion.usuario" },
-  { esquema: "impedimentos", tabla: "impedimento", columna: "id_certificacion", apunta: "certificaciones.certificacion" },
+export const RELACIONES_ENTRE_SERVICIOS: Array<{ esquema: Esquema; tabla: string; columna: string; apunta: string; obligatorio: boolean }> = [
+  { esquema: "certificaciones", tabla: "certificacion", columna: "id_historia", apunta: "organizacion.historia_usuario", obligatorio: true },
+  { esquema: "certificaciones", tabla: "asignacion_certificacion", columna: "id_usuario", apunta: "organizacion.usuario", obligatorio: true },
+  { esquema: "impedimentos", tabla: "impedimento", columna: "id_certificacion", apunta: "certificaciones.certificacion", obligatorio: false },
 ];
 
 export interface ColumnaReal {

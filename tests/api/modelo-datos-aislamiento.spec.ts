@@ -2,6 +2,7 @@ import { expect, test } from "@playwright/test";
 import {
   ESQUEMAS,
   ROL_DE,
+  SOLO_INSERCION,
   TABLAS_EXTENSION,
   columnasReales,
   conServicio,
@@ -57,7 +58,9 @@ test.describe("[MODELO] Aislamiento de datos por rol de servicio", () => {
         for (const privilegio of ["SELECT", "INSERT", "UPDATE"]) {
           const filas = await privilegiosDe(esquema, privilegio);
           for (const tabla of tablasDelModelo(esquema)) {
-            expect(filas.find((fila) => fila.tabla === tabla)?.ok, `${privilegio} sobre ${esquema}.${tabla}`).toBe(true);
+            // E4 (D65): las tablas de solo inserción no admiten UPDATE.
+            const esperado = !(privilegio === "UPDATE" && SOLO_INSERCION[esquema].includes(tabla));
+            expect(filas.find((fila) => fila.tabla === tabla)?.ok, `${privilegio} sobre ${esquema}.${tabla}`).toBe(esperado);
           }
         }
 

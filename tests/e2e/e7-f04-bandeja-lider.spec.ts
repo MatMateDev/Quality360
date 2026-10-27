@@ -190,7 +190,10 @@ test.describe("E7-F04 · Bandeja del Líder QA", () => {
       await expect(page.getByTestId("lista-hdu-lider").locator("[data-testid^=celda-certificado-]")).toHaveCount(0);
       // Nunca se muestra 0/10 ni «—» (reservado para «no tiene certificado») por una fuente caída.
       await expect(page.getByTestId("lista-hdu-lider")).not.toContainText("0/10");
-      await expect(page.getByTestId("lista-hdu-lider")).not.toContainText("—");
+      // E4 (sección 6 del backlog E4): la columna aditiva «Bloqueo» usa «—» para una HDU sin bloqueo, así que ya no se busca «—» en toda la tabla:
+      // se exige que cada una de las 6 filas diga «No disponible» en Avance y en Certificado.
+      await expect(page.getByTestId("lista-hdu-lider").locator("[data-testid=estado-indisponible-avance]")).toHaveCount(6);
+      await expect(page.getByTestId("lista-hdu-lider").locator("[data-testid=estado-indisponible-certificado]")).toHaveCount(6);
     });
   });
 });
