@@ -1,4 +1,6 @@
 import { spawnSync } from "node:child_process";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import path from "node:path";
 import type { APIRequestContext } from "@playwright/test";
 import { api } from "./api";
 import { conConexion } from "./db";
@@ -26,12 +28,22 @@ export const TITULO_IMP: Record<CodigoImp, string> = {
 };
 
 export function recargarE4(): void {
-  const r = spawnSync(
-    process.execPath,
-    ["--env-file-if-exists=infrastructure/seed/mvp/.env.carga", "infrastructure/seed/e4/cargar.mjs", "--sin-verificar"],
-    { cwd: RAIZ_REPO, encoding: "utf8" },
-  );
-  if (r.status !== 0) throw new Error(`seed:e4 falló: ${r.stdout}\n${r.stderr}`);
+  // Defecto DEF-E4-01 (q360-integraciones): infrastructure/seed/e4/cargar.mjs lee solo la primera página (100) de GET /v1/hdu y falla
+  // con «Faltan las HDU H1…H8» cuando la base compartida pasa de 100 HDU. Para no depender de eso se ejecuta una copia en memoria
+  // del mismo script con la única diferencia de recorrer todas las páginas (no se modifica el código del repositorio).
+  const dir = path.join(RAIZ_REPO, "infrastructure", "seed", "e4");
+  let fuente = readFileSync(path.join(dir, "cargar.mjs"), "utf8");
+  const original = "const pagina = exigir(await http(ORG, 'GET', '/v1/hdu?tamanoPagina=100', { cabeceras: admin }), 'listar HDU');";
+  if (!fuente.includes(original)) throw new Error("cargar.mjs cambió: actualizar el parche de paginación de tests/support/e4.ts");
+  fuente = fuente
+    .replace(original, "const pagina = { items: [] }; for (let p = 1; p <= 100; p += 1) { const r = exigir(await http(ORG, 'GET', `/v1/hdu?pagina=${p}&tamanoPagina=100`, { cabeceras: admin }), 'listar HDU'); pagina.items.push(...r.items); if (pagina.items.length >= r.total || r.items.length === 0) break; }")
+    .replace("const aqui = dirname(fileURLToPath(import.meta.url));", `const aqui = ${JSON.stringify(dir)};`);
+  const copia = path.join(RAIZ_REPO, "tests", "test-results", "cargar-e4-paginado.mjs");
+  mkdirSync(path.dirname(copia), { recursive: true });
+  writeFileSync(copia, fuente);
+  const r = spawnSync(process.execPath, ["--env-file-if-exists=infrastructure/seed/mvp/.env.carga", copia, "--sin-verificar"], { cwd: RAIZ_REPO, encoding: "utf8" });
+  if (r.status !== 0) throw new Error(`seed:e4 falló: ${r.stdout}
+${r.stderr}`);
 }
 
 let cacheImp: Promise<Record<CodigoImp, ImpedimentoApi>> | undefined;

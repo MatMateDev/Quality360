@@ -175,7 +175,13 @@ test.describe("E4-F04 · Riesgo", () => {
       try {
         await page.goto(`${env.portalUrl}/hdu/${h.H1.id}`);
         await expect(page.getByTestId("panel-riesgo"), clave).toBeVisible();
-        await expect(page.getByTestId("semaforo-riesgo"), clave).toHaveAttribute("data-nivel", "ALTO");
+        // El límite de tasa del gateway puede devolver un 429 transitorio a una de las lecturas del detalle: se recarga hasta verlo.
+        await expect(async () => {
+          await expect(page.getByTestId("semaforo-riesgo"), clave).toHaveAttribute("data-nivel", "ALTO", { timeout: 4000 });
+        }).toPass({ timeout: 40_000, intervals: [100] }).catch(async () => {
+          await page.reload();
+          await expect(page.getByTestId("semaforo-riesgo"), clave).toHaveAttribute("data-nivel", "ALTO");
+        });
         await expect(page.getByTestId("boton-fijar-riesgo"), clave).toHaveCount(0);
         await expect(page.getByTestId("boton-usar-sugerido"), clave).toHaveCount(0);
       } finally {

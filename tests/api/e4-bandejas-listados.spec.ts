@@ -100,21 +100,21 @@ test.describe("E4 · bloques de bandeja (D87, D71)", () => {
   });
 
   test("[E4-F01#1] Analista: ANA1 ve la columna Bloqueo (H1 y H6 bloqueadas), el filtro soloBloqueadas deja H1 y H6 y la bandeja no trae riesgo (D73)", async ({ request }) => {
-    const b = await bandeja(request, "ana1", "tamanoPagina=100");
+    const b = await bandeja(request, "ana1", "q=E7-H&tamanoPagina=100");
     const filas = b.hdu!.datos!.items;
     const por = Object.fromEntries(filas.map((f) => [f.codigo.replace("E7-", ""), f]));
     expect(por.H1.bloqueo?.datos).toMatchObject({ bloqueada: true, abiertos: 1 });
     expect(por.H6.bloqueo?.datos).toMatchObject({ bloqueada: true, abiertos: 1 });
-    const ana2 = await bandeja(request, "ana2", "tamanoPagina=100");
+    const ana2 = await bandeja(request, "ana2", "q=E7-H&tamanoPagina=100");
     expect(ana2.hdu!.datos!.items.find((f) => f.codigo === "E7-H2")!.bloqueo?.datos).toMatchObject({ bloqueada: false, abiertos: 0 });
     for (const f of filas) expect(f.riesgo, `${f.codigo} no debe traer riesgo para el Analista`).toBeUndefined();
     expect(JSON.stringify(b.impedimentos)).not.toMatch(/nivelVigente|hduRiesgoAlto/);
-    const solo = await bandeja(request, "ana1", "soloBloqueadas=true&tamanoPagina=100");
+    const solo = await bandeja(request, "ana1", "q=E7-H&soloBloqueadas=true&tamanoPagina=100");
     expect(solo.hdu!.datos!.items.map((f) => f.codigo.replace("E7-", "")).sort()).toEqual(["H1", "H6"]);
   });
 
   test("[E4-F03#2] Líder: LID1 ve 3 impedimentos (el escalado a él primero), columnas Bloqueo y Riesgo, soloBloqueadas = H1, H3, H6; LID2 contadores 0 con lista vacía", async ({ request }) => {
-    const b = await bandeja(request, "lid1", "tamanoPagina=100");
+    const b = await bandeja(request, "lid1", "q=E7-H&tamanoPagina=100");
     expect(codigos(b.impedimentos.lista)).toEqual(["H6", "H1", "H3"]);
     expect(b.impedimentos.lista!.datos!.items[0]).toMatchObject({ escaladoAMi: true, estado: "ESCALADO" });
     const por = Object.fromEntries(b.hdu!.datos!.items.map((f) => [f.codigo.replace("E7-", ""), f]));
@@ -122,7 +122,7 @@ test.describe("E4 · bloques de bandeja (D87, D71)", () => {
     expect(por.H1.riesgo?.datos?.nivelVigente).toBe("ALTO");
     expect(por.H6.riesgo?.datos?.nivelVigente).toBe("MEDIO");
     expect(por.H7.riesgo?.datos?.nivelVigente).toBeNull(); // Sin evaluar
-    const solo = await bandeja(request, "lid1", "soloBloqueadas=true&tamanoPagina=100");
+    const solo = await bandeja(request, "lid1", "q=E7-H&soloBloqueadas=true&tamanoPagina=100");
     expect(solo.hdu!.datos!.items.map((f) => f.codigo.replace("E7-", "")).sort()).toEqual(["H1", "H3", "H6"]);
     const l2 = await bandeja(request, "lid2");
     expect(l2.impedimentos.lista).toMatchObject({ estado: "ok", datos: { total: 0, items: [] } });
