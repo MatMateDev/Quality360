@@ -154,10 +154,16 @@ test.describe("E4-B04 · Auditoría", () => {
     const token = await tokenE7("qe1");
     const put = await api.put(request, `/v1/impedimentos/${i.I2.id}/acciones/0`, { token, body: { descripcion: "manipulado" } });
     expect([404, 405]).toContain(put.status);
-    const del = await request.fetch(`${env.gatewayUrl}/v1/impedimentos/${i.I2.id}/acciones/0`, { method: "DELETE", headers: { Authorization: `Bearer ${token}` }, failOnStatusCode: false });
-    expect([404, 405]).toContain(del.status());
-    const delRiesgo = await request.fetch(`${env.gatewayUrl}/v1/hdu/${h.H6.id}/riesgo`, { method: "DELETE", headers: { Authorization: `Bearer ${token}` }, failOnStatusCode: false });
-    expect([404, 405]).toContain(delRiesgo.status());
+    const borrar = async (ruta: string) => {
+      for (let intento = 0; intento < 5; intento += 1) {
+        const r = await request.fetch(`${env.gatewayUrl}${ruta}`, { method: "DELETE", headers: { Authorization: `Bearer ${token}` }, failOnStatusCode: false });
+        if (r.status() !== 429) return r.status();
+        await new Promise((res) => setTimeout(res, 3000));
+      }
+      return 429;
+    };
+    expect([404, 405]).toContain(await borrar(`/v1/impedimentos/${i.I2.id}/acciones/0`));
+    expect([404, 405]).toContain(await borrar(`/v1/hdu/${h.H6.id}/riesgo`));
     expect([await contarDb("SELECT count(*) n FROM impedimentos.accion_impedimento"), await contarDb("SELECT count(*) n FROM impedimentos.riesgo_hdu")]).toEqual(antes);
   });
 

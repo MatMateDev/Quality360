@@ -74,6 +74,9 @@ export default defineConfig({
     // Certificación de E4 · Impedimentos y riesgos (fixture `npm run seed:e7` + `npm run seed:e4`, reutiliza las sesiones de e7-setup).
     {
       name: "e4-api",
+      // El gateway limita la tasa (429) y una corrida larga puede toparse con él en una lectura sin reintento propio: un reintento por prueba,
+      // y la corrida lo informa como «flaky» (no se oculta).
+      retries: 1,
       testDir: "./api",
       testMatch: /e4-.*.spec.ts/,
       dependencies: ["e7-setup"],
@@ -82,6 +85,7 @@ export default defineConfig({
     },
     {
       name: "e4-e2e",
+      retries: 1,
       testDir: "./e2e",
       testMatch: /e4-.*.spec.ts/,
       dependencies: ["e7-setup"],
