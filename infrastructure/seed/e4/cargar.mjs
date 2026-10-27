@@ -110,11 +110,15 @@ async function main() {
 
   // HDU del fixture E7 (no se crean: si faltan, falta correr seed:e7).
   const admin = await sesion('adm1');
-  const pagina = exigir(await http(ORG, 'GET', '/v1/hdu?tamanoPagina=100', { cabeceras: admin }), 'listar HDU');
+  // Recorre todas las páginas: con más de 100 HDU en la base las del fixture pueden no estar en la primera.
   const hdu = {};
-  for (const h of pagina.items) {
-    const m = /^E7-(H[1-8])$/.exec(h.codigo);
-    if (m) hdu[m[1]] = { id: h.id, celula: h.celula.nombre, celulaId: h.celula.id };
+  for (let numero = 1; ; numero++) {
+    const pagina = exigir(await http(ORG, 'GET', `/v1/hdu?tamanoPagina=100&pagina=${numero}`, { cabeceras: admin }), 'listar HDU');
+    for (const h of pagina.items) {
+      const m = /^E7-(H[1-8])$/.exec(h.codigo);
+      if (m) hdu[m[1]] = { id: h.id, celula: h.celula.nombre, celulaId: h.celula.id };
+    }
+    if (pagina.items.length === 0 || numero * pagina.tamanoPagina >= pagina.total) break;
   }
   const faltan = ['H1', 'H2', 'H3', 'H4', 'H5', 'H6', 'H7', 'H8'].filter((h) => !hdu[h]);
   if (faltan.length) throw new Error(`Faltan las HDU ${faltan.join(', ')} del fixture E7: corre antes npm run seed:e7.`);

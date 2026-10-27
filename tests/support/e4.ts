@@ -23,7 +23,7 @@ export const TITULO_IMP: Record<CodigoImp, string> = {
   I1: "Ambiente QA no responde",
   I2: "Faltan cuentas de prueba con saldo",
   I3: "API de Pagos sin sandbox",
-  I4: "Criterio de aceptacion ambiguo",
+  I4: "Criterio de aceptación ambiguo",
   I5: "Permisos de la herramienta de pruebas",
 };
 
