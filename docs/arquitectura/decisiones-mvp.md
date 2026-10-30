@@ -523,3 +523,12 @@ No agrega HDU, usuarios ni células, y no deja impedimentos abiertos en H8. Para
 1. **Carrera entre cierre y registro.** Organización verifica los impedimentos y después cierra. Si justo entonces alguien registra uno, la HDU puede quedar cerrada con un impedimento abierto. Impedimentos vuelve a leer el estado de la HDU al registrar, así que la ventana es de milisegundos; cerrarla del todo exigiría una reserva entre servicios que el MVP no justifica. Si ocurre, el QE lo resuelve y queda en el historial.
 2. **Volumen de «Riesgo por HDU».** `GET /v1/interno/hdu/ambito/detalle` trae todo el ámbito, como las bandejas (D46). Alcanza para el MVP; con miles de HDU conviene paginar en Organización.
 3. **Columna de riesgo para el Auditor (D80).** Es aditiva y sin CSV, si el usuario la pide.
+
+---
+
+# Mejoras de uso tras E4
+
+| ID | Decisión | Motivo |
+| --- | --- | --- |
+| D130 | **Checklist en orden libre.** Cualquier entregable `PENDIENTE` se marca sin esperar a los anteriores, y cualquier entregable marcado se desmarca sin seguir un orden. Reemplaza el orden estricto de D17. Se mantienen: un registro por entregable (E3-B01#2), la aprobación solo del QE responsable, el certificado automático (D19, que sigue exigiendo los entregables 1 a 8 aprobados) y el bloqueo de una HDU cerrada. El código `ORDEN_ENTREGABLES` queda en desuso. Cambian los escenarios E3-F02#2 y E3-B02#1 | Pedido del usuario: el proceso no debe ser lineal |
+| D131 | **Selección dentro de diálogos con lista visible.** Los selectores de los diálogos «Asignar analista» y «Reasignar QE responsable» se muestran como lista con hasta 6 filas y desplazamiento propio, en vez del desplegable nativo, que se abría fuera de la ventana y ocultaba opciones | Pedido del usuario |

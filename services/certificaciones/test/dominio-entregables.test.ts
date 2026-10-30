@@ -62,25 +62,15 @@ describe('Checklist · cumplimiento [E3-F01#2] [E3-B02#3]', () => {
   });
 });
 
-describe('Checklist · orden al marcar [E3-F02#2] [E3-B02#1] [E3-B01#2]', () => {
+describe('Checklist · orden libre al marcar [E3-F02#2] [E3-B02#1] [E3-B01#2] (D130)', () => {
   it('el primero se marca sin dependencias', () => {
     assert.equal(codigoDe(() => validarMarcable(new Map(), 'PLAN_PRUEBAS')), 'sin error');
   });
 
-  it('con el anterior pendiente o solo por aprobar: 409 ORDEN_ENTREGABLES', () => {
-    assert.equal(codigoDe(() => validarMarcable(new Map(), 'DASHBOARD')), '409 ORDEN_ENTREGABLES');
-    assert.equal(codigoDe(() => validarMarcable(estados([['PLAN_PRUEBAS', 'POR_APROBAR']]), 'DASHBOARD')), '409 ORDEN_ENTREGABLES');
-  });
-
-  it('el error indica la dependencia en detalles', () => {
-    try {
-      validarMarcable(new Map(), 'DASHBOARD');
-      assert.fail('debía rechazar');
-    } catch (error) {
-      assert.ok(error instanceof ExcepcionQ360);
-      assert.equal(error.detalles[0]?.campo, 'PLAN_PRUEBAS');
-      assert.match(String((error.getResponse() as { mensaje: string }).mensaje), /Plan de pruebas/);
-    }
+  it('cualquier pendiente se marca aunque los anteriores no estén aprobados', () => {
+    assert.equal(codigoDe(() => validarMarcable(new Map(), 'DASHBOARD')), 'sin error');
+    assert.equal(codigoDe(() => validarMarcable(new Map(), 'CIERRE_PRUEBAS')), 'sin error');
+    assert.equal(codigoDe(() => validarMarcable(estados([['PLAN_PRUEBAS', 'POR_APROBAR']]), 'APROBACION_UAT')), 'sin error');
   });
 
   it('un entregable ya registrado no se vuelve a marcar', () => {
@@ -93,9 +83,9 @@ describe('Checklist · orden al marcar [E3-F02#2] [E3-B02#1] [E3-B01#2]', () => 
 });
 
 describe('Checklist · desmarcar [E3-F02#3]', () => {
-  it('solo lo marcado y con el siguiente pendiente', () => {
+  it('solo lo marcado, en cualquier orden (D130)', () => {
     assert.equal(codigoDe(() => validarDesmarcable(new Map(), 'PLAN_PRUEBAS')), '409 ESTADO_ENTREGABLE_INVALIDO');
-    assert.equal(codigoDe(() => validarDesmarcable(aprobadosHasta(2), 'PLAN_PRUEBAS')), '409 ORDEN_ENTREGABLES');
+    assert.equal(codigoDe(() => validarDesmarcable(aprobadosHasta(2), 'PLAN_PRUEBAS')), 'sin error');
     assert.equal(codigoDe(() => validarDesmarcable(aprobadosHasta(2), 'DASHBOARD')), 'sin error');
   });
 

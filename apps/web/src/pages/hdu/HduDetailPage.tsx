@@ -18,6 +18,7 @@ import { PanelRiesgo } from "@/components/impedimentos/PanelRiesgo";
 import { SeccionImpedimentos } from "@/components/impedimentos/SeccionImpedimentos";
 import { ErrorApi } from "@/lib/httpClient";
 import { formatearFecha } from "@/lib/formato";
+import { tamanoLista } from "@/lib/listaDialogo";
 import { ETIQUETAS_ESTADO_HDU, ROLES_SOLO_LECTURA, rutaPortal, type EstadoHdu, type ListaImpedimentosBloqueantes } from "@/types/dominio";
 
 /** Error de «Cambiar estado»: además del código certificado, el 409 de E4 trae la lista de impedimentos (D77). */
@@ -330,8 +331,14 @@ export function HduDetailPage() {
       >
         <div className="campo">
           <label htmlFor="select-analista-hdu">Analista QA</label>
-          <select id="select-analista-hdu" value={analistaSeleccionado} onChange={(evento) => setAnalistaSeleccionado(evento.target.value)}>
-            <option value="">Selecciona un analista</option>
+          {/* Lista visible dentro del diálogo: el desplegable nativo se abría fuera de la ventana. */}
+          <select
+            id="select-analista-hdu"
+            className="lista-dialogo"
+            size={tamanoLista(analistasQuery.data?.items.length ?? 0)}
+            value={analistaSeleccionado}
+            onChange={(evento) => setAnalistaSeleccionado(evento.target.value)}
+          >
             {analistasQuery.data?.items.map((analista) => (
               <option key={analista.id} value={analista.id}>
                 {analista.nombre}

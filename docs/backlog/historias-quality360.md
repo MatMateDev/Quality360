@@ -375,7 +375,7 @@ Quiero marcar un entregable como completado adjuntando evidencia. Para registrar
 | # | Criterio | Contexto | Evento | Resultado esperado |
 | --- | --- | --- | --- | --- |
 | 1 | Marcar con evidencia | El entregable está pendiente. | Lo marca y adjunta un enlace o archivo. | Queda completado con mi nombre y fecha. |
-| 2 | Orden del proceso | El entregable anterior obligatorio está pendiente. | Intenta marcar el siguiente. | Se informa que debe completar el anterior. |
+| 2 | Orden libre (D130) | Los entregables anteriores están pendientes. | Marca cualquier otro entregable. | Queda completado sin exigir el anterior. |
 | 3 | Desmarcar | El entregable está completado. | Lo desmarca indicando motivo. | Se registra el retroceso y su motivo. |
 
 ### E3-F03 · Quality Engineer (QE)
@@ -410,11 +410,11 @@ Quiero que el sistema registre cada entregable como un registro con responsable 
 
 ### E3-B02 · Quality Engineer (QE)
 
-Quiero que el sistema valide el orden y las aprobaciones del checklist. Para que el proceso de certificación sea consistente.
+Quiero que el sistema valide las aprobaciones del checklist, sin imponer un orden. Para que el proceso de certificación sea consistente.
 
 | # | Criterio | Contexto | Evento | Resultado esperado |
 | --- | --- | --- | --- | --- |
-| 1 | Orden obligatorio | El entregable previo está pendiente. | Se marca el siguiente. | Se rechaza indicando la dependencia. |
+| 1 | Orden libre (D130) | El entregable previo está pendiente. | Se marca el siguiente. | Se acepta: los entregables se trabajan en cualquier orden. |
 | 2 | Aprobación de QE | Un entregable requiere aprobación. | El analista intenta aprobarlo. | Se rechaza: solo el QE responsable puede aprobar. |
 | 3 | Cálculo de cumplimiento | Cambia el estado de un entregable. | Se recalcula. | El porcentaje se actualiza sobre los 10 entregables. |
 
