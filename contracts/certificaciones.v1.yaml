@@ -192,8 +192,8 @@ paths:
       summary: Marcar un entregable como completado con evidencia
       description: |
         - Solo el analista asignado (D18). Otro usuario recibe 403 (E3-B01#3).
-        - El entregable anterior debe estar `APROBADO`; si no, 409
-          `ORDEN_ENTREGABLES` con el faltante en `detalles` (E3-F02#2, E3-B02#1).
+        - Orden libre (D130): cualquier entregable `PENDIENTE` se marca sin esperar
+          a los anteriores (E3-F02#2, E3-B02#1).
         - Un entregable `POR_APROBAR` o `APROBADO` ya tiene registro: 409
           `ENTREGABLE_YA_REGISTRADO`. Hay un registro por clave y HDU (E3-B01#2).
         - `CERTIFICADO` no se marca a mano: 409 `ENTREGABLE_AUTOMATICO` (D19).
@@ -235,9 +235,8 @@ paths:
       summary: Desmarcar un entregable indicando el motivo
       description: |
         - Solo el analista asignado, con motivo obligatorio (422 `MOTIVO_REQUERIDO`).
-        - Aplica a un entregable `POR_APROBAR` o `APROBADO` cuyo siguiente siga
-          `PENDIENTE`. Si no, 409 `ORDEN_ENTREGABLES`. El entregable 9
-          (`CERTIFICADO`) no se desmarca (D19).
+        - Aplica a cualquier entregable `POR_APROBAR` o `APROBADO`, en cualquier
+          orden (D130). El entregable 9 (`CERTIFICADO`) no se desmarca (D19).
         - Vuelve a `PENDIENTE` y registra el evento `DESMARCAR` con el valor
           anterior y el motivo (E3-F02#3, E3-B04#1, E3-B04#2).
       x-roles: [ANALISTA_QA]
@@ -808,13 +807,10 @@ components:
           schema:
             $ref: './comun.v1.yaml#/components/schemas/Error'
           example:
-            codigo: ORDEN_ENTREGABLES
-            mensaje: Completa «Casos de prueba» antes de marcar «Aprobación de casos de prueba».
+            codigo: ENTREGABLE_YA_REGISTRADO
+            mensaje: El entregable ya tiene un registro.
             traceId: 4bf92f3577b34da6a3ce929d0e0e4736
-            detalles:
-              - campo: CASOS_PRUEBA
-                codigo: REQUERIDO
-                mensaje: Casos de prueba debe estar aprobado.
+            detalles: []
     SolicitudInvalida:
       description: Evidencia inválida o falta el motivo o comentario.
       x-codigos: [EVIDENCIA_INVALIDA, MOTIVO_REQUERIDO]

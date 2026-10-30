@@ -34,7 +34,13 @@ export function recargarE4(): void {
   const dir = path.join(RAIZ_REPO, "infrastructure", "seed", "e4");
   let fuente = readFileSync(path.join(dir, "cargar.mjs"), "utf8");
   const original = "const pagina = exigir(await http(ORG, 'GET', '/v1/hdu?tamanoPagina=100', { cabeceras: admin }), 'listar HDU');";
-  if (!fuente.includes(original)) throw new Error("cargar.mjs cambió: actualizar el parche de paginación de tests/support/e4.ts");
+  if (!fuente.includes(original)) {
+    // DEF-E4-01 quedó corregido en la semilla (commit 73816b3: recorre todas las páginas): ya no hace falta la copia parchada, se ejecuta tal cual.
+    const directo = spawnSync(process.execPath, ["--env-file-if-exists=infrastructure/seed/mvp/.env.carga", path.join(dir, "cargar.mjs"), "--sin-verificar"], { cwd: RAIZ_REPO, encoding: "utf8" });
+    if (directo.status !== 0) throw new Error(`seed:e4 falló: ${directo.stdout}
+${directo.stderr}`);
+    return;
+  }
   fuente = fuente
     .replace(original, "const pagina = { items: [] }; for (let p = 1; p <= 100; p += 1) { const r = exigir(await http(ORG, 'GET', `/v1/hdu?pagina=${p}&tamanoPagina=100`, { cabeceras: admin }), 'listar HDU'); pagina.items.push(...r.items); if (pagina.items.length >= r.total || r.items.length === 0) break; }")
     .replace("const aqui = dirname(fileURLToPath(import.meta.url));", `const aqui = ${JSON.stringify(dir)};`);

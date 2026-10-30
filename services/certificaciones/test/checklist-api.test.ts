@@ -146,13 +146,13 @@ describe('Marcar y desmarcar [E3-F02] [E3-B01] [E3-B02#1]', () => {
     assert.equal(http.status, 400);
   });
 
-  it('[E3-F02#2] [E3-B02#1] con el anterior pendiente: 409 ORDEN_ENTREGABLES con la dependencia', async () => {
+  it('[E3-F02#2] [E3-B02#1] orden libre (D130): marca un entregable con los anteriores pendientes', async () => {
     const hdu = organizacion.nuevaHdu();
-    const respuesta = await llamar('analista', 'post', `/v1/hdu/${hdu.id}/entregables/DASHBOARD/marcar`, enlace);
-    assert.equal(respuesta.status, 409);
-    assert.equal(respuesta.body.codigo, 'ORDEN_ENTREGABLES');
-    assert.match(respuesta.body.mensaje, /Plan de pruebas/);
-    assert.equal(respuesta.body.detalles[0].campo, 'PLAN_PRUEBAS');
+    const respuesta = await llamar('analista', 'post', `/v1/hdu/${hdu.id}/entregables/EJECUCION/marcar`, enlace);
+    assert.equal(respuesta.status, 200, JSON.stringify(respuesta.body));
+    assert.equal(respuesta.body.estado, 'POR_APROBAR');
+    const vista = await llamar('analista', 'get', `/v1/hdu/${hdu.id}/entregables`);
+    assert.equal(vista.body.entregables[0].estado, 'PENDIENTE');
   });
 
   it('[E3-B01#2] un registro por clave y HDU: marcar dos veces → 409 ENTREGABLE_YA_REGISTRADO', async () => {

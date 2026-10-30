@@ -25,10 +25,7 @@ describe("Reasignar el QE responsable de una HDU [E7-B05 · solo Administrador]"
     expect(dialogo.getByText(/QE actual:/)).toHaveTextContent("Jose Seguel");
     // Solo QE activos distintos del actual.
     await waitFor(() =>
-      expect(within(dialogo.getByTestId("selector-qe-destino")).getAllByRole("option").map((o) => o.textContent)).toEqual([
-        "Selecciona un QE",
-        "Constanza Díaz",
-      ]),
+      expect(within(dialogo.getByTestId("selector-qe-destino")).getAllByRole("option").map((o) => o.textContent)).toEqual(["Constanza Díaz"]),
     );
 
     // Sin motivo no se envía.
@@ -56,7 +53,7 @@ describe("Reasignar el QE responsable de una HDU [E7-B05 · solo Administrador]"
     await abrirComo(ADMIN, `/hdu/${ID.hdu1}`);
     await user.click(await screen.findByTestId("boton-reasignar-qe"));
     const dialogo = within(await screen.findByTestId("dialogo-reasignar-qe"));
-    await waitFor(() => expect(dialogo.getByTestId("selector-qe-destino").querySelectorAll("option").length).toBe(2));
+    await waitFor(() => expect(dialogo.getByTestId("selector-qe-destino").querySelectorAll("option").length).toBe(1));
     await user.selectOptions(dialogo.getByTestId("selector-qe-destino"), ID.qe2);
     await user.type(dialogo.getByTestId("campo-motivo-reasignacion"), "Motivo válido");
 
