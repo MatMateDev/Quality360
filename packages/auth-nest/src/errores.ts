@@ -20,6 +20,17 @@ export type CodigoError =
   | 'RELACIONES_INCOMPATIBLES'
   | 'ROL_INCOMPATIBLE'
   | 'EXPORTACION_EXCEDE_LIMITE'
+  // E5 · integración con Jira y archivos (comun.v1.yaml#CodigoError)
+  | 'JIRA_NO_CONFIGURADO'
+  | 'INTEGRACION_EN_CURSO'
+  | 'TOKEN_NO_DESCIFRABLE'
+  | 'ARCHIVO_MUY_GRANDE'
+  | 'ARCHIVO_VACIO'
+  | 'FORMATO_NO_SOPORTADO'
+  | 'ARCHIVO_ILEGIBLE'
+  | 'COLUMNAS_FALTANTES'
+  | 'DEMASIADAS_FILAS'
+  | 'LLAVE_CIFRADO_NO_DISPONIBLE'
   | 'TRANSICION_INVALIDA'
   | 'CHECKLIST_INCOMPLETO'
   | 'CHECKLIST_NO_DISPONIBLE'
@@ -60,6 +71,16 @@ export const MENSAJES: Readonly<Record<CodigoError, string>> = Object.freeze({
   RELACIONES_INCOMPATIBLES: 'Resuelve las relaciones de supervisión antes de continuar.',
   ROL_INCOMPATIBLE: 'El usuario no tiene el rol Líder QA.',
   EXPORTACION_EXCEDE_LIMITE: 'La exportación supera las 50.000 filas. Acota los filtros.',
+  JIRA_NO_CONFIGURADO: 'Configura la conexión con Jira antes de sincronizar.',
+  INTEGRACION_EN_CURSO: 'Ya hay una sincronización en curso.',
+  TOKEN_NO_DESCIFRABLE: 'Vuelve a ingresar el API token.',
+  ARCHIVO_MUY_GRANDE: 'El archivo supera el máximo de 1 MB.',
+  ARCHIVO_VACIO: 'El archivo está vacío o no tiene filas de datos.',
+  FORMATO_NO_SOPORTADO: 'El formato no es compatible. Usa un archivo .csv o .json.',
+  ARCHIVO_ILEGIBLE: 'No pudimos leer el archivo. Revisa que sea un CSV bien formado o un JSON con una lista de historias.',
+  COLUMNAS_FALTANTES: 'Faltan las columnas: codigo, titulo.',
+  DEMASIADAS_FILAS: 'El archivo supera el máximo de 500 filas.',
+  LLAVE_CIFRADO_NO_DISPONIBLE: 'La integración no está habilitada en el servidor.',
   TRANSICION_INVALIDA: 'La HDU no puede pasar a ese estado.',
   CHECKLIST_INCOMPLETO: 'No se puede cerrar la HDU: el checklist de entregables está incompleto.',
   CHECKLIST_NO_DISPONIBLE:

@@ -1,0 +1,657 @@
+openapi: 3.1.0
+info:
+  title: Quality360 · Servicio de Integraciones (Jira Cloud y archivos)
+  version: 1.0.0
+  license:
+    name: Uso académico · Capstone Duoc UC
+    identifier: LicenseRef-Capstone-Duoc-UC
+  description: |
+    Configuración de la conexión con Jira Cloud, sincronización manual de
+    historias, importación de archivos CSV/JSON e historial de ejecuciones
+    (E5, decisiones D93–D112 del backlog E5 y D113–D128 de
+    `docs/arquitectura/decisiones-mvp.md`). Lo consume el gateway, que publica
+    estas mismas rutas (`INTEGRACIONES_URL`, D127).
+
+    - **Acceso (D93, D126).** No lee el esquema `organizacion`. Cada operación
+      resuelve rol, estado activo y ámbito con `GET /v1/interno/acceso` de
+      Organización (token propagado). Escribir (configurar, probar,
+      sincronizar, vista previa, importar): solo `ADMINISTRADOR`. Leer el
+      historial: `ADMINISTRADOR`, `QE` y `AUDITOR`. `LIDER_QA` y `ANALISTA_QA`:
+      403 en todo. Un id de ejecución inexistente: 404 al Administrador y al
+      Auditor, 403 al QE (D50, D106).
+    - **Orden de validación.** 401 → 403 → 413 → 400 → 422 de estructura →
+      409 → ejecución. Si Organización no responde antes de empezar: 503
+      `SERVICIO_NO_DISPONIBLE`, sin ejecución registrada.
+    - **Escritura de HDU (D100).** Solo con `POST
+      /v1/interno/integraciones/hdu/upsert` de Organización, en lotes de 25 y
+      con el token del Administrador. Integraciones no escribe en otro esquema.
+    - **Errores de Jira (D105, D117).** Probar, sincronizar e importar
+      responden 200 con el resultado y un `CodigoErrorIntegracion` de mensaje
+      fijo; nunca se copia texto de Jira. Ningún cuerpo, log ni tabla contiene
+      el token, la cabecera `Authorization` ni el correo en Base64 (D94).
+    - **Una petición, sin progreso (D96, D114).** Sincronizar e importar son
+      una sola petición acotada por `INTEGRACIONES_PRESUPUESTO_MS` (8 s) que
+      termina en menos de 10 s. No hay sondeo de progreso; el portal muestra
+      una espera indeterminada. Si la respuesta no llega, el portal consulta
+      `GET /v1/integraciones/estado` (`SIN_RESPUESTA` es solo del portal, D115).
+    - **Una ejecución a la vez (D104).** Otra en curso: 409
+      `INTEGRACION_EN_CURSO`. Una `EN_CURSO` de más de 5 minutos se cierra como
+      `INTERRUMPIDA` al iniciar la siguiente.
+servers:
+  - url: http://integraciones:3004
+    description: Red interna de Docker Compose
+  - url: http://localhost:3004
+    description: Desarrollo local
+security:
+  - sesionSupabase: []
+tags:
+  - name: Salud
+    description: Estado del proceso.
+  - name: Conexión
+    description: Configuración cifrada de Jira Cloud y prueba de conexión (E5-F01, E5-B01).
+  - name: Sincronización
+    description: Lectura manual de issues de Jira hacia HDU (E5-F02, E5-B02).
+  - name: Archivos
+    description: Vista previa e importación de CSV/JSON (E5-F03, E5-B03).
+  - name: Historial
+    description: Ejecuciones, detalle por fila y estado (E5-F04, E5-B04).
+
+x-escenarios-sin-operacion:
+  - id: E5-F01#3
+    motivo: 'Además de `GET /v1/integraciones/jira/configuracion` (que no trae el token), el campo del portal es de tipo contraseña, nunca se rellena y se vacía tras cada intento (D116).'
+
+paths:
+  /health:
+    get:
+      operationId: obtenerSaludIntegraciones
+      tags: [Salud]
+      summary: Estado del servicio
+      description: No consulta Jira ni Organización. No informa si la llave de cifrado está configurada.
+      security: []
+      x-roles: [PUBLICO]
+      x-hdu: []
+      responses:
+        '200':
+          description: El proceso responde.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [estado]
+                additionalProperties: false
+                properties:
+                  estado:
+                    type: string
+                    const: ok
+        '500':
+          $ref: './comun.v1.yaml#/components/responses/ErrorInterno'
+
+  # ------------------------------------------------------------ Conexión
+  /v1/integraciones/jira/configuracion:
+    get:
+      operationId: obtenerConfiguracionJira
+      tags: [Conexión]
+      summary: Configuración de Jira sin secretos
+      description: |
+        Sitio, correo, proyecto, tipos, destino (con nombres resueltos en
+        Organización con `POST /v1/interno/integraciones/destino`), estado de
+        la conexión y `token {configurado, ultimos4, descifrable}`. Nunca el
+        token ni su cifrado (E5-B01#1). Sin configuración: 200 con
+        `configurado: false`. No necesita la llave de cifrado: informa
+        `llaveDisponible` y `token.descifrable` (con la llave ausente,
+        ambos `false`, y el portal muestra `aviso-integracion-deshabilitada`).
+      x-roles: [ADMINISTRADOR]
+      x-hdu: [E5-F01#3, E5-B01#1, E5-B01#3]
+      responses:
+        '200':
+          description: Configuración.
+          content:
+            application/json:
+              schema:
+                $ref: './comun.v1.yaml#/components/schemas/ConfiguracionJira'
+        '401':
+          $ref: './comun.v1.yaml#/components/responses/NoAutenticado'
+        '403':
+          $ref: './comun.v1.yaml#/components/responses/AccesoDenegado'
+        '500':
+          $ref: './comun.v1.yaml#/components/responses/ErrorInterno'
+        '503':
+          $ref: './comun.v1.yaml#/components/responses/ServicioNoDisponible'
+    put:
+      operationId: guardarConfiguracionJira
+      tags: [Conexión]
+      summary: Probar y guardar la configuración
+      description: |
+        Valida formato (400; el sitio según D95, sin ninguna llamada saliente
+        si no cumple) → valida el destino con Organización (422; el sprint de
+        respaldo debe ser de la célula, D120) → prueba la conexión (`GET
+        myself`, `GET project/{clave}` y `GET field` para detectar el campo
+        Sprint) → guarda **solo si la prueba pasa** (D112). Si la prueba
+        falla: 200 con `guardado: false`, `prueba.error` y la configuración
+        anterior intacta; se actualiza solo `estadoConexion`. Con `token`
+        cifra con AES-256-GCM e IV nuevo (D94); sin `token` conserva el
+        guardado. Registra un `EventoConfiguracionJira` (D111) solo si guarda.
+      x-roles: [ADMINISTRADOR]
+      x-hdu: [E5-F01#1, E5-F01#2, E5-F01#3, E5-B01#1, E5-B01#2, E5-B01#3]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: './comun.v1.yaml#/components/schemas/SolicitudConfiguracionJira'
+      responses:
+        '200':
+          description: Resultado de la prueba y de la configuración vigente después del intento.
+          content:
+            application/json:
+              schema:
+                $ref: './comun.v1.yaml#/components/schemas/ResultadoGuardadoJira'
+        '400':
+          $ref: './comun.v1.yaml#/components/responses/Validacion'
+        '401':
+          $ref: './comun.v1.yaml#/components/responses/NoAutenticado'
+        '403':
+          $ref: './comun.v1.yaml#/components/responses/AccesoDenegado'
+        '409':
+          $ref: '#/components/responses/TokenNoDescifrable'
+        '422':
+          $ref: '#/components/responses/DestinoInvalido'
+        '500':
+          $ref: './comun.v1.yaml#/components/responses/ErrorInterno'
+        '503':
+          $ref: '#/components/responses/IntegracionNoDisponible'
+
+  /v1/integraciones/jira/configuracion/probar:
+    post:
+      operationId: probarConexionJira
+      tags: [Conexión]
+      summary: Probar la conexión sin guardar
+      description: |
+        Con los campos del cuerpo y, para los que falten, los guardados. Hace
+        exactamente `GET myself` y `GET project/{clave}` (E5-B01-T05). No
+        cambia la configuración ni registra eventos. Errores de Jira: 200 con
+        `ok: false` y `error`. Sin token en el cuerpo y token guardado no
+        descifrable: 409 `TOKEN_NO_DESCIFRABLE` sin llamar a Jira.
+      x-roles: [ADMINISTRADOR]
+      x-hdu: [E5-F01#2, E5-B01#2, E5-B01#3]
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: './comun.v1.yaml#/components/schemas/SolicitudPruebaJira'
+      responses:
+        '200':
+          description: Resultado de la prueba.
+          content:
+            application/json:
+              schema:
+                $ref: './comun.v1.yaml#/components/schemas/ResultadoPruebaJira'
+        '400':
+          $ref: './comun.v1.yaml#/components/responses/Validacion'
+        '401':
+          $ref: './comun.v1.yaml#/components/responses/NoAutenticado'
+        '403':
+          $ref: './comun.v1.yaml#/components/responses/AccesoDenegado'
+        '409':
+          $ref: '#/components/responses/TokenNoDescifrable'
+        '500':
+          $ref: './comun.v1.yaml#/components/responses/ErrorInterno'
+        '503':
+          $ref: '#/components/responses/IntegracionNoDisponible'
+
+  /v1/integraciones/jira/configuracion/eventos:
+    get:
+      operationId: listarEventosConfiguracionJira
+      tags: [Conexión]
+      summary: Cambios de configuración
+      description: Quién, cuándo y qué campos cambió; nunca valores ni el token (D111). El portal muestra los 10 últimos.
+      x-roles: [ADMINISTRADOR]
+      x-hdu: [E5-F01#1, E5-B01#1]
+      parameters:
+        - $ref: './comun.v1.yaml#/components/parameters/Pagina'
+        - $ref: './comun.v1.yaml#/components/parameters/TamanoPagina'
+      responses:
+        '200':
+          description: Eventos.
+          content:
+            application/json:
+              schema:
+                $ref: './comun.v1.yaml#/components/schemas/PaginaEventosConfiguracionJira'
+        '400':
+          $ref: './comun.v1.yaml#/components/responses/Validacion'
+        '401':
+          $ref: './comun.v1.yaml#/components/responses/NoAutenticado'
+        '403':
+          $ref: './comun.v1.yaml#/components/responses/AccesoDenegado'
+        '500':
+          $ref: './comun.v1.yaml#/components/responses/ErrorInterno'
+        '503':
+          $ref: './comun.v1.yaml#/components/responses/ServicioNoDisponible'
+
+  # ------------------------------------------------------- Sincronización
+  /v1/integraciones/jira/sincronizaciones:
+    post:
+      operationId: sincronizarJira
+      tags: [Sincronización]
+      summary: Sincronizar con Jira
+      description: |
+        Una sola petición (D114). Inserta la ejecución `EN_CURSO` apenas pasa
+        la autorización y la cierra una vez. Lee `project = <CLAVE> AND
+        issuetype in (<tipos>) [AND key > "<continuarDesde>"] ORDER BY key
+        ASC` en páginas de 50 hasta 100 issues (D96), mapea (D101) y escribe
+        con el upsert de Organización en lotes de 25 (D100). Cada issue deja
+        una fila de detalle. Responde la `Ejecucion` (D113): `id`, contadores,
+        resultado, error con sugerencias, `hayMas` y `continuarDesde`. Las
+        listas de creadas, actualizadas, omitidas y con error se cargan con
+        `GET /v1/integraciones/ejecuciones/{id}/detalle?resultado=…`.
+
+        No registran ejecución: 401, 403, 409 (`JIRA_NO_CONFIGURADO`,
+        `INTEGRACION_EN_CURSO`, `TOKEN_NO_DESCIFRABLE`), 503 inicial
+        (Organización o la llave).
+      x-roles: [ADMINISTRADOR]
+      x-hdu: [E5-F02#1, E5-F02#2, E5-F02#3, E5-B02#1, E5-B02#2, E5-B02#3, E5-B04#1, E5-B04#3]
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: './comun.v1.yaml#/components/schemas/SolicitudSincronizacion'
+      responses:
+        '200':
+          description: Ejecución cerrada (`EXITOSA`, `CON_ERRORES`, `INCOMPLETA` o `FALLIDA`).
+          content:
+            application/json:
+              schema:
+                $ref: './comun.v1.yaml#/components/schemas/Ejecucion'
+        '400':
+          $ref: './comun.v1.yaml#/components/responses/Validacion'
+        '401':
+          $ref: './comun.v1.yaml#/components/responses/NoAutenticado'
+        '403':
+          $ref: './comun.v1.yaml#/components/responses/AccesoDenegado'
+        '409':
+          $ref: '#/components/responses/ConflictoSincronizacion'
+        '500':
+          $ref: './comun.v1.yaml#/components/responses/ErrorInterno'
+        '503':
+          $ref: '#/components/responses/IntegracionNoDisponible'
+
+  # ------------------------------------------------------------- Archivos
+  /v1/integraciones/archivos/vista-previa:
+    post:
+      operationId: previsualizarArchivo
+      tags: [Archivos]
+      summary: Validar y simular la importación de un archivo
+      description: |
+        Valida estructura y filas y simula con el upsert de Organización
+        (`soloSimular: true`). No escribe, no audita y no registra ejecución
+        (E5-B03-T01, E5-B04-T13). Errores de estructura: 413 o 422 con
+        `ErrorArchivo` (`ejecucionId: null`). Exige Jira configurado solo si
+        alguna fila necesita el destino por defecto (D99); si falta, esas
+        filas salen con error `QE_INVALIDO`/`CELULA_NO_ENCONTRADA` según el
+        campo que falte.
+      x-roles: [ADMINISTRADOR]
+      x-hdu: [E5-F03#1, E5-F03#2, E5-B03#1]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: './comun.v1.yaml#/components/schemas/SolicitudArchivo'
+      responses:
+        '200':
+          description: Vista previa.
+          content:
+            application/json:
+              schema:
+                $ref: './comun.v1.yaml#/components/schemas/VistaPreviaArchivo'
+        '400':
+          $ref: './comun.v1.yaml#/components/responses/Validacion'
+        '401':
+          $ref: './comun.v1.yaml#/components/responses/NoAutenticado'
+        '403':
+          $ref: './comun.v1.yaml#/components/responses/AccesoDenegado'
+        '413':
+          $ref: '#/components/responses/ArchivoMuyGrande'
+        '422':
+          $ref: '#/components/responses/ArchivoInvalido'
+        '500':
+          $ref: './comun.v1.yaml#/components/responses/ErrorInterno'
+        '503':
+          $ref: './comun.v1.yaml#/components/responses/ServicioNoDisponible'
+
+  /v1/integraciones/archivos/importaciones:
+    post:
+      operationId: importarArchivo
+      tags: [Archivos]
+      summary: Importar un archivo
+      description: |
+        Valida todo de nuevo (no confía en la vista previa) y registra la
+        ejecución apenas pasa la autorización. Modo normal: cada fila es su
+        transacción en Organización; las válidas se importan y las demás se
+        informan. Modo estricto (D125): simula el archivo completo y, si hay
+        una sola fila con error, no escribe nada (200 `FALLIDA` con
+        `MODO_ESTRICTO`); si no hay errores, escribe en lotes atómicos.
+        Estructura inválida: 422 con `ErrorArchivo.ejecucionId` de la
+        ejecución `FALLIDA` registrada con nombre, tamaño y huella. Un 413 no
+        registra ejecución. Una `INCOMPLETA` no tiene `continuarDesde`: se
+        repite el mismo archivo y lo ya importado queda `SIN_CAMBIOS` (D118).
+      x-roles: [ADMINISTRADOR]
+      x-hdu: [E5-F03#1, E5-F03#2, E5-F03#3, E5-B03#1, E5-B03#2, E5-B03#3, E5-B04#1]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: './comun.v1.yaml#/components/schemas/SolicitudArchivo'
+      responses:
+        '200':
+          description: Ejecución cerrada.
+          content:
+            application/json:
+              schema:
+                $ref: './comun.v1.yaml#/components/schemas/Ejecucion'
+        '400':
+          $ref: './comun.v1.yaml#/components/responses/Validacion'
+        '401':
+          $ref: './comun.v1.yaml#/components/responses/NoAutenticado'
+        '403':
+          $ref: './comun.v1.yaml#/components/responses/AccesoDenegado'
+        '409':
+          $ref: '#/components/responses/EjecucionEnCurso'
+        '413':
+          $ref: '#/components/responses/ArchivoMuyGrande'
+        '422':
+          $ref: '#/components/responses/ArchivoInvalido'
+        '500':
+          $ref: './comun.v1.yaml#/components/responses/ErrorInterno'
+        '503':
+          $ref: './comun.v1.yaml#/components/responses/ServicioNoDisponible'
+
+  # ------------------------------------------------------------ Historial
+  /v1/integraciones/ejecuciones:
+    get:
+      operationId: listarEjecuciones
+      tags: [Historial]
+      summary: Historial de ejecuciones
+      description: |
+        Todas las ejecuciones con sus contadores, para Administrador, QE y
+        Auditor (D106: el resumen no revela HDU). Por `iniciadaEn`
+        descendente. `desde` y `hasta` son fechas de Chile
+        (`America/Santiago`), inclusivas.
+      x-roles: [ADMINISTRADOR, QE, AUDITOR]
+      x-hdu: [E5-F04#2, E5-B04#2]
+      parameters:
+        - name: origen
+          in: query
+          required: false
+          schema:
+            $ref: './comun.v1.yaml#/components/schemas/OrigenEjecucion'
+        - name: resultado
+          in: query
+          required: false
+          schema:
+            $ref: './comun.v1.yaml#/components/schemas/ResultadoEjecucion'
+        - name: desde
+          in: query
+          required: false
+          schema:
+            $ref: './comun.v1.yaml#/components/schemas/Fecha'
+        - name: hasta
+          in: query
+          required: false
+          schema:
+            $ref: './comun.v1.yaml#/components/schemas/Fecha'
+        - name: orden
+          in: query
+          required: false
+          description: '`iniciadaEn:asc` o `iniciadaEn:desc` (por defecto). Otra columna → 400.'
+          schema:
+            type: string
+            pattern: '^iniciadaEn:(asc|desc)$'
+        - $ref: './comun.v1.yaml#/components/parameters/Pagina'
+        - $ref: './comun.v1.yaml#/components/parameters/TamanoPaginaBandeja'
+      responses:
+        '200':
+          description: Página de ejecuciones.
+          content:
+            application/json:
+              schema:
+                $ref: './comun.v1.yaml#/components/schemas/PaginaEjecuciones'
+        '400':
+          $ref: './comun.v1.yaml#/components/responses/Validacion'
+        '401':
+          $ref: './comun.v1.yaml#/components/responses/NoAutenticado'
+        '403':
+          $ref: './comun.v1.yaml#/components/responses/AccesoDenegado'
+        '500':
+          $ref: './comun.v1.yaml#/components/responses/ErrorInterno'
+        '503':
+          $ref: './comun.v1.yaml#/components/responses/ServicioNoDisponible'
+
+  /v1/integraciones/ejecuciones/{id}:
+    parameters:
+      - $ref: '#/components/parameters/EjecucionId'
+    get:
+      operationId: obtenerEjecucion
+      tags: [Historial]
+      summary: Una ejecución con contadores, eventos y error
+      description: Inexistente → 404 para Administrador y Auditor; 403 para el QE (D106).
+      x-roles: [ADMINISTRADOR, QE, AUDITOR]
+      x-hdu: [E5-F04#1, E5-F04#3, E5-B04#1, E5-B04#3]
+      responses:
+        '200':
+          description: Ejecución.
+          content:
+            application/json:
+              schema:
+                $ref: './comun.v1.yaml#/components/schemas/Ejecucion'
+        '401':
+          $ref: './comun.v1.yaml#/components/responses/NoAutenticado'
+        '403':
+          $ref: './comun.v1.yaml#/components/responses/AccesoDenegado'
+        '404':
+          $ref: './comun.v1.yaml#/components/responses/NoEncontrado'
+        '500':
+          $ref: './comun.v1.yaml#/components/responses/ErrorInterno'
+        '503':
+          $ref: './comun.v1.yaml#/components/responses/ServicioNoDisponible'
+
+  /v1/integraciones/ejecuciones/{id}/detalle:
+    parameters:
+      - $ref: '#/components/parameters/EjecucionId'
+    get:
+      operationId: listarFilasEjecucion
+      tags: [Historial]
+      summary: Filas de una ejecución
+      description: |
+        Por `fila` ascendente. Visibilidad (D106): Administrador y Auditor,
+        todo. QE: filas cuyo `idHistoria` está en su ámbito (`GET
+        /v1/interno/hdu/ambito` de Organización, una llamada) más las filas
+        `ERROR` completas con `titulo: null`; las demás se cuentan en
+        `filasOcultas`. `soloErrores=true` equivale a `resultado=ERROR`;
+        ambos a la vez con otro resultado → 400.
+      x-roles: [ADMINISTRADOR, QE, AUDITOR]
+      x-hdu: [E5-F02#1, E5-F03#3, E5-F04#3, E5-B04#2]
+      parameters:
+        - name: resultado
+          in: query
+          required: false
+          schema:
+            $ref: './comun.v1.yaml#/components/schemas/ResultadoFila'
+        - name: soloErrores
+          in: query
+          required: false
+          schema:
+            type: boolean
+            default: false
+        - $ref: './comun.v1.yaml#/components/parameters/Pagina'
+        - $ref: './comun.v1.yaml#/components/parameters/TamanoPaginaBandeja'
+      responses:
+        '200':
+          description: Página de filas.
+          content:
+            application/json:
+              schema:
+                $ref: './comun.v1.yaml#/components/schemas/PaginaFilasEjecucion'
+        '400':
+          $ref: './comun.v1.yaml#/components/responses/Validacion'
+        '401':
+          $ref: './comun.v1.yaml#/components/responses/NoAutenticado'
+        '403':
+          $ref: './comun.v1.yaml#/components/responses/AccesoDenegado'
+        '404':
+          $ref: './comun.v1.yaml#/components/responses/NoEncontrado'
+        '500':
+          $ref: './comun.v1.yaml#/components/responses/ErrorInterno'
+        '503':
+          $ref: './comun.v1.yaml#/components/responses/ServicioNoDisponible'
+
+  /v1/integraciones/estado:
+    get:
+      operationId: obtenerEstadoIntegracion
+      tags: [Historial]
+      summary: Última ejecución, última completada y ejecución en curso
+      description: |
+        «Última completada» = la más reciente `EXITOSA` o `CON_ERRORES`
+        (D121). Para el Administrador agrega `jiraConfigurado` y, si
+        corresponde, `continuar` (botón «Continuar», D96). El portal lo consulta
+        tras `SIN_RESPUESTA` (D115) y, con una ejecución ajena en curso, cada 3 s
+        hasta 30 s (diseño 4.3).
+      x-roles: [ADMINISTRADOR, QE, AUDITOR]
+      x-hdu: [E5-F04#1, E5-F02#1]
+      responses:
+        '200':
+          description: Estado.
+          content:
+            application/json:
+              schema:
+                $ref: './comun.v1.yaml#/components/schemas/EstadoIntegracion'
+        '401':
+          $ref: './comun.v1.yaml#/components/responses/NoAutenticado'
+        '403':
+          $ref: './comun.v1.yaml#/components/responses/AccesoDenegado'
+        '500':
+          $ref: './comun.v1.yaml#/components/responses/ErrorInterno'
+        '503':
+          $ref: './comun.v1.yaml#/components/responses/ServicioNoDisponible'
+
+components:
+  securitySchemes:
+    sesionSupabase:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: Access token de Supabase Auth del usuario, propagado por el gateway.
+
+  parameters:
+    EjecucionId:
+      name: id
+      in: path
+      required: true
+      description: UUID de la ejecución.
+      schema:
+        $ref: './comun.v1.yaml#/components/schemas/Uuid'
+
+  responses:
+    TokenNoDescifrable:
+      description: El token guardado no se puede descifrar con la llave actual (D94). Hay que volver a ingresarlo.
+      x-codigos: [TOKEN_NO_DESCIFRABLE]
+      headers:
+        x-trace-id:
+          $ref: './comun.v1.yaml#/components/headers/XTraceId'
+      content:
+        application/json:
+          schema:
+            $ref: './comun.v1.yaml#/components/schemas/Error'
+          example:
+            codigo: TOKEN_NO_DESCIFRABLE
+            mensaje: Vuelve a ingresar el API token.
+            traceId: 4bf92f3577b34da6a3ce929d0e0e4736
+            detalles: []
+    DestinoInvalido:
+      description: Célula o sprint inexistentes, sprint de respaldo de otra célula (D120), o QE inexistente, inactivo o sin rol QE.
+      x-codigos: [CATALOGO_INVALIDO, QE_INVALIDO]
+      headers:
+        x-trace-id:
+          $ref: './comun.v1.yaml#/components/headers/XTraceId'
+      content:
+        application/json:
+          schema:
+            $ref: './comun.v1.yaml#/components/schemas/Error'
+          example:
+            codigo: CATALOGO_INVALIDO
+            mensaje: La célula o el sprint indicados no existen.
+            traceId: 4bf92f3577b34da6a3ce929d0e0e4736
+            detalles:
+              - campo: sprintRespaldoId
+                codigo: NO_PERMITIDO
+                mensaje: El sprint de respaldo debe pertenecer a la célula elegida.
+    IntegracionNoDisponible:
+      description: '`LLAVE_CIFRADO_NO_DISPONIBLE` si falta o es inválida `INTEGRACIONES_LLAVE_CIFRADO` (sin nombrar ni mostrar la variable); `SERVICIO_NO_DISPONIBLE` si Organización no responde.'
+      x-codigos: [LLAVE_CIFRADO_NO_DISPONIBLE, SERVICIO_NO_DISPONIBLE]
+      headers:
+        x-trace-id:
+          $ref: './comun.v1.yaml#/components/headers/XTraceId'
+      content:
+        application/json:
+          schema:
+            $ref: './comun.v1.yaml#/components/schemas/Error'
+          example:
+            codigo: LLAVE_CIFRADO_NO_DISPONIBLE
+            mensaje: La integración no está habilitada en el servidor.
+            traceId: 4bf92f3577b34da6a3ce929d0e0e4736
+            detalles: []
+    ConflictoSincronizacion:
+      description: Sin configuración, otra ejecución en curso, o token guardado no descifrable. No se registra ejecución.
+      x-codigos: [JIRA_NO_CONFIGURADO, INTEGRACION_EN_CURSO, TOKEN_NO_DESCIFRABLE]
+      headers:
+        x-trace-id:
+          $ref: './comun.v1.yaml#/components/headers/XTraceId'
+      content:
+        application/json:
+          schema:
+            $ref: './comun.v1.yaml#/components/schemas/Error'
+          example:
+            codigo: INTEGRACION_EN_CURSO
+            mensaje: Ya hay una sincronización en curso.
+            traceId: 4bf92f3577b34da6a3ce929d0e0e4736
+            detalles: []
+    EjecucionEnCurso:
+      description: Otra sincronización o importación en curso (D104). No se registra ejecución.
+      x-codigos: [INTEGRACION_EN_CURSO]
+      headers:
+        x-trace-id:
+          $ref: './comun.v1.yaml#/components/headers/XTraceId'
+      content:
+        application/json:
+          schema:
+            $ref: './comun.v1.yaml#/components/schemas/Error'
+    ArchivoMuyGrande:
+      description: El contenido supera 1 MB. No se registra ejecución.
+      x-codigos: [ARCHIVO_MUY_GRANDE]
+      headers:
+        x-trace-id:
+          $ref: './comun.v1.yaml#/components/headers/XTraceId'
+      content:
+        application/json:
+          schema:
+            $ref: './comun.v1.yaml#/components/schemas/ErrorArchivo'
+    ArchivoInvalido:
+      description: Error de estructura del archivo (sección 4.3 del backlog E5). No se importa nada.
+      x-codigos: [ARCHIVO_VACIO, FORMATO_NO_SOPORTADO, ARCHIVO_ILEGIBLE, COLUMNAS_FALTANTES, DEMASIADAS_FILAS]
+      headers:
+        x-trace-id:
+          $ref: './comun.v1.yaml#/components/headers/XTraceId'
+      content:
+        application/json:
+          schema:
+            $ref: './comun.v1.yaml#/components/schemas/ErrorArchivo'
+          example:
+            codigo: COLUMNAS_FALTANTES
+            mensaje: 'Faltan las columnas: titulo'
+            traceId: 4bf92f3577b34da6a3ce929d0e0e4736
+            detalles: []
+            ejecucionId: 0b9a6a2e-7c6f-4d4b-9a3e-1f2d3c4b5a69
+            columnasFaltantes: [titulo]

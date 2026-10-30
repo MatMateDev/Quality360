@@ -8,6 +8,7 @@ import { useImpedimentosHdu } from "@/api/impedimentos";
 import { AccesoDenegado } from "@/components/AccesoDenegado";
 import { BloqueEstado } from "@/components/BloqueEstado";
 import { ChecklistEntregables } from "@/components/ChecklistEntregables";
+import { PanelDescripcionHdu } from "@/components/integraciones/PanelDescripcionHdu";
 import { DialogoConfirmacion } from "@/components/DialogoConfirmacion";
 import { DialogoReasignarQe } from "@/components/DialogoReasignarQe";
 import { AvisoSoloLectura } from "@/components/bandeja/Estructura";
@@ -225,6 +226,9 @@ export function HduDetailPage() {
       <div id="certificado">
         <ChecklistEntregables hduId={hdu.id} hduCerrada={hdu.estado === "CERRADA"} />
       </div>
+
+      {/* E5 (D108): después del checklist y antes de los bloques de E4. Texto plano; sin `origen` no se renderiza. */}
+      <PanelDescripcionHdu hdu={hdu} />
 
       <SeccionImpedimentos hduId={hdu.id} resaltarId={resaltarId} />
       {/* D73: el Analista no ve el riesgo; el panel ni siquiera se monta (ninguna llamada al servicio). */}

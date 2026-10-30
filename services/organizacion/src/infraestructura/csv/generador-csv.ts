@@ -8,6 +8,9 @@ export const SEPARADOR_CSV = ';';
 
 export type CeldaCsv = string | number | boolean | Date | null | undefined;
 
+// D122 (OWASP CSV Injection): toda celda de TEXTO que empiece con `=`, `+`, `-`, `@`, tabulación o retorno de carro se
+// prefija con una comilla simple, ANTES del entrecomillado RFC 4180. Los números, fechas y booleanos que genera el
+// servidor no se prefijan: son tipados y así un número negativo sigue siendo un número.
 const INICIO_FORMULA = /^[=+\-@\t\r]/;
 
 /** Una celda: fechas en ISO UTC, texto entre comillas si hace falta, y sin que Excel lo trate como fórmula. */

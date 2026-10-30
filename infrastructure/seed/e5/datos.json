@@ -1,0 +1,7 @@
+{
+  "celula": "CEL-C",
+  "sprints": [
+    { "nombre": "E5 Sprint 1", "inicioDias": 0, "finDias": 13 },
+    { "nombre": "E5 Sprint 2", "inicioDias": 14, "finDias": 27 }
+  ]
+}

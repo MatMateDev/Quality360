@@ -18,7 +18,7 @@ Tiempo estimado: unos 20 minutos la primera vez, casi todo esperando descargas. 
 Además necesitas:
 
 - **Espacio en disco:** unos 8 GB libres. Las imágenes de Supabase ocupan varios GB.
-- **Puertos libres:** `3000` a `3003`, `5173` y `54321` a `54324`.
+- **Puertos libres:** `3000` a `3004`, `5173` y `54321` a `54324`.
 
 > **Solo en Windows:** activa las rutas largas de Git **antes de clonar**. Sin esto aparecen errores `Filename too long`:
 >
@@ -65,7 +65,7 @@ Este único comando hace todo lo siguiente:
 2. Crea los esquemas y roles de la base de datos, y los buckets privados de evidencias y certificados.
 3. Genera la configuración local (archivos `.env`, que no se suben a Git).
 4. Compila los servicios y aplica las migraciones.
-5. Arranca Organización, Certificaciones, Impedimentos, el gateway y el portal.
+5. Arranca Organización, Certificaciones, Impedimentos, Integraciones, el gateway y el portal.
 6. Carga los datos de demo.
 
 Sabrás que terminó cuando veas:
@@ -177,8 +177,23 @@ npm run local
 | Organización | 3001 | NestJS + Prisma |
 | Certificaciones | 3002 | NestJS + Prisma |
 | Impedimentos | 3003 | NestJS + Prisma |
+| Integraciones | 3004 | NestJS + Prisma |
 | Supabase API, Auth y Storage | 54321 | Supabase CLI en Docker |
 | Postgres | 54322 | Supabase CLI en Docker |
 | Supabase Studio | 54323 | Supabase CLI en Docker |
+
+### Integraciones en local y Jira simulado (E5)
+
+`npm run local` levanta Integraciones (puerto 3004, `/health`) igual que los otros servicios: aplica sus migraciones (esquema `integraciones`, rol `svc_integraciones`) y el gateway le reenvía las rutas `/v1/integraciones/*` con `INTEGRACIONES_URL=http://localhost:3004`.
+
+- **Llave de cifrado de desarrollo.** `preparar-entorno.mjs` genera `INTEGRACIONES_LLAVE_CIFRADO` con `crypto.randomBytes(32).toString('base64')` y la guarda solo en `services/integraciones/.env` (no versionado). Es una llave por máquina: si ya existe y es válida se conserva, para no dejar ilegible el token de Jira guardado; si falta, el siguiente `npm run local` regenera el archivo. Si la borras, se crea otra y hay que volver a guardar el token en la pantalla de Integraciones. Sin llave el servicio arranca igual y solo cifrar o descifrar responde 503 `LLAVE_CIFRADO_NO_DISPONIBLE`.
+- **Jira simulado.** El Jira falso de QA (`tests/support/jira-falso/`, lo construye q360-qa) escucha en `http://127.0.0.1:4010` y lo arranca el `globalSetup` de Playwright; no forma parte de `npm run local`. Para que Integraciones acepte ese sitio, el `.env` local trae `INTEGRACIONES_PERMITIR_HOST_PRUEBA=true` (se ignora con `NODE_ENV=production`). Credenciales del falso: correo `admin@quality360.local` y token `q360-token-valido-AB12` (datos de prueba, no reales). Un puerto cerrado como `http://127.0.0.1:4011` representa un sitio inexistente.
+- **Instancias extra del perfil de QA (backlog E5, 10.3).** Se arrancan a mano con el mismo `.env` y variables sobreescritas; ninguna llave va en el repositorio (en Git Bash; en PowerShell usa `$env:VAR='...'`):
+  - **I2**, sin llave de cifrado, puerto 3104: `PORT=3104 INTEGRACIONES_LLAVE_CIFRADO= node --env-file=services/integraciones/.env services/integraciones/dist/main.js`
+  - **I3**, otra llave: `PORT=3105 INTEGRACIONES_LLAVE_CIFRADO=$(node -e "console.log(require('crypto').randomBytes(32).toString('base64'))") node --env-file=...`
+  - **I4**, presupuesto corto: `PORT=3106 INTEGRACIONES_PRESUPUESTO_MS=2500 node --env-file=...`
+  - **I5**, producción (prueba D95): `PORT=3107 NODE_ENV=production node --env-file=...`
+  Las variables del proceso tienen prioridad sobre `--env-file`. Los puertos 3105 a 3107 son una convención de esta guía; solo 3104 viene del backlog.
+- **Perfil de pruebas del servicio:** `JIRA_TIEMPO_LIMITE_MS=1500`, `JIRA_ESPERA_MAX_429_MS=1500`, `INTEGRACIONES_PRESUPUESTO_MS=8000`, `JIRA_TOPE_ISSUES=100`; se pasan igual, como variables del proceso.
 
 > Las credenciales de esta guía (contraseña de demo y contraseñas `*_local_dev` de los roles de base de datos) **solo sirven en local**. Nunca las uses en un entorno publicado.

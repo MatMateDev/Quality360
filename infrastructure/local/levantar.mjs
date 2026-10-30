@@ -85,6 +85,7 @@ const artefactos = {
   'services/organizacion': 'services/organizacion/dist/main.js',
   'services/certificaciones': 'services/certificaciones/dist/main.js',
   'services/impedimentos': 'services/impedimentos/dist/main.js',
+  'services/integraciones': 'services/integraciones/dist/main.js',
   'apps/gateway': 'apps/gateway/dist/main.js',
 };
 for (const [workspace, artefacto] of Object.entries(artefactos)) {
@@ -92,7 +93,7 @@ for (const [workspace, artefacto] of Object.entries(artefactos)) {
 }
 
 // 4. Migraciones de cada servicio que las tenga
-for (const servicio of ['organizacion', 'certificaciones', 'impedimentos']) {
+for (const servicio of ['organizacion', 'certificaciones', 'impedimentos', 'integraciones']) {
   const carpeta = join(RAIZ, 'services', servicio, 'prisma', 'migrations');
   const tieneMigraciones = existsSync(carpeta) && readdirSync(carpeta).some((f) => !f.endsWith('.toml'));
   if (tieneMigraciones) correr(`Migraciones de ${servicio}`, `npm run migrate:deploy -w services/${servicio}`);
@@ -103,6 +104,7 @@ const PROCESOS = [
   { nombre: 'organizacion', args: ['--env-file=services/organizacion/.env', 'services/organizacion/dist/main.js'], salud: 'http://localhost:3001/health' },
   { nombre: 'certificaciones', args: ['--env-file=services/certificaciones/.env', 'services/certificaciones/dist/main.js'], salud: 'http://localhost:3002/health' },
   { nombre: 'impedimentos', args: ['--env-file=services/impedimentos/.env', 'services/impedimentos/dist/main.js'], salud: 'http://localhost:3003/health' },
+  { nombre: 'integraciones', args: ['--env-file=services/integraciones/.env', 'services/integraciones/dist/main.js'], salud: 'http://localhost:3004/health' },
   { nombre: 'gateway', args: ['--env-file=apps/gateway/.env', 'apps/gateway/dist/main.js'], salud: 'http://localhost:3000/health' },
   { nombre: 'portal', npm: 'npm run dev -w apps/web', salud: 'http://localhost:5173/' },
 ];
@@ -147,6 +149,7 @@ Quality360 está corriendo con datos reales.
 
   Portal           http://localhost:5173
   Gateway          http://localhost:3000
+  Integraciones    http://localhost:3004/health (Jira simulado: ver GUIA-LOCAL.md)
   Supabase Studio  http://127.0.0.1:54323
 
   Contraseña de demo (solo local): ${datos.contrasenaDemo}

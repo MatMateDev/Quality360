@@ -10,18 +10,19 @@ Plataforma para supervisar la certificación QA de historias de usuario (HDU). E
 | E2 · Gestión de HDU | 8 HDU, 24 escenarios | Certificada |
 | E3 · Certificación y entregables | 8 HDU, 24 escenarios | Certificada |
 | E4 · Impedimentos y riesgos | 8 HDU, 24 escenarios | Certificada |
-| E5 · Integración con Jira Cloud | 8 HDU | Pendiente |
+| E5 · Integración con Jira Cloud | 8 HDU, 24 escenarios | Certificada |
 | E6 · Indicadores y dashboards | 8 HDU | Pendiente |
 | E7 · Bandejas por rol | 12 HDU, 36 escenarios | Certificada |
 
-La certificación de E1, E2, E3, E4 y E7 cubre los 186 escenarios de aceptación del backlog, con 575 pruebas automatizadas contra el stack real, incluidas las que verifican el modelo de datos (tablas, llaves foráneas y aislamiento por esquema) y la accesibilidad de las bandejas. El dictamen por escenario y por HDU está en [`docs/validacion/certificacion-e1-e2.md`](docs/validacion/certificacion-e1-e2.md), [`docs/validacion/certificacion-e3.md`](docs/validacion/certificacion-e3.md), [`docs/validacion/certificacion-modelo-datos.md`](docs/validacion/certificacion-modelo-datos.md), [`docs/validacion/certificacion-e7.md`](docs/validacion/certificacion-e7.md) y [`docs/validacion/certificacion-e4.md`](docs/validacion/certificacion-e4.md).
+La certificación de E1, E2, E3, E4, E5 y E7 cubre los 210 escenarios de aceptación del backlog, con 692 pruebas automatizadas contra el stack real, incluidas las que verifican el modelo de datos (tablas, llaves foráneas y aislamiento por esquema) y la accesibilidad de las bandejas. El dictamen por escenario y por HDU está en [`docs/validacion/certificacion-e1-e2.md`](docs/validacion/certificacion-e1-e2.md), [`docs/validacion/certificacion-e3.md`](docs/validacion/certificacion-e3.md), [`docs/validacion/certificacion-modelo-datos.md`](docs/validacion/certificacion-modelo-datos.md), [`docs/validacion/certificacion-e7.md`](docs/validacion/certificacion-e7.md), [`docs/validacion/certificacion-e4.md`](docs/validacion/certificacion-e4.md) y [`docs/validacion/certificacion-e5.md`](docs/validacion/certificacion-e5.md). La prueba manual contra un Jira Cloud real (E5-MAN-01) la ejecuta el usuario con su propio sitio.
 
 ## Arquitectura
 
 ```
 Navegador ── Portal React ── Gateway ──┬── Organización ─┐
                  │                      ├── Certificaciones ├── Postgres (un esquema y un rol por servicio)
-                 │                      └── Impedimentos ──┘
+                 │                      ├── Impedimentos ──┤
+                 │                      └── Integraciones ─┘── Jira Cloud (API REST, token cifrado)
                  └── Supabase Auth (identidad)
 ```
 
@@ -100,7 +101,8 @@ npm test
 | `packages/auth-nest` | Verificación de sesión y autorización compartida |
 | `services/organizacion` | Usuarios, supervisión, HDU, células y sprints (E1, E2) |
 | `services/certificaciones` | Checklist de 10 entregables, evidencias, aprobaciones del QE y certificado PDF (E3) |
-| `services/impedimentos` | Base del servicio de impedimentos (E4) |
+| `services/impedimentos` | Impedimentos, escalamiento y riesgo de las HDU (E4) |
+| `services/integraciones` | Conexión con Jira Cloud, sincronización manual, importación CSV/JSON e historial (E5) |
 | `contracts` | Contratos OpenAPI |
 | `infrastructure` | Supabase local, SQL de esquemas y roles, Docker Compose, semilla y arranque local |
 | `tests` | Suite de certificación E2E y de API |
@@ -111,5 +113,6 @@ npm test
 - Los archivos `.env` no se versionan. `npm run local` los genera a partir de Supabase local.
 - Las contraseñas de los roles `svc_*` (sufijo `_local_dev`) y la contraseña de demo **solo sirven en local**. Un entorno en la nube debe usar credenciales nuevas, generadas fuera del repositorio.
 - La clave `service_role` de Supabase solo la usan Organización (Auth) y Certificaciones (Storage); nunca llega al navegador.
+- El API token de Jira se guarda cifrado (AES-256-GCM) con la llave `INTEGRACIONES_LLAVE_CIFRADO`, que solo vive en las variables del servicio Integraciones; nunca vuelve al navegador ni aparece en los registros.
 - Las evidencias y los certificados se guardan en buckets privados de Storage (`evidencias`, `certificados`). El navegador solo recibe URL firmadas de corta duración que emite Certificaciones.
-- Docker Compose (`infrastructure/docker-compose.yml`) es una alternativa a `npm run local`; ver [`infrastructure/README.md`](infrastructure/README.md). El servicio `integraciones` está bajo el perfil `e5` hasta que exista su código.
+- Docker Compose (`infrastructure/docker-compose.yml`) es una alternativa a `npm run local`; ver [`infrastructure/README.md`](infrastructure/README.md).

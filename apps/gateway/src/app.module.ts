@@ -18,6 +18,7 @@ import {
 import { HduController } from './api/hdu.controller.js';
 import { ImpedimentosController } from './api/impedimentos.controller.js';
 import { InicioController } from './api/inicio.controller.js';
+import { IntegracionesController } from './api/integraciones.controller.js';
 import { NoImplementadoController } from './api/no-implementado.controller.js';
 import {
   AuditorOrganizacionController,
@@ -66,6 +67,7 @@ export class AppModule {
         BandejaAprobacionesController,
         VerificacionCertificadoController,
         ImpedimentosController,
+        IntegracionesController,
         NoImplementadoController,
       ],
       providers: [{ provide: CONFIGURACION, useValue: configuracion }, Reenviador, Compositor],

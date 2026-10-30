@@ -160,13 +160,19 @@ describe('Enrutamiento a Organización', () => {
 });
 
 describe('Capacidades y rutas desconocidas', () => {
-  it('las rutas de otros servicios responden 501 CAPACIDAD_NO_DISPONIBLE', async () => {
-    for (const ruta of ['/v1/certificaciones', '/v1/certificaciones/ciclos', '/v1/integraciones/carga']) {
+  it('el prefijo /v1/certificaciones aún responde 501 CAPACIDAD_NO_DISPONIBLE', async () => {
+    for (const ruta of ['/v1/certificaciones', '/v1/certificaciones/ciclos']) {
       const respuesta = await request(app.getHttpServer()).get(ruta).set('authorization', await autorizacion());
       assert.equal(respuesta.status, 501, `${ruta} debería responder 501`);
       assert.equal(respuesta.body.codigo, 'CAPACIDAD_NO_DISPONIBLE');
     }
     assert.equal(organizacion.solicitudes.length, 0);
+  });
+
+  it('/v1/integraciones/* ya no responde 501 (D127): una ruta no declarada da 404', async () => {
+    const respuesta = await request(app.getHttpServer()).get('/v1/integraciones/carga').set('authorization', await autorizacion());
+    assert.equal(respuesta.status, 404);
+    assert.equal(respuesta.body.codigo, 'NO_ENCONTRADO');
   });
 
   it('una ruta inexistente responde 404 en el formato común', async () => {

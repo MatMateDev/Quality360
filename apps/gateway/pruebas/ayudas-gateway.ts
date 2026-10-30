@@ -104,7 +104,11 @@ export async function urlCaida(): Promise<string> {
 export interface OpcionesAppPrueba {
   organizacionUrl: string;
   certificacionesUrl?: string;
-  impedimentosUrl?: string;
+  /** `null` simula `IMPEDIMENTOS_URL` ausente en producción (D129). */
+  impedimentosUrl?: string | null;
+  /** `null` simula `INTEGRACIONES_URL` ausente o inválida (D127). Por defecto, Organización. */
+  integracionesUrl?: string | null;
+  tiempoLimiteIntegracionesMs?: number;
   tiempoLimiteImpedimentosMs?: number;
   fuentes?: Partial<FuentesComposicion>;
   tiempoLimiteFuenteMs?: number;
@@ -122,8 +126,11 @@ export function configuracionPrueba(opciones: OpcionesAppPrueba): ConfiguracionG
     confiarProxy: 0,
     organizacionUrl,
     certificacionesUrl,
-    impedimentosUrl: opciones.impedimentosUrl ?? organizacionUrl,
+    impedimentosUrl: opciones.impedimentosUrl === undefined ? organizacionUrl : opciones.impedimentosUrl,
     tiempoLimiteImpedimentosMs: opciones.tiempoLimiteImpedimentosMs ?? opciones.tiempoLimiteServicioMs ?? 5000,
+    integracionesUrl: opciones.integracionesUrl === undefined ? organizacionUrl : opciones.integracionesUrl,
+    tiempoLimiteIntegracionesMs: opciones.tiempoLimiteIntegracionesMs ?? 12_000,
+    avisos: [],
     fuentes: {
       usuarios: organizacionUrl,
       supervision: organizacionUrl,

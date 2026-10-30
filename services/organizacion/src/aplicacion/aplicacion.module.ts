@@ -8,6 +8,7 @@ import { BandejasAplicacion } from './bandejas.servicio.js';
 import { CargaSemillaAplicacion } from './carga-semilla.servicio.js';
 import { CatalogosAplicacion } from './catalogos.servicio.js';
 import { HduAplicacion } from './hdu.servicio.js';
+import { IntegracionesAplicacion } from './integraciones.servicio.js';
 import { ResumenesAplicacion } from './resumenes.servicio.js';
 import { SupervisionAplicacion } from './supervision.servicio.js';
 import { UsuariosAplicacion } from './usuarios.servicio.js';
@@ -23,6 +24,7 @@ const SERVICIOS = [
   CargaSemillaAplicacion,
   BandejasAplicacion,
   AuditorAplicacion,
+  IntegracionesAplicacion,
 ];
 
 @Module({

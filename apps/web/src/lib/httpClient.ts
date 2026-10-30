@@ -74,7 +74,14 @@ export async function solicitar<T>(ruta: string, opciones: Opciones = {}): Promi
   }
 
   const texto = await respuesta.text();
-  const cuerpo = texto ? (JSON.parse(texto) as unknown) : undefined;
+  let cuerpo: unknown;
+  try {
+    cuerpo = texto ? (JSON.parse(texto) as unknown) : undefined;
+  } catch (error) {
+    // Un error del proxy (502/504 con HTML) no trae JSON: sigue siendo un `ErrorApi` con su estado (E5, D115).
+    if (respuesta.ok) throw error;
+    cuerpo = undefined;
+  }
 
   if (!respuesta.ok) {
     const error = new ErrorApi(respuesta.status, cuerpo as Partial<ErrorApiCuerpo>);

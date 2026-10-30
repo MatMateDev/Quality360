@@ -1,6 +1,9 @@
 /**
  * Configuración del gateway. Todo viene del entorno; no hay secretos con
- * valor por defecto. Si algo está mal, el proceso no arranca.
+ * valor por defecto. Si algo está mal, el proceso no arranca, salvo las URL de
+ * los servicios opcionales (Impedimentos e Integraciones, D127 y D129): si
+ * faltan en producción o son inválidas, quedan en `null`, el gateway arranca y
+ * solo sus rutas responden 503 `SERVICIO_NO_DISPONIBLE`.
  */
 import { errorInterno, opcionesDesdeEntorno, type OpcionesVerificador } from '@quality360/auth-nest';
 
@@ -42,10 +45,25 @@ export interface ConfiguracionGateway {
   confiarProxy: number;
   organizacionUrl: string;
   certificacionesUrl: string;
-  /** Impedimentos (E4, D85). Obligatoria con `NODE_ENV=production`. */
-  impedimentosUrl: string;
+  /**
+   * Impedimentos (E4, D85). `null` si falta en producción o es inválida (D129):
+   * solo sus rutas responden 503.
+   */
+  impedimentosUrl: string | null;
   /** Tiempo límite al reenviar a Impedimentos; por defecto, `tiempoLimiteServicioMs`. */
   tiempoLimiteImpedimentosMs: number;
+  /**
+   * Integraciones (E5, D127). `null` si falta en producción o es inválida: solo
+   * `/v1/integraciones/*` responde 503.
+   */
+  integracionesUrl: string | null;
+  /** Tiempo límite al reenviar a Integraciones (12 s por defecto, D115). */
+  tiempoLimiteIntegracionesMs: number;
+  /**
+   * Avisos de configuración, sin valores (por ejemplo, «INTEGRACIONES_URL no
+   * configurada o inválida»). `crearApp` los registra una sola vez.
+   */
+  avisos: string[];
   fuentes: FuentesComposicion;
   /** Tiempo límite por fuente en la composición. */
   tiempoLimiteFuenteMs: number;
@@ -73,6 +91,30 @@ function leerUrl(valor: string | undefined, porDefecto: string, nombre: string):
   return sinBarraFinal(url.toString());
 }
 
+/**
+ * URL de un servicio opcional (D127, D129). Nunca lanza: si es inválida, o si
+ * falta con `NODE_ENV=production`, devuelve `null` y deja un aviso sin el valor.
+ * En desarrollo, si falta, usa el valor por defecto.
+ */
+function leerUrlOpcional(
+  valor: string | undefined,
+  porDefecto: string,
+  nombre: string,
+  produccion: boolean,
+  avisos: string[],
+): string | null {
+  const ausente = valor === undefined || valor.trim().length === 0;
+  if (!(ausente && produccion)) {
+    try {
+      return leerUrl(valor, porDefecto, nombre);
+    } catch {
+      // Se informa abajo, sin el valor.
+    }
+  }
+  avisos.push(`${nombre} no configurada o inválida`);
+  return null;
+}
+
 function leerEntero(valor: string | undefined, porDefecto: number, nombre: string, minimo = 1): number {
   if (valor === undefined || valor.trim().length === 0) return porDefecto;
   const numero = Number(valor);
@@ -98,13 +140,25 @@ export function cargarConfiguracion(entorno: NodeJS.ProcessEnv = process.env): C
     'CERTIFICACIONES_URL',
   );
 
-  // En la nube no hay un valor por defecto razonable: sin Impedimentos el cierre de HDU
-  // responde 503 (D60, D91), así que se exige explícitamente en lugar de apuntar a localhost.
-  const impedimentosCrudo = entorno.IMPEDIMENTOS_URL;
-  if (entorno.NODE_ENV === 'production' && (impedimentosCrudo === undefined || impedimentosCrudo.trim().length === 0)) {
-    throw errorInterno('IMPEDIMENTOS_URL es obligatoria con NODE_ENV=production');
-  }
-  const impedimentosUrl = leerUrl(impedimentosCrudo, 'http://localhost:3003', 'IMPEDIMENTOS_URL');
+  // En la nube no hay un valor por defecto razonable para los servicios opcionales, pero
+  // tampoco deben tumbar el portal completo (incidente de E4; D127, D129): sin ellos solo
+  // sus rutas responden 503. En desarrollo apuntan a sus puertos locales.
+  const produccion = entorno.NODE_ENV === 'production';
+  const avisos: string[] = [];
+  const impedimentosUrl = leerUrlOpcional(
+    entorno.IMPEDIMENTOS_URL,
+    'http://localhost:3003',
+    'IMPEDIMENTOS_URL',
+    produccion,
+    avisos,
+  );
+  const integracionesUrl = leerUrlOpcional(
+    entorno.INTEGRACIONES_URL,
+    'http://localhost:3004',
+    'INTEGRACIONES_URL',
+    produccion,
+    avisos,
+  );
   const tiempoLimiteServicioMs = leerEntero(entorno.TIEMPO_LIMITE_SERVICIO_MS, 10_000, 'TIEMPO_LIMITE_SERVICIO_MS');
 
   return {
@@ -119,6 +173,9 @@ export function cargarConfiguracion(entorno: NodeJS.ProcessEnv = process.env): C
       tiempoLimiteServicioMs,
       'IMPEDIMENTOS_TIMEOUT_MS',
     ),
+    integracionesUrl,
+    tiempoLimiteIntegracionesMs: leerEntero(entorno.INTEGRACIONES_TIMEOUT_MS, 12_000, 'INTEGRACIONES_TIMEOUT_MS'),
+    avisos,
     fuentes: {
       usuarios: leerUrl(entorno.FUENTE_RESUMEN_USUARIOS_URL, organizacionUrl, 'FUENTE_RESUMEN_USUARIOS_URL'),
       supervision: leerUrl(

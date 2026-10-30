@@ -1,0 +1,10 @@
+codigo,titulo,descripcion,prioridad,celula,sprint,qe_correo
+ARC-10,Historia válida diez,,ALTA,,,
+ARC-11,Prioridad urgente,,URGENTE,,,
+,Sin código,,ALTA,,,
+ARC 12,Código con espacio,,ALTA,,,
+ARC-10,Repetida,,ALTA,,,
+ARC-13,Célula inexistente,,ALTA,CEL-Z,,
+ARC-14,Sprint inexistente,,ALTA,,No existe,
+ARC-15,QE equivocado,,ALTA,,,ana1@quality360.local
+ARC-16,Historia válida dieciséis,,MEDIA,,,

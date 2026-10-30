@@ -6,7 +6,12 @@ export const CATALOGO_REPOSITORIO = Symbol('CATALOGO_REPOSITORIO');
 
 export interface CatalogoRepositorio {
   listarCelulas(): Promise<Celula[]>;
-  listarSprints(): Promise<Sprint[]>;
+  /** Con `celulaId`, solo los sprints de esa célula (E5, D120). */
+  listarSprints(celulaId?: string): Promise<Sprint[]>;
+  /** Sprint de la célula con ese nombre, sin distinguir mayúsculas (E5, D120). */
+  buscarSprintDeCelulaPorNombre(celulaId: string, nombre: string): Promise<Sprint | null>;
+  /** Célula por nombre, sin distinguir mayúsculas (E5, archivos). */
+  buscarCelulaPorNombre(nombre: string): Promise<Celula | null>;
   buscarCelula(id: string): Promise<Celula | null>;
   /** Las células que existen entre `ids`. */
   buscarCelulas(ids: readonly string[]): Promise<Celula[]>;

@@ -1,0 +1,6 @@
+dist/
+build-pruebas/
+*.tsbuildinfo
+.env
+.env.test
+generated/

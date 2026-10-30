@@ -7,6 +7,7 @@ import { Inject, Injectable } from '@nestjs/common';
 import { ExcepcionQ360, MENSAJES, accesoDenegado, noEncontrado } from '@quality360/auth-nest';
 
 import { ConflictoUnicidad } from '../dominio/errores/conflicto-unicidad.js';
+import { normalizarCodigoHdu } from '../dominio/reglas/alta-hdu.js';
 import { celulaPermitidaParaLider, evaluarAccesoHdu, filtroAmbitoHdu } from '../dominio/reglas/ambito.js';
 import { puedeAsignarAnalistaHdu, puedeCambiarEstadoHdu, puedeReasignarQeResponsable } from '../dominio/reglas/permisos-hdu.js';
 import { transicionesPermitidas, validarTransicion } from '../dominio/reglas/transiciones-hdu.js';
@@ -27,6 +28,7 @@ import type {
   EventoHistorialHdu,
   Hdu,
   OpcionesPaginacion,
+  OrigenHdu,
   Pagina,
   PrioridadHdu,
   Rol,
@@ -61,6 +63,11 @@ export interface HduDetalleRespuesta extends HduResumenRespuesta {
   readonly creadoPor: Actor;
   readonly transicionesPermitidas: EstadoHdu[];
   readonly permisos: { cambiarEstado: boolean; asignarAnalista: boolean };
+  /** E5 (D108, D124): aditivos y anulables. Solo el detalle los trae; listados y bandejas no cambian. */
+  readonly descripcion: string | null;
+  readonly origen: OrigenHdu;
+  readonly claveExterna: string | null;
+  readonly urlExterna: string | null;
 }
 
 export interface ContextoActor {
@@ -113,7 +120,7 @@ export class HduAplicacion {
     const [celula, sprint] = await Promise.all([this.catalogos.buscarCelula(datos.celulaId), this.catalogos.buscarSprint(datos.sprintId)]);
     if (celula === null || sprint === null) throw catalogoInvalido();
 
-    const codigoNormalizado = datos.codigo.trim().toLowerCase();
+    const codigoNormalizado = normalizarCodigoHdu(datos.codigo);
     const existente = await this.hdus.buscarPorCodigoNormalizado(codigoNormalizado);
     if (existente !== null) throw codigoDuplicado();
 
@@ -316,6 +323,10 @@ export class HduAplicacion {
       creadoPor: hdu.creadoPor,
       transicionesPermitidas: permisos.cambiarEstado ? transicionesPermitidas(hdu.estado) : [],
       permisos,
+      descripcion: hdu.descripcion,
+      origen: hdu.origen,
+      claveExterna: hdu.claveExterna,
+      urlExterna: hdu.urlExterna,
     };
   }
 

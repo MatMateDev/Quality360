@@ -34,6 +34,7 @@ const envGateway = leerDotEnv(path.join(RAIZ_REPO, "apps", "gateway", ".env"));
 const envOrganizacion = leerDotEnv(path.join(RAIZ_REPO, "services", "organizacion", ".env"));
 const envCertificaciones = leerDotEnv(path.join(RAIZ_REPO, "services", "certificaciones", ".env"));
 const envImpedimentos = leerDotEnv(path.join(RAIZ_REPO, "services", "impedimentos", ".env"));
+const envIntegraciones = leerDotEnv(path.join(RAIZ_REPO, "services", "integraciones", ".env"));
 
 function requerido(valor: string | undefined, descripcion: string): string {
   if (!valor) {
@@ -91,5 +92,6 @@ export const env = {
   servicioToken: process.env.X_Q360_SERVICIO_TOKEN ?? envOrganizacion.X_Q360_SERVICIO_TOKEN ?? "",
   databaseUrlOrganizacion: process.env.DATABASE_URL_ORGANIZACION ?? envOrganizacion.DATABASE_URL ?? "",
   databaseUrlCertificaciones: process.env.DATABASE_URL_CERTIFICACIONES ?? envCertificaciones.DATABASE_URL ?? "",
+  databaseUrlIntegraciones: process.env.DATABASE_URL_INTEGRACIONES ?? envIntegraciones.DATABASE_URL ?? "",
   databaseUrlImpedimentos: process.env.DATABASE_URL_IMPEDIMENTOS ?? envImpedimentos.DATABASE_URL ?? "",
 };

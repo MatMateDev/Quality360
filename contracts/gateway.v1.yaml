@@ -7,8 +7,19 @@ info:
     identifier: LicenseRef-Capstone-Duoc-UC
   description: |
     API que consume el portal (`apps/web`). Es el único punto de entrada
-    público. Alcance: épicas E1, E2, E3, E4 (impedimentos y riesgos) y E7
-    (bandejas por rol).
+    público. Alcance: épicas E1, E2, E3, E4 (impedimentos y riesgos), E5
+    (integración con Jira Cloud) y E7 (bandejas por rol).
+
+    - **E5.** `/v1/integraciones/*` se reenvía a Integraciones
+      (`INTEGRACIONES_URL`, D127) con rutas declaradas una por una; ya no
+      responde 501. Si `INTEGRACIONES_URL` falta en producción, **solo** esas
+      rutas responden 503 `SERVICIO_NO_DISPONIBLE` y el resto del gateway
+      funciona. Cuerpo de hasta 1,5 MB solo en `/v1/integraciones/archivos/*`;
+      tiempo límite propio (`INTEGRACIONES_TIMEOUT_MS`, 12 s por defecto)
+      porque sincronizar e importar duran hasta ~9 s (D114). `GET
+      /v1/hdu/{id}` suma `descripcion`, `origen`, `claveExterna` y
+      `urlExterna` (D108); `GET /v1/catalogos/sprints` suma `celulaId` y el
+      filtro `celulaId` (D120). Listados, bandejas y CSV no cambian.
 
     - **E4.** `/v1/catalogos/tipos-impedimento`, `/v1/impedimentos*`,
       `/v1/riesgo/*`, `/v1/hdu/{id}/impedimentos*`, `/v1/hdu/{id}/riesgo`,
@@ -86,6 +97,14 @@ tags:
     description: Nivel de riesgo fijado y sugerido de cada HDU (E4).
   - name: Gestión
     description: Historial de impedimentos y riesgo (E4-B04).
+  - name: Conexión
+    description: Configuración cifrada de Jira Cloud (E5-F01, E5-B01).
+  - name: Sincronización
+    description: Sincronización manual con Jira (E5-F02, E5-B02).
+  - name: Archivos
+    description: Importación de CSV/JSON (E5-F03, E5-B03).
+  - name: Historial
+    description: Historial de sincronizaciones e importaciones (E5-F04, E5-B04).
 
 x-hdu-transversal: [E1-B02#1, E1-B07#3, E1-B11#1]
 x-escenarios-sin-operacion:
@@ -881,9 +900,15 @@ paths:
       operationId: listarSprints
       tags: [Catálogos]
       summary: Sprints
-      description: Catálogo cargado por la semilla. Alimenta el formulario de HDU y los filtros.
+      description: 'Catálogo cargado por la semilla. Alimenta el formulario de HDU y los filtros. E5 (D120): cada sprint trae `celulaId`, y `celulaId` filtra los de una célula (selector «Sprint de respaldo»).'
       x-roles: [ADMINISTRADOR, QE, ANALISTA_QA, LIDER_QA, AUDITOR]
-      x-hdu: [E2-F01#1, E2-F03#1, E7-F06#2]
+      x-hdu: [E2-F01#1, E2-F03#1, E7-F06#2, E5-F01#1]
+      parameters:
+        - name: celulaId
+          in: query
+          required: false
+          schema:
+            $ref: '#/components/schemas/Uuid'
       responses:
         '200':
           description: Sprints ordenados por fecha de inicio.
@@ -1069,7 +1094,7 @@ paths:
         inexistente también responde 403; el 404 solo lo recibe el
         Administrador.
       x-roles: [ADMINISTRADOR, QE, ANALISTA_QA, LIDER_QA, AUDITOR]
-      x-hdu: [E1-B02#2, E2-F02#1, E2-F04#1, E2-F04#2, E2-F04#3, E2-B03#1, E2-B03#2, E7-F02#3, E7-F04#3, E7-F06#1, E7-B02#1, E7-B02#2]
+      x-hdu: [E1-B02#2, E2-F02#1, E2-F04#1, E2-F04#2, E2-F04#3, E2-B03#1, E2-B03#2, E7-F02#3, E7-F04#3, E7-F06#1, E7-B02#1, E7-B02#2, E5-F02#1, E5-B02#1]
       responses:
         '200':
           description: Detalle con responsables, estado, fecha del último cambio, transiciones permitidas, permisos y checklist.
@@ -1394,6 +1419,31 @@ paths:
     $ref: './impedimentos.v1.yaml#/paths/~1v1~1auditor~1exportaciones~1impedimentos'
   /v1/auditor/exportaciones/gestion-impedimentos:
     $ref: './impedimentos.v1.yaml#/paths/~1v1~1auditor~1exportaciones~1gestion-impedimentos'
+
+  # ---------------------------------------------------------------- E5
+  # Reenvío a la misma ruta de Integraciones (INTEGRACIONES_URL), sin composición (D127).
+  # Rutas explícitas: se retira `integraciones{/*ruta}` de NoImplementadoController.
+  # El gateway no publica /v1/interno/*.
+  /v1/integraciones/jira/configuracion:
+    $ref: './integraciones.v1.yaml#/paths/~1v1~1integraciones~1jira~1configuracion'
+  /v1/integraciones/jira/configuracion/probar:
+    $ref: './integraciones.v1.yaml#/paths/~1v1~1integraciones~1jira~1configuracion~1probar'
+  /v1/integraciones/jira/configuracion/eventos:
+    $ref: './integraciones.v1.yaml#/paths/~1v1~1integraciones~1jira~1configuracion~1eventos'
+  /v1/integraciones/jira/sincronizaciones:
+    $ref: './integraciones.v1.yaml#/paths/~1v1~1integraciones~1jira~1sincronizaciones'
+  /v1/integraciones/archivos/vista-previa:
+    $ref: './integraciones.v1.yaml#/paths/~1v1~1integraciones~1archivos~1vista-previa'
+  /v1/integraciones/archivos/importaciones:
+    $ref: './integraciones.v1.yaml#/paths/~1v1~1integraciones~1archivos~1importaciones'
+  /v1/integraciones/ejecuciones:
+    $ref: './integraciones.v1.yaml#/paths/~1v1~1integraciones~1ejecuciones'
+  /v1/integraciones/ejecuciones/{id}:
+    $ref: './integraciones.v1.yaml#/paths/~1v1~1integraciones~1ejecuciones~1{id}'
+  /v1/integraciones/ejecuciones/{id}/detalle:
+    $ref: './integraciones.v1.yaml#/paths/~1v1~1integraciones~1ejecuciones~1{id}~1detalle'
+  /v1/integraciones/estado:
+    $ref: './integraciones.v1.yaml#/paths/~1v1~1integraciones~1estado'
 
 components:
   securitySchemes:

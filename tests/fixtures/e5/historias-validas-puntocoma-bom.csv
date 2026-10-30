@@ -1,0 +1,5 @@
+﻿codigo;titulo;descripcion;prioridad;celula;sprint;qe_correo
+"ARC-1";"Alta de cliente";"Registro básico";"ALTA";"CEL-C";"E5 Sprint 2";
+"ARC-2";"Baja de cliente";;"MEDIA";;;
+"ARC-3";"Consulta, con coma";"Detalle";"baja";;"E5 Sprint 1";
+"ARC-4";"Reporte diario";;"CRITICA";"CEL-C";;"qe2@quality360.local"

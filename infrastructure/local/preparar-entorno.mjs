@@ -14,6 +14,7 @@ const ARCHIVOS = [
   'services/organizacion/.env',
   'services/certificaciones/.env',
   'services/impedimentos/.env',
+  'services/integraciones/.env',
   'apps/gateway/.env',
   'apps/web/.env.local',
   'infrastructure/seed/mvp/.env.carga',
@@ -25,7 +26,10 @@ const completos = () =>
   readFileSync(join(RAIZ, 'services/certificaciones/.env'), 'utf8').includes('SUPABASE_SERVICE_ROLE_KEY=') &&
   // E4: Impedimentos consulta Certificaciones y el gateway reenvía a Impedimentos.
   readFileSync(join(RAIZ, 'services/impedimentos/.env'), 'utf8').includes('CERTIFICACIONES_URL=') &&
-  readFileSync(join(RAIZ, 'apps/gateway/.env'), 'utf8').includes('IMPEDIMENTOS_URL=');
+  readFileSync(join(RAIZ, 'apps/gateway/.env'), 'utf8').includes('IMPEDIMENTOS_URL=') &&
+  // E5: Integraciones con su llave de cifrado de desarrollo (D128); el gateway le reenvía.
+  readFileSync(join(RAIZ, 'services/integraciones/.env'), 'utf8').includes('INTEGRACIONES_LLAVE_CIFRADO=') &&
+  readFileSync(join(RAIZ, 'apps/gateway/.env'), 'utf8').includes('INTEGRACIONES_URL=');
 if (!forzar && completos()) {
   console.log('Configuración local ya existe (usa --forzar para regenerarla).');
   process.exit(0);
@@ -61,6 +65,17 @@ for (const clave of ['API_URL', 'JWT_SECRET', 'SERVICE_ROLE_KEY', 'PUBLISHABLE_K
 // Un solo token para todos, así los servicios siempre coinciden entre sí.
 const token = randomBytes(24).toString('hex');
 const api = sb.API_URL;
+// Llave de cifrado de desarrollo: una por máquina, solo en el .env local (no versionado).
+// Si ya había una válida (32 bytes en Base64) se conserva, para no invalidar tokens ya guardados.
+const llaveExistente = (() => {
+  try {
+    const m = readFileSync(join(RAIZ, 'services/integraciones/.env'), 'utf8').match(/^INTEGRACIONES_LLAVE_CIFRADO=(.+)$/m);
+    return m && Buffer.from(m[1].trim(), 'base64').length === 32 ? m[1].trim() : null;
+  } catch {
+    return null;
+  }
+})();
+const llaveCifrado = llaveExistente ?? randomBytes(32).toString('base64');
 const db = (rol, esquema) => `postgresql://${rol}:${rol}_local_dev@127.0.0.1:54322/postgres?schema=${esquema}`;
 const escribir = (ruta, variables) => {
   writeFileSync(join(RAIZ, ruta), Object.entries(variables).map(([k, v]) => `${k}=${v}`).join('\n') + '\n');
@@ -98,6 +113,17 @@ escribir('services/impedimentos/.env', {
   PERMITIR_CARGA_SEMILLA: 'true',
   X_Q360_SERVICIO_TOKEN: token,
 });
+escribir('services/integraciones/.env', {
+  PORT: 3004,
+  DATABASE_URL: db('svc_integraciones', 'integraciones'),
+  SUPABASE_URL: api,
+  SUPABASE_JWT_SECRET: sb.JWT_SECRET,
+  ORGANIZACION_URL: 'http://localhost:3001',
+  INTEGRACIONES_LLAVE_CIFRADO: llaveCifrado,
+  // Solo local: deja que el Jira simulado (127.0.0.1:4010) pase la validación del sitio (D95).
+  INTEGRACIONES_PERMITIR_HOST_PRUEBA: 'true',
+  X_Q360_SERVICIO_TOKEN: token,
+});
 escribir('apps/gateway/.env', {
   PORT: 3000,
   PORTAL_ORIGENES: 'http://localhost:5173',
@@ -108,6 +134,7 @@ escribir('apps/gateway/.env', {
   ORGANIZACION_URL: 'http://localhost:3001',
   CERTIFICACIONES_URL: 'http://localhost:3002',
   IMPEDIMENTOS_URL: 'http://localhost:3003',
+  INTEGRACIONES_URL: 'http://localhost:3004',
 });
 escribir('apps/web/.env.local', {
   VITE_USAR_MOCKS: 'false',
@@ -119,5 +146,6 @@ escribir('infrastructure/seed/mvp/.env.carga', {
   X_Q360_SERVICIO_TOKEN: token,
   ORGANIZACION_URL: 'http://localhost:3001',
   IMPEDIMENTOS_URL: 'http://localhost:3003',
+  INTEGRACIONES_URL: 'http://localhost:3004',
 });
 console.log('Configuración local lista. Si Organización ya estaba corriendo, reinícialo para que tome el token nuevo.');

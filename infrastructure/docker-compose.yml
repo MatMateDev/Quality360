@@ -97,8 +97,6 @@ services:
       test: ["CMD", "wget", "-qO-", "http://127.0.0.1:3003/health"]
 
   integraciones:
-    # Pendiente (E5): el servicio aún no tiene código. Se activa con: docker compose --profile e5 up
-    profiles: ["e5"]
     <<: *service-defaults
     build:
       context: ..
@@ -110,9 +108,13 @@ services:
       NODE_ENV: production
       PORT: "3004"
       DATABASE_URL: ${DATABASE_URL_INTEGRACIONES:?falta DATABASE_URL_INTEGRACIONES en tu .env}
+      SUPABASE_URL: ${SUPABASE_URL:-}
+      SUPABASE_JWT_SECRET: ${SUPABASE_JWT_SECRET:-}
       ORGANIZACION_URL: ${ORGANIZACION_URL:-http://organizacion:3001}
       X_Q360_SERVICIO_TOKEN: ${X_Q360_SERVICIO_TOKEN:-}
       PERMITIR_CARGA_SEMILLA: ${PERMITIR_CARGA_SEMILLA:-false}
+      # D128: si falta o es inválida, el servicio arranca igual y solo cifrar/descifrar responde 503.
+      INTEGRACIONES_LLAVE_CIFRADO: ${INTEGRACIONES_LLAVE_CIFRADO:-}
     depends_on:
       organizacion:
         condition: service_healthy

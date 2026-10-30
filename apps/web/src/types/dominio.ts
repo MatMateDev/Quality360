@@ -308,6 +308,39 @@ export const ETIQUETAS_NIVEL_RIESGO: Record<NivelRiesgo, string> = { ALTO: "Alto
 /** Forma del semáforo: triángulo, rombo y círculo (diseño E4 §3.1). */
 export const GLIFO_NIVEL_RIESGO: Record<NivelRiesgo, string> = { ALTO: "▲", MEDIO: "◆", BAJO: "●" };
 
+// E5 · integración con Jira y archivos
+export type OrigenHdu = components["schemas"]["OrigenHdu"];
+export type OrigenEjecucion = components["schemas"]["OrigenEjecucion"];
+export type ResultadoEjecucion = components["schemas"]["ResultadoEjecucion"];
+export type ResultadoFila = components["schemas"]["ResultadoFila"];
+export type AccionVistaPrevia = components["schemas"]["AccionVistaPrevia"];
+export type MotivoFila = components["schemas"]["MotivoFila"];
+export type AdvertenciaFila = components["schemas"]["AdvertenciaFila"];
+export type CodigoErrorIntegracion = components["schemas"]["CodigoErrorIntegracion"];
+export type SugerenciaIntegracion = components["schemas"]["SugerenciaIntegracion"];
+export type ErrorIntegracion = components["schemas"]["ErrorIntegracion"];
+export type Ejecucion = components["schemas"]["Ejecucion"];
+export type PaginaEjecuciones = components["schemas"]["PaginaEjecuciones"];
+export type FilaEjecucion = components["schemas"]["FilaEjecucion"];
+export type PaginaFilasEjecucion = components["schemas"]["PaginaFilasEjecucion"];
+export type EstadoIntegracion = components["schemas"]["EstadoIntegracion"];
+export type ConfiguracionJira = components["schemas"]["ConfiguracionJira"];
+export type SolicitudConfiguracionJira = components["schemas"]["SolicitudConfiguracionJira"];
+export type SolicitudPruebaJira = components["schemas"]["SolicitudPruebaJira"];
+export type ResultadoGuardadoJira = components["schemas"]["ResultadoGuardadoJira"];
+export type ResultadoPruebaJira = components["schemas"]["ResultadoPruebaJira"];
+export type EventoConfiguracionJira = components["schemas"]["EventoConfiguracionJira"];
+export type PaginaEventosConfiguracionJira = components["schemas"]["PaginaEventosConfiguracionJira"];
+export type CampoConfiguracionJira = components["schemas"]["CampoConfiguracionJira"];
+export type SolicitudArchivo = components["schemas"]["SolicitudArchivo"];
+export type VistaPreviaArchivo = components["schemas"]["VistaPreviaArchivo"];
+export type FilaVistaPrevia = components["schemas"]["FilaVistaPrevia"];
+export type ErrorArchivo = components["schemas"]["ErrorArchivo"];
+export type CambiosHdu = components["schemas"]["CambiosHdu"];
+export type ListaPersonas = components["schemas"]["ListaPersonas"];
+export type PersonaCatalogo = components["schemas"]["PersonaCatalogo"];
+export type EstadoConexionJira = components["schemas"]["EstadoConexionJira"];
+
 /** Una ruta pedida antes del login solo se reutiliza si pertenece al portal del propio rol (D41). */
 export function rutaPermitidaParaRol(ruta: string, rol: Rol): boolean {
   const duenio = rolDePortal(ruta);

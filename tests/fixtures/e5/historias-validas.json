@@ -1,0 +1,17 @@
+[
+  {
+    "codigo": "ARC-J1",
+    "titulo": "Alta JSON uno",
+    "prioridad": "ALTA"
+  },
+  {
+    "codigo": "ARC-J2",
+    "titulo": "Alta JSON dos",
+    "prioridad": "MEDIA"
+  },
+  {
+    "codigo": "ARC-J3",
+    "titulo": "Alta JSON tres",
+    "prioridad": "BAJA"
+  }
+]

@@ -102,7 +102,7 @@ describe("Guard de rutas por rol [E1-F02, E1-F05, E1-F07, E7-F01 · D41]", () =>
   it("menús de los roles ya certificados cambian «Inicio» por «Bandeja» [E1-F02#3, E1-F05#2]", async () => {
     await abrirComo(CUENTAS.QE, "/qe");
     const nav = await screen.findByRole("navigation", { name: "Portal" });
-    expect(within(nav).getAllByRole("link").map((a) => a.textContent)).toEqual(["Bandeja", "Equipo", "Historias supervisadas", "Impedimentos", "Perfil"]);
+    expect(within(nav).getAllByRole("link").map((a) => a.textContent)).toEqual(["Bandeja", "Equipo", "Historias supervisadas", "Impedimentos", "Integraciones", "Perfil"]);
     cleanup();
     renderApp("/");
   });

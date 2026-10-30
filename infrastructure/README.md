@@ -103,9 +103,23 @@ El script (`db/scripts/verificar-aislamiento.mjs`):
 
 Salida real (ejecutada el 2026-09-15 sobre `supabase_db_quality360`): los 4 roles crean y leen su propio esquema (`OK`), y las 12 combinaciones cruzadas quedan bloqueadas con `ERROR: permission denied for schema …`. Resultado: *"Cada rol svc_* solo alcanza su propio esquema. Aislamiento verificado."*
 
+## Integraciones en local y Jira simulado (E5)
+
+`npm run local` levanta Integraciones (puerto 3004, `/health`) igual que los otros servicios: aplica sus migraciones (esquema `integraciones`, rol `svc_integraciones`) y el gateway le reenvía las rutas `/v1/integraciones/*` con `INTEGRACIONES_URL=http://localhost:3004`.
+
+- **Llave de cifrado de desarrollo.** `preparar-entorno.mjs` genera `INTEGRACIONES_LLAVE_CIFRADO` con `crypto.randomBytes(32).toString('base64')` y la guarda solo en `services/integraciones/.env` (no versionado). Es una llave por máquina: si ya existe y es válida se conserva, para no dejar ilegible el token de Jira guardado; si falta, el siguiente `npm run local` regenera el archivo. Si la borras, se crea otra y hay que volver a guardar el token en la pantalla de Integraciones. Sin llave el servicio arranca igual y solo cifrar o descifrar responde 503 `LLAVE_CIFRADO_NO_DISPONIBLE`.
+- **Jira simulado.** El Jira falso de QA (`tests/support/jira-falso/`, lo construye q360-qa) escucha en `http://127.0.0.1:4010` y lo arranca el `globalSetup` de Playwright; no forma parte de `npm run local`. Para que Integraciones acepte ese sitio, el `.env` local trae `INTEGRACIONES_PERMITIR_HOST_PRUEBA=true` (se ignora con `NODE_ENV=production`). Credenciales del falso: correo `admin@quality360.local` y token `q360-token-valido-AB12` (datos de prueba, no reales). Un puerto cerrado como `http://127.0.0.1:4011` representa un sitio inexistente.
+- **Instancias extra del perfil de QA (backlog E5, 10.3).** Se arrancan a mano con el mismo `.env` y variables sobreescritas; ninguna llave va en el repositorio (en Git Bash; en PowerShell usa `$env:VAR='...'`):
+  - **I2**, sin llave de cifrado, puerto 3104: `PORT=3104 INTEGRACIONES_LLAVE_CIFRADO= node --env-file=services/integraciones/.env services/integraciones/dist/main.js`
+  - **I3**, otra llave: `PORT=3105 INTEGRACIONES_LLAVE_CIFRADO=$(node -e "console.log(require('crypto').randomBytes(32).toString('base64'))") node --env-file=...`
+  - **I4**, presupuesto corto: `PORT=3106 INTEGRACIONES_PRESUPUESTO_MS=2500 node --env-file=...`
+  - **I5**, producción (prueba D95): `PORT=3107 NODE_ENV=production node --env-file=...`
+  Las variables del proceso tienen prioridad sobre `--env-file`. Los puertos 3105 a 3107 son una convención de esta guía; solo 3104 viene del backlog.
+- **Perfil de pruebas del servicio:** `JIRA_TIEMPO_LIMITE_MS=1500`, `JIRA_ESPERA_MAX_429_MS=1500`, `INTEGRACIONES_PRESUPUESTO_MS=8000`, `JIRA_TOPE_ISSUES=100`; se pasan igual, como variables del proceso.
+
 ## Docker Compose
 
-`docker-compose.yml` define `web`, `gateway`, `organizacion`, `certificaciones`, `impedimentos` e `integraciones`, todos en la red interna `interna`. Solo `web` (8080) y `gateway` (3000) publican puertos en el host; los 4 servicios de dominio solo son alcanzables dentro de esa red. Todos tienen `healthcheck` (`GET /health`, sin autenticación, ver `contracts/`). Cada servicio recibe únicamente su propia `DATABASE_URL` (rol `svc_<servicio>`, nunca `postgres` ni `service_role`) apuntando a `host.docker.internal:54322` (con `extra_hosts` para que funcione también en Linux/CI). El Postgres de Supabase **no** se define en este Compose ni publica su puerto aquí: lo administra la CLI de Supabase, y solo escucha en `127.0.0.1:54322` del host.
+`docker-compose.yml` define `web`, `gateway`, `organizacion`, `certificaciones`, `impedimentos` e `integraciones`, todos en la red interna `interna`. Solo `web` (8080) y `gateway` (3000) publican puertos en el host; los 4 servicios de dominio solo son alcanzables dentro de esa red. Integraciones ya no está en un perfil `e5`: se levanta con el resto (su `INTEGRACIONES_LLAVE_CIFRADO` es opcional en Compose). Todos tienen `healthcheck` (`GET /health`, sin autenticación, ver `contracts/`). Cada servicio recibe únicamente su propia `DATABASE_URL` (rol `svc_<servicio>`, nunca `postgres` ni `service_role`) apuntando a `host.docker.internal:54322` (con `extra_hosts` para que funcione también en Linux/CI). El Postgres de Supabase **no** se define en este Compose ni publica su puerto aquí: lo administra la CLI de Supabase, y solo escucha en `127.0.0.1:54322` del host.
 
 ```bash
 npm run compose:config   # valida el YAML resuelto (no requiere que el código de los servicios exista)

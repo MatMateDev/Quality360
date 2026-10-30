@@ -120,7 +120,7 @@ describe("Pestaña «Impedimentos» del Auditor [E4-B04]", () => {
     expect(await screen.findByTestId("contador-impedimentos-abiertos")).toHaveTextContent("3");
     expect(screen.getByTestId("contador-hdu-bloqueadas")).toHaveTextContent("3");
     const pestanas = within(screen.getByRole("navigation", { name: "Secciones del Auditor" })).getAllByRole("link").map((a) => a.textContent);
-    expect(pestanas).toEqual(["HDU", "Certificados", "Bitácora de checklist", "Auditoría de usuarios", "Impedimentos"]);
+    expect(pestanas).toEqual(["HDU", "Certificados", "Bitácora de checklist", "Auditoría de usuarios", "Impedimentos", "Integraciones"]);
     await user.click(screen.getByTestId("pestana-impedimentos"));
     const tabla = await screen.findByTestId("lista-auditor-impedimentos");
     expect(tabla.querySelectorAll("tbody tr")).toHaveLength(5);

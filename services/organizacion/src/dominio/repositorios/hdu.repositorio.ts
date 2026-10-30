@@ -6,6 +6,7 @@ import type {
   EventoHistorialHdu,
   Hdu,
   OpcionesPaginacion,
+  OrigenHdu,
   Pagina,
   PrioridadHdu,
 } from '../tipos.js';
@@ -17,6 +18,11 @@ export interface DatosNuevaHdu {
   readonly sprintId: string;
   readonly prioridad: PrioridadHdu;
   readonly qeResponsableId: string;
+  /** E5: la HDU que llega de Jira o de un archivo trae su descripción, su origen y el enlace a Jira. */
+  readonly descripcion?: string | null;
+  readonly origen?: OrigenHdu;
+  readonly claveExterna?: string | null;
+  readonly urlExterna?: string | null;
 }
 
 export interface FiltroHdu {

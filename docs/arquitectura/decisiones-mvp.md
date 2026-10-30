@@ -523,3 +523,150 @@ No agrega HDU, usuarios ni células, y no deja impedimentos abiertos en H8. Para
 1. **Carrera entre cierre y registro.** Organización verifica los impedimentos y después cierra. Si justo entonces alguien registra uno, la HDU puede quedar cerrada con un impedimento abierto. Impedimentos vuelve a leer el estado de la HDU al registrar, así que la ventana es de milisegundos; cerrarla del todo exigiría una reserva entre servicios que el MVP no justifica. Si ocurre, el QE lo resuelve y queda en el historial.
 2. **Volumen de «Riesgo por HDU».** `GET /v1/interno/hdu/ambito/detalle` trae todo el ámbito, como las bandejas (D46). Alcanza para el MVP; con miles de HDU conviene paginar en Organización.
 3. **Columna de riesgo para el Auditor (D80).** Es aditiva y sin CSV, si el usuario la pide.
+
+# Corrida E5 · Integración con Jira Cloud
+
+- **Alcance:** 8 HDU (E5-F01–F04, E5-B01–B04), 24 escenarios y 102 casos automáticos (más el manual opcional E5-MAN-01). Fuente: `docs/backlog/e5-integracion-jira.md` (catálogos en la sección 4, mapeo en la 5, modelo de datos en la 6, rutas en la 7, efectos sobre lo certificado en la 9 y Jira simulado en la 10). Los escenarios refinados también están en `docs/backlog/historias-quality360.md` para `npm run contracts:check`. Diseño: `docs/diseno/e5-integracion-jira.md`.
+- **Decisiones del usuario (2026-10-29):**
+  - El Administrador configura. El token se cifra con AES-256-GCM, la llave vive solo en Vercel y el token nunca se vuelve a mostrar.
+  - El Administrador sincroniza a mano con un botón e importa CSV/JSON.
+  - Si la HDU existe, se actualizan solo título, descripción y prioridad; si no existe, se crea.
+  - Todo funciona en el plan gratuito.
+  - QE y Auditor ven el historial en solo lectura.
+- **D93–D112** están en el backlog E5 y se mantienen. D113–D128 resuelven los conflictos del diseño (sección 14) y los supuestos abiertos del backlog (sección 16). Las precisiones sobre decisiones anteriores son D117 (sobre D105), D120 (sobre D99), D122 (sobre D48) y D125 (sobre D102 y D112). D129 (decisión del usuario, 2026-10-30) extiende el patrón no fatal de D127 a `IMPEDIMENTOS_URL` y cierra la pregunta abierta 1.
+- **Contratos:** `contracts/integraciones.v1.yaml` es nuevo. Hay cambios aditivos en `comun`, `organizacion` y `gateway`. `npm run contracts:lint` pasa sin advertencias y `npm run contracts:check` cubre 210/210 escenarios (E1, E2, E3, E4, E5 y E7).
+- **Reparto:** `docs/arquitectura/e5-plan-construccion.md`. **ADR:** `adr/0015-integracion-jira-y-archivos.md`.
+
+## Decisiones
+
+| ID | Decisión | Motivo |
+| --- | --- | --- |
+| D113 | **Respuesta de sincronizar e importar.** `POST …/jira/sincronizaciones` y `POST …/archivos/importaciones` responden 200 con la `Ejecucion` cerrada. Su `id` es el `ejecucionId`, y la respuesta trae los seis contadores, `resultado`, `codigoError`, `mensajeError`, `sugerencias`, `hayMas` y `continuarDesde`. El POST no trae las filas: las listas «creadas», «actualizadas», «omitidas» y «con error» se cargan bajo demanda con `GET /v1/integraciones/ejecuciones/{id}/detalle?resultado=…` (25 por página). Un error de estructura al importar responde 422 con `ErrorArchivo.ejecucionId`, que identifica la ejecución `FALLIDA` registrada. En la vista previa, `ejecucionId` es `null` | Conflicto 2. Mantiene la respuesta del POST acotada aunque el archivo tenga 500 filas |
+| D114 | **Una sola petición, sin progreso real, que termina antes de 10 s.**<br>• El presupuesto (`INTEGRACIONES_PRESUPUESTO_MS`, 8000) se mide desde que llega la petición.<br>• Cada llamada externa usa como tiempo límite el menor entre el suyo y lo que queda de presupuesto: 3 s para cada página de Jira (`JIRA_TIEMPO_LIMITE_MS`) y 5 s para cada lote de Organización (`ORGANIZACION_TIMEOUT_MS`).<br>• Con menos de 1 s de presupuesto no se inicia otra llamada y la ejecución termina `INCOMPLETA` con `PRESUPUESTO_DE_TIEMPO`.<br>• Un lote de Organización cortado por tiempo no se cuenta en `leidas`. Repetir es seguro: lo que alcanzó a escribirse queda `SIN_CAMBIOS`.<br>• Las filas de detalle se insertan al terminar cada lote, no al final. Así, si Vercel corta la función, lo hecho queda registrado y la siguiente ejecución lo cierra como `INTERRUMPIDA` con los contadores calculados desde el detalle.<br>• No hay sondeo de progreso ni cancelación: el portal muestra una espera indeterminada.<br>• `maxDuration` de las funciones de Integraciones y del gateway es 30 s; el margen protege, pero no se usa | Conflicto 3, D96. El techo real queda en presupuesto + cierre (< 10 s), sin depender de la duración del plan |
+| D115 | **`SIN_RESPUESTA` es un código solo del portal.** Si `POST` de sincronización o importación termina en error de red, timeout, 502, 504 o 503 `SERVICIO_NO_DISPONIBLE`, el portal no sabe el resultado. En ese caso muestra «No recibimos respuesta del servidor. La operación pudo haberse completado: revisa el Historial antes de reintentar.», consulta `GET /v1/integraciones/estado` y, si encuentra una ejecución iniciada después del clic, la muestra. No está en ningún contrato ni en ninguna respuesta del servidor, y las pruebas de API no lo afirman. El gateway usa `INTEGRACIONES_TIMEOUT_MS` (12 s) para estas rutas, así que no corta antes que el servicio | Conflicto 4 |
+| D116 | **El campo del token se vacía después de cada intento,** con éxito o con error, y al desmontar el formulario. Si ya hay un token guardado y descifrable, dejar el campo vacío significa «conservar». En la primera configuración, después de un error hay que volver a escribirlo. El campo es `password`, con `autocomplete="new-password"`, sin botón «mostrar», y nunca pasa por `localStorage`, `sessionStorage`, la URL ni la consola | Conflicto 5. E5-F01-T03 afirma que el token no queda en la página |
+| D117 | **Sugerencias estructuradas** (precisa D105). La ejecución y `ResultadoPruebaJira.error` traen `sugerencias[]`, un enum ordenado cuya primera sugerencia es la acción principal (tabla en `CodigoErrorIntegracion`).<br>• Las fallas de Jira sugieren además `IMPORTAR_ARCHIVO`.<br>• Credencial inválida, sitio o proyecto: `IR_A_CONEXION` como acción principal y luego `IMPORTAR_ARCHIVO`.<br>• **`ORGANIZACION_NO_DISPONIBLE` nunca sugiere importar un archivo**, porque el archivo también escribe a través de Organización: en Jira sugiere `REINTENTAR` y en archivo `IMPORTAR_MISMO_ARCHIVO`.<br>El portal convierte las sugerencias en enlaces solo para el Administrador | Conflictos 6 y 7 |
+| D118 | **Una importación `INCOMPLETA` ofrece reintentar el mismo archivo.** No trae `continuarDesde`: su sugerencia es `IMPORTAR_MISMO_ARCHIVO`, el portal conserva el archivo en memoria y muestra `boton-importar-de-nuevo`, y lo ya importado queda `SIN_CAMBIOS`. Se agrega el caso E5-F03-T14 (instancia I4, archivo de 500 filas) | Conflicto 8 |
+| D119 | **Etiquetas y plantilla.**<br>• `EN_CURSO` se muestra como «En curso» e `INTERRUMPIDA` como «Interrumpida».<br>• Las advertencias se muestran con los textos de `AdvertenciaFila` en `comun.v1.yaml`, tomados del diseño 7.3.<br>• La **plantilla CSV se genera en el cliente**, sin endpoint. Usa el encabezado `codigo,titulo,descripcion,prioridad,celula,sprint,qe_correo` y una fila `EJEMPLO-1` con la indicación «Reemplaza esta fila».<br>• Los mensajes de error, motivo y advertencia del portal son constantes indexadas por código | Conflictos 9 y 10 |
+| D120 | **El sprint pertenece a la célula** (precisa D99, misma regla por célula que la semilla de E4).<br>• `Sprint` suma `celulaId` y `GET /v1/catalogos/sprints` acepta el filtro `celulaId`, ambos aditivos. El selector «Sprint de respaldo» muestra solo los de la célula elegida y se limpia al cambiar de célula.<br>• Al guardar la configuración, un sprint de respaldo de otra célula da 422 `CATALOGO_INVALIDO` con `campo: sprintRespaldoId`.<br>• Al crear una HDU desde Jira o desde un archivo, el sprint se busca por nombre **solo entre los de su célula**. En una fila de archivo con una célula distinta de la configurada y sin sprint, el respaldo no sirve: la fila da error `SPRINT_REQUERIDO` (motivo nuevo).<br>• El selector de QE usa el catálogo que ya existe, `GET /v1/catalogos/personas?rol=QE&activo=true` (D54, solo Administrador); no se agrega otro.<br>• Integraciones valida y nombra el destino con `POST /v1/interno/integraciones/destino` de Organización.<br>• `POST /v1/hdu` (manual, E2) no cambia: sigue sin exigir esta regla | Conflicto 12 y regla de E4 |
+| D121 | **«Última completada»** es la ejecución más reciente `EXITOSA` o `CON_ERRORES`. Una `INCOMPLETA` no cuenta. `GET /v1/integraciones/estado` trae `ultimaEjecucion`, `ultimaCompletada`, `enCurso` (con `abandonada` si lleva más de 5 minutos) y, solo para el Administrador, `jiraConfigurado` y `continuar` | Conflicto 15 |
+| D122 | **Neutralización de fórmulas en todas las exportaciones CSV** (OWASP CSV Injection; precisa D48).<br>• Toda celda de texto que empiece con `=`, `+`, `-`, `@`, tabulación (`\t`) o retorno de carro (`\r`) se prefija con una comilla simple (`'`), antes del entrecomillado RFC 4180.<br>• Los números, las fechas ISO y los booleanos que genera el servidor no se prefijan: son tipados, no los escribe un usuario, y así un número negativo sigue siendo un número.<br>• Rige para las exportaciones de Organización (`hdu`, `auditoria-usuarios`), Certificaciones (`bitacora`, `certificados`) e Impedimentos (`impedimentos`, `gestion-impedimentos`), y para cualquier CSV futuro.<br>• E5 no agrega exportaciones. La plantilla del cliente es fija y no lleva datos del usuario.<br>• La **importación** guarda el texto tal como llega (pregunta 4 del backlog E5) y el portal lo muestra como texto. Se neutraliza al exportar, no al importar.<br>**Efecto sobre lo certificado:** ninguno sobre los resultados esperados. Los tres generadores (`services/*/src/infraestructura/csv/generador-csv.ts`) ya aplican la regla desde E7 y E4, pero no era una decisión y solo Organización la prueba (`e7-reglas.test.ts`). Desde ahora es obligatoria y verificable: hay una prueba unitaria por servicio y una de API por exportación (`q360-qa`, E5-B04-T15), con un título y un motivo que empiezan con cada uno de los 6 caracteres. E7-B04-T09 (10 columnas y 4 filas de CEL-A) y las exportaciones de E4 no cambian, porque ningún dato del fixture empieza con esos caracteres. `q360-qa` lo confirma con una búsqueda antes de certificar | Pedido del usuario. Un CSV del Auditor abierto en Excel no debe ejecutar fórmulas que haya escrito un usuario |
+| D123 | **Modelo de datos de Integraciones.** Detalle en «Modelo de datos» más abajo. Solo usa el esquema `integraciones`, sin llaves foráneas a otro esquema. La configuración es una sola fila. `evento_configuracion` y `detalle_ejecucion` son de solo inserción. `ejecucion_integracion` se cierra una sola vez y no se puede modificar después (disparador). Hay una sola ejecución activa (índice único parcial). No hay `DELETE` | D104, D24 y regla no negociable 1 |
+| D124 | **Organización.**<br>• **Columnas nuevas** en `historia_usuario`: `origen`, `clave_externa` y `url_externa`. `descripcion` ya existe. Sin llaves foráneas entre esquemas.<br>• **Auditoría:** acción nueva `ACTUALIZAR_HDU`.<br>• **Internos nuevos:** `POST /v1/interno/integraciones/destino` y `POST /v1/interno/integraciones/hdu/upsert`.<br>• **Detalle de HDU:** `GET /v1/hdu/{id}` suma `descripcion`, `origen`, `claveExterna` y `urlExterna`, todos anulables y aditivos.<br>• **Sin cambios:** listados, bandejas y CSV.<br>• **Enlace a Jira:** el portal puede mostrar «Abrir en Jira» con `urlExterna`, que arma Integraciones con el sitio ya validado (D95) | D97, D100, D108 |
+| D125 | **Modo estricto y lotes** (precisa D102 y D112).<br>• **Modo estricto:** primero se simula el archivo completo, lote por lote, con `soloSimular: true`. Si hay al menos una fila con error, no se escribe nada y la ejecución queda 200 `FALLIDA` con `MODO_ESTRICTO`. Si no hay errores, se escribe en lotes con `estricto: true`, y cada lote es una sola transacción en Organización.<br>• **Modo normal:** cada fila es su propia transacción.<br>• **Ventana de carrera:** si entre la simulación y la escritura alguien crea una HDU con el mismo código, el lote que la contiene falla completo y queda `INCOMPLETA`. Los lotes anteriores no se revierten, porque no hay transacciones entre servicios. Repetir el archivo es seguro. El riesgo se acepta como en la pregunta abierta 1 de E4 | Atomicidad posible sin transacciones distribuidas. E5-B03-T09 y E5-F03-T08 se cumplen |
+| D126 | **Autorización en Integraciones.**<br>• Cada solicitud consulta `GET /v1/interno/acceso` de Organización con el token propagado y `ORGANIZACION_TIMEOUT_MS` (5 s). Ni el rol ni el estado activo salen del token (D4).<br>• **Escrituras** (configurar, probar, sincronizar, vista previa, importar): solo `ADMINISTRADOR`.<br>• **Lecturas del historial:** `ADMINISTRADOR`, `QE` y `AUDITOR`.<br>• **Detalle para el QE:** una sola llamada a `GET /v1/interno/hdu/ambito` (D106). Las filas con error se le muestran con `titulo: null` y `referencia: null`.<br>• **Ejecución inexistente:** 404 al Administrador y al Auditor, 403 al resto.<br>• **Organización caída antes de empezar:** 503 sin ejecución. **Si cae durante la ejecución:** `INCOMPLETA` (o `FALLIDA` si no se procesó nada) con `ORGANIZACION_NO_DISPONIBLE`.<br>• Toda escritura de HDU pasa por el upsert de Organización con el token del Administrador. `X-Q360-Servicio-Token` solo sirve para la semilla | Reglas no negociables 1–3; igual que D18, D47 y D89 |
+| D127 | **Gateway → Integraciones** (aprende del incidente de E4, en el que una variable obligatoria tumbó el gateway completo).<br>• **Rutas:** se declaran una por una las 10 de `integraciones.v1.yaml` y se retira `integraciones{/*ruta}` de `NoImplementadoController`. `/v1/interno/*` no se publica.<br>• **`INTEGRACIONES_URL`:** con `NODE_ENV=production`, si falta o no es una URL válida, el gateway **arranca igual**. Solo `/v1/integraciones/*` responde 503 `SERVICIO_NO_DISPONIBLE`, y el registro dice una vez «INTEGRACIONES_URL no configurada o inválida», sin el valor. En desarrollo, el valor por defecto es `http://localhost:3004`.<br>• **Tiempo límite:** `INTEGRACIONES_TIMEOUT_MS`, 12 s por defecto.<br>• **Cuerpo:** hasta 1,5 MB solo en `/v1/integraciones/archivos/*`. Si lo supera, responde 413 `ARCHIVO_MUY_GRANDE` con `ErrorArchivo`. El resto de las rutas conserva su límite.<br>• Las escrituras usan el límite de tasa de escritura que ya existe | D85, D110. Integraciones es opcional para el resto del portal: su ausencia no debe afectar a E1–E4 ni a E7 |
+| D128 | **Despliegue gratuito** (precisa D110).<br>• **Proyecto:** quinto proyecto de Vercel, `quality360-integraciones`, con raíz `services/integraciones` y el mismo `vercel.json` y `api/index.mjs` que Impedimentos (`maxDuration: 30`, región `gru1`).<br>• **`INTEGRACIONES_LLAVE_CIFRADO`:** son 32 bytes aleatorios en Base64 (44 caracteres) y van **solo** en las variables de Vercel de ese proyecto, en el entorno Production. En local se usa otra, generada por `npm run local` en el `.env` (no se versiona). Si la llave falta o no decodifica a 32 bytes, **el servicio arranca igual**: `/health` responde 200 y solo las operaciones que cifran o descifran responden 503 `LLAVE_CIFRADO_NO_DISPONIBLE`.<br>• **Cambio de llave:** cambiarla deja el token como `TOKEN_NO_DESCIFRABLE` y hay que volver a ingresarlo. `llave_version` queda para una rotación futura.<br>• **Gateway:** suma `INTEGRACIONES_URL`. Organización no necesita variables nuevas.<br>• **Migraciones y RLS:** se aplican al cerrar la corrida (D13): `20261029000000_e5_origen_hdu` (Organización), `20261029000000_e5_integracion_jira` (Integraciones) y `infrastructure/nube/005_rls_integraciones_nube.sql` | D94, D110; misma lección que D127 |
+| D129 | **`IMPEDIMENTOS_URL` deja de ser obligatoria en el gateway** (decisión del usuario, 2026-10-30; precisa D85 y cierra la pregunta abierta 1).<br>• Sigue el mismo patrón que `INTEGRACIONES_URL` (D127): con `NODE_ENV=production`, si falta o no es una URL `http`/`https` válida, el gateway **arranca igual**. Solo las rutas de Impedimentos del gateway (las de E4 en `gateway.v1.yaml`) responden 503 `SERVICIO_NO_DISPONIBLE`, sin llamar a ningún servicio. El registro dice una vez «IMPEDIMENTOS_URL no configurada o inválida», sin el valor. En desarrollo, el valor por defecto sigue siendo `http://localhost:3003`.<br>• Una URL inválida recibe el mismo trato en cualquier entorno, para ambas variables. Los tiempos límite inválidos (`*_TIMEOUT_MS`) sí impiden arrancar: no son la dirección de un servicio opcional.<br>• La sesión se verifica antes: sin token, esas rutas siguen respondiendo 401.<br>• **Sin cambios:** el cierre de HDU lo decide Organización con su propia `IMPEDIMENTOS_URL` (D60, D91), y sus 409 y 503 llegan tal cual. `/health` responde 200.<br>• **Cambia lo documentado** en `GUIA-VERCEL.md`, que la daba por obligatoria («el gateway no arranca sin ella»), y la prueba del gateway que esperaba el error al arrancar | Incidente de E4: una variable obligatoria tumbó el gateway completo y con él todo el portal. Impedimentos, como Integraciones, es una capacidad que puede faltar sin afectar a E1–E3, E5 ni E7 |
+
+## Modelo de datos (lo escribe `q360-backend`)
+
+**Migración de Integraciones** `services/integraciones/prisma/migrations/20261029000000_e5_integracion_jira/migration.sql` (Prisma con `@map`, como en los otros servicios). Las restricciones CHECK, los índices parciales, los disparadores y los `REVOKE` van en SQL y se documentan en `schema.prisma`.
+
+**`configuracion_jira`** (una fila; columnas de la sección 6.1 del backlog E5):
+- `id smallint PRIMARY KEY CHECK (id = 1)`.
+- `token_cifrado`, `token_iv` y `token_tag` son `bytea NOT NULL`, con CHECK `octet_length(token_iv) = 12` y `octet_length(token_tag) = 16`. El dato asociado del cifrado es `q360:jira:token:v1` y `llave_version` es 1. `token_ultimos4 char(4)` es lo único del token que se guarda en claro.
+- `estado_conexion` tiene un CHECK con `SIN_PROBAR`, `OK` y `FALLIDA`. `celula_id`, `qe_responsable_id` y `sprint_respaldo_id` son UUID sin llave foránea (D24).
+- Una prueba fallida en `PUT` solo actualiza `estado_conexion`, `ultima_prueba_en` y `ultima_prueba_codigo` (D112). Sin una fila previa, no inserta nada.
+- `REVOKE DELETE`.
+
+**`evento_configuracion`** (solo inserción):
+- Columnas: `id_evento uuid PK DEFAULT gen_random_uuid()`, `actor_id uuid`, `actor_nombre varchar(150)`, `fecha timestamptz DEFAULT now()`, `campos_cambiados jsonb NOT NULL` (CHECK `jsonb_typeof = 'array'`, solo nombres de campo), `token_cambiado boolean NOT NULL` y `resultado_prueba varchar(40) NOT NULL`.
+- Índice `(fecha DESC)`.
+- `REVOKE UPDATE, DELETE`.
+
+**`ejecucion_integracion`** (columnas de la sección 6.1, más `duracion_ms integer NULL`):
+- CHECK de catálogo para `origen` y `resultado` (6 valores).
+- `ejecucion_cierre_ck`: `(resultado = 'EN_CURSO') = (terminada_en IS NULL)`.
+- `ejecucion_contadores_ck`: `terminada_en IS NULL OR creadas + actualizadas + omitidas + con_error = leidas`.
+- `ejecucion_archivo_ck`: `origen = 'JIRA' OR (archivo_nombre IS NOT NULL AND archivo_tamano IS NOT NULL AND archivo_huella ~ '^[0-9a-f]{64}$')`.
+- `ejecucion_continuar_ck`: `origen = 'JIRA' OR (hay_mas = false AND continuar_desde IS NULL)`.
+- Índice único parcial `ejecucion_en_curso_key ON ejecucion_integracion ((true)) WHERE terminada_en IS NULL`. Si el `INSERT` lo viola, la respuesta es 409 `INTEGRACION_EN_CURSO`.
+- Al iniciar, en la misma transacción que el `INSERT`, se cierran como `INTERRUMPIDA` las ejecuciones `EN_CURSO` con `iniciada_en` de hace más de `INTEGRACIONES_EN_CURSO_MAX_MS` (300000 por defecto, D104). Sus contadores se calculan desde `detalle_ejecucion`.
+- Disparador `ejecucion_cerrada_inmutable` (`BEFORE UPDATE`): si `OLD.terminada_en IS NOT NULL`, rechaza; también rechaza cambiar `id_ejecucion`, `origen`, `actor_*` o `iniciada_en`.
+- Índices: `(iniciada_en DESC)`, `(origen, iniciada_en DESC)` y `(resultado, iniciada_en DESC)`.
+- `REVOKE DELETE`.
+
+**`detalle_ejecucion`** (solo inserción; columnas de la sección 6.1, más `titulo varchar(200) NULL`):
+- `id_ejecucion` es FK a `ejecucion_integracion`, dentro del mismo esquema, con `ON DELETE RESTRICT`.
+- `UNIQUE (id_ejecucion, fila)`.
+- CHECK de `resultado` (4 valores).
+- `detalle_motivo_ck`: `(resultado IN ('OMITIDA','ERROR')) = (motivo IS NOT NULL)`.
+- `detalle_historia_ck`: `resultado NOT IN ('CREADA','ACTUALIZADA') OR id_historia IS NOT NULL`.
+- Disparador `detalle_solo_en_curso` (`BEFORE INSERT`): rechaza filas de una ejecución cerrada.
+- Índices: `(id_ejecucion, resultado, fila)` e `(id_historia)`.
+- `REVOKE UPDATE, DELETE`.
+- `cambios` guarda valores recortados a 200 caracteres. Nunca se guarda el contenido del archivo ni un texto de Jira más allá de `referencia` (estado y responsable).
+
+**Nube:** `infrastructure/nube/005_rls_integraciones_nube.sql` activa RLS sin políticas en las 4 tablas, para que la Data API no las exponga, y repite los `REVOKE`, porque en la nube los privilegios por defecto los vuelven a otorgar, igual que en `004`. Las pruebas E5-B01-T12 y E5-B04-T10 esperan 42501 o el error del disparador.
+
+**Migración de Organización** `services/organizacion/prisma/migrations/20261029000000_e5_origen_hdu/migration.sql`:
+- `ALTER TABLE historia_usuario ADD COLUMN origen varchar(10) NOT NULL DEFAULT 'MANUAL'`, con CHECK `historia_usuario_origen_ck` (`MANUAL`, `JIRA`, `CSV`, `JSON`). Las filas existentes y las de la semilla quedan `MANUAL`.
+- `ADD COLUMN clave_externa varchar(60) NULL` y `ADD COLUMN url_externa varchar(300) NULL`, con CHECK `historia_usuario_externa_ck`: `(clave_externa IS NULL AND url_externa IS NULL) OR origen = 'JIRA'`. Se llenan al crear desde Jira o al vincular desde Jira. Una HDU que no es manual conserva su origen cuando la actualiza otra fuente (D97).
+- Índice `historia_usuario_origen_idx (origen) WHERE origen <> 'MANUAL'`, para la limpieza de QA y las consultas.
+- `ALTER TYPE "AccionAuditoria" ADD VALUE 'ACTUALIZAR_HDU'`. No se usa en la misma transacción en que se agrega.
+- Prisma: `origen String @default("MANUAL") @db.VarChar(10)`, `claveExterna String? @map("clave_externa") @db.VarChar(60)` y `urlExterna String? @map("url_externa") @db.VarChar(300)`.
+
+Certificaciones e Impedimentos no tienen migración en esta corrida. Solo suman la prueba de D122.
+
+## Resolución de los conflictos del diseño (sección 14)
+
+| # | Resolución |
+| --- | --- |
+| 1 | Se acepta este orden: checklist → «Descripción y origen» → Impedimentos → Riesgo → Cambiar estado. Ningún testid certificado cambia |
+| 2 | D113 |
+| 3 | D114 |
+| 4 | D115 |
+| 5 | D116 |
+| 6 | D117 |
+| 7 | D117: se muestran las dos sugerencias y «Ir a Conexión» es la acción principal |
+| 8 | D118 |
+| 9 | D119 |
+| 10 | D119 |
+| 11 | Se acepta: «Importar» sigue habilitado en modo estricto con errores y cuando no hay nada que importar, porque se registra la ejecución |
+| 12 | D120 |
+| 13 | Se acepta: no hay diálogo de confirmación al vincular. Basta con `aviso-vincular-activo` y la vista previa |
+| 14 | Se acepta: el servidor responde siempre «Ya hay una sincronización en curso» y el portal usa su texto por pestaña con el mismo `aviso-en-curso` |
+| 15 | D121 |
+| 16 | Se acepta: el historial no tiene exportación y el `AvisoSoloLectura` del Auditor no se cambia |
+| 17 | Se acepta `?ejecucion=<id>` sin ruta propia |
+| 18 | Se acepta. `q360-qa` revisa las pruebas que cuentan secciones de `/hdu/:id` por posición |
+| 19 | Se acepta: la referencia de Jira es visible para QE y Auditor solo en las filas que pueden ver. En las filas con error del QE, `referencia` viene `null` (D126) |
+
+## Supuestos abiertos del backlog E5 (sección 16)
+
+| # | Resolución |
+| --- | --- |
+| 1 | D114: el diseño no depende de la duración del plan |
+| 2 | Se mantiene. E5-MAN-01 verifica `search/jql`, `nextPageToken`, el campo Sprint y el orden por clave. Si el orden no sirve, `continuarDesde` pasa a contener el `nextPageToken` sin que cambie el contrato (es un string de hasta 40 caracteres; si el token de Jira fuera más largo, se reabre el contrato) |
+| 3 | Se confirma: el Líder QA no ve el historial |
+| 4 | D122 |
+| 5 | La tabla `Importacion` no existe en ninguna migración ni SQL. `q360-integraciones` corrige `infrastructure/seed/mvp/README.md` |
+| 6 | Se confirma: un proyecto y una célula por configuración |
+
+## Pruebas certificadas afectadas (sección 9 del backlog E5)
+
+| Prueba | Qué pasa | Dueño |
+| --- | --- | --- |
+| `e1-f02-portal-qe.spec.ts` `[E1-F02#3]` y su prueba unitaria | El menú del QE pasa a `["Bandeja","Equipo","Historias supervisadas","Impedimentos","Integraciones","Perfil"]` | `q360-qa`, `q360-frontend` |
+| Las de E1-F07/F08 y E7-F05 que afirmen el menú exacto del Administrador | Pasa a `Bandeja, Usuarios, Supervisión, Integraciones, Perfil` | `q360-qa` |
+| E7-F06-T07 | Recorre también la 6.ª pestaña («Integraciones») y no encuentra `button[type=submit]` | `q360-qa` |
+| Las del gateway que afirmen 501 en `/v1/integraciones/*` | Ahora reenvían al servicio, o responden 503 sin `INTEGRACIONES_URL` | `q360-seguridad-gateway`, `q360-qa` |
+| `tests/support/contrato.ts` | Carga también `integraciones.v1.yaml`. Con esquema estricto, `HduDetalleBase` y `Sprint` aceptan los campos nuevos | `q360-qa` |
+| Suites de E7 que cuentan HDU | Necesitan la limpieza de la sección 9 (HDU con `origen <> 'MANUAL'` y `integraciones.*`) después de cada archivo E5 | `q360-qa` |
+
+## Trazabilidad E5
+
+| Capacidad | Frontend | Backend | Contrato |
+| --- | --- | --- | --- |
+| Configurar y proteger la credencial | E5-F01 | E5-B01 | `GET\|PUT /v1/integraciones/jira/configuracion`, `POST …/probar`, `GET …/eventos`, `POST /v1/interno/integraciones/destino`, `GET /v1/catalogos/{sprints,personas}` |
+| Sincronizar con Jira | E5-F02 | E5-B02 | `POST /v1/integraciones/jira/sincronizaciones`, `POST /v1/interno/integraciones/hdu/upsert` |
+| Importar CSV/JSON | E5-F03 | E5-B03 | `POST /v1/integraciones/archivos/{vista-previa,importaciones}` |
+| Historial y detalle | E5-F04 | E5-B04 | `GET /v1/integraciones/{ejecuciones, ejecuciones/{id}, ejecuciones/{id}/detalle, estado}`, `GET /v1/interno/hdu/ambito` |
+| Descripción y origen en el detalle | E5-F02 | E5-B02 | `GET /v1/hdu/{id}` |
+
+## Preguntas abiertas
+
+1. ~~**`IMPEDIMENTOS_URL` obligatoria.**~~ Resuelta por D129 (decisión del usuario): `IMPEDIMENTOS_URL` sigue el patrón de D127 en el gateway; sin ella, solo las rutas de E4 responden 503. `GUIA-VERCEL.md` ya lo refleja.
+2. **Regla sprint–célula en el alta manual.** D120 la exige solo a las HDU que llegan por integración. Extenderla a `POST /v1/hdu` cambiaría E2-B01, que ya está certificada.
+3. **Carrera en el modo estricto (D125).** Si se necesita atomicidad completa para archivos de más de 25 filas, habría que admitir lotes de hasta 500 en una transacción, con un límite de tiempo propio. Hoy no se justifica.

@@ -23,7 +23,11 @@ info:
       usuario y 2 s de tiempo límite (`IMPEDIMENTOS_URL`, `IMPEDIMENTOS_TIMEOUT_MS`).
     - Integraciones: carga semilla con `credencialServicio` en
       `/v1/interno/carga/*` y en las operaciones que declaran `SERVICIO` en
-      `x-roles`.
+      `x-roles`. Desde E5 (D100, D126) también autoriza con
+      `/v1/interno/acceso` y `/v1/interno/hdu/ambito`, valida el destino con
+      `POST /v1/interno/integraciones/destino` y escribe HDU solo con
+      `POST /v1/interno/integraciones/hdu/upsert`, siempre con el token del
+      usuario (nunca con la credencial de servicio).
 
     **Reglas que aplica en cada solicitud**
     - Identidad desde el token verificado (`sub`); rol y `activo` desde su base
@@ -136,7 +140,7 @@ paths:
         Para `LIDER_QA`, `ambito.celulasIds` trae sus células vigentes (D47);
         Certificaciones exige `rol: AUDITOR` en `/v1/auditor/*`.
       x-roles: [ADMINISTRADOR, QE, ANALISTA_QA, LIDER_QA, AUDITOR]
-      x-hdu: [E1-B02#2, E1-B02#3, E7-B02#1, E7-B04#2, E4-B04#2]
+      x-hdu: [E1-B02#2, E1-B02#3, E7-B02#1, E7-B04#2, E4-B04#2, E5-B01#3, E5-B04#2]
       responses:
         '200':
           description: Resolución de acceso.
@@ -233,7 +237,7 @@ paths:
         vigentes; QE y Analista QA → su ámbito de E2. Sin caché. Usuario
         inactivo o sin registro → 403.
       x-roles: [ADMINISTRADOR, QE, ANALISTA_QA, LIDER_QA, AUDITOR]
-      x-hdu: [E7-B02#1, E7-B02#2, E7-B03#1, E4-F02#1, E4-B04#2]
+      x-hdu: [E7-B02#1, E7-B02#2, E7-B03#1, E4-F02#1, E4-B04#2, E5-F04#3, E5-B04#2]
       responses:
         '200':
           description: Ámbito de lectura.
@@ -359,6 +363,112 @@ paths:
                 properties:
                   id:
                     $ref: '#/components/schemas/Uuid'
+        '400':
+          $ref: '#/components/responses/Validacion'
+        '401':
+          $ref: '#/components/responses/NoAutenticado'
+        '403':
+          $ref: '#/components/responses/AccesoDenegado'
+        '500':
+          $ref: '#/components/responses/ErrorInterno'
+
+  # ------------------------------------------------- E5 · integraciones (D100, D120, D124)
+  /v1/interno/integraciones/destino:
+    post:
+      operationId: resolverDestinoIntegracion
+      tags: [Acceso interno]
+      summary: Validar y nombrar el destino de las HDU importadas
+      description: |
+        Es una lectura; usa POST para enviar el destino. Integraciones la
+        llama con el token del Administrador al guardar la configuración de
+        Jira (422 si no es válido) y al leerla (para mostrar nombres y
+        `avisosDestino`). Reglas (D99, D120): la célula existe; el sprint de
+        respaldo existe **y pertenece a la célula**; el QE existe, está activo
+        y tiene rol QE. Responde 200 con `errores[]` vacío si todo es válido, y
+        200 con los errores por campo si no; no escribe nada. Solo
+        Administrador activo (403 al resto).
+      x-roles: [ADMINISTRADOR]
+      x-hdu: [E5-F01#1, E5-B01#1]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: './comun.v1.yaml#/components/schemas/DestinoHdu'
+      responses:
+        '200':
+          description: Destino resuelto.
+          content:
+            application/json:
+              schema:
+                $ref: './comun.v1.yaml#/components/schemas/DestinoHduResuelto'
+        '400':
+          $ref: '#/components/responses/Validacion'
+        '401':
+          $ref: '#/components/responses/NoAutenticado'
+        '403':
+          $ref: '#/components/responses/AccesoDenegado'
+        '500':
+          $ref: '#/components/responses/ErrorInterno'
+
+  /v1/interno/integraciones/hdu/upsert:
+    post:
+      operationId: upsertHduIntegracion
+      tags: [Acceso interno]
+      summary: Crear o actualizar HDU desde una fuente externa
+      description: |
+        Única vía por la que Integraciones escribe HDU (D100). Exige el token
+        de un **Administrador activo** propagado por Integraciones: QE, Líder,
+        Analista, Auditor o la credencial de servicio (`X-Q360-Servicio-Token`)
+        → 403, sin token → 401, aunque `PERMITIR_CARGA_SEMILLA` sea `true`.
+        Lote de 1 a 25 filas; 26 o más → 400 `VALIDACION` (E5-B03-T13).
+
+        Por cada fila, en este orden:
+        1. Reglas de la fila: código (`^[A-Za-z0-9][A-Za-z0-9._-]*$`, máx. 40)
+           → `CODIGO_INVALIDO`; título vacío → `TITULO_VACIO`; más de 200 →
+           `TITULO_LARGO`.
+        2. Busca la HDU por `codigo_normalizado` (sin distinguir mayúsculas,
+           D97).
+        3. **Existe:** `CERRADA` → `OMITIDA` `HDU_CERRADA`; origen `MANUAL` sin
+           `vincularExistentes` → `OMITIDA` `HDU_MANUAL_EXISTENTE`; si no,
+           compara `titulo`, `descripcion` y `prioridad` (un valor vacío o
+           `null` nunca borra, D98) → `OMITIDA` `SIN_CAMBIOS` o `ACTUALIZADA`
+           con `cambios`. Al vincular una manual, su `origen` pasa al de la
+           solicitud (y `clave_externa`/`url_externa` si es Jira). Nunca toca
+           estado, analista, QE, célula, sprint, checklist ni impedimentos;
+           `celula`, `sprint` y `qeCorreo` de la fila se ignoran. Audita
+           `ACTUALIZAR_HDU` (entidad `HDU`, antes y después).
+        4. **No existe:** célula = `celula` de la fila o la del destino
+           (`CELULA_NO_ENCONTRADA`); sprint por nombre **solo entre los de esa
+           célula**; sin coincidencia: `sprintNoEncontrado` decide
+           (`RESPALDO` con advertencia o error `SPRINT_NO_ENCONTRADO`); sin
+           nombre: el de respaldo si es de esa célula, si no
+           `SPRINT_REQUERIDO` (D120). QE = `qeCorreo` o el del destino
+           (`QE_INVALIDO` si no es QE activo). Crea en `PENDIENTE`, sin
+           analista, con `creado_por` = el Administrador, `origen`, historial
+           inicial y auditoría `CREAR_HDU` (con `origen`), por el mismo camino
+           que `POST /v1/hdu` (E2-B01).
+
+        Cada fila es una transacción; con `estricto: true`, el lote completo
+        es una transacción (todo o nada, D125). `soloSimular: true` hace lo
+        mismo sin escribir ni auditar. Un fallo inesperado en una fila →
+        `ERROR` `ERROR_INTERNO` sin afectar a las demás. No llama a
+        Certificaciones ni a Impedimentos.
+      x-roles: [ADMINISTRADOR]
+      x-hdu: [E5-B02#1, E5-B03#2, E5-B03#3]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: './comun.v1.yaml#/components/schemas/SolicitudUpsertHdu'
+      responses:
+        '200':
+          description: Resultado por fila, en el orden pedido.
+          content:
+            application/json:
+              schema:
+                $ref: './comun.v1.yaml#/components/schemas/ResultadoUpsertHdu'
         '400':
           $ref: '#/components/responses/Validacion'
         '401':
@@ -1478,9 +1588,11 @@ paths:
       description: |
         Usuarios por rol, ordenados por nombre, para elegir al QE de una
         reasignación (D54). Solo el Administrador, porque trae correos. Por
-        defecto solo activos.
+        defecto solo activos. E5 (D120): es también el catálogo de «QE
+        responsable por defecto» de la configuración de Jira
+        (`?rol=QE&activo=true`); no se agrega otro.
       x-roles: [ADMINISTRADOR]
-      x-hdu: [E7-B05#1]
+      x-hdu: [E7-B05#1, E5-F01#1]
       parameters:
         - name: rol
           in: query
@@ -1514,8 +1626,15 @@ paths:
       operationId: listarSprints
       tags: [Catálogos]
       summary: Sprints
+      description: E5 (D120). Cada sprint trae `celulaId` y el filtro opcional `celulaId` deja solo los de esa célula. Sin el filtro, la respuesta es la certificada más ese campo.
       x-roles: [ADMINISTRADOR, QE, ANALISTA_QA, LIDER_QA, AUDITOR]
-      x-hdu: [E2-F01#1, E2-F03#1, E7-F06#2]
+      x-hdu: [E2-F01#1, E2-F03#1, E7-F06#2, E5-F01#1]
+      parameters:
+        - name: celulaId
+          in: query
+          required: false
+          schema:
+            $ref: './comun.v1.yaml#/components/schemas/Uuid'
       responses:
         '200':
           description: Sprints ordenados por fecha de inicio.
@@ -1629,9 +1748,9 @@ paths:
       operationId: obtenerHdu
       tags: [HDU]
       summary: Detalle de una HDU (sin checklist)
-      description: Fuera de ámbito, o inexistente para QE, Analista QA y Líder QA, → 403. Inexistente para Administrador o Auditor → 404. El gateway agrega el bloque `checklist`. Para Líder QA y Auditor, `permisos` y `transicionesPermitidas` vienen en `false` y vacío (D39).
+      description: Fuera de ámbito, o inexistente para QE, Analista QA y Líder QA, → 403. Inexistente para Administrador o Auditor → 404. El gateway agrega el bloque `checklist`. Para Líder QA y Auditor, `permisos` y `transicionesPermitidas` vienen en `false` y vacío (D39). Desde E5 (D108, D124) trae además `descripcion`, `origen`, `claveExterna` y `urlExterna`.
       x-roles: [ADMINISTRADOR, QE, ANALISTA_QA, LIDER_QA, AUDITOR]
-      x-hdu: [E1-B02#2, E2-F04#1, E2-F04#2, E2-B03#1, E2-B03#2, E7-B02#1, E7-B02#2]
+      x-hdu: [E1-B02#2, E2-F04#1, E2-F04#2, E2-B03#1, E2-B03#2, E7-B02#1, E7-B02#2, E5-F02#1, E5-B02#1]
       responses:
         '200':
           description: Detalle de la HDU.

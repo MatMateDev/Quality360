@@ -73,6 +73,7 @@ enum AccionAuditoria {
   ASIGNAR_CELULAS_LIDER
   EXPORTAR
   REASIGNAR_QE_RESPONSABLE
+  ACTUALIZAR_HDU
 }
 
 /// Rol (modelo de datos: Rol). Catálogo cerrado que carga la migración
@@ -222,6 +223,12 @@ model Hdu {
   creadoPorTipo       TipoActor    @map("creado_por_tipo")
   creadoPorId         String       @map("creado_por_id")
   creadoPorNombre     String       @map("creado_por_nombre")
+  /// E5 (D97, D124): `MANUAL` (las de E2 y la semilla), `JIRA`, `CSV` o `JSON`. CHECK
+  /// `historia_usuario_origen_ck` y `historia_usuario_externa_ck` en la migración
+  /// 20261029000000_e5_origen_hdu; `clave_externa` y `url_externa` solo con origen `JIRA`.
+  origen              String       @default("MANUAL") @db.VarChar(10)
+  claveExterna        String?      @map("clave_externa") @db.VarChar(60)
+  urlExterna          String?      @map("url_externa") @db.VarChar(300)
 
   celula               Celula                    @relation(fields: [celulaId], references: [id])
   qeResponsable        Usuario                   @relation("HduQeResponsable", fields: [qeResponsableId], references: [id])

@@ -1,7 +1,7 @@
 /** Traduce filas de Prisma a los tipos del dominio. Vive solo en infraestructura. */
 import type { Hdu as HduPrisma, Usuario as UsuarioPrisma } from '#prisma';
 
-import { ROLES, type Actor, type Hdu, type Rol, type Usuario } from '../../dominio/tipos.js';
+import { ROLES, type Actor, type Hdu, type OrigenHdu, type Rol, type Usuario } from '../../dominio/tipos.js';
 
 /** El rol vive en la tabla `rol` (modelo de datos); toda lectura de usuario lo incluye. */
 export const INCLUYE_ROL = { rol: { select: { nombre: true } } } as const;
@@ -48,5 +48,9 @@ export function aHduDominio(fila: HduConSprint): Hdu {
     estadoActualizadoEn: fila.estadoActualizadoEn,
     creadoPor,
     creadoEn: fila.creadoEn,
+    descripcion: fila.descripcion,
+    origen: fila.origen as OrigenHdu,
+    claveExterna: fila.claveExterna,
+    urlExterna: fila.urlExterna,
   };
 }
