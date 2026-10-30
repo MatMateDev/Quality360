@@ -65,10 +65,10 @@ function leerUrl(valor: string | undefined, porDefecto: string, nombre: string):
   try {
     url = new URL(crudo);
   } catch {
-    throw errorInterno(`${nombre} no es una URL válida: ${crudo}`);
+    throw errorInterno(`${nombre} no es una URL válida (valor omitido por seguridad)`);
   }
   if (url.protocol !== 'http:' && url.protocol !== 'https:') {
-    throw errorInterno(`${nombre} debe ser http o https: ${crudo}`);
+    throw errorInterno(`${nombre} debe ser http o https (valor omitido por seguridad)`);
   }
   return sinBarraFinal(url.toString());
 }
@@ -77,7 +77,7 @@ function leerEntero(valor: string | undefined, porDefecto: number, nombre: strin
   if (valor === undefined || valor.trim().length === 0) return porDefecto;
   const numero = Number(valor);
   if (!Number.isInteger(numero) || numero < minimo) {
-    throw errorInterno(`${nombre} debe ser un entero >= ${minimo}: ${valor}`);
+    throw errorInterno(`${nombre} debe ser un entero >= ${minimo} (valor omitido por seguridad)`);
   }
   return numero;
 }

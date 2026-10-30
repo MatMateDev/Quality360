@@ -93,7 +93,6 @@ Para **cada** fila de la tabla del inicio, en este orden (certificaciones, imped
 | `SUPABASE_URL` | `https://ufdnrrpeznwyargzgopu.supabase.co` (el verificador JWT se configura igual que en Certificaciones) |
 | `ORGANIZACION_URL` | `https://quality360-organizacion.vercel.app` (ajústala cuando exista) |
 | `CERTIFICACIONES_URL` | URL real de `quality360-certificaciones` |
-| `NODE_ENV` | `production` (hace que se ignore `Q360_FECHA_REFERENCIA`, D90) |
 | `ORGANIZACION_TIMEOUT_MS`, `CERTIFICACIONES_TIMEOUT_MS` | Solo si cambias los valores por defecto (5000 y 2000) |
 | `RIESGO_DIAS_IMPEDIMENTO_ALTO`, `RIESGO_DIAS_SPRINT_ALTO`, `RIESGO_AVANCE_ALTO`, `RIESGO_DIAS_SPRINT_MEDIO`, `RIESGO_AVANCE_MEDIO` | Solo si cambias los umbrales por defecto (D67) |
 | `EXPORTACION_LIMITE_FILAS` | Solo si cambias el límite por defecto (50.000) |
@@ -187,6 +186,8 @@ En **Supabase > Authentication > URL Configuration**, pon la URL del portal como
 | Organización falla con error de conexión a la base | Contraseña, host del pooler o formato de `DATABASE_URL` incorrectos | Revisa el paso 2: usuario `svc_organizacion.ufdnrrpeznwyargzgopu` y puerto `6543` |
 | La primera carga tarda unos segundos | Arranque en frío de las funciones | Es normal; las siguientes solicitudes son rápidas |
 | El gateway responde 500 en todas las rutas tras desplegar E4 | Falta `IMPEDIMENTOS_URL` en el gateway (es obligatoria en producción) | Agrégala y haz Redeploy |
+| El build falla con «Cannot find type definition file for 'node'» | La variable `NODE_ENV=production` hace que `npm ci` omita las dependencias de desarrollo | Elimina `NODE_ENV` del proyecto: Vercel ya ejecuta las funciones en producción |
+| Un servicio responde 503 y el log dice «… debe ser http o https» o «no es una URL http(s) válida» | La variable `*_URL` tiene otro valor, por ejemplo la URL de la base de datos | Pon la dirección `https://…vercel.app` del servicio. Si pegaste una URL de base de datos, cambia esa contraseña en Supabase |
 | Cerrar una HDU responde 503 «No pudimos verificar los impedimentos de la HDU» | `IMPEDIMENTOS_URL` falta o está mal en Organización, o Impedimentos no responde | Corrige la variable en Organización, revisa `https://<impedimentos>/health` y haz Redeploy |
 | La semilla responde 404 | `PERMITIR_CARGA_SEMILLA` no está en `true` o no se hizo Redeploy | Activa la variable y redespliega |
 
