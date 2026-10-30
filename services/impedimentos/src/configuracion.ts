@@ -44,14 +44,14 @@ function requerido(valor: string | undefined, nombre: string): string {
 function leerEntero(valor: string | undefined, porDefecto: number, nombre: string, minimo = 1): number {
   if (valor === undefined || valor.trim().length === 0) return porDefecto;
   const numero = Number(valor);
-  if (!Number.isInteger(numero) || numero < minimo) throw errorInterno(`${nombre} debe ser un entero >= ${minimo}: ${valor}`);
+  if (!Number.isInteger(numero) || numero < minimo) throw errorInterno(`${nombre} debe ser un entero >= ${minimo} (valor omitido por seguridad)`);
   return numero;
 }
 
 function leerPorcentaje(valor: string | undefined, porDefecto: number, nombre: string): number {
   if (valor === undefined || valor.trim().length === 0) return porDefecto;
   const numero = Number(valor);
-  if (!Number.isFinite(numero) || numero < 0 || numero > 100) throw errorInterno(`${nombre} debe estar entre 0 y 100: ${valor}`);
+  if (!Number.isFinite(numero) || numero < 0 || numero > 100) throw errorInterno(`${nombre} debe estar entre 0 y 100 (valor omitido por seguridad)`);
   return numero;
 }
 
@@ -65,7 +65,7 @@ function leerUrl(valor: string | undefined, porDefecto: string, nombre: string):
     const url = new URL(crudo);
     if (url.protocol !== 'http:' && url.protocol !== 'https:') throw new Error('protocolo');
   } catch {
-    throw errorInterno(`${nombre} no es una URL http(s) válida: ${crudo}`);
+    throw errorInterno(`${nombre} no es una URL http(s) válida (valor omitido por seguridad)`);
   }
   return crudo.replace(/\/+$/, '');
 }
@@ -75,7 +75,7 @@ function leerFechaReferencia(valor: string | undefined, entorno: NodeJS.ProcessE
   if (valor === undefined || valor.trim().length === 0) return null;
   const fecha = valor.trim();
   if (!/^\d{4}-\d{2}-\d{2}$/.test(fecha) || Number.isNaN(new Date(`${fecha}T00:00:00Z`).getTime())) {
-    throw errorInterno(`Q360_FECHA_REFERENCIA debe ser AAAA-MM-DD: ${valor}`);
+    throw errorInterno(`Q360_FECHA_REFERENCIA debe ser AAAA-MM-DD (valor omitido por seguridad)`);
   }
   return fecha;
 }

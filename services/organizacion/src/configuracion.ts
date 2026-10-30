@@ -36,7 +36,7 @@ function leerEntero(valor: string | undefined, porDefecto: number, nombre: strin
   if (valor === undefined || valor.trim().length === 0) return porDefecto;
   const numero = Number(valor);
   if (!Number.isInteger(numero) || numero < 1) {
-    throw errorInterno(`${nombre} debe ser un entero >= 1: ${valor}`);
+    throw errorInterno(`${nombre} debe ser un entero >= 1 (valor omitido por seguridad)`);
   }
   return numero;
 }
@@ -51,7 +51,7 @@ function leerUrl(valor: string | undefined, porDefecto: string, nombre: string):
     const url = new URL(crudo);
     if (url.protocol !== 'http:' && url.protocol !== 'https:') throw new Error('protocolo');
   } catch {
-    throw errorInterno(`${nombre} no es una URL http(s) válida: ${crudo}`);
+    throw errorInterno(`${nombre} no es una URL http(s) válida (valor omitido por seguridad)`);
   }
   return crudo.replace(/\/+$/, '');
 }
