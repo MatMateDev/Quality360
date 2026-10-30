@@ -6,7 +6,7 @@ import { codigoHduUnico } from "./unique";
 import { USUARIOS_SEMILLA } from "./usuarios";
 
 /**
- * Entregables del checklist E3, en su orden obligatorio (D15, D17). Espejo de
+ * Entregables del checklist E3, en su orden de presentación (D15; el trabajo es en orden libre, D130). Espejo de
  * `ClaveEntregable` en `contracts/comun.v1.yaml`.
  */
 export const ORDEN_ENTREGABLES = [

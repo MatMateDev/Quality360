@@ -10,19 +10,49 @@ interface ResumenChecklist {
 }
 
 test.describe("E3-B02 · Orden y aprobaciones del checklist", () => {
-  test("[E3-B02#1] rechaza marcar fuera de orden, indicando la dependencia", async ({ request }) => {
+  test("[E3-B02#1] orden libre (D130): acepta marcar con los anteriores pendientes, desmarca sin orden y el certificado sigue exigiendo 1 a 8", async ({ request }) => {
     const equipo = await crearHduAsignadaAAna(request, "E3B02ORD");
+    const tokenAna = equipo.sesionAna.accessToken;
+    const tokenQe = equipo.sesionCarla.accessToken;
+    const leer = async () =>
+      (await api.get<{ entregables: Array<{ clave: string; estado: string }> }>(request, `/v1/hdu/${equipo.hdu.id}/entregables`, { token: tokenQe })).body.entregables;
 
-    // PLAN_PRUEBAS (el anterior) sigue PENDIENTE: no se puede marcar DASHBOARD.
-    const respuesta = await api.post<{ codigo: string; detalles: Array<{ campo: string }> }>(
-      request,
-      `/v1/hdu/${equipo.hdu.id}/entregables/DASHBOARD/marcar`,
-      { token: equipo.sesionAna.accessToken, body: { evidencia: { tipo: "ENLACE", url: "https://evidencia.quality360.local/orden" } } },
-    );
+    // PLAN_PRUEBAS (el anterior) sigue PENDIENTE y aun así se puede marcar DASHBOARD y CASOS_PRUEBA.
+    const marcado = await api.post<{ clave: string; estado: string }>(request, `/v1/hdu/${equipo.hdu.id}/entregables/DASHBOARD/marcar`, {
+      token: tokenAna,
+      body: { evidencia: { tipo: "ENLACE", url: "https://evidencia.quality360.local/orden" } },
+    });
+    expect(marcado.status).toBe(200);
+    expect(marcado.body).toMatchObject({ clave: "DASHBOARD", estado: "POR_APROBAR" });
+    await marcarConEnlace(request, tokenAna, equipo.hdu.id, "CASOS_PRUEBA");
+    let estados = Object.fromEntries((await leer()).map((i) => [i.clave, i.estado]));
+    expect(estados).toMatchObject({ PLAN_PRUEBAS: "PENDIENTE", DASHBOARD: "POR_APROBAR", CASOS_PRUEBA: "POR_APROBAR" });
 
-    expect(respuesta.status).toBe(409);
-    expect(respuesta.body.codigo).toBe("ORDEN_ENTREGABLES");
-    expect(respuesta.body.detalles.some((detalle) => detalle.campo === "PLAN_PRUEBAS")).toBe(true);
+    // Se marca PLAN_PRUEBAS y se desmarca el primero con siguientes marcados: 200.
+    await marcarConEnlace(request, tokenAna, equipo.hdu.id, "PLAN_PRUEBAS");
+    const desmarcado = await api.post(request, `/v1/hdu/${equipo.hdu.id}/entregables/PLAN_PRUEBAS/desmarcar`, {
+      token: tokenAna,
+      body: { motivo: "Prueba E3-B02#1: desmarcar sin seguir el orden." },
+    });
+    expect(desmarcado.status).toBe(200);
+    estados = Object.fromEntries((await leer()).map((i) => [i.clave, i.estado]));
+    expect(estados).toMatchObject({ PLAN_PRUEBAS: "PENDIENTE", DASHBOARD: "POR_APROBAR", CASOS_PRUEBA: "POR_APROBAR" });
+
+    // El certificado sigue exigiendo 1 a 8 aprobados (D19).
+    await aprobarEntregable(request, tokenQe, equipo.hdu.id, "DASHBOARD");
+    const certificado = await api.post<{ codigo: string; detalles: Array<{ campo: string }> }>(request, `/v1/hdu/${equipo.hdu.id}/certificado`, { token: tokenQe });
+    expect(certificado.status).toBe(409);
+    expect(certificado.body.codigo).toBe("ENTREGABLES_PENDIENTES");
+    expect(certificado.body.detalles.map((d) => d.campo)).toContain("PLAN_PRUEBAS");
+    expect(certificado.body.detalles.map((d) => d.campo)).not.toContain("DASHBOARD");
+
+    // Ya no hay error de orden: repetir el marcado es ENTREGABLE_YA_REGISTRADO (E3-B01#2).
+    const repetido = await api.post<{ codigo: string }>(request, `/v1/hdu/${equipo.hdu.id}/entregables/CASOS_PRUEBA/marcar`, {
+      token: tokenAna,
+      body: { evidencia: { tipo: "ENLACE", url: "https://evidencia.quality360.local/orden" } },
+    });
+    expect(repetido.status).toBe(409);
+    expect(repetido.body.codigo).toBe("ENTREGABLE_YA_REGISTRADO");
   });
 
   test("[E3-B02#2] solo el QE responsable aprueba: el analista es rechazado", async ({ request }) => {
