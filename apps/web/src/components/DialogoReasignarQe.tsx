@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useReasignarQeResponsable } from "@/api/hdu";
 import { useUsuarios } from "@/api/usuarios";
 import { ErrorApi } from "@/lib/httpClient";
+import { tamanoLista } from "@/lib/listaDialogo";
 import type { UsuarioResumen } from "@/types/dominio";
 import { DialogoConfirmacion } from "./DialogoConfirmacion";
 
@@ -77,8 +78,14 @@ export function DialogoReasignarQe({ abierto, hduId, codigo, qeActual, onCerrar,
       </p>
       <div className="campo">
         <label htmlFor="selector-qe-destino">QE responsable nuevo</label>
-        <select id="selector-qe-destino" data-testid="selector-qe-destino" value={qeId} onChange={(evento) => setQeId(evento.target.value)}>
-          <option value="">Selecciona un QE</option>
+        <select
+          id="selector-qe-destino"
+          data-testid="selector-qe-destino"
+          className="lista-dialogo"
+          size={tamanoLista(destinos.length)}
+          value={qeId}
+          onChange={(evento) => setQeId(evento.target.value)}
+        >
           {destinos.map((qe) => (
             <option key={qe.id} value={qe.id}>
               {qe.nombre}

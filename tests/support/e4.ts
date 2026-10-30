@@ -35,7 +35,7 @@ export function recargarE4(): void {
   let fuente = readFileSync(path.join(dir, "cargar.mjs"), "utf8");
   const original = "const pagina = exigir(await http(ORG, 'GET', '/v1/hdu?tamanoPagina=100', { cabeceras: admin }), 'listar HDU');";
   if (!fuente.includes(original)) {
-    // DEF-E4-01 quedó corregido en la semilla (commit cdb28be: recorre todas las páginas): ya no hace falta la copia parchada, se ejecuta tal cual.
+    // DEF-E4-01 quedó corregido en la semilla (commit 73816b3: recorre todas las páginas): ya no hace falta la copia parchada, se ejecuta tal cual.
     const directo = spawnSync(process.execPath, ["--env-file-if-exists=infrastructure/seed/mvp/.env.carga", path.join(dir, "cargar.mjs"), "--sin-verificar"], { cwd: RAIZ_REPO, encoding: "utf8" });
     if (directo.status !== 0) throw new Error(`seed:e4 falló: ${directo.stdout}
 ${directo.stderr}`);

@@ -349,6 +349,17 @@ tbody tr:hover {
   border-radius: var(--q360-radio);
 }
 
+/* Lista de selección visible dentro de un diálogo (en vez del desplegable nativo). */
+.campo select.lista-dialogo {
+  padding: 4px;
+  overflow-y: auto;
+}
+
+.campo select.lista-dialogo option {
+  padding: 8px 10px;
+  border-radius: var(--q360-radio);
+}
+
 .campo input[aria-invalid="true"],
 .campo select[aria-invalid="true"],
 .campo textarea[aria-invalid="true"] {

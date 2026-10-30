@@ -58,16 +58,6 @@ export function ordenDe(clave: ClaveEntregable): number {
   return CLAVES_ENTREGABLE.indexOf(clave) + 1;
 }
 
-export function anteriorDe(clave: ClaveEntregable): ClaveEntregable | null {
-  const indice = CLAVES_ENTREGABLE.indexOf(clave);
-  return indice > 0 ? (CLAVES_ENTREGABLE[indice - 1] ?? null) : null;
-}
-
-export function siguienteDe(clave: ClaveEntregable): ClaveEntregable | null {
-  const indice = CLAVES_ENTREGABLE.indexOf(clave);
-  return CLAVES_ENTREGABLE[indice + 1] ?? null;
-}
-
 /** Estado de cada entregable; los que no tienen registro están PENDIENTE. */
 export type EstadosPorClave = ReadonlyMap<ClaveEntregable, EstadoEntregable>;
 
@@ -118,35 +108,22 @@ export function exigirRelacion(relacion: RelacionHdu | null, esperada: RelacionH
   if (estadoHdu === 'CERRADA') throw errorHduCerrada();
 }
 
-/** Precondiciones para marcar o pedir la subida de evidencia (E3-F02#2, E3-B01#2, E3-B02#1). */
+/**
+ * Precondiciones para marcar o pedir la subida de evidencia (E3-F02#2, E3-B01#2, E3-B02#1).
+ * Orden libre (D130): cualquier entregable pendiente se marca sin esperar a los anteriores.
+ */
 export function validarMarcable(estados: EstadosPorClave, clave: ClaveEntregable): void {
   if (clave === 'CERTIFICADO') throw conflicto('ENTREGABLE_AUTOMATICO');
   if (estadoDe(estados, clave) !== 'PENDIENTE') throw conflicto('ENTREGABLE_YA_REGISTRADO');
-  const anterior = anteriorDe(clave);
-  if (anterior !== null && estadoDe(estados, anterior) !== 'APROBADO') {
-    throw conflicto(
-      'ORDEN_ENTREGABLES',
-      `Completa «${NOMBRES_ENTREGABLE[anterior]}» antes de marcar «${NOMBRES_ENTREGABLE[clave]}».`,
-      [{ campo: anterior, codigo: 'REQUERIDO', mensaje: `${NOMBRES_ENTREGABLE[anterior]} debe estar aprobado.` }],
-    );
-  }
 }
 
-/** Desmarcar: solo lo marcado, sin romper el orden y nunca el certificado (E3-F02#3, D17, D19). */
+/** Desmarcar: solo lo marcado y nunca el certificado (E3-F02#3, D19). Sin orden de retroceso (D130). */
 export function validarDesmarcable(estados: EstadosPorClave, clave: ClaveEntregable): void {
   if (clave === 'CERTIFICADO') {
     throw conflicto('ENTREGABLE_AUTOMATICO', 'El certificado emitido es inmutable: no se puede desmarcar.');
   }
   if (estadoDe(estados, clave) === 'PENDIENTE') {
     throw conflicto('ESTADO_ENTREGABLE_INVALIDO', `«${NOMBRES_ENTREGABLE[clave]}» no está marcado.`);
-  }
-  const siguiente = siguienteDe(clave);
-  if (siguiente !== null && estadoDe(estados, siguiente) !== 'PENDIENTE') {
-    throw conflicto(
-      'ORDEN_ENTREGABLES',
-      `Primero desmarca «${NOMBRES_ENTREGABLE[siguiente]}»: los entregables se retroceden en orden.`,
-      [{ campo: siguiente, codigo: 'NO_PERMITIDO', mensaje: `${NOMBRES_ENTREGABLE[siguiente]} sigue registrado.` }],
-    );
   }
 }
 

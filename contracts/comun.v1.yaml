@@ -119,7 +119,7 @@ components:
         | `CHECKLIST_INCOMPLETO` | 409 | No se puede cerrar la HDU: el checklist de entregables está incompleto. |
         | `CHECKLIST_NO_DISPONIBLE` | 409 | No se puede cerrar la HDU: el checklist de entregables no está disponible para verificarse. |
         | `HDU_CERRADA` | 409 | La HDU está cerrada y no admite cambios. |
-        | `ORDEN_ENTREGABLES` | 409 | Completa el entregable anterior antes de continuar. |
+        | `ORDEN_ENTREGABLES` | 409 | En desuso desde D130 (orden libre): ya no se emite. |
         | `ENTREGABLE_YA_REGISTRADO` | 409 | El entregable ya está registrado para esta HDU. |
         | `ESTADO_ENTREGABLE_INVALIDO` | 409 | El entregable no está en un estado que permita esta acción. |
         | `ENTREGABLE_AUTOMATICO` | 409 | Este entregable se completa al generar el certificado. |

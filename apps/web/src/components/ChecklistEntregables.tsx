@@ -69,13 +69,6 @@ export function ChecklistEntregables({ hduId, hduCerrada = false }: { hduId: str
 
   function abrir(tipo: "marcar" | "desmarcar" | "rechazar", entregable: Entregable) {
     setAviso(null);
-    if (tipo === "marcar") {
-      const anterior = checklist.entregables[entregable.orden - 2];
-      if (anterior && anterior.estado !== "APROBADO") {
-        setAviso({ clave: entregable.clave, mensaje: `Completa «${anterior.nombre}» antes de marcar «${entregable.nombre}».` });
-        return;
-      }
-    }
     setTipoEvidencia("ENLACE");
     setUrl("");
     setArchivo(null);
@@ -183,7 +176,7 @@ export function ChecklistEntregables({ hduId, hduCerrada = false }: { hduId: str
                 {hduCerrada ? "La HDU está cerrada: el checklist queda en solo lectura." : "Solo lectura: no tienes acciones sobre este checklist."}
               </span>
             ) : permisos.puedeMarcar ? (
-              "Marca cada entregable con su evidencia, en orden. El QE responsable los aprueba."
+              "Marca cada entregable con su evidencia, en el orden que prefieras. El QE responsable los aprueba."
             ) : (
               "Revisa las evidencias y aprueba o rechaza los entregables por aprobar."
             )}

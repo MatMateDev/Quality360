@@ -579,7 +579,7 @@ No agrega HDU, usuarios ni células, y no deja impedimentos abiertos en H8. Para
 - CHECK de catálogo para `origen` y `resultado` (6 valores).
 - `ejecucion_cierre_ck`: `(resultado = 'EN_CURSO') = (terminada_en IS NULL)`.
 - `ejecucion_contadores_ck`: `terminada_en IS NULL OR creadas + actualizadas + omitidas + con_error = leidas`.
-- `ejecucion_archivo_ck`: `origen = 'JIRA' OR (archivo_nombre IS NOT NULL AND archivo_tamano IS NOT NULL AND archivo_huella ~ '^[0-9a-f]{64}$')`.
+- `ejecucion_archivo_ck`: `origen = 'JIRA' OR (archivo_nombre IS NOT NULL AND archivo_tamano IS NOT NULL AND archivo_huella ~ '^[0-9a-f]{64})`.
 - `ejecucion_continuar_ck`: `origen = 'JIRA' OR (hay_mas = false AND continuar_desde IS NULL)`.
 - Índice único parcial `ejecucion_en_curso_key ON ejecucion_integracion ((true)) WHERE terminada_en IS NULL`. Si el `INSERT` lo viola, la respuesta es 409 `INTEGRACION_EN_CURSO`.
 - Al iniciar, en la misma transacción que el `INSERT`, se cierran como `INTERRUMPIDA` las ejecuciones `EN_CURSO` con `iniciada_en` de hace más de `INTEGRACIONES_EN_CURSO_MAX_MS` (300000 por defecto, D104). Sus contadores se calculan desde `detalle_ejecucion`.
@@ -670,3 +670,12 @@ Certificaciones e Impedimentos no tienen migración en esta corrida. Solo suman 
 1. ~~**`IMPEDIMENTOS_URL` obligatoria.**~~ Resuelta por D129 (decisión del usuario): `IMPEDIMENTOS_URL` sigue el patrón de D127 en el gateway; sin ella, solo las rutas de E4 responden 503. `GUIA-VERCEL.md` ya lo refleja.
 2. **Regla sprint–célula en el alta manual.** D120 la exige solo a las HDU que llegan por integración. Extenderla a `POST /v1/hdu` cambiaría E2-B01, que ya está certificada.
 3. **Carrera en el modo estricto (D125).** Si se necesita atomicidad completa para archivos de más de 25 filas, habría que admitir lotes de hasta 500 en una transacción, con un límite de tiempo propio. Hoy no se justifica.
+
+---
+
+# Mejoras de uso tras E4
+
+| ID | Decisión | Motivo |
+| --- | --- | --- |
+| D130 | **Checklist en orden libre.** Cualquier entregable `PENDIENTE` se marca sin esperar a los anteriores, y cualquier entregable marcado se desmarca sin seguir un orden. Reemplaza el orden estricto de D17. Se mantienen: un registro por entregable (E3-B01#2), la aprobación solo del QE responsable, el certificado automático (D19, que sigue exigiendo los entregables 1 a 8 aprobados) y el bloqueo de una HDU cerrada. El código `ORDEN_ENTREGABLES` queda en desuso. Cambian los escenarios E3-F02#2 y E3-B02#1 | Pedido del usuario: el proceso no debe ser lineal |
+| D131 | **Selección dentro de diálogos con lista visible.** Los selectores de los diálogos «Asignar analista» y «Reasignar QE responsable» se muestran como lista con hasta 6 filas y desplazamiento propio, en vez del desplegable nativo, que se abría fuera de la ventana y ocultaba opciones | Pedido del usuario |
