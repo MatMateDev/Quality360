@@ -21,6 +21,8 @@ const ENLACES_POR_ROL: Record<Rol, EnlaceNav[]> = {
     { a: "/qe", etiqueta: "Bandeja", fin: true },
     { a: "/qe/equipo", etiqueta: "Equipo" },
     { a: "/qe/hdu", etiqueta: "Historias supervisadas" },
+    // E4: sin `fin`, queda activo también en /qe/impedimentos/riesgo.
+    { a: "/qe/impedimentos", etiqueta: "Impedimentos" },
   ],
   ANALISTA_QA: [
     { a: "/qa", etiqueta: "Bandeja", fin: true },

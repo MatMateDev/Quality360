@@ -1,5 +1,6 @@
 /**
- * Capacidades de servicios que aún no existen (E3 en adelante). Responden 501
+ * Capacidades de servicios que aún no existen (hoy, Integraciones; Certificaciones
+ * e Impedimentos tienen sus rutas declaradas una por una). Responden 501
  * `CAPACIDAD_NO_DISPONIBLE` después de verificar la sesión, para que el portal
  * distinga «todavía no» de «error».
  *
@@ -13,7 +14,6 @@ import { capacidadNoDisponible } from '@quality360/auth-nest';
 export class NoImplementadoController {
   @All([
     'certificaciones{/*ruta}',
-    'impedimentos{/*ruta}',
     'integraciones{/*ruta}',
   ])
   noImplementado(): never {

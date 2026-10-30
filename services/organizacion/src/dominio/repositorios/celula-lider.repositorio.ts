@@ -29,6 +29,9 @@ export interface CelulaLiderRepositorio {
    */
   reemplazar(input: { usuarioId: string; celulaIds: readonly string[]; actor: Actor }): Promise<ResultadoReemplazoCelulas>;
 
+  /** Líderes activos con la célula vigente (candidatos de escalamiento de Impedimentos, D64). */
+  lideresActivosDeCelula(celulaId: string): Promise<UsuarioResumen[]>;
+
   /** Líderes activos sin células vigentes (pendientes del Administrador, D51). */
   lideresActivosSinCelulas(): Promise<UsuarioResumen[]>;
   /** Células activas sin ningún líder vigente (D51). */

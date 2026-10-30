@@ -194,7 +194,7 @@ test.describe("[MODELO] Estructura: llaves foráneas", () => {
       await conServicio[relacion.esquema](async (cliente) => {
         const columnas = await columnasReales(cliente, relacion.esquema);
         const columna = columnas.find((fila) => fila.tabla === relacion.tabla && fila.columna === relacion.columna);
-        expect(columna, `${relacion.esquema}.${relacion.tabla}.${relacion.columna}`).toMatchObject({ tipo: "uuid", obligatorio: true });
+        expect(columna, `${relacion.esquema}.${relacion.tabla}.${relacion.columna}`).toMatchObject({ tipo: "uuid", obligatorio: relacion.obligatorio });
 
         const llaves = await llavesForaneas(cliente);
         const conLlave = llaves.filter((fk) => fk.esquemaOrigen === relacion.esquema && fk.tablaOrigen === relacion.tabla && fk.columnaOrigen === relacion.columna);
@@ -219,7 +219,7 @@ test.describe("[MODELO] Estructura: llaves foráneas", () => {
     await conServicio.impedimentos((cliente) =>
       enTransaccionRevertida(cliente, async () => {
         const impedimento = await cliente.query(
-          "insert into impedimentos.impedimento (id_impedimento, titulo, tipo, estado, id_certificacion) values (gen_random_uuid(), 'prueba', 'PRUEBA', 'ABIERTO', gen_random_uuid())",
+          "insert into impedimentos.impedimento (id_impedimento, titulo, tipo, estado, id_certificacion, id_historia, responsable_nombre, creado_por_id, creado_por_nombre, creado_por_rol) values (gen_random_uuid(), 'prueba', 'AMBIENTE', 'ABIERTO', gen_random_uuid(), gen_random_uuid(), 'Externo', gen_random_uuid(), 'QA', 'QE')",
         );
         expect(impedimento.rowCount).toBe(1);
       }),
@@ -261,7 +261,7 @@ test.describe("[MODELO] Estructura: llaves foráneas", () => {
       {
         esquema: "impedimentos",
         descripcion: "accion_impedimento con un id_impedimento inexistente",
-        sql: "insert into impedimentos.accion_impedimento (id_accion_impedimento, descripcion, estado, id_impedimento) values (gen_random_uuid(), 'x', 'REGISTRADA', gen_random_uuid())",
+        sql: "insert into impedimentos.accion_impedimento (id_accion_impedimento, descripcion, estado, id_impedimento, tipo_accion, actor_id, actor_nombre, actor_rol) values (gen_random_uuid(), 'x', 'ABIERTO', gen_random_uuid(), 'REGISTRAR', gen_random_uuid(), 'QA', 'QE')",
       },
     ];
 

@@ -29,6 +29,8 @@ process.env.PERMITIR_CARGA_SEMILLA ??= 'true';
 // Puerto cerrado a propósito: aunque el stack local esté arriba, el cierre ve Certificaciones caído (D11).
 // Las pruebas que necesitan un checklist real levantan su propio Certificaciones falso.
 process.env.CERTIFICACIONES_URL ??= 'http://127.0.0.1:9';
+// Igual para Impedimentos (E4): cerrado salvo que la prueba levante su propio Impedimentos falso.
+process.env.IMPEDIMENTOS_URL ??= 'http://127.0.0.1:9';
 
 
 function leerSupabaseLocal(): Record<string, string> {

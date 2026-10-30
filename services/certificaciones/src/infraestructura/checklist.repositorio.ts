@@ -292,7 +292,7 @@ export class ChecklistRepositorio {
   async seguimientoLote(hduIds: readonly string[]): Promise<SeguimientoHdu[]> {
     if (hduIds.length === 0) return [];
     const ids = [...hduIds];
-    const [entregables, ultimosEventos, certificados, actividad] = await Promise.all([
+    const [entregables, ultimosEventos, certificados, actividad, ciclos] = await Promise.all([
       this.prisma.entregable.findMany({
         where: { certificacion: { hduId: { in: ids }, activo: true } },
         select: { clave: true, estado: true, fechaValidacion: true, completadoEn: true, certificacion: { select: { hduId: true } } },
@@ -305,7 +305,10 @@ export class ChecklistRepositorio {
       }),
       this.prisma.certificado.findMany({ where: { hduId: { in: ids } }, select: { hduId: true, folio: true, emitidoEn: true } }),
       this.prisma.eventoChecklist.groupBy({ by: ['hduId'], where: { hduId: { in: ids } }, _max: { fecha: true } }),
+      // Ciclo activo de cada HDU (E4, D58): una HDU sin ciclo no figura y responde `null`.
+      this.prisma.certificacion.findMany({ where: { hduId: { in: ids }, activo: true }, select: { id: true, hduId: true } }),
     ]);
+    const cicloPorHdu = new Map(ciclos.map((fila) => [fila.hduId, fila.id]));
 
     const entregablesPorHdu = new Map<string, Array<{ clave: ClaveEntregable; estado: EstadoEntregable; completadoEn: Date | null; aprobadoEn: Date | null }>>();
     for (const fila of entregables) {
@@ -325,6 +328,7 @@ export class ChecklistRepositorio {
     return ids.map((hduId) =>
       calcularSeguimiento({
         hduId,
+        certificacionId: cicloPorHdu.get(hduId) ?? null,
         entregables: entregablesPorHdu.get(hduId) ?? [],
         ultimaAccionPorClave: accionesPorHdu.get(hduId) ?? new Map(),
         certificado: certificadoPorHdu.get(hduId) ?? null,

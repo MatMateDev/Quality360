@@ -3,11 +3,12 @@
 Deja la plataforma funcionando en internet con datos reales:
 
 - **Supabase en la nube** (proyecto `ufdnrrpeznwyargzgopu`, región São Paulo): base de datos y login.
-- **Vercel** (plan Hobby, gratis), cuatro proyectos en la región São Paulo (`gru1`):
+- **Vercel** (plan Hobby, gratis), cinco proyectos en la región São Paulo (`gru1`):
 
 | Proyecto Vercel | Root Directory | Qué es |
 | --- | --- | --- |
 | `quality360-certificaciones` | `services/certificaciones` | Servicio de certificaciones |
+| `quality360-impedimentos` | `services/impedimentos` | Impedimentos y riesgo por HDU (E4) |
 | `quality360-organizacion` | `services/organizacion` | Usuarios, supervisión y HDU |
 | `quality360-gateway` | `apps/gateway` | Punto de entrada de la API |
 | `quality360-portal` | `apps/web` | Portal web |
@@ -30,28 +31,30 @@ Tiempo estimado: 30 a 40 minutos.
    [guid]::NewGuid().ToString('N')
    ```
 
-   Ejecútalo dos veces y guarda ambas en un lugar seguro.
+   Ejecútalo tres veces y guarda las tres en un lugar seguro.
 
 2. En [Supabase](https://supabase.com/dashboard/project/ufdnrrpeznwyargzgopu) abre **SQL Editor** y ejecuta, reemplazando los valores:
 
    ```sql
    alter role svc_organizacion with password 'CONTRASEÑA_ORGANIZACION';
    alter role svc_certificaciones with password 'CONTRASEÑA_CERTIFICACIONES';
+   alter role svc_impedimentos with password 'CONTRASEÑA_IMPEDIMENTOS';
    ```
 
 ## Paso 2 · Reunir los datos de conexión (Supabase)
 
 1. En el proyecto, pulsa **Connect** y elige **Transaction pooler** (puerto `6543`). Copia el **host**: algo como `aws-0-sa-east-1.pooler.supabase.com` (puede decir `aws-1-…`).
-2. Arma las dos URL de base de datos. El usuario es `rol.idProyecto`:
+2. Arma las tres URL de base de datos. El usuario es `rol.idProyecto`:
 
    ```
    postgresql://svc_organizacion.ufdnrrpeznwyargzgopu:CONTRASEÑA_ORGANIZACION@HOST:6543/postgres?schema=organizacion&pgbouncer=true&connection_limit=1
    postgresql://svc_certificaciones.ufdnrrpeznwyargzgopu:CONTRASEÑA_CERTIFICACIONES@HOST:6543/postgres?schema=certificaciones&pgbouncer=true&connection_limit=1
+   postgresql://svc_impedimentos.ufdnrrpeznwyargzgopu:CONTRASEÑA_IMPEDIMENTOS@HOST:6543/postgres?schema=impedimentos&pgbouncer=true&connection_limit=1
    ```
 
 3. En **Project Settings > API Keys** copia:
    - La **clave publicable** (`sb_publishable_…`): la usa el portal y es pública por diseño.
-   - La **clave secreta** (`sb_secret_…`, o la `service_role` legacy): **solo** para Organización y Certificaciones. Nunca la compartas ni la subas al repositorio.
+   - La **clave secreta** (`sb_secret_…`, o la `service_role` legacy): **solo** para Organización y Certificaciones (Impedimentos no la usa). Nunca la compartas ni la subas al repositorio.
 
 4. Genera el token entre servicios (una sola vez, guárdalo):
 
@@ -61,7 +64,7 @@ Tiempo estimado: 30 a 40 minutos.
 
 ## Paso 3 · Crear los proyectos en Vercel
 
-Para **cada** fila de la tabla del inicio, en este orden (certificaciones, organización, gateway, portal):
+Para **cada** fila de la tabla del inicio, en este orden (certificaciones, impedimentos, organización, gateway, portal):
 
 1. En [vercel.com/new](https://vercel.com/new), importa el repositorio **MatMateDev/Quality360**.
 2. **Project Name:** el de la tabla.
@@ -82,6 +85,22 @@ Para **cada** fila de la tabla del inicio, en este orden (certificaciones, organ
 | `ORGANIZACION_URL` | `https://quality360-organizacion.vercel.app` (ajústala cuando exista) |
 | `PORTAL_URL` | URL real del portal: se imprime en el certificado para verificar el folio |
 
+### Variables de `quality360-impedimentos`
+
+| Variable | Valor |
+| --- | --- |
+| `DATABASE_URL` | URL de `svc_impedimentos` del paso 2 (`?schema=impedimentos&pgbouncer=true`) |
+| `SUPABASE_URL` | `https://ufdnrrpeznwyargzgopu.supabase.co` (el verificador JWT se configura igual que en Certificaciones) |
+| `ORGANIZACION_URL` | `https://quality360-organizacion.vercel.app` (ajústala cuando exista) |
+| `CERTIFICACIONES_URL` | URL real de `quality360-certificaciones` |
+| `NODE_ENV` | `production` (hace que se ignore `Q360_FECHA_REFERENCIA`, D90) |
+| `ORGANIZACION_TIMEOUT_MS`, `CERTIFICACIONES_TIMEOUT_MS` | Solo si cambias los valores por defecto (5000 y 2000) |
+| `RIESGO_DIAS_IMPEDIMENTO_ALTO`, `RIESGO_DIAS_SPRINT_ALTO`, `RIESGO_AVANCE_ALTO`, `RIESGO_DIAS_SPRINT_MEDIO`, `RIESGO_AVANCE_MEDIO` | Solo si cambias los umbrales por defecto (D67) |
+| `EXPORTACION_LIMITE_FILAS` | Solo si cambias el límite por defecto (50.000) |
+| `PERMITIR_CARGA_SEMILLA` y `X_Q360_SERVICIO_TOKEN` | Solo mientras se carga la semilla E4, como en Organización; después, `PERMITIR_CARGA_SEMILLA=false` y Redeploy |
+
+> No agregues `Q360_FECHA_REFERENCIA` en la nube.
+
 ### Variables de `quality360-organizacion`
 
 | Variable | Valor |
@@ -92,6 +111,8 @@ Para **cada** fila de la tabla del inicio, en este orden (certificaciones, organ
 | `X_Q360_SERVICIO_TOKEN` | Token del paso 2 |
 | `PERMITIR_CARGA_SEMILLA` | `true` (solo hasta el paso 4) |
 | `CERTIFICACIONES_URL` | URL real de `quality360-certificaciones` |
+| `IMPEDIMENTOS_URL` | URL real de `quality360-impedimentos`. Sin ella el cierre de una HDU responde 503 (D60) |
+| `IMPEDIMENTOS_TIMEOUT_MS` | Opcional (2000 por defecto) |
 
 ### Variables de `quality360-gateway`
 
@@ -100,6 +121,8 @@ Para **cada** fila de la tabla del inicio, en este orden (certificaciones, organ
 | `SUPABASE_URL` | `https://ufdnrrpeznwyargzgopu.supabase.co` |
 | `ORGANIZACION_URL` | URL real de `quality360-organizacion` |
 | `CERTIFICACIONES_URL` | URL real de `quality360-certificaciones` |
+| `IMPEDIMENTOS_URL` | URL real de `quality360-impedimentos`. **Obligatoria**: en producción el gateway no arranca sin ella |
+| `IMPEDIMENTOS_TIMEOUT_MS` | Opcional; si falta, vale `TIEMPO_LIMITE_SERVICIO_MS` |
 | `PORTAL_ORIGENES` | `https://quality360-portal.vercel.app` (ajústala cuando exista) |
 | `CONFIAR_PROXY` | `1` |
 | `TIEMPO_LIMITE_FUENTE_MS` | `10000` |
@@ -116,12 +139,15 @@ Para **cada** fila de la tabla del inicio, en este orden (certificaciones, organ
 
 ### Ajustar las URL que no existían aún
 
-- En `quality360-certificaciones`, confirma `ORGANIZACION_URL`.
+- En `quality360-certificaciones` y `quality360-impedimentos`, confirma `ORGANIZACION_URL`.
 - En `quality360-gateway`, confirma `PORTAL_ORIGENES` con la URL real del portal.
 
 Después de cambiar variables, en ese proyecto ve a **Deployments**, abre el último y pulsa **Redeploy**: las variables solo se aplican en un despliegue nuevo.
 
-**Verificación rápida:** abre `https://<gateway>/health` y `https://<organizacion>/health`. Ambos deben responder `{"estado":"ok"}`.
+**Verificación rápida:** abre `https://<gateway>/health`, `https://<organizacion>/health` y `https://<impedimentos>/health`. Los tres deben responder `{"estado":"ok"}`. Además, sin iniciar sesión:
+
+- `https://<gateway>/v1/catalogos/tipos-impedimento` → 401 `NO_AUTENTICADO` (si responde 501, el gateway desplegado es anterior a E4).
+- `https://<gateway>/v1/interno/impedimentos/evaluacion` → 404: las rutas internas no se publican.
 
 ## Paso 4 · Cargar los usuarios de demo
 
@@ -160,6 +186,8 @@ En **Supabase > Authentication > URL Configuration**, pon la URL del portal como
 | `/health` responde, pero todo da 403 «sin registro en Organización» | Los usuarios de demo no se cargaron | Repite el paso 4 |
 | Organización falla con error de conexión a la base | Contraseña, host del pooler o formato de `DATABASE_URL` incorrectos | Revisa el paso 2: usuario `svc_organizacion.ufdnrrpeznwyargzgopu` y puerto `6543` |
 | La primera carga tarda unos segundos | Arranque en frío de las funciones | Es normal; las siguientes solicitudes son rápidas |
+| El gateway responde 500 en todas las rutas tras desplegar E4 | Falta `IMPEDIMENTOS_URL` en el gateway (es obligatoria en producción) | Agrégala y haz Redeploy |
+| Cerrar una HDU responde 503 «No pudimos verificar los impedimentos de la HDU» | `IMPEDIMENTOS_URL` falta o está mal en Organización, o Impedimentos no responde | Corrige la variable en Organización, revisa `https://<impedimentos>/health` y haz Redeploy |
 | La semilla responde 404 | `PERMITIR_CARGA_SEMILLA` no está en `true` o no se hizo Redeploy | Activa la variable y redespliega |
 
 > Las contraseñas y claves de esta guía viven solo en Supabase y en las variables de Vercel. Nunca las escribas en archivos del repositorio.

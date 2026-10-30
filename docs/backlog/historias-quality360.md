@@ -440,6 +440,8 @@ Quiero que el sistema audite los cambios en entregables y certificados. Para con
 
 ## ÉPICA 4 — IMPEDIMENTOS Y RIESGOS
 
+> Escenarios refinados el 2026-10-26; la intención de los originales del `.xlsx` se conserva. Fuente completa (reglas de negocio, catálogos, matriz de permisos, modelo de datos, fixture y 89 casos de prueba): `docs/backlog/e4-impedimentos-y-riesgos.md`. Diseño: `docs/diseno/e4-impedimentos-y-riesgos.md`. Decisiones D57–D74 en el backlog E4 y D75–D92 en `docs/arquitectura/decisiones-mvp.md` (sección «Corrida E4»).
+
 Registro, seguimiento y resolución de impedimentos; clasificación del nivel de riesgo de cada HDU.
 
 ### E4-F01 · Analista QA
@@ -448,9 +450,9 @@ Quiero registrar un impedimento sobre una HDU indicando tipo, descripción y res
 
 | # | Criterio | Contexto | Evento | Resultado esperado |
 | --- | --- | --- | --- | --- |
-| 1 | Registro | El analista está en el detalle de la HDU. | Registra el impedimento. | La HDU queda marcada como bloqueada y el impedimento aparece en su detalle. |
-| 2 | Datos obligatorios | Falta la descripción. | Presiona Guardar. | Se solicita completar los datos obligatorios. |
-| 3 | Notificación al QE | Se registra el impedimento. | Se guarda. | El QE supervisor lo ve en su panel. |
+| 1 | Registro | El analista asignado está en el detalle de una HDU que no está cerrada. | Pulsa «Registrar impedimento», completa tipo, título, descripción y responsable, y guarda. | El impedimento aparece en la sección «Impedimentos» del detalle con estado Abierto, su autor y su responsable; el detalle muestra el aviso «HDU bloqueada»; la fila de la HDU en su bandeja muestra «Bloqueada». |
+| 2 | Datos obligatorios | Falta la descripción (o el tipo, el título o el responsable). | Presiona Guardar. | Se marca cada campo faltante con su mensaje («La descripción es obligatoria»), el formulario sigue abierto con lo ya escrito y no se crea nada. |
+| 3 | Notificación al QE | Se registró el impedimento. | El QE responsable abre su bandeja. | Ve el impedimento en el bloque «Impedimentos abiertos» con la insignia «Nuevo», y sus contadores `impedimentos-abiertos` e `impedimentos-nuevos` suben en uno. |
 
 ### E4-F02 · Quality Engineer (QE)
 
@@ -458,9 +460,9 @@ Quiero ver los impedimentos abiertos de mi equipo priorizados por antigüedad y 
 
 | # | Criterio | Contexto | Evento | Resultado esperado |
 | --- | --- | --- | --- | --- |
-| 1 | Listado priorizado | Existen impedimentos abiertos. | Abre la sección. | Se listan ordenados por riesgo y días abiertos, con HDU y analista. |
-| 2 | Sin impedimentos | No hay impedimentos abiertos. | Abre la sección. | Se informa que el equipo no tiene bloqueos. |
-| 3 | Filtro por célula | Hay impedimentos en varias células. | Filtra por célula. | Se muestran solo los de la célula elegida. |
+| 1 | Listado priorizado | Existen impedimentos abiertos en HDU de mi ámbito. | Abre «Impedimentos». | Se listan primero por riesgo vigente (Alto, Medio, Bajo) y luego por días abiertos, cada fila con HDU, analista, tipo, estado, responsable y días. Un resuelto solo aparece si activa «Incluir resueltos». |
+| 2 | Sin impedimentos | No hay impedimentos abiertos en mi ámbito. | Abre «Impedimentos». | Se informa «Tu equipo no tiene bloqueos», con el contador en 0 y sin error. |
+| 3 | Filtro por célula | Hay impedimentos en varias células. | Filtra por célula. | Se muestran solo los de la célula elegida; la URL conserva el filtro. Un filtro sin coincidencias dice «No hay impedimentos con esos filtros», distinto del caso sin bloqueos. |
 
 ### E4-F03 · Quality Engineer (QE)
 
@@ -468,9 +470,9 @@ Quiero resolver o escalar un impedimento registrando la acción tomada. Para dej
 
 | # | Criterio | Contexto | Evento | Resultado esperado |
 | --- | --- | --- | --- | --- |
-| 1 | Resolución | El impedimento está abierto. | Lo marca como resuelto con comentario. | La HDU deja de estar bloqueada y se registra la fecha. |
-| 2 | Escalamiento | El impedimento excede mi ámbito. | Lo escala indicando a quién. | Queda en estado escalado con el responsable indicado. |
-| 3 | Reapertura | Un impedimento resuelto vuelve a ocurrir. | Lo reabre. | Se conserva el historial anterior. |
+| 1 | Resolución | El impedimento está abierto y soy el QE responsable de la HDU. | Lo marca como resuelto con un comentario. | Queda Resuelto con su fecha, el comentario aparece en el historial y, si era el último abierto, la HDU deja de estar bloqueada. |
+| 2 | Escalamiento | El impedimento excede mi ámbito. | Lo escala eligiendo a quién y registrando un comentario. | Queda Escalado con el destino como responsable; la HDU sigue bloqueada; el destino lo ve en su bandeja si es Líder o Administrador. |
+| 3 | Reapertura | Un impedimento resuelto vuelve a ocurrir. | Lo reabre indicando el motivo. | Vuelve a Abierto, la HDU queda bloqueada otra vez y el historial anterior se conserva completo. |
 
 ### E4-F04 · Quality Engineer (QE)
 
@@ -478,9 +480,9 @@ Quiero establecer y visualizar el nivel de riesgo de cada HDU. Para priorizar la
 
 | # | Criterio | Contexto | Evento | Resultado esperado |
 | --- | --- | --- | --- | --- |
-| 1 | Nivel de riesgo | El QE abre una HDU. | Selecciona riesgo Alto, Medio o Bajo con justificación. | Se guarda y se muestra con un semáforo. |
-| 2 | Riesgo sugerido | La HDU tiene impedimentos abiertos o atraso. | Abre la HDU. | Se sugiere un nivel de riesgo que el QE puede confirmar. |
-| 3 | Listado por riesgo | Existen HDU con distintos riesgos. | Filtra por riesgo Alto. | Se muestran solo las HDU de riesgo alto. |
+| 1 | Nivel de riesgo | El QE responsable abre el detalle de una HDU. | Selecciona Alto, Medio o Bajo, escribe la justificación y confirma. | Se guarda con su autor y fecha, se muestra con un semáforo y el origen cambia a «Fijado por …». |
+| 2 | Riesgo sugerido | La HDU tiene impedimentos abiertos o atraso en el sprint. | Abre el detalle. | Ve el nivel sugerido con los factores que lo explican y puede confirmarlo («Usar el sugerido») o fijar otro; si hay un nivel fijado distinto, se avisa «La sugerencia actual es X». |
+| 3 | Listado por riesgo | Existen HDU con distintos niveles. | Abre «Riesgo por HDU» y filtra por Alto. | Se muestran solo las HDU de riesgo alto, ordenadas por riesgo y por impedimentos abiertos. |
 
 ### E4-B01 · Analista QA
 
@@ -488,9 +490,9 @@ Quiero que el sistema registre los impedimentos como entidad vinculada a la HDU.
 
 | # | Criterio | Contexto | Evento | Resultado esperado |
 | --- | --- | --- | --- | --- |
-| 1 | Creación | Se recibe un impedimento válido. | Se procesa. | Se guarda con HDU, tipo, descripción, creador, responsable y fecha. |
-| 2 | Bloqueo de la HDU | Se crea un impedimento abierto. | Se procesa. | La HDU se marca como bloqueada automáticamente. |
-| 3 | Ámbito | Un analista registra un impedimento en una HDU ajena. | Se procesa. | Se rechaza. |
+| 1 | Creación | Se recibe un impedimento válido de quien puede registrar en la HDU. | Se procesa. | 201 con el impedimento guardado con HDU, ciclo de certificación activo (si existe), tipo, título, descripción, creador (id, nombre y rol), responsable y fechas, en estado `ABIERTO`, y una acción `REGISTRAR`. |
+| 2 | Bloqueo de la HDU | Se crea un impedimento abierto. | Se consulta la HDU. | La evaluación de la HDU informa `bloqueada: true` y el conteo de abiertos sube; una HDU sin impedimentos abiertos informa `false`. |
+| 3 | Ámbito | Un analista registra en una HDU ajena, o lo intenta un rol sin permiso. | Se procesa. | 403 `ACCESO_DENEGADO` sin crear nada. Una HDU cerrada responde 409 `HDU_CERRADA`. |
 
 ### E4-B02 · Quality Engineer (QE)
 
@@ -498,9 +500,9 @@ Quiero que el sistema controle el ciclo de vida de los impedimentos. Para manten
 
 | # | Criterio | Contexto | Evento | Resultado esperado |
 | --- | --- | --- | --- | --- |
-| 1 | Estados válidos | El impedimento está abierto. | Se solicita resolver o escalar. | Se acepta y registra actor y fecha. |
-| 2 | Desbloqueo | Se resuelve el último impedimento abierto. | Se procesa. | La HDU deja de estar bloqueada. |
-| 3 | Transición inválida | El impedimento está resuelto. | Se solicita escalar. | Se rechaza; solo puede reabrirse. |
+| 1 | Estados válidos | El impedimento está abierto (o escalado) y quien lo pide es el QE responsable. | Se solicita resolver o escalar. | Se acepta, el estado cambia según la tabla 3.2 y se registra una acción con actor, rol, fecha, estado anterior y nuevo. |
+| 2 | Desbloqueo | Se resuelve el último impedimento abierto o escalado de la HDU. | Se procesa. | La HDU deja de estar bloqueada. Si quedan otros abiertos, sigue bloqueada. |
+| 3 | Transición inválida | El impedimento está resuelto. | Se solicita escalar. | 409 `TRANSICION_INVALIDA` con el mensaje «Un impedimento resuelto solo puede reabrirse»; no se registra nada. |
 
 ### E4-B03 · Quality Engineer (QE)
 
@@ -508,9 +510,9 @@ Quiero que el sistema calcule un riesgo sugerido a partir de impedimentos y atra
 
 | # | Criterio | Contexto | Evento | Resultado esperado |
 | --- | --- | --- | --- | --- |
-| 1 | Impedimento abierto | La HDU tiene un impedimento abierto. | Se calcula el riesgo. | Se sugiere al menos riesgo Medio. |
-| 2 | Atraso en sprint | La HDU está por cerrar sprint con cumplimiento bajo. | Se calcula el riesgo. | Se sugiere riesgo Alto. |
-| 3 | Confirmación manual | El QE fija un riesgo distinto. | Se guarda. | Prevalece el valor del QE y se registra la justificación. |
+| 1 | Impedimento abierto | La HDU tiene un impedimento abierto. | Se calcula el riesgo. | Se sugiere al menos Medio; Alto si lleva 5 días o más abierto o está escalado. |
+| 2 | Atraso en sprint | La HDU está por cerrar el sprint con avance bajo, o el sprint ya venció. | Se calcula el riesgo. | Se sugiere Alto (faltan 3 días o menos y avance menor a 70 %, o sprint vencido) o Medio (faltan 7 días o menos y avance menor a 50 %). |
+| 3 | Confirmación manual | El QE responsable fija un nivel distinto del sugerido. | Se guarda. | Prevalece el valor del QE como nivel vigente, se registra la justificación y se conserva el sugerido de ese momento. |
 
 ### E4-B04 · Administrador
 
@@ -518,9 +520,9 @@ Quiero que el sistema audite la gestión de impedimentos y riesgos. Para tener t
 
 | # | Criterio | Contexto | Evento | Resultado esperado |
 | --- | --- | --- | --- | --- |
-| 1 | Registro | Cambia el estado de un impedimento o el riesgo. | Se confirma. | Se registra actor, fecha, valor anterior y nuevo. |
-| 2 | Consulta | Un usuario autorizado pide el historial. | Se procesa. | Se devuelve cronológicamente. |
-| 3 | Retención | Se cierra la HDU. | Se consulta el historial. | Se conserva el registro completo. |
+| 1 | Registro | Cambia el estado de un impedimento o el nivel de riesgo. | Se confirma. | Se registra actor, rol, fecha, valor anterior y nuevo, en la misma transacción del cambio; un intento rechazado (403, 409) no deja registro. |
+| 2 | Consulta | Un usuario con acceso a la HDU, o el Auditor, pide el historial. | Se procesa. | Se devuelve en orden cronológico (más antiguo primero; admite el inverso), con impedimentos y cambios de riesgo, filtrable por fechas. |
+| 3 | Retención | Se cierra la HDU. | Se consulta el historial. | Se conserva el registro completo; nada se puede editar ni borrar. |
 
 ## ÉPICA 5 — INTEGRACIÓN CON JIRA CLOUD
 

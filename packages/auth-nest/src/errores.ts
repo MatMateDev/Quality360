@@ -30,7 +30,11 @@ export type CodigoError =
   | 'ENTREGABLE_AUTOMATICO'
   | 'ENTREGABLES_PENDIENTES'
   | 'CERTIFICADO_EXISTENTE'
+  | 'HDU_BLOQUEADA'
   | 'MOTIVO_REQUERIDO'
+  | 'COMENTARIO_REQUERIDO'
+  | 'JUSTIFICACION_REQUERIDA'
+  | 'RESPONSABLE_INVALIDO'
   | 'SUPERVISION_INVALIDA'
   | 'ANALISTA_INVALIDO'
   | 'ANALISTA_FUERA_DE_EQUIPO'
@@ -67,7 +71,11 @@ export const MENSAJES: Readonly<Record<CodigoError, string>> = Object.freeze({
   ENTREGABLE_AUTOMATICO: 'Este entregable se completa al generar el certificado.',
   ENTREGABLES_PENDIENTES: 'No se puede generar el certificado: faltan entregables por aprobar.',
   CERTIFICADO_EXISTENTE: 'La HDU ya tiene un certificado emitido.',
+  HDU_BLOQUEADA: 'No se puede cerrar la HDU: tiene impedimentos abiertos o escalados.',
   MOTIVO_REQUERIDO: 'Indica el motivo del cambio.',
+  COMENTARIO_REQUERIDO: 'Indica la acción tomada.',
+  JUSTIFICACION_REQUERIDA: 'La justificación es obligatoria.',
+  RESPONSABLE_INVALIDO: 'El responsable indicado no está entre los candidatos de esta HDU.',
   SUPERVISION_INVALIDA: 'El supervisor debe ser QE y el supervisado Analista QA, ambos activos.',
   ANALISTA_INVALIDO: 'El analista debe tener rol Analista QA y estar activo.',
   ANALISTA_FUERA_DE_EQUIPO: 'El analista no pertenece al equipo vigente del QE responsable.',

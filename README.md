@@ -9,12 +9,12 @@ Plataforma para supervisar la certificación QA de historias de usuario (HDU). E
 | E1 · Acceso, portales y organización QA | 24 HDU, 72 escenarios | Certificada |
 | E2 · Gestión de HDU | 8 HDU, 24 escenarios | Certificada |
 | E3 · Certificación y entregables | 8 HDU, 24 escenarios | Certificada |
-| E4 · Impedimentos y riesgos | 8 HDU | Pendiente |
+| E4 · Impedimentos y riesgos | 8 HDU, 24 escenarios | Certificada |
 | E5 · Integración con Jira Cloud | 8 HDU | Pendiente |
 | E6 · Indicadores y dashboards | 8 HDU | Pendiente |
 | E7 · Bandejas por rol | 12 HDU, 36 escenarios | Certificada |
 
-La certificación de E1, E2, E3 y E7 cubre los 162 escenarios de aceptación del backlog, con 440 pruebas automatizadas contra el stack real, incluidas las que verifican el modelo de datos (tablas, llaves foráneas y aislamiento por esquema) y la accesibilidad de las bandejas. El dictamen por escenario y por HDU está en [`docs/validacion/certificacion-e1-e2.md`](docs/validacion/certificacion-e1-e2.md), [`docs/validacion/certificacion-e3.md`](docs/validacion/certificacion-e3.md) [`docs/validacion/certificacion-modelo-datos.md`](docs/validacion/certificacion-modelo-datos.md) y [`docs/validacion/certificacion-e7.md`](docs/validacion/certificacion-e7.md).
+La certificación de E1, E2, E3, E4 y E7 cubre los 186 escenarios de aceptación del backlog, con 575 pruebas automatizadas contra el stack real, incluidas las que verifican el modelo de datos (tablas, llaves foráneas y aislamiento por esquema) y la accesibilidad de las bandejas. El dictamen por escenario y por HDU está en [`docs/validacion/certificacion-e1-e2.md`](docs/validacion/certificacion-e1-e2.md), [`docs/validacion/certificacion-e3.md`](docs/validacion/certificacion-e3.md), [`docs/validacion/certificacion-modelo-datos.md`](docs/validacion/certificacion-modelo-datos.md), [`docs/validacion/certificacion-e7.md`](docs/validacion/certificacion-e7.md) y [`docs/validacion/certificacion-e4.md`](docs/validacion/certificacion-e4.md).
 
 ## Arquitectura
 

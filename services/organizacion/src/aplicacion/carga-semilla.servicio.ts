@@ -7,8 +7,9 @@
  * Ver `AMBITO_VACIO` para el contexto `esServicio` que usan los casos de uso.
  */
 import { Inject, Injectable } from '@nestjs/common';
-import { ExcepcionQ360, MENSAJES, errorValidacion } from '@quality360/auth-nest';
+import { ExcepcionQ360, MENSAJES, errorValidacion, noEncontrado } from '@quality360/auth-nest';
 
+import { HDU_REPOSITORIO, type HduRepositorio } from '../dominio/repositorios/hdu.repositorio.js';
 import { ConflictoUnicidad } from '../dominio/errores/conflicto-unicidad.js';
 import { CATALOGO_REPOSITORIO, type CatalogoRepositorio } from '../dominio/repositorios/catalogo.repositorio.js';
 import { USUARIO_REPOSITORIO, type UsuarioRepositorio } from '../dominio/repositorios/usuario.repositorio.js';
@@ -40,6 +41,7 @@ export class CargaSemillaAplicacion {
   constructor(
     @Inject(USUARIO_REPOSITORIO) private readonly usuarios: UsuarioRepositorio,
     @Inject(CATALOGO_REPOSITORIO) private readonly catalogos: CatalogoRepositorio,
+    @Inject(HDU_REPOSITORIO) private readonly hdus: HduRepositorio,
     @Inject(PROVEEDOR_IDENTIDAD) private readonly identidad: ProveedorIdentidad,
     private readonly usuariosAplicacion: UsuariosAplicacion,
     private readonly hduAplicacion: HduAplicacion,
@@ -105,6 +107,19 @@ export class CargaSemillaAplicacion {
       estado: estadoSprintPorFechas(inicio, fin, new Date()),
       celulaId: datos.celulaId,
     });
+  }
+
+  /**
+   * Fija el sprint vigente de una HDU (E4, D88): para el fixture de riesgo. HDU inexistente: 404; sprint
+   * inexistente o de otra célula: 422 CATALOGO_INVALIDO. No audita ni toca el historial de la HDU.
+   */
+  async cargarSprintHdu(hduId: string, sprintId: string): Promise<{ cambio: boolean; hduId: string; sprintId: string }> {
+    const hdu = await this.hdus.buscarPorId(hduId);
+    if (hdu === null) throw noEncontrado('HDU inexistente');
+    const celulaDelSprint = await this.catalogos.celulaDeSprint(sprintId);
+    if (celulaDelSprint === null || celulaDelSprint !== hdu.celulaId) throw catalogoInvalido();
+    const { cambio } = await this.hdus.fijarSprintVigente(hduId, sprintId);
+    return { cambio, hduId, sprintId };
   }
 
   /** Idempotente por código (sin distinguir mayúsculas): se crea en PENDIENTE, sin analista. */

@@ -22,11 +22,15 @@ export interface EntradaSeguimiento {
   readonly ultimaAccionPorClave: ReadonlyMap<ClaveEntregable, string>;
   readonly certificado: { readonly folio: string; readonly emitidoEn: Date } | null;
   readonly ultimaActividad: Date | null;
+  /** Ciclo de certificación activo, o `null` si la HDU aún no tiene ciclo (E4, D58, D86). */
+  readonly certificacionId?: string | null;
 }
 
 /** `SeguimientoHdu` de comun.v1.yaml. */
 export interface SeguimientoHdu {
   hduId: string;
+  /** Ciclo activo, o `null` sin ciclo. Impedimentos lo guarda al registrar (E4, D58). */
+  certificacionId: string | null;
   aprobados: number;
   porcentaje: number;
   porAprobar: number;
@@ -73,6 +77,7 @@ export function calcularSeguimiento(entrada: EntradaSeguimiento): SeguimientoHdu
 
   return {
     hduId: entrada.hduId,
+    certificacionId: entrada.certificacionId ?? null,
     aprobados,
     porcentaje: Math.round((aprobados / TOTAL_ENTREGABLES) * 100),
     porAprobar: enPorAprobar.length,

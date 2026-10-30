@@ -15,3 +15,8 @@ contracts/certificaciones.v1.yaml:
     - '#/servers/1/url'
   operation-4xx-response:
     - '#/paths/~1health/get/responses'
+contracts/impedimentos.v1.yaml:
+  no-server-example.com:
+    - '#/servers/1/url'
+  operation-4xx-response:
+    - '#/paths/~1health/get/responses'

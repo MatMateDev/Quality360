@@ -60,4 +60,26 @@
   /* Foco visible (accesibilidad) */
   --q360-foco-color: #1d4ed8;
   --q360-foco-sombra: 0 0 0 3px rgba(37, 99, 235, 0.35);
+
+  /* E4 · riesgo (texto sobre fondo >= 7:1). La forma y la palabra acompañan siempre al color. */
+  --q360-color-riesgo-alto: #991b1b;
+  --q360-color-riesgo-alto-suave: #fde8e8;
+  --q360-color-riesgo-medio: #6b4400;
+  --q360-color-riesgo-medio-suave: #fff0b8;
+  --q360-color-riesgo-bajo: #0f5132;
+  --q360-color-riesgo-bajo-suave: #e5f6ec;
+  /* Lámparas del semáforo: solo relleno decorativo; el borde de 2 px usa el texto terciario. */
+  --q360-lampara-roja: #dc2626;
+  --q360-lampara-amarilla: #facc15;
+  --q360-lampara-verde: #16a34a;
+  /* E4 · bloqueo (insignia sólida: texto blanco sobre #991b1b). */
+  --q360-color-bloqueo: #991b1b;
+  --q360-color-bloqueo-texto: #ffffff;
+  /* E4 · estado del impedimento (texto sobre fondo >= 5,5:1). */
+  --q360-color-imp-abierto: #6b4400;
+  --q360-color-imp-abierto-suave: #fff3d6;
+  --q360-color-imp-escalado: #1d4b9a;
+  --q360-color-imp-escalado-suave: #eef4ff;
+  --q360-color-imp-resuelto: #0f5132;
+  --q360-color-imp-resuelto-suave: #e5f6ec;
 }

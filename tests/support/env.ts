@@ -72,6 +72,7 @@ export const env = {
 
   organizacionUrl: process.env.ORGANIZACION_URL ?? envGateway.ORGANIZACION_URL ?? "http://localhost:3001",
   certificacionesUrl: process.env.CERTIFICACIONES_URL ?? envGateway.CERTIFICACIONES_URL ?? "http://localhost:3002",
+  impedimentosUrl: process.env.IMPEDIMENTOS_URL ?? envGateway.IMPEDIMENTOS_URL ?? "http://localhost:3003",
 
   // Solo para forjar, en tests/support/tokenForjado.ts, un JWT HS256 vencido
   // que ejercite el respaldo local del verificador (E1-B11#1): nunca se usa

@@ -58,8 +58,13 @@ export class BandejasController {
 
   @Roles('ADMINISTRADOR')
   @Get('admin')
-  admin(@Query() query: BandejaAdminQueryDto) {
-    return this.bandejas.admin(query);
+  admin(
+    @Query() query: BandejaAdminQueryDto,
+    @AccesoActual() acceso: ResolucionAcceso,
+    @IdentidadActual() identidad: Identidad,
+    @Req() solicitud: SolicitudAutenticada,
+  ) {
+    return this.bandejas.admin(contexto(acceso, identidad, solicitud), query);
   }
 
   @Roles('AUDITOR')

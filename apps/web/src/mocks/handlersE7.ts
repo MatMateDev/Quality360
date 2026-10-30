@@ -13,6 +13,7 @@ import {
   fuentes,
   seguimientoDe,
 } from "./dataE7";
+import { bloqueImpedimentosBandeja, bloqueoFila, hduBloqueadasIds, riesgoFila } from "./handlersE4";
 import { ERROR_ACCESO_DENEGADO, ERROR_NO_ENCONTRADO, aCatalogoRef, aHduResumen, aUsuarioResumen, cuerpoError, leerNumero, paginar } from "./utils";
 
 const BASE = env.gatewayUrl;
@@ -62,8 +63,11 @@ function seguimientoBloque(hdu: HduMock) {
   };
 }
 
-function itemBandeja(hdu: HduMock) {
-  return { ...aHduResumen(hdu), actualizadoEn: hdu.estadoActualizadoEn, seguimiento: seguimientoBloque(hdu) };
+/** Campos aditivos de E4 por fila (D87): `bloqueo` en Analista y Líder, `riesgo` solo en el Líder. */
+type ExtraFila = (hdu: HduMock) => Record<string, unknown>;
+
+function itemBandeja(hdu: HduMock, extra?: ExtraFila) {
+  return { ...aHduResumen(hdu), actualizadoEn: hdu.estadoActualizadoEn, seguimiento: seguimientoBloque(hdu), ...extra?.(hdu) };
 }
 
 interface ParamsLista {
@@ -120,16 +124,16 @@ function ordenar(items: HduMock[], orden: string | null, porDefecto: string) {
   return { ordenados, efectivo };
 }
 
-function paginaHdu(items: HduMock[], url: URL, porDefecto: string) {
+function paginaHdu(items: HduMock[], url: URL, porDefecto: string, extra?: ExtraFila) {
   const pagina = leerNumero(url.searchParams.get("pagina"), 1);
   const tamano = Math.min(leerNumero(url.searchParams.get("tamanoPagina"), 25), 100);
   const { ordenados, efectivo } = ordenar(items, url.searchParams.get("orden"), porDefecto);
   const p = paginar(ordenados, pagina, tamano);
-  return { ...p, items: p.items.map(itemBandeja), orden: efectivo };
+  return { ...p, items: p.items.map((h) => itemBandeja(h, extra)), orden: efectivo };
 }
 
-function bloqueLista(items: HduMock[], url: URL, porDefecto: string) {
-  return { fuente: "organizacion.hdu", estado: "ok" as const, datos: paginaHdu(items, url, porDefecto) };
+function bloqueLista(items: HduMock[], url: URL, porDefecto: string, extra?: ExtraFila) {
+  return { fuente: "organizacion.hdu", estado: "ok" as const, datos: paginaHdu(items, url, porDefecto, extra) };
 }
 
 function esAbierta(h: HduMock) {
@@ -305,13 +309,15 @@ export const handlersE7 = [
 
     let lista = filtrar(propias, leerParams(url));
     const soloObs = url.searchParams.get("soloConObservaciones") === "true";
+    const soloBloqueadas = url.searchParams.get("soloBloqueadas") === "true";
     let bloqueHdu;
-    if (soloObs && !fuentes.certificaciones) {
-      // D46: un filtro que depende de Certificaciones deja la lista indisponible, nunca sin filtrar.
+    if ((soloObs && !fuentes.certificaciones) || (soloBloqueadas && !fuentes.impedimentos)) {
+      // D46 y D87: un filtro que depende de otra fuente deja la lista indisponible, nunca sin filtrar.
       bloqueHdu = bloqueIndisponible("organizacion.hdu");
     } else {
       if (soloObs) lista = lista.filter((h) => seguimientoDe(h.id).observaciones > 0);
-      bloqueHdu = bloqueLista(lista, url, "codigo:asc");
+      if (soloBloqueadas) lista = lista.filter((h) => hduBloqueadasIds().has(h.id));
+      bloqueHdu = bloqueLista(lista, url, "codigo:asc", (h) => ({ bloqueo: bloqueoFila(h.id) }));
     }
 
     return HttpResponse.json({
@@ -324,6 +330,7 @@ export const handlersE7 = [
         esperandoAprobacion: contadorCert(suma((h) => seguimientoDe(h.id).porAprobar)),
       },
       hdu: bloqueHdu,
+      impedimentos: bloqueImpedimentosBandeja(actor, propias),
     });
   }),
 
@@ -371,6 +378,8 @@ export const handlersE7 = [
             entregablesPorAprobar: a.entregablesPorAprobar,
             esperandoDesde: a.esperandoDesde,
             antiguedadDias: Math.max(0, Math.floor((Date.now() - new Date(a.esperandoDesde).getTime()) / 86_400_000)),
+            // D81: el bloqueo solo viaja en las filas `CERRAR`.
+            ...(a.tipo === "CERRAR" ? { bloqueo: bloqueoFila(a.hdu.id) } : {}),
           })),
           calculoParcial: !fuentes.certificaciones,
         },
@@ -394,6 +403,7 @@ export const handlersE7 = [
         listasCerrar: contadorCert(vivas.filter((h) => seguimientoDe(h.id).aprobados === 10).length),
       },
       acciones: bloqueAcciones,
+      impedimentos: bloqueImpedimentosBandeja(actor, propias),
     });
   }),
 
@@ -410,6 +420,8 @@ export const handlersE7 = [
     const ambito = hdus.filter((h) => misCelulas.includes(h.celulaId));
     let lista = filtrar(ambito, p);
     if (url.searchParams.get("sinAnalista") === "true") lista = lista.filter((h) => !h.analistaId);
+    const soloBloqueadasLider = url.searchParams.get("soloBloqueadas") === "true";
+    if (soloBloqueadasLider && fuentes.impedimentos) lista = lista.filter((h) => hduBloqueadasIds().has(h.id));
 
     return HttpResponse.json({
       rol: "LIDER_QA",
@@ -446,7 +458,11 @@ export const handlersE7 = [
           }),
         },
       },
-      hdu: bloqueLista(lista, url, "celula:asc"),
+      hdu:
+        soloBloqueadasLider && !fuentes.impedimentos
+          ? bloqueIndisponible("organizacion.hdu")
+          : bloqueLista(lista, url, "celula:asc", (h) => ({ bloqueo: bloqueoFila(h.id), riesgo: riesgoFila(h) })),
+      impedimentos: bloqueImpedimentosBandeja(actor, ambito),
     });
   }),
 
@@ -501,6 +517,7 @@ export const handlersE7 = [
             datos: { items: [...auditoriaUsuarios].sort((a, b) => b.fecha.localeCompare(a.fecha)).slice(0, 10).map((r) => ({ ...registroAuditoria(r), antes: null, despues: null })) },
           }
         : bloqueIndisponible("organizacion.auditoria"),
+      impedimentos: bloqueImpedimentosBandeja(actor, hdus),
     });
   }),
 
@@ -529,6 +546,7 @@ export const handlersE7 = [
         cambiosUsuarios7d: { fuente: "organizacion.auditoria", estado: "ok", datos: { valor: auditoriaUsuarios.length } },
       },
       hdu: bloque,
+      impedimentos: bloqueImpedimentosBandeja(actor, hdus),
     });
   }),
 

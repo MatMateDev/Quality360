@@ -26,7 +26,9 @@ interface Props {
  */
 export function TarjetaContador({ consulta, id, clave, titulo, contador, atencion, detalle }: Props) {
   if (consulta.isError) return <TarjetaMetrica id={id} clave={clave} titulo={titulo} estado="error" onReintentar={() => consulta.refetch()} />;
-  if (consulta.isLoading || !contador) return <TarjetaMetrica id={id} clave={clave} titulo={titulo} estado="cargando" />;
+  if (consulta.isLoading) return <TarjetaMetrica id={id} clave={clave} titulo={titulo} estado="cargando" />;
+  // Una respuesta sin este contador (servicio de otra versión) no es un 0: se informa como no disponible.
+  if (!contador) return <TarjetaMetrica id={id} clave={clave} titulo={titulo} estado="indisponible" mensajeIndisponible="No disponible" onReintentar={() => consulta.refetch()} />;
   if (contador.estado !== "ok") {
     return <TarjetaMetrica id={id} clave={clave} titulo={titulo} estado="indisponible" mensajeIndisponible="No disponible" onReintentar={() => consulta.refetch()} />;
   }

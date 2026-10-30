@@ -8,6 +8,7 @@ import { BloqueDatos, EncabezadoBandeja, GrupoContadores, type EstadoDatos } fro
 import { TablaBandeja, type Columna } from "@/components/bandeja/TablaBandeja";
 import { TarjetaContador } from "@/components/bandeja/TarjetaContador";
 import { Paginacion } from "@/components/bandeja/Paginacion";
+import { BloqueImpedimentosBandeja } from "@/components/impedimentos/BloqueImpedimentosBandeja";
 import { useFiltrosUrl } from "@/lib/filtrosUrl";
 import { formatearFecha } from "@/lib/formato";
 import {
@@ -156,6 +157,23 @@ export function AdminInicioPage() {
             <TarjetaContador consulta={bandeja} id="celulas-sin-lider" clave="celulas-sin-lider" titulo="Células sin líder" contador={datos?.contadores.celulasSinLider} atencion />
             <TarjetaContador consulta={bandeja} id="hdu-total" clave="hdu-total" titulo="HDU totales" contador={datos?.contadores.hduTotal} />
           </GrupoContadores>
+
+          {/* E4: solo consulta (D57, D83): sin tono de atención, porque el Administrador no gestiona su contenido. */}
+          <GrupoContadores titulo="Impedimentos y riesgo" compacto>
+            <TarjetaContador consulta={bandeja} id="impedimentos-abiertos" clave="impedimentos-abiertos" titulo="Impedimentos abiertos" contador={datos?.impedimentos?.contadores.impedimentosAbiertos} />
+            <TarjetaContador consulta={bandeja} id="hdu-bloqueadas" clave="hdu-bloqueadas" titulo="HDU bloqueadas" contador={datos?.impedimentos?.contadores.hduBloqueadas} />
+            <TarjetaContador consulta={bandeja} id="hdu-riesgo-alto" clave="hdu-riesgo-alto" titulo="HDU en riesgo alto" contador={datos?.impedimentos?.contadores.hduRiesgoAlto} />
+          </GrupoContadores>
+          <p className="campo-ayuda">Solo consulta. Los gestiona el QE responsable de cada HDU.</p>
+          <BloqueImpedimentosBandeja
+            variante="admin"
+            titulo="Impedimentos escalados a mí"
+            clave="impedimentos-escalados"
+            testIdTabla="lista-impedimentos-escalados"
+            consulta={bandeja}
+            bloque={datos?.impedimentos?.escalados}
+            vacio="No tienes impedimentos escalados"
+          />
         </>
       ) : null}
 

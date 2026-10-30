@@ -32,7 +32,8 @@ curl http://localhost:3000/health              # {"estado":"ok"}
 | `GET /v1/auditoria`, `GET /v1/catalogos/celulas`, `GET /v1/catalogos/sprints` | Organización. |
 | `GET /v1/hdu`, `POST /v1/hdu`, `PUT /v1/hdu/{id}/analista`, `POST /v1/hdu/{id}/estado`, `GET /v1/hdu/{id}/historial` | Organización. |
 | `GET /v1/hdu/{id}` | Organización (obligatoria) + bloque `checklist` de Certificaciones. |
-| `/v1/certificaciones/*`, `/v1/impedimentos/*`, `/v1/integraciones/*` | 501 `CAPACIDAD_NO_DISPONIBLE` hasta que esos servicios existan. |
+| E4 (D85): `GET /v1/catalogos/tipos-impedimento`; `GET\|POST /v1/hdu/{hduId}/impedimentos`; `GET /v1/hdu/{hduId}/impedimentos/responsables`; `GET\|PUT /v1/hdu/{hduId}/riesgo`; `GET /v1/hdu/{hduId}/gestion-impedimentos`; `GET /v1/impedimentos`; `GET /v1/impedimentos/{id}`; `POST /v1/impedimentos/{id}/(resolver\|escalar\|reabrir\|seguimiento)`; `GET /v1/riesgo/hdu`; `GET /v1/auditor/(impedimentos\|gestion-impedimentos)`; `GET /v1/auditor/exportaciones/(impedimentos\|gestion-impedimentos)` (CSV tal cual) | Impedimentos (`IMPEDIMENTOS_URL`), sin composición. Caído → 503. El 409 `HDU_BLOQUEADA` y el 503 del cierre (`POST /v1/hdu/{id}/estado`) los responde Organización y llegan tal cual. |
+| `/v1/certificaciones/*`, `/v1/integraciones/*` | 501 `CAPACIDAD_NO_DISPONIBLE` hasta que esos servicios existan. |
 
 Las rutas están declaradas una por una: **no hay proxy comodín**. Lo que no está en la tabla responde 404 `NO_ENCONTRADO`, incluidas las rutas internas de Organización.
 
@@ -81,7 +82,7 @@ Comportamiento observado con Supabase Auth local (GoTrue v2.196.0), cubierto por
 
 ## Variables de entorno
 
-Ver `.env.example`. Obligatoria: `SUPABASE_URL` (o bien `SUPABASE_JWT_ISSUER` más `SUPABASE_JWKS_URL`). El resto tiene valores por defecto razonables para local, salvo `SUPABASE_JWT_SECRET`, que si no existe deshabilita el respaldo HS256.
+Ver `.env.example`. Obligatoria: `SUPABASE_URL` (o bien `SUPABASE_JWT_ISSUER` más `SUPABASE_JWKS_URL`). El resto tiene valores por defecto razonables para local, salvo `SUPABASE_JWT_SECRET`, que si no existe deshabilita el respaldo HS256. `IMPEDIMENTOS_URL` cae en `http://localhost:3003` en local, pero con `NODE_ENV=production` es obligatoria (sin ella el gateway no arranca). `IMPEDIMENTOS_TIMEOUT_MS` es opcional y por defecto vale `TIEMPO_LIMITE_SERVICIO_MS`.
 
 ## Pruebas
 
@@ -89,4 +90,4 @@ Ver `.env.example`. Obligatoria: `SUPABASE_URL` (o bien `SUPABASE_JWT_ISSUER` m�
 npm test --workspace apps/gateway
 ```
 
-35 pruebas de integración con servicios falsos, sin Supabase ni Docker: bloque `indisponible` con la fuente caída o lenta, respuesta directa de una fuente con 403, servicio caído → 503, token vencido → `SESION_EXPIRADA`, eliminación de `X-Q360-Servicio-Token`, rutas `/v1/interno/*` no expuestas, recorrido de ruta manipulado, 501 de otros servicios, JSON mal formado, CORS, helmet y límite de tasa.
+136 pruebas de integración con servicios falsos (las de E4 en `pruebas/e4-impedimentos.test.ts`), sin Supabase ni Docker: bloque `indisponible` con la fuente caída o lenta, respuesta directa de una fuente con 403, servicio caído → 503, token vencido → `SESION_EXPIRADA`, eliminación de `X-Q360-Servicio-Token`, rutas `/v1/interno/*` no expuestas, recorrido de ruta manipulado, 501 de otros servicios, JSON mal formado, CORS, helmet y límite de tasa.

@@ -52,6 +52,8 @@ export interface HduMock {
   creadoEn: string;
   /** `true` fuerza que el cierre responda `CHECKLIST_INCOMPLETO` en vez de `CHECKLIST_NO_DISPONIBLE` (uso exclusivo en pruebas). */
   simularChecklistIncompleto?: boolean;
+  /** E4: el checklist se da por completo y el cierre solo depende de los impedimentos (uso exclusivo en pruebas). */
+  simularChecklistCompleto?: boolean;
 }
 
 export type TipoEventoHdu = "ESTADO" | "ASIGNACION";

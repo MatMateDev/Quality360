@@ -21,6 +21,11 @@ apis:
     output: contracts/dist/certificaciones.v1.yaml
     x-openapi-ts:
       output: contracts/dist/types/certificaciones.v1.d.ts
+  impedimentos@v1:
+    root: contracts/impedimentos.v1.yaml
+    output: contracts/dist/impedimentos.v1.yaml
+    x-openapi-ts:
+      output: contracts/dist/types/impedimentos.v1.d.ts
 
 rules:
   rule/operacion-declara-roles:

@@ -1,0 +1,66 @@
+{
+  "descripcion": "Fixture E4 (seccion 7 de docs/backlog/e4-impedimentos-y-riesgos.md). Las fechas son relativas al momento de la carga: dias y horas hacia atras.",
+  "sprints": [
+    { "alias": "SP-VENC", "finDias": -3, "hdu": ["H5"] },
+    { "alias": "SP-PROX", "finDias": 2, "hdu": ["H1", "H6"] },
+    { "alias": "SP-MED", "finDias": 6, "hdu": ["H2"] },
+    { "alias": "SP-LEJ", "finDias": 20, "hdu": ["H3", "H4", "H8"] }
+  ],
+  "impedimentos": [
+    {
+      "id": "I1", "hdu": "H3", "tipo": "AMBIENTE", "titulo": "Ambiente QA no responde",
+      "descripcion": "El ambiente de QA no responde desde la manana y bloquea la ejecucion.",
+      "creadoPor": "ana3", "responsableInicial": "qe2",
+      "acciones": [
+        { "tipo": "REGISTRAR", "estado": "ABIERTO", "actor": "ana3", "hace": { "horas": 2 }, "comentario": "Registro del impedimento." }
+      ]
+    },
+    {
+      "id": "I2", "hdu": "H1", "tipo": "DATOS_PRUEBA", "titulo": "Faltan cuentas de prueba con saldo",
+      "descripcion": "No hay cuentas de prueba con saldo suficiente para ejecutar los casos.",
+      "creadoPor": "ana1", "responsableInicial": "qe1",
+      "acciones": [
+        { "tipo": "REGISTRAR", "estado": "ABIERTO", "actor": "ana1", "hace": { "dias": 6 }, "comentario": "Registro del impedimento." }
+      ]
+    },
+    {
+      "id": "I3", "hdu": "H6", "tipo": "DEPENDENCIA", "titulo": "API de Pagos sin sandbox",
+      "descripcion": "El equipo de Pagos aun no entrega un sandbox para la API.",
+      "creadoPor": "ana1", "responsableInicial": "qe1",
+      "acciones": [
+        { "tipo": "REGISTRAR", "estado": "ABIERTO", "actor": "ana1", "hace": { "dias": 3 }, "comentario": "Registro del impedimento." },
+        { "tipo": "ESCALAR", "estadoAnterior": "ABIERTO", "estado": "ESCALADO", "actor": "qe1", "hace": { "dias": 1 }, "comentario": "Se escala al lider de las celulas.", "responsableNuevo": "lid1" }
+      ]
+    },
+    {
+      "id": "I4", "hdu": "H2", "tipo": "REQUISITOS", "titulo": "Criterio de aceptación ambiguo",
+      "descripcion": "El criterio de aceptación de la historia admite dos interpretaciones.",
+      "creadoPor": "ana2", "responsableInicial": "qe1",
+      "acciones": [
+        { "tipo": "REGISTRAR", "estado": "ABIERTO", "actor": "ana2", "hace": { "dias": 5 }, "comentario": "Registro del impedimento." },
+        { "tipo": "RESOLVER", "estadoAnterior": "ABIERTO", "estado": "RESUELTO", "actor": "qe1", "hace": { "dias": 2 }, "comentario": "Se aclaró el criterio con el PO" }
+      ]
+    },
+    {
+      "id": "I5", "hdu": "H7", "tipo": "ACCESO", "titulo": "Permisos de la herramienta de pruebas",
+      "descripcion": "La analista no tenia permisos en la herramienta de gestion de pruebas.",
+      "creadoPor": "ana3", "responsableInicial": "qe2",
+      "acciones": [
+        { "tipo": "REGISTRAR", "estado": "ABIERTO", "actor": "ana3", "hace": { "dias": 20 }, "comentario": "Registro del impedimento." },
+        { "tipo": "RESOLVER", "estadoAnterior": "ABIERTO", "estado": "RESUELTO", "actor": "qe2", "hace": { "dias": 15 }, "comentario": "Permisos otorgados." }
+      ]
+    }
+  ],
+  "riesgo": [
+    { "hdu": "H6", "nivel": "MEDIO", "justificacion": "Dependencia en gestión con el equipo de Pagos", "actor": "qe1", "hace": { "dias": 2 } }
+  ],
+  "esperado": {
+    "H1": { "bloqueada": true, "sugerido": "ALTO", "factores": ["IMPEDIMENTO_ABIERTO", "IMPEDIMENTO_ANTIGUO", "ATRASO_SPRINT_ALTO"], "vigente": "ALTO", "origen": "SUGERIDO" },
+    "H2": { "bloqueada": false, "sugerido": "MEDIO", "factores": ["ATRASO_SPRINT_MEDIO"], "vigente": "MEDIO", "origen": "SUGERIDO" },
+    "H3": { "bloqueada": true, "sugerido": "MEDIO", "factores": ["IMPEDIMENTO_ABIERTO"], "vigente": "MEDIO", "origen": "SUGERIDO" },
+    "H4": { "bloqueada": false, "sugerido": "BAJO", "factores": [], "vigente": "BAJO", "origen": "SUGERIDO" },
+    "H5": { "bloqueada": false, "sugerido": "ALTO", "factores": ["SPRINT_VENCIDO"], "vigente": "ALTO", "origen": "SUGERIDO" },
+    "H6": { "bloqueada": true, "sugerido": "ALTO", "factores": ["IMPEDIMENTO_ABIERTO", "IMPEDIMENTO_ESCALADO"], "vigente": "MEDIO", "origen": "MANUAL" },
+    "H8": { "bloqueada": false, "sugerido": "BAJO", "factores": [], "vigente": "BAJO", "origen": "SUGERIDO" }
+  }
+}

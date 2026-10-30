@@ -35,6 +35,16 @@ export class Reenviador {
     return this.configuracion.certificacionesUrl;
   }
 
+  /** Base de Impedimentos (E4, D85). */
+  get impedimentosUrl(): string {
+    return this.configuracion.impedimentosUrl;
+  }
+
+  /** Tiempo límite al reenviar a Impedimentos. */
+  get tiempoLimiteImpedimentosMs(): number {
+    return this.configuracion.tiempoLimiteImpedimentosMs;
+  }
+
   /** Identidad ya verificada por `IdentidadGuard`. */
   identidadDe(solicitud: SolicitudGateway): Identidad {
     const identidad = solicitud.identidad;

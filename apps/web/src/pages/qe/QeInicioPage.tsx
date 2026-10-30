@@ -9,6 +9,8 @@ import { BarraFiltros, type CampoFiltro } from "@/components/bandeja/BarraFiltro
 import { BloqueDatos, EncabezadoBandeja, GrupoContadores, type EstadoDatos } from "@/components/bandeja/Estructura";
 import { Paginacion } from "@/components/bandeja/Paginacion";
 import { TablaBandeja, type Columna } from "@/components/bandeja/TablaBandeja";
+import { BloqueImpedimentosBandeja } from "@/components/impedimentos/BloqueImpedimentosBandeja";
+import { InsigniaBloqueo } from "@/components/impedimentos/Insignias";
 import { TarjetaContador } from "@/components/bandeja/TarjetaContador";
 import { useOpcionesCatalogo } from "@/components/bandeja/opciones";
 import { hayFiltrosActivos, useFiltrosUrl } from "@/lib/filtrosUrl";
@@ -116,6 +118,13 @@ export function QeInicioPage() {
         <span className="badge badge-accion" data-testid={`celda-accion-${a.hdu.id}`}>
           <span aria-hidden="true">{ICONO_ACCION[a.tipo]} </span>
           {textoAccion(a)}
+          {/* D81: la insignia va después del texto, en un elemento propio y fuera del botón «Cerrar». */}
+          {a.tipo === "CERRAR" && a.bloqueo?.estado === "ok" && a.bloqueo.datos.bloqueada ? (
+            <>
+              {" "}
+              <InsigniaBloqueo suave testId={`insignia-con-impedimento-${a.hdu.id}`} />
+            </>
+          ) : null}
         </span>
       ),
     },
@@ -227,6 +236,31 @@ export function QeInicioPage() {
           ) : null}
         </BloqueDatos>
       </section>
+
+      <GrupoContadores titulo="Impedimentos y riesgo" compacto>
+        <TarjetaContador
+          consulta={bandeja}
+          id="impedimentos-abiertos"
+          clave="impedimentos-abiertos"
+          titulo="Impedimentos abiertos"
+          contador={datos?.impedimentos?.contadores.impedimentosAbiertos}
+          atencion
+        />
+        <TarjetaContador consulta={bandeja} id="impedimentos-nuevos" clave="impedimentos-nuevos" titulo="Nuevos (24 h)" contador={datos?.impedimentos?.contadores.impedimentosNuevos} />
+        <TarjetaContador consulta={bandeja} id="hdu-riesgo-alto" clave="hdu-riesgo-alto" titulo="HDU en riesgo alto" contador={datos?.impedimentos?.contadores.hduRiesgoAlto} atencion />
+      </GrupoContadores>
+      <BloqueImpedimentosBandeja
+        variante="qe"
+        titulo="Impedimentos de mi equipo"
+        descripcion="Los 10 más recientes, por riesgo y antigüedad."
+        clave="impedimentos"
+        testIdTabla="lista-impedimentos"
+        consulta={bandeja}
+        bloque={datos?.impedimentos?.lista}
+        vacio="Tu equipo no tiene bloqueos"
+        tonoVacio="exito"
+        verTodos
+      />
 
       {inicioQuery.isLoading ? <BloqueEstado id="inicio-qe" estado="cargando" /> : null}
       {inicioQuery.isError ? <BloqueEstado id="inicio-qe" estado="error" onReintentar={() => inicioQuery.refetch()} /> : null}

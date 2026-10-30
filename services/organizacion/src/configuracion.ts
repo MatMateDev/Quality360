@@ -18,6 +18,9 @@ export interface ConfiguracionOrganizacion {
   /** Base de Certificaciones, para `GET /v1/hdu/{id}/checklist` al cerrar una HDU (D11). */
   certificacionesUrl: string;
   certificacionesTimeoutMs: number;
+  /** Base de Impedimentos: cierre bloqueado (D60) y bloques de las bandejas (D87). */
+  impedimentosUrl: string;
+  impedimentosTimeoutMs: number;
   /** Máximo de filas de una exportación CSV del Auditor (D35, D48, `EXPORTACION_LIMITE_FILAS`). */
   exportacionLimiteFilas: number;
 }
@@ -63,6 +66,8 @@ export function cargarConfiguracion(entorno: NodeJS.ProcessEnv = process.env): C
     verificador: opcionesDesdeEntorno(entorno),
     certificacionesUrl: leerUrl(entorno.CERTIFICACIONES_URL, 'http://localhost:3002', 'CERTIFICACIONES_URL'),
     certificacionesTimeoutMs: leerEntero(entorno.CERTIFICACIONES_TIMEOUT_MS, 2000, 'CERTIFICACIONES_TIMEOUT_MS'),
+    impedimentosUrl: leerUrl(entorno.IMPEDIMENTOS_URL, 'http://localhost:3003', 'IMPEDIMENTOS_URL'),
+    impedimentosTimeoutMs: leerEntero(entorno.IMPEDIMENTOS_TIMEOUT_MS, 2000, 'IMPEDIMENTOS_TIMEOUT_MS'),
     exportacionLimiteFilas: leerEntero(entorno.EXPORTACION_LIMITE_FILAS, 50_000, 'EXPORTACION_LIMITE_FILAS'),
   };
 }

@@ -46,8 +46,10 @@ test.describe("E7-F05 · Bandeja del Administrador", () => {
       for (const nombre of ["Gestionar usuarios", "Gestionar supervisión", "Registrar usuario"]) {
         await expect(page.getByRole("link", { name: nombre })).toBeVisible();
       }
-      // D36: ni siquiera un contador en cero de impedimentos.
-      await expect(page.locator("body")).not.toContainText(/impedimento/i);
+      // D36 (E7) quedó superado por D87 (E4): la bandeja del Administrador suma contadores de impedimentos. Se conserva la intención
+      // (los bloques certificados no cambian) exigiendo que los pendientes de configuración sigan sin mencionarlos.
+      await expect(page.getByTestId("lista-pendientes")).not.toContainText(/impedimento/i);
+      await expect(page.getByTestId("contador-impedimentos-abiertos")).toBeVisible();
     });
 
     test("[E7-F05#1] T02: la lista de pendientes trae a ANA4 «Analista sin QE», a LID2 «Líder sin células» y a la célula CEL-C «Célula sin líder»", async ({ page, request }) => {

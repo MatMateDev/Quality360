@@ -34,6 +34,10 @@ export class CatalogoPrismaRepositorio implements CatalogoRepositorio {
     return this.prisma.sprint.findUnique({ where: { id }, select: CAMPOS_SPRINT });
   }
 
+  async celulaDeSprint(id: string): Promise<string | null> {
+    return (await this.prisma.sprint.findUnique({ where: { id }, select: { celulaId: true } }))?.celulaId ?? null;
+  }
+
   async crearCelulaSiNoExiste(nombre: string): Promise<{ creado: boolean; celula: Celula }> {
     const existente = await this.prisma.celula.findFirst({ where: { nombre: { equals: nombre, mode: 'insensitive' } }, select: CAMPOS_CELULA });
     if (existente !== null) return { creado: false, celula: existente };

@@ -46,6 +46,25 @@ export class ErrorCierreRechazadoHdu extends Error {
   }
 }
 
+/** 409 `HDU_BLOQUEADA` al pedir `CERRADA` con impedimentos abiertos o escalados (D60, D77). */
+export class ErrorHduBloqueada extends Error {
+  constructor(
+    readonly total: number,
+    readonly items: ReadonlyArray<{ id: string; titulo: string; tipo: string; estado: 'ABIERTO' | 'ESCALADO'; diasAbierto: number }>,
+  ) {
+    super('No se puede cerrar la HDU: tiene impedimentos abiertos o escalados.');
+    this.name = 'ErrorHduBloqueada';
+  }
+}
+
+/** 503 al pedir `CERRADA` cuando Impedimentos no responde (D60): no se puede verificar, no se cierra. */
+export class ErrorImpedimentosNoVerificables extends Error {
+  constructor() {
+    super('No pudimos verificar los impedimentos de la HDU');
+    this.name = 'ErrorImpedimentosNoVerificables';
+  }
+}
+
 export type RelacionesIncompatibles = RelacionesUsuario;
 
 const lista = (nombres: readonly string[]): string => nombres.join(', ');

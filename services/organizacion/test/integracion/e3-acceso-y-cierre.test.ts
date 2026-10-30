@@ -20,11 +20,13 @@ import {
   prisma,
   type UsuarioDePrueba,
 } from '../ayudas.js';
+import { ImpedimentosFalsa } from '../impedimentos-falsa.js';
 import '../entorno.js';
 
 let app: NestExpressApplication;
 let certificaciones: Server;
 let completo = false;
+const impedimentos = new ImpedimentosFalsa();
 let admin: UsuarioDePrueba;
 let qe: UsuarioDePrueba;
 let otroQe: UsuarioDePrueba;
@@ -44,6 +46,7 @@ async function crearHdu(duenio: UsuarioDePrueba): Promise<{ id: string; codigo: 
 
 before(async () => {
   await limpiarBaseDeDatos();
+  await impedimentos.iniciar();
   certificaciones = createServer((peticion, res) => {
     const hduId = peticion.url?.match(/^\/v1\/hdu\/([^/]+)\/checklist$/)?.[1];
     res.writeHead(hduId === undefined ? 404 : 200, { 'content-type': 'application/json' });
@@ -52,7 +55,7 @@ before(async () => {
   await new Promise<void>((resolver) => certificaciones.listen(0, '127.0.0.1', resolver));
   const direccion = certificaciones.address();
   if (direccion === null || typeof direccion === 'string') throw new Error('sin puerto');
-  app = await crearApp(cargarConfiguracion({ ...process.env, CERTIFICACIONES_URL: `http://127.0.0.1:${direccion.port}` }), { registro: false });
+  app = await crearApp(cargarConfiguracion({ ...process.env, CERTIFICACIONES_URL: `http://127.0.0.1:${direccion.port}`, IMPEDIMENTOS_URL: impedimentos.url }), { registro: false });
 
   admin = await crearUsuarioDePrueba('ADMINISTRADOR', { nombre: 'Admin E3' });
   qe = await crearUsuarioDePrueba('QE', { nombre: 'Carla QE' });
@@ -71,6 +74,7 @@ before(async () => {
 after(async () => {
   await app.close();
   await new Promise<void>((resolver) => certificaciones.close(() => resolver()));
+  await impedimentos.cerrar();
   await prisma.$disconnect();
 });
 
@@ -97,6 +101,10 @@ describe('GET /v1/interno/hdu/{id}/acceso con actor y HDU [E3-B01#1]', () => {
       estado: 'PENDIENTE',
       celula: 'Pagos E3',
       sprint: 'Sprint E3',
+      // E4 (D86): ids y fin del sprint para Impedimentos.
+      celulaId: celula.id,
+      sprintId: sprint.id,
+      sprintFin: '2026-01-14',
       qeResponsable: { id: qe.id, nombre: 'Carla QE' },
       analista: { id: analista.id, nombre: 'Ana Analista' },
     });

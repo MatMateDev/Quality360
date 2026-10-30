@@ -7,6 +7,8 @@ export interface Columna<T> {
   titulo: string;
   /** Si es verdadero, el encabezado es un botón con `aria-sort`. */
   ordenable?: boolean;
+  /** Celda que sube al principio de la tarjeta en 375 px (`celda-prioritaria`, E4). */
+  prioritaria?: boolean;
   render: (item: T) => ReactNode;
 }
 
@@ -94,7 +96,7 @@ export function TablaBandeja<T>({ testId, caption, columnas, items, clave, testI
               onClick={hrefFila ? (evento) => abrirFila(evento, item) : undefined}
             >
               {columnas.map((columna) => (
-                <td key={columna.id} role="cell" data-label={columna.titulo}>
+                <td key={columna.id} role="cell" data-label={columna.titulo} className={columna.prioritaria ? "celda-prioritaria" : undefined}>
                   {columna.render(item)}
                 </td>
               ))}

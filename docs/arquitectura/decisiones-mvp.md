@@ -372,3 +372,154 @@ Las pruebas de API certificadas no cambian de resultado esperado:
 1. **QE con HDU abiertas (D40).** Resuelta con D54: el Administrador reasigna el QE responsable con `PUT /v1/hdu/{id}/qe-responsable` y después cambia el rol.
 2. **Volumen.** Las bandejas leen el ámbito completo para ordenar y filtrar con datos de Certificaciones (lotes de hasta 1000 HDU). Alcanza para el MVP; con más de unos pocos miles de HDU por ámbito, conviene una proyección del avance en Organización (por eventos).
 3. **Validez del certificado (D45).** Hoy siempre es `true`. Si se quiere revocar certificados, hace falta una HDU nueva que defina quién revoca y cómo se ve.
+
+# Corrida E4 · Impedimentos y riesgos
+
+- **Alcance:** 8 HDU (E4-F01–F04, E4-B01–B04), 24 escenarios y 89 casos. Fuente: `docs/backlog/e4-impedimentos-y-riesgos.md` (catálogos, matriz de permisos 3.6, modelo de datos, sección 6 de efectos y fixture). Los escenarios refinados también están en `docs/backlog/historias-quality360.md` para `npm run contracts:check`. Diseño: `docs/diseno/e4-impedimentos-y-riesgos.md`.
+- **Decisiones del usuario (2026-10-26):** un impedimento `ABIERTO` o `ESCALADO` bloquea el cierre de la HDU (409 `HDU_BLOQUEADA`); solo el QE responsable gestiona (resolver, escalar, reabrir, seguimiento, fijar riesgo); registran el analista asignado y el QE responsable; Administrador, Líder QA y Auditor solo leen; el Analista QA no ve el riesgo.
+- **D57–D74** están en el backlog E4 y se mantienen. Las precisiones están en D77 (sobre D60), D89 (sobre la matriz 3.6) y D92 (texto del backlog).
+- **Contratos:** `contracts/impedimentos.v1.yaml` (nuevo) y cambios aditivos en `comun`, `organizacion` y `gateway`. `npm run contracts:lint` sin advertencias y `npm run contracts:check` con 186/186 escenarios (E1, E2, E3, E4 y E7).
+- **Reparto:** `docs/arquitectura/e4-plan-construccion.md`. **ADR:** `adr/0014-impedimentos-y-riesgo.md`.
+
+## Decisiones
+
+| ID | Decisión | Motivo |
+| --- | --- | --- |
+| D75 | **El servidor dice qué se puede hacer.** `GET /v1/hdu/{id}/impedimentos` trae `hduCerrada`, `bloqueada`, los conteos y `permisos {puedeRegistrar, puedeGestionar, puedeVerRiesgo, puedeFijarRiesgo}`. Cada `Impedimento` trae `esNuevo` y `operacionesPermitidas` (según su estado y la relación; vacío si quien consulta no es el QE responsable o si la HDU está cerrada). `GET /v1/hdu/{id}/riesgo` trae `hduCerrada` y `permisos.puedeFijarRiesgo`; `ImpedimentoDetalle` trae `hdu`, `hduCerrada` y `permisos`. El portal muestra u omite cada botón con estos valores y nunca deduce la relación. `GET /v1/hdu/{id}` no cambia | Conflicto 2 del diseño. Mismo patrón que `permisos` del checklist (E3) |
+| D76 | **`factores[].detalle` estructurado.** Cada factor trae `codigo`, `nivel` y `detalle` con los valores y umbrales que usó el cálculo: `impedimentos`, `impedimentoId`, `diasAbierto`, `umbralDias`, `sprint {id, nombre}`, `sprintFin`, `diasRestantes`, `avance` y `umbralAvance` (qué campos van con cada código: `DetalleFactorRiesgo`). Los factores que no se pudieron evaluar van en `factoresNoEvaluados`. El portal arma la frase con el detalle y no fija umbrales; si falta un campo, usa la frase genérica del código | Conflicto 3. D67 hace configurables los umbrales |
+| D77 | **Cierre bloqueado con total.** El 409 `HDU_BLOQUEADA` (`ErrorHduBloqueada`) trae `impedimentos {total, items ≤ 20}`, los más antiguos primero, cada uno con `id`, `titulo`, `tipo`, `estado` y `diasAbierto` (un impedimento no tiene código; el backlog decía «código, título y estado»). El 503 por Impedimentos caído (`ErrorImpedimentosNoVerificables`) trae `impedimentos: {fuente: impedimentos.impedimentos, estado: indisponible}`, para que el portal lo distinga de una caída del gateway. Orden: transición (D10) → checklist (D11) → impedimentos. La operación es `POST /v1/hdu/{id}/estado` (el backlog decía `PUT`) | Conflicto 4. Mismo patrón que `hduAbiertas {total, items}` de D43 |
+| D78 | **Enlace «Abrir»:** `/hdu/:id?impedimento=<id>#impedimentos`. Es solo del portal y aditivo, como D44. Sin el parámetro, el detalle es el certificado. Un id que no está en la lista lleva a la sección sin aviso ni error | Conflicto 1 |
+| D79 | **Lista del Líder:** todos los `ABIERTO` y `ESCALADO` de sus células vigentes (hasta 50, con `total`), los escalados a él primero (`escaladoAMi`) y después el orden de D74. Solo lectura, sin botones. Los contadores no dependen de la lista | Conflicto 5. E4-F03-T04 («muestra ambos») y E4-B04 (3 abiertos) se cumplen con la lista completa |
+| D80 | **Riesgo del Auditor:** en el panel del detalle y en la vista «Gestión» (eventos `RIESGO`). No se agrega columna a la pestaña HDU del Auditor, ni a `BandejaAuditor.hdu`, ni a su CSV. **E7-B04-T09 no cambia:** afirma 10 columnas exactas y 4 filas de CEL-A, y la semilla E4 no agrega HDU. La API permite `GET /v1/riesgo/hdu` al Auditor, pero no tiene pantalla. Si se quiere la columna en pantalla, es aditiva (sin CSV) | Conflicto 6. D71 prohíbe cambiar el CSV |
+| D81 | **Insignia «Con impedimento abierto» en la fila «Cerrar HDU».** `AccionPendienteQe.bloqueo` solo viene en filas `CERRAR`. El portal pone la insignia en un elemento propio (`insignia-con-impedimento-<hduId>`) dentro de `celda-accion-<hduId>`, **después** del texto «Cerrar HDU» y **fuera** del botón `boton-accion-<hduId>-cerrar`, cuyo nombre accesible no cambia. Coordinado con `q360-qa`: E7-F03-T01 usa `toContainText("Cerrar HDU")`, que sigue pasando, y la semilla E4 no deja impedimentos abiertos en H8, así que la fila se ve igual. Ninguna prueba nueva puede usar `toHaveText` exacto sobre `celda-accion-*`. E4-B02-T12 registra uno en H8 y lo resuelve antes de terminar | Conflicto 8, sin cambiar lo certificado |
+| D82 | **Historial del detalle:** se confirma el diseño. Cada impedimento muestra sus acciones desde `GET /v1/impedimentos/{id}` (la más antigua primero); el panel de riesgo muestra su historial desde `GET /v1/hdu/{id}/gestion-impedimentos?tipo=RIESGO`. El «Historial» certificado de la HDU no se toca. El Analista no pide el de riesgo (no ve el panel) y, si lo pidiera, recibe solo entradas `IMPEDIMENTO` | Conflicto 10 |
+| D83 | **Administrador, solo lectura** (confirma D57 y la pregunta abierta 1 del backlog). Ve impedimentos, historial y riesgo sin botones; la nota `nota-impedimentos-solo-lectura` le indica que puede reasignar el QE (D54). Ninguna operación de gestión admite la relación `ADMINISTRADOR` | Conflicto 11 |
+| D84 | **Accesibilidad (gate de `q360-qa`).** axe a 1280 y 375 px sobre: `/hdu/:id` como Analista asignado, QE responsable, QE supervisor, Líder, Administrador y Auditor (incluidos el aviso `hdu-bloqueada` y el error `error-hdu-bloqueada`); los diálogos de registrar, resolver, escalar, reabrir, seguimiento y fijar riesgo, abiertos y con errores de validación; `/qe/impedimentos` y `/qe/impedimentos/riesgo` (con datos, vacío e indisponible); las 5 bandejas con sus bloques E4; `/auditor/impedimentos` en sus dos vistas. Cero violaciones `serious` o `critical` | Conflicto 15. Mismo gate que E7 |
+| D85 | **Gateway → Impedimentos** (`IMPEDIMENTOS_URL`, tiempo límite `TIEMPO_LIMITE_SERVICIO_MS`). Reenvío sin composición, con las rutas declaradas una por una en un controlador nuevo: `GET /v1/catalogos/tipos-impedimento`; `GET\|POST /v1/hdu/:hduId/impedimentos`; `GET /v1/hdu/:hduId/impedimentos/responsables`; `GET\|PUT /v1/hdu/:hduId/riesgo`; `GET /v1/hdu/:hduId/gestion-impedimentos`; `GET /v1/impedimentos`; `GET /v1/impedimentos/:id`; `POST /v1/impedimentos/:id/(resolver\|escalar\|reabrir\|seguimiento)`; `GET /v1/riesgo/hdu`; `GET /v1/auditor/(impedimentos\|gestion-impedimentos)` y sus 2 exportaciones (CSV tal cual). Las rutas con sufijo bajo `/v1/hdu/:id/` conviven con las de Organización (`analista`, `estado`, `historial`, `qe-responsable`) y con las de Certificaciones porque ninguna es comodín. Se retira `impedimentos{/*ruta}` de `NoImplementadoController`. `/v1/interno/*` no se publica. Destino caído → 503 | El gateway no tiene dominio (D46). Hoy `/v1/impedimentos/*` responde 501 |
+| D86 | **Contratos internos.**<br>• Impedimentos → Organización: `GET /v1/interno/acceso` (rol, activo y ámbito); `GET /v1/interno/hdu/{id}/acceso?incluirCandidatos=true` (relación, `hdu` y `candidatosResponsable {registro, escalamiento}`); `GET /v1/interno/hdu/ambito`; `POST /v1/interno/hdu/consulta`; **nuevo** `GET /v1/interno/hdu/ambito/detalle` (todas las HDU del ámbito, para «Riesgo por HDU»); `POST /v1/interno/auditoria/exportaciones` (recursos nuevos `IMPEDIMENTOS` y `GESTION_IMPEDIMENTOS`). `HduParaCertificacion` suma `celulaId`, `sprintId` y `sprintFin`.<br>• Impedimentos → Certificaciones: `POST /v1/interno/checklist/estados`, para el avance y para el ciclo activo al registrar (campo nuevo `SeguimientoHdu.certificacionId`, `null` sin ciclo).<br>• Organización → Impedimentos: `GET /v1/interno/hdu/{hduId}/impedimentos/abiertos` (cierre, D60) y `POST /v1/interno/impedimentos/evaluacion` (bandejas, D69).<br>Todas con el token del usuario, `x-trace-id` y 2 s. Un id fuera de ámbito en un lote → 403 completo. La vuelta Organización → Impedimentos → Organización solo autoriza (el mismo patrón de Certificaciones en E7) | Reglas no negociables 1–3; D47 |
+| D87 | **Bloques de bandeja** (`impedimentos`, obligatorio en las 5 `Bandeja*`; cada contador y lista con su `estado`).<br>• Analista: `impedimentosAbiertos`, `bloqueo` por fila y filtro `soloBloqueadas`, sin riesgo.<br>• QE (ámbito de su bandeja: HDU donde es responsable): `impedimentosAbiertos`, `impedimentosNuevos`, `hduRiesgoAlto`, `lista` (10) y `bloqueo` en las filas `CERRAR`.<br>• Líder: `impedimentosAbiertos`, `hduBloqueadas`, `escaladosAMi`, `lista` (D79), `bloqueo` y `riesgo` por fila y `soloBloqueadas`.<br>• Administrador: `impedimentosAbiertos`, `hduBloqueadas`, `hduRiesgoAlto` y `escalados` (a él).<br>• Auditor: `impedimentosAbiertos` y `hduBloqueadas`.<br>Si Impedimentos cae, solo estos bloques van `indisponible` y la respuesta es 200; `soloBloqueadas` con Impedimentos caído deja `hdu` `indisponible`. `hduRiesgoAlto` es `indisponible` si alguna HDU del ámbito tiene el riesgo `indisponible`. Para el `hduRiesgoAlto` del Administrador, Organización consulta Certificaciones solo para ese contador: los bloques certificados siguen sin depender de ella (E7-B03-T11) | D71, D46, regla no negociable 4 |
+| D88 | **Modelo de datos de Impedimentos** (lo escribe `q360-backend`; detalle abajo). Migración `20261026000000_e4_impedimentos_riesgo`, solo en el esquema `impedimentos` y sin llaves foráneas a otro esquema | D24, D65 |
+| D89 | **Autorización en Impedimentos.** Cada operación sobre una HDU consulta `GET /v1/interno/hdu/{id}/acceso`, y la relación decide según la tabla de `impedimentos.v1.yaml` (la matriz 3.6). Listados: una llamada a `GET /v1/interno/hdu/ambito`. Catálogo: usuario activo. `/v1/auditor/*`: `rol: AUDITOR`. Orden: 401 → 403 → 400 → 409 `HDU_CERRADA` → 422 → 409 `TRANSICION_INVALIDA`. Un impedimento inexistente da 404 al Administrador y al Auditor y 403 al resto (para saber el rol se consulta `GET /v1/interno/acceso`). Si Organización no responde, 503 | Igual que Certificaciones (D18, D47) |
+| D90 | **Precisiones del cálculo.**<br>• «Hoy» es la fecha de `America/Santiago`, o `Q360_FECHA_REFERENCIA` (ignorada con `NODE_ENV=production`), y se usa para días abiertos, días restantes y sprint vencido. `esNuevo` usa el reloj real: menos de 24 h desde `fecha_registro` y no resuelto.<br>• Con el avance caído, el `ALTO` parcial vale si lo alcanza cualquier factor evaluable, no solo los de impedimentos: `SPRINT_VENCIDO` no necesita el avance.<br>• Sin sprint vigente (`sprintFin: null`) no aplican los 3 factores de sprint.<br>• `diasRestantes` es negativo en `SPRINT_VENCIDO` | Completa D67 y D68 sin cambiar ningún caso |
+| D91 | **Despliegue.** Impedimentos se publica en Vercel como cuarto servicio (`quality360-impedimentos`, raíz `services/impedimentos`, con el mismo `vercel.json` y `api/index.mjs` que Certificaciones). El gateway suma `IMPEDIMENTOS_URL`, y Organización `IMPEDIMENTOS_URL` e `IMPEDIMENTOS_TIMEOUT_MS`. En local, puerto 3003 en Compose y en `npm run local`. La migración se aplica en la nube al cerrar la corrida (D13), seguida del RLS de `infrastructure/nube/004` (con `riesgo_hdu` y los `REVOKE`) | Sin Impedimentos arriba, el cierre de una HDU responde 503 (D60) |
+| D92 | **Correcciones al texto del backlog E4** (no cambian ningún resultado esperado):<br>• El cierre es `POST /v1/hdu/{id}/estado` (D77).<br>• Filtros de API `celulaId`, `analistaId`, `riesgo`, `incluirResueltos` y `orden=columna:asc\|desc` (D49); `?celula=` queda solo en la URL del portal.<br>• El «estado» de la evaluación se llama `riesgo.estado`.<br>• `responsableId` y `responsableNombre` a la vez → 400.<br>• Escalar al mismo responsable actual → 422 `RESPONSABLE_INVALIDO`.<br>• Filtrar por riesgo o por nivel con Certificaciones caída → 503 en los endpoints propios; en las bandejas, bloque `indisponible` | Coherencia con `comun.v1.yaml` y D46 |
+
+## Modelo de datos (lo escribe `q360-backend`)
+
+**Migración** `services/impedimentos/prisma/migrations/20261026000000_e4_impedimentos_riesgo/migration.sql`. Las tablas están vacías en local y en la nube, así que los `NOT NULL` se agregan sin valores de relleno.
+
+**`impedimento`** (existente; se agrega):
+
+| Columna | Tipo | Regla |
+| --- | --- | --- |
+| `id_historia` | `uuid NOT NULL` | UUID de Organización, sin FK (D58) |
+| `id_certificacion` | `uuid NULL` | Pasa a admitir NULL (`ALTER COLUMN … DROP NOT NULL`) |
+| `responsable_id` | `uuid NULL` | Usuario de Organización, sin FK; NULL = tercero (D63) |
+| `responsable_nombre` | `varchar(150) NOT NULL` | Instantánea |
+| `creado_por_id` | `uuid NOT NULL` | Sin FK |
+| `creado_por_nombre` | `varchar(150) NOT NULL` | Instantánea |
+| `creado_por_rol` | `varchar(30) NOT NULL` | `ANALISTA_QA` o `QE` |
+| `abierto_desde` | `timestamptz(6) NOT NULL DEFAULT now()` | Se reinicia al reabrir (D74) |
+| `actualizado_en` | `timestamptz(6) NOT NULL DEFAULT now()` | |
+
+- `titulo varchar(200)`, `descripcion varchar(1000) NULL`, `tipo varchar(30)`, `estado varchar(30)`, `fecha_registro` y `fecha_resolucion` no cambian.
+- CHECK:
+  - `impedimento_tipo_ck`: `tipo IN ('AMBIENTE','DATOS_PRUEBA','ACCESO','REQUISITOS','DEPENDENCIA','DEFECTO_BLOQUEANTE','HERRAMIENTA','RECURSOS','OTRO')`
+  - `impedimento_estado_ck`: `estado IN ('ABIERTO','ESCALADO','RESUELTO')`
+  - `impedimento_resolucion_ck`: `(estado = 'RESUELTO') = (fecha_resolucion IS NOT NULL)`
+  - `impedimento_creado_por_rol_ck`: `creado_por_rol IN ('ANALISTA_QA','QE')`
+- Índices:
+  - `impedimento_historia_estado_idx (id_historia, estado)`
+  - `impedimento_abiertos_idx (estado, abierto_desde) WHERE estado <> 'RESUELTO'`
+  - `impedimento_responsable_escalado_idx (responsable_id) WHERE estado = 'ESCALADO'` (escalados a mí)
+  - `impedimento_fecha_registro_idx (fecha_registro DESC)` (Auditor)
+  - Se conserva el índice de `id_certificacion`.
+
+**`accion_impedimento`** (existente; solo inserción; se agrega):
+
+| Columna | Tipo | Regla |
+| --- | --- | --- |
+| `tipo_accion` | `varchar(30) NOT NULL` | CHECK `accion_impedimento_tipo_ck`: `REGISTRAR`, `ESCALAR`, `RESOLVER`, `REABRIR`, `SEGUIMIENTO` |
+| `estado_anterior` | `varchar(30) NULL` | NULL solo en `REGISTRAR`: CHECK `accion_impedimento_anterior_ck` `(tipo_accion = 'REGISTRAR') = (estado_anterior IS NULL)` |
+| `actor_id` | `uuid NOT NULL` | Sin FK |
+| `actor_nombre` | `varchar(150) NOT NULL` | Instantánea: desactivar al usuario no altera el historial |
+| `actor_rol` | `varchar(30) NOT NULL` | |
+| `detalle` | `jsonb NULL` | En `ESCALAR`: `{responsableAnterior, responsableNuevo}` |
+
+- `descripcion varchar(500)` es el comentario (en `REGISTRAR`, «Registro del impedimento»). `estado` es el estado resultante, con el CHECK de los 3 estados, igual que `estado_anterior` cuando no es NULL. `observacion` queda libre y `fecha_accion` no cambia. La FK `id_impedimento → impedimento` es interna del esquema y se mantiene.
+- Índices: `accion_impedimento_impedimento_fecha_idx (id_impedimento, fecha_accion)`, `accion_impedimento_fecha_idx (fecha_accion DESC)` y `accion_impedimento_actor_fecha_idx (actor_id, fecha_accion)`.
+
+**`riesgo_hdu`** (nueva; solo inserción; el nivel vigente es la última fila de la HDU):
+
+| Columna | Tipo | Regla |
+| --- | --- | --- |
+| `id_riesgo` | `uuid` PK | `DEFAULT gen_random_uuid()` |
+| `id_historia` | `uuid NOT NULL` | Sin FK |
+| `nivel` | `varchar(10) NOT NULL` | CHECK `riesgo_hdu_nivel_ck`: `BAJO`, `MEDIO`, `ALTO` |
+| `nivel_anterior` | `varchar(10) NULL` | Mismo CHECK si no es NULL |
+| `justificacion` | `varchar(500) NOT NULL` | |
+| `sugerido_al_fijar` | `varchar(10) NULL` | Mismo CHECK si no es NULL; NULL si la sugerencia no se pudo calcular |
+| `actor_id`, `actor_nombre`, `actor_rol` | `uuid`, `varchar(150)`, `varchar(30)`, NOT NULL | Instantánea |
+| `fecha` | `timestamptz(6) NOT NULL DEFAULT now()` | |
+
+- Índices: `riesgo_hdu_historia_fecha_idx (id_historia, fecha DESC)` y `riesgo_hdu_fecha_idx (fecha DESC)`.
+
+**Permisos y concurrencia:**
+- Al final de la migración: `REVOKE UPDATE, DELETE ON accion_impedimento, riesgo_hdu FROM svc_impedimentos;` y `REVOKE DELETE ON impedimento FROM svc_impedimentos;` (no hay borrados). Funciona aunque `svc_impedimentos` sea el dueño de la tabla, como en local. En la nube la migración la aplica `postgres` y los privilegios por defecto los vuelven a otorgar, así que `infrastructure/nube/004_rls_impedimentos_nube.sql` suma `riesgo_hdu` al RLS y repite los `REVOKE`. E4-B04-T07 espera 42501.
+- Toda transición toma la fila con `SELECT … FOR UPDATE` dentro de la transacción que inserta la acción (D62). Registrar inserta el impedimento y su acción en una transacción. `PUT riesgo` lee la última fila de la HDU con `FOR UPDATE`, para que dos cambios simultáneos no tomen el mismo `nivel_anterior`.
+- Prisma: modelos `Impedimento`, `AccionImpedimento` y `RiesgoHdu` con `@map` a estos nombres. Los CHECK, los índices parciales y los `REVOKE` van en SQL y se documentan en `schema.prisma`, como en `celula_lider` (D52).
+- Organización y Certificaciones no tienen migración en esta corrida.
+
+**Semilla** (`q360-integraciones`): agrega el fixture de la sección 7 del backlog E4, siempre por API con `credencialServicio`:
+- Impedimentos I1–I5 con sus acciones y fechas pasadas: `POST /v1/interno/carga/impedimentos` (nuevo).
+- Riesgo fijado de H6: `POST /v1/interno/carga/riesgo` (nuevo).
+- Sprints con fin relativo a hoy: `POST /v1/interno/carga/sprints` (existente). Un sprint pertenece a una célula, así que SP-PROX y SP-LEJ se crean una vez por célula (por ejemplo, SP-PROX-A y SP-PROX-B).
+- HDU en su sprint: `PUT /v1/interno/carga/hdu/{id}/sprint` de Organización (nuevo).
+
+No agrega HDU, usuarios ni células, y no deja impedimentos abiertos en H8. Para reiniciar el fixture entre archivos de prueba, el arnés vacía `impedimentos.*` con el dueño de la base (`svc_impedimentos` no puede borrar) y vuelve a cargar. Revisado el 2026-10-26: ninguna prueba de `tests/` afirma el nombre del sprint de H1–H8 («Sprint E7»), así que moverlas de sprint no cambia E7.
+
+## Resolución de los conflictos del diseño (sección 12)
+
+| # | Resolución |
+| --- | --- |
+| 1 | D78 |
+| 2 | D75 |
+| 3 | D76 |
+| 4 | D77 |
+| 5 | D79 |
+| 6 | D80 |
+| 7 | Se acepta: «Bloqueo» y «Riesgo» van al final de las tablas del Analista y del Líder. «Bloqueo» no se mueve tras «Estado»: así no se desplaza ninguna columna certificada |
+| 8 | D81 |
+| 9 | Se acepta el disclosure con `aria-expanded` y `aria-controls`, con `type="button"` |
+| 10 | D82 |
+| 11 | D83 |
+| 12 | Se acepta: «Confirmar» no se deshabilita con el campo vacío; el portal valida y muestra el mensaje (E4-F03-T02) |
+| 13 | Se acepta la pista `pista-cierre-bloqueado`, no bloqueante: el botón sigue habilitado y la prueba ve el 409 del servidor |
+| 14 | Se acepta la opción «Impedimentos» del menú del QE sin `end` |
+| 15 | D84 |
+
+## Pruebas certificadas que cambian o se ven afectadas
+
+| Prueba | Qué pasa | Dueño |
+| --- | --- | --- |
+| `tests/e2e/e1-f02-portal-qe.spec.ts` · `[E1-F02#3]` y su unitaria | El menú del QE pasa a `["Bandeja","Equipo","Historias supervisadas","Impedimentos","Perfil"]` (sección 6 del backlog E4) | `q360-qa`, `q360-frontend` |
+| `tests/api/e7-b03-bandejas.spec.ts` · «contrato: las 5 respuestas…» | Valida contra `comun.v1.yaml`, donde `impedimentos` es obligatorio. También exige `SeguimientoHdu.certificacionId`. Falla contra los servicios anteriores a E4 y vuelve a pasar cuando Organización publica los bloques y Certificaciones el campo (B7 y B8 del plan). La prueba no se toca | `q360-backend` |
+| `tests/support/contrato.ts` | Debe cargar también `impedimentos.v1.yaml` para validar las respuestas de E4 | `q360-qa` |
+| `apps/web/src/mocks/handlers.ts` | Las bandejas de MSW necesitan el bloque `impedimentos`. No rompe `tsc`, porque los mocks no están tipados con `Bandeja*` | `q360-frontend` |
+| Suites que cierran HDU (E2-B02, E7) | Necesitan Impedimentos arriba (sin él, 503). Sus datos no tienen impedimentos, así que el resultado no cambia | `q360-qa` |
+
+## Trazabilidad E4
+
+| Capacidad | Frontend | Backend | Contrato |
+| --- | --- | --- | --- |
+| Registrar | E4-F01 | E4-B01 | `POST /v1/hdu/{hduId}/impedimentos`, `…/responsables`, `GET /v1/catalogos/tipos-impedimento` |
+| Ver y priorizar | E4-F02 | E4-B01, B03 | `GET /v1/impedimentos`; bandejas con `POST /v1/interno/impedimentos/evaluacion` |
+| Ciclo de vida y cierre | E4-F03 | E4-B02 | `POST /v1/impedimentos/{id}/{resolver, escalar, reabrir, seguimiento}`; `POST /v1/hdu/{id}/estado` (409 `HDU_BLOQUEADA`); `GET /v1/interno/hdu/{hduId}/impedimentos/abiertos` |
+| Riesgo | E4-F04 | E4-B03 | `GET\|PUT /v1/hdu/{hduId}/riesgo`, `GET /v1/riesgo/hdu`, `GET /v1/interno/hdu/ambito/detalle` |
+| Trazabilidad y Auditor | Pestaña del Auditor | E4-B04 | `GET /v1/hdu/{hduId}/gestion-impedimentos`; `/v1/auditor/{impedimentos, gestion-impedimentos}` y sus exportaciones |
+
+## Preguntas abiertas
+
+1. **Carrera entre cierre y registro.** Organización verifica los impedimentos y después cierra. Si justo entonces alguien registra uno, la HDU puede quedar cerrada con un impedimento abierto. Impedimentos vuelve a leer el estado de la HDU al registrar, así que la ventana es de milisegundos; cerrarla del todo exigiría una reserva entre servicios que el MVP no justifica. Si ocurre, el QE lo resuelve y queda en el historial.
+2. **Volumen de «Riesgo por HDU».** `GET /v1/interno/hdu/ambito/detalle` trae todo el ámbito, como las bandejas (D46). Alcanza para el MVP; con miles de HDU conviene paginar en Organización.
+3. **Columna de riesgo para el Auditor (D80).** Es aditiva y sin CSV, si el usuario la pide.

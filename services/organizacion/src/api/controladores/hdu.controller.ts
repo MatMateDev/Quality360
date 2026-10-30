@@ -9,7 +9,12 @@ import { AccesoActual, obtenerTraceId, Publico, Roles, type ResolucionAcceso } f
 import type { Response } from 'express';
 
 import { UsuariosAplicacion } from '../../aplicacion/usuarios.servicio.js';
-import { ErrorCierreRechazadoHdu, ErrorTransicionInvalidaHdu } from '../../aplicacion/errores-extendidos.js';
+import {
+  ErrorCierreRechazadoHdu,
+  ErrorHduBloqueada,
+  ErrorImpedimentosNoVerificables,
+  ErrorTransicionInvalidaHdu,
+} from '../../aplicacion/errores-extendidos.js';
 import { type ContextoActor, HduAplicacion } from '../../aplicacion/hdu.servicio.js';
 import type { AmbitoAcceso } from '../../dominio/tipos.js';
 import { PermiteServicio } from '../decoradores/permite-servicio.decorator.js';
@@ -106,6 +111,21 @@ export class HduController {
       }
       if (error instanceof ErrorCierreRechazadoHdu) {
         responderErrorExtendido(respuesta, solicitud, 409, error.codigo, { checklist: error.checklist });
+        return;
+      }
+      if (error instanceof ErrorHduBloqueada) {
+        responderErrorExtendido(respuesta, solicitud, 409, 'HDU_BLOQUEADA', { impedimentos: { total: error.total, items: error.items } });
+        return;
+      }
+      if (error instanceof ErrorImpedimentosNoVerificables) {
+        responderErrorExtendido(
+          respuesta,
+          solicitud,
+          503,
+          'SERVICIO_NO_DISPONIBLE',
+          { impedimentos: { fuente: 'impedimentos.impedimentos', estado: 'indisponible' } },
+          error.message,
+        );
         return;
       }
       throw error;

@@ -1,10 +1,13 @@
-import { Link, useLocation } from "react-router-dom";
+import { useLocation } from "react-router-dom";
+import { PestanasNav } from "./PestanasNav";
 
 const PESTANAS = [
   { id: "hdu", a: "/auditor/hdu", texto: "HDU", testId: "pestana-hdu" },
   { id: "certificados", a: "/auditor/certificados", texto: "Certificados", testId: "pestana-certificados" },
   { id: "bitacora", a: "/auditor/bitacora", texto: "Bitácora de checklist", testId: "pestana-bitacora" },
   { id: "auditoria-usuarios", a: "/auditor/auditoria-usuarios", texto: "Auditoría de usuarios", testId: "pestana-auditoria-usuarios" },
+  // E4: quinta pestaña, a la derecha de las cuatro certificadas (no cambia su orden).
+  { id: "impedimentos", a: "/auditor/impedimentos", texto: "Impedimentos", testId: "pestana-impedimentos" },
 ] as const;
 
 /**
@@ -14,13 +17,5 @@ const PESTANAS = [
 export function PestanasAuditor() {
   const { pathname } = useLocation();
   const activa = pathname === "/auditor" || pathname === "/auditor/" ? "hdu" : (pathname.split("/")[2] ?? "hdu");
-  return (
-    <nav className="pestanas" aria-label="Secciones del Auditor">
-      {PESTANAS.map((p) => (
-        <Link key={p.id} to={p.a} className="pestana" data-testid={p.testId} aria-current={activa === p.id ? "page" : undefined}>
-          {p.texto}
-        </Link>
-      ))}
-    </nav>
-  );
+  return <PestanasNav etiqueta="Secciones del Auditor" pestanas={PESTANAS} activa={activa} />;
 }

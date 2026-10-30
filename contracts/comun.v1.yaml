@@ -7,7 +7,7 @@ info:
     identifier: LicenseRef-Capstone-Duoc-UC
   description: |
     Esquemas, respuestas y parámetros compartidos por `gateway.v1.yaml`,
-    `organizacion.v1.yaml` y `certificaciones.v1.yaml`. No es un contrato
+    `organizacion.v1.yaml`, `certificaciones.v1.yaml` e `impedimentos.v1.yaml`. No es un contrato
     desplegable: se referencia con `$ref: './comun.v1.yaml#/...'`.
 
     ## Convenciones (ADR 0007)
@@ -85,7 +85,8 @@ components:
         | `PENDIENTE_CIERRE` | `CERRADA`, `EN_EJECUCION` (reapertura) |
         | `CERRADA` | ninguna |
 
-        Pasar a `CERRADA` exige el checklist completo según Certificaciones (D11).
+        Pasar a `CERRADA` exige el checklist completo según Certificaciones (D11)
+        y que no haya impedimentos `ABIERTO` ni `ESCALADO` (D60).
       enum: [PENDIENTE, DISENO_PRUEBAS, EN_EJECUCION, PENDIENTE_CIERRE, CERRADA]
       x-transiciones:
         PENDIENTE: [DISENO_PRUEBAS]
@@ -113,7 +114,7 @@ components:
         | `ULTIMO_ADMINISTRADOR` | 409 | La plataforma debe conservar al menos un administrador activo. |
         | `RELACIONES_INCOMPATIBLES` | 409 | Resuelve las relaciones de supervisión antes de continuar. (Con HDU abiertas o células vigentes, el mensaje las nombra; ver `ErrorRelacionesIncompatibles`, D31, D40, D43.) |
         | `ROL_INCOMPATIBLE` | 409 | El usuario no tiene el rol Líder QA. |
-        | `TRANSICION_INVALIDA` | 409 | La HDU no puede pasar a ese estado. |
+        | `TRANSICION_INVALIDA` | 409 | La HDU no puede pasar a ese estado. (En impedimentos: «Un impedimento resuelto solo puede reabrirse» o «El impedimento ya cambió de estado», ver `ErrorTransicionImpedimento`.) |
         | `CHECKLIST_INCOMPLETO` | 409 | No se puede cerrar la HDU: el checklist de entregables está incompleto. |
         | `CHECKLIST_NO_DISPONIBLE` | 409 | No se puede cerrar la HDU: el checklist de entregables no está disponible para verificarse. |
         | `HDU_CERRADA` | 409 | La HDU está cerrada y no admite cambios. |
@@ -123,7 +124,11 @@ components:
         | `ENTREGABLE_AUTOMATICO` | 409 | Este entregable se completa al generar el certificado. |
         | `ENTREGABLES_PENDIENTES` | 409 | No se puede generar el certificado: faltan entregables por aprobar. |
         | `CERTIFICADO_EXISTENTE` | 409 | La HDU ya tiene un certificado emitido. |
+        | `HDU_BLOQUEADA` | 409 | No se puede cerrar la HDU: tiene impedimentos abiertos o escalados. (Ver `ErrorHduBloqueada`, D60, D77.) |
         | `MOTIVO_REQUERIDO` | 422 | Indica el motivo del cambio. |
+        | `COMENTARIO_REQUERIDO` | 422 | Indica la acción tomada. |
+        | `JUSTIFICACION_REQUERIDA` | 422 | La justificación es obligatoria. |
+        | `RESPONSABLE_INVALIDO` | 422 | El responsable indicado no está entre los candidatos de esta HDU. |
         | `SUPERVISION_INVALIDA` | 422 | El supervisor debe ser QE y el supervisado Analista QA, ambos activos. |
         | `ANALISTA_INVALIDO` | 422 | El analista debe tener rol Analista QA y estar activo. |
         | `ANALISTA_FUERA_DE_EQUIPO` | 422 | El analista no pertenece al equipo vigente del QE responsable. |
@@ -157,7 +162,11 @@ components:
         - ENTREGABLE_AUTOMATICO
         - ENTREGABLES_PENDIENTES
         - CERTIFICADO_EXISTENTE
+        - HDU_BLOQUEADA
         - MOTIVO_REQUERIDO
+        - COMENTARIO_REQUERIDO
+        - JUSTIFICACION_REQUERIDA
+        - RESPONSABLE_INVALIDO
         - SUPERVISION_INVALIDA
         - ANALISTA_INVALIDO
         - ANALISTA_FUERA_DE_EQUIPO
@@ -228,6 +237,46 @@ components:
           properties:
             checklist:
               $ref: '#/components/schemas/BloqueChecklist'
+    ErrorHduBloqueada:
+      description: |
+        409 `HDU_BLOQUEADA` al pedir `CERRADA` con impedimentos `ABIERTO` o
+        `ESCALADO` (D60, D77). Orden de validación: transición (D10) →
+        checklist (D11) → impedimentos. El estado de la HDU no cambia.
+      allOf:
+        - $ref: '#/components/schemas/Error'
+        - type: object
+          required: [impedimentos]
+          properties:
+            impedimentos:
+              $ref: '#/components/schemas/ListaImpedimentosBloqueantes'
+    ErrorImpedimentosNoVerificables:
+      description: |
+        503 `SERVICIO_NO_DISPONIBLE` al pedir `CERRADA` cuando Impedimentos no
+        responde (D60). Mensaje: «No pudimos verificar los impedimentos de la
+        HDU». El bloque `impedimentos` permite al portal distinguirlo de una
+        caída del gateway o de Organización.
+      allOf:
+        - $ref: '#/components/schemas/Error'
+        - type: object
+          required: [impedimentos]
+          properties:
+            impedimentos:
+              $ref: '#/components/schemas/BloqueIndisponible'
+    ErrorTransicionImpedimento:
+      description: 409 `TRANSICION_INVALIDA` sobre un impedimento (E4-B02#3). Lista las operaciones que admite el estado actual.
+      allOf:
+        - $ref: '#/components/schemas/Error'
+        - type: object
+          required: [estadoActual, operacion, operacionesPermitidas]
+          properties:
+            estadoActual:
+              $ref: '#/components/schemas/EstadoImpedimento'
+            operacion:
+              $ref: '#/components/schemas/OperacionImpedimento'
+            operacionesPermitidas:
+              type: array
+              items:
+                $ref: '#/components/schemas/OperacionImpedimento'
     ErrorRelacionesIncompatibles:
       description: |
         409 `RELACIONES_INCOMPATIBLES`. Indica qué relaciones de trabajo
@@ -282,7 +331,7 @@ components:
     FuenteDatos:
       type: string
       description: Capacidad que alimenta un bloque compuesto.
-      enum: [organizacion.usuarios, organizacion.supervision, organizacion.hdu, organizacion.celulas, organizacion.auditoria, certificaciones.checklist, certificaciones.bitacora, certificaciones.certificados]
+      enum: [organizacion.usuarios, organizacion.supervision, organizacion.hdu, organizacion.celulas, organizacion.auditoria, certificaciones.checklist, certificaciones.bitacora, certificaciones.certificados, impedimentos.impedimentos, impedimentos.riesgo]
     EstadoBloque:
       type: string
       enum: [ok, indisponible]
@@ -1439,6 +1488,25 @@ components:
         hdu:
           description: Solo si `permitido`. Datos de la HDU que necesita Certificaciones (reglas y certificado).
           $ref: '#/components/schemas/HduParaCertificacion'
+        candidatosResponsable:
+          description: |
+            Solo si `permitido` y se pidió `incluirCandidatos=true` (E4, D86).
+            Personas activas para el responsable de un impedimento (tabla 3.5
+            del backlog E4): `registro` = QE responsable y QE supervisor
+            vigente del analista (sin repetir); `escalamiento` = Líderes QA
+            con la célula de la HDU vigente y Administradores activos.
+          type: object
+          required: [registro, escalamiento]
+          additionalProperties: false
+          properties:
+            registro:
+              type: array
+              items:
+                $ref: '#/components/schemas/PersonaRol'
+            escalamiento:
+              type: array
+              items:
+                $ref: '#/components/schemas/PersonaRol'
     PersonaRol:
       type: object
       required: [id, nombre, rol]
@@ -1461,7 +1529,7 @@ components:
           type: string
     HduParaCertificacion:
       type: object
-      required: [id, codigo, titulo, estado, celula, sprint, qeResponsable, analista]
+      required: [id, codigo, titulo, estado, celula, sprint, qeResponsable, analista, celulaId, sprintId, sprintFin]
       additionalProperties: false
       properties:
         id:
@@ -1479,6 +1547,15 @@ components:
         sprint:
           type: string
           description: Nombre del sprint.
+        celulaId:
+          $ref: '#/components/schemas/Uuid'
+          description: E4 (D86). Para filtrar por célula en Impedimentos.
+        sprintId:
+          $ref: '#/components/schemas/Uuid'
+          description: E4 (D86). Sprint vigente de `historia_sprint`.
+        sprintFin:
+          $ref: '#/components/schemas/Fecha'
+          description: E4 (D68, D69). Fecha de fin del sprint vigente.
         qeResponsable:
           $ref: '#/components/schemas/Persona'
         analista:
@@ -1754,11 +1831,16 @@ components:
         Estado del checklist de una HDU calculado por Certificaciones (D46).
         Una HDU sin ciclo de certificación tiene 0 aprobados y su siguiente
         entregable es el 1: es un dato válido, no una falla.
-      required: [hduId, aprobados, porcentaje, porAprobar, observaciones, siguienteEntregable, certificado, listaParaCertificar, listaParaCerrar, porAprobarDesde, listaDesde, ultimaActividad]
+      required: [hduId, certificacionId, aprobados, porcentaje, porAprobar, observaciones, siguienteEntregable, certificado, listaParaCertificar, listaParaCerrar, porAprobarDesde, listaDesde, ultimaActividad]
       additionalProperties: false
       properties:
         hduId:
           $ref: '#/components/schemas/Uuid'
+        certificacionId:
+          description: E4 (D58, D86). Ciclo de certificación activo, o `null` si la HDU aún no tiene ciclo. Impedimentos lo guarda al registrar.
+          oneOf:
+            - $ref: '#/components/schemas/Uuid'
+            - type: 'null'
         aprobados:
           type: integer
           minimum: 0
@@ -1851,6 +1933,12 @@ components:
               description: El mayor entre `estadoActualizadoEn`, la última asignación y `seguimiento.ultimaActividad` (si está disponible).
             seguimiento:
               $ref: '#/components/schemas/BloqueSeguimiento'
+            bloqueo:
+              $ref: '#/components/schemas/BloqueBloqueoFila'
+              description: E4 (D87). Solo en las bandejas del Analista QA y del Líder QA.
+            riesgo:
+              $ref: '#/components/schemas/BloqueRiesgoFila'
+              description: E4 (D87). Solo en la bandeja del Líder QA (D73, D80).
     PaginaBandejaHdu:
       type: object
       required: [items, total, pagina, tamanoPagina, orden]
@@ -1891,7 +1979,7 @@ components:
         - $ref: '#/components/schemas/BloqueIndisponible'
     BandejaAnalista:
       type: object
-      required: [rol, generadaEn, supervisor, contadores, hdu]
+      required: [rol, generadaEn, supervisor, contadores, hdu, impedimentos]
       additionalProperties: false
       properties:
         rol:
@@ -1925,6 +2013,8 @@ components:
               description: Entregables en `POR_APROBAR` de mis HDU (Certificaciones).
         hdu:
           $ref: '#/components/schemas/BloqueListaHdu'
+        impedimentos:
+          $ref: '#/components/schemas/ImpedimentosBandejaAnalista'
     TipoAccionQe:
       type: string
       description: '`APROBAR` (hay entregables en `POR_APROBAR`), `ASIGNAR` (sin analista), `CERTIFICAR` (1 a 8 aprobados y el 9 no), `CERRAR` (10 aprobados y HDU no cerrada).'
@@ -1949,10 +2039,13 @@ components:
         antiguedadDias:
           type: integer
           minimum: 0
+        bloqueo:
+          $ref: '#/components/schemas/BloqueBloqueoFila'
+          description: E4 (D81). Solo en filas `CERRAR`; el portal muestra la insignia «Con impedimento abierto» si `bloqueada`.
     BandejaQe:
       type: object
       description: El resumen de equipo de E1-F03 sigue en `GET /v1/inicio/qe`; esta bandeja no lo duplica.
-      required: [rol, generadaEn, contadores, acciones]
+      required: [rol, generadaEn, contadores, acciones, impedimentos]
       additionalProperties: false
       properties:
         rol:
@@ -2005,6 +2098,8 @@ components:
                       type: boolean
                       description: Verdadero si Certificaciones no respondió. Entonces solo vienen las acciones `ASIGNAR` y el portal avisa que el resto no se pudo calcular; nunca es un vacío falso (E7-F03#2).
             - $ref: '#/components/schemas/BloqueIndisponible'
+        impedimentos:
+          $ref: '#/components/schemas/ImpedimentosBandejaQe'
     ResumenCelulaLider:
       type: object
       required: [celula, porEstado, avancePromedioAbiertas]
@@ -2036,7 +2131,7 @@ components:
     BandejaLider:
       type: object
       description: Sin células vigentes, `celulas.datos.items` viene vacío, los contadores en 0 con `ok` y las listas vacías (E7-B02#1); el portal muestra el mensaje de «sin células».
-      required: [rol, generadaEn, celulas, contadores, resumenPorCelula, hdu]
+      required: [rol, generadaEn, celulas, contadores, resumenPorCelula, hdu, impedimentos]
       additionalProperties: false
       properties:
         rol:
@@ -2090,6 +2185,8 @@ components:
             - $ref: '#/components/schemas/BloqueIndisponible'
         hdu:
           $ref: '#/components/schemas/BloqueListaHdu'
+        impedimentos:
+          $ref: '#/components/schemas/ImpedimentosBandejaLider'
     TipoPendienteAdmin:
       type: string
       enum: [ANALISTA_SIN_QE, QE_SIN_ANALISTAS, LIDER_SIN_CELULAS, CELULA_SIN_LIDER]
@@ -2112,7 +2209,7 @@ components:
     BandejaAdmin:
       type: object
       description: Todo sale de Organización; no depende de Certificaciones (E7-B03-T11).
-      required: [rol, generadaEn, contadores, pendientes, ultimosCambios]
+      required: [rol, generadaEn, contadores, pendientes, ultimosCambios, impedimentos]
       additionalProperties: false
       properties:
         rol:
@@ -2188,10 +2285,12 @@ components:
                       items:
                         $ref: '#/components/schemas/RegistroAuditoriaUsuario'
             - $ref: '#/components/schemas/BloqueIndisponible'
+        impedimentos:
+          $ref: '#/components/schemas/ImpedimentosBandejaAdmin'
     BandejaAuditor:
       type: object
       description: Contadores y pestaña HDU. Las otras pestañas usan `/v1/auditor/*` (E7-B04).
-      required: [rol, generadaEn, contadores, hdu]
+      required: [rol, generadaEn, contadores, hdu, impedimentos]
       additionalProperties: false
       properties:
         rol:
@@ -2216,6 +2315,9 @@ components:
               description: Entradas de auditoría de usuarios de los últimos 7 días (Organización).
         hdu:
           $ref: '#/components/schemas/BloqueListaHdu'
+          description: Sin bloqueo ni riesgo por fila (D71, D80).
+        impedimentos:
+          $ref: '#/components/schemas/ImpedimentosBandejaAuditor'
 
     # ---------------------------------------------------------- E7 · auditor
     EventoBitacoraGlobal:
@@ -2364,7 +2466,7 @@ components:
           maximum: 100
     RecursoExportacion:
       type: string
-      enum: [HDU, AUDITORIA_USUARIOS, BITACORA, CERTIFICADOS]
+      enum: [HDU, AUDITORIA_USUARIOS, BITACORA, CERTIFICADOS, IMPEDIMENTOS, GESTION_IMPEDIMENTOS]
 
     # ------------------------------------------- E7 · ámbitos internos (D47)
     AmbitoLecturaHdu:
@@ -2433,6 +2535,1096 @@ components:
         filas:
           type: integer
           minimum: 0
+
+    # ------------------------------------------- E4 · impedimentos y riesgo
+    TipoImpedimento:
+      type: string
+      description: |
+        Catálogo de tipos de impedimento (D61), con CHECK en base de datos.
+        `OTRO` exige una descripción de al menos 20 caracteres.
+      enum: [AMBIENTE, DATOS_PRUEBA, ACCESO, REQUISITOS, DEPENDENCIA, DEFECTO_BLOQUEANTE, HERRAMIENTA, RECURSOS, OTRO]
+      x-etiquetas:
+        AMBIENTE: Ambiente de pruebas
+        DATOS_PRUEBA: Datos de prueba
+        ACCESO: Accesos y permisos
+        REQUISITOS: Requisitos
+        DEPENDENCIA: Dependencia de otro equipo
+        DEFECTO_BLOQUEANTE: Defecto bloqueante
+        HERRAMIENTA: Herramienta o integración
+        RECURSOS: Personas o tiempo
+        OTRO: Otro
+    EstadoImpedimento:
+      type: string
+      description: |
+        Estados de un impedimento (D62). `ABIERTO` y `ESCALADO` bloquean la
+        HDU (D59) y su cierre (D60). `x-transiciones` lista las operaciones
+        que admite cada estado; cualquier otra responde 409
+        `TRANSICION_INVALIDA` (`ErrorTransicionImpedimento`).
+      enum: [ABIERTO, ESCALADO, RESUELTO]
+      x-etiquetas:
+        ABIERTO: Abierto
+        ESCALADO: Escalado
+        RESUELTO: Resuelto
+      x-transiciones:
+        ABIERTO: [RESOLVER, ESCALAR, SEGUIMIENTO]
+        ESCALADO: [RESOLVER, ESCALAR, SEGUIMIENTO]
+        RESUELTO: [REABRIR]
+    OperacionImpedimento:
+      type: string
+      description: Operaciones de gestión. Solo las ejecuta el QE responsable de la HDU (D57).
+      enum: [RESOLVER, ESCALAR, REABRIR, SEGUIMIENTO]
+    TipoAccionImpedimento:
+      type: string
+      description: Tipo de cada fila de `accion_impedimento` (solo inserción, D65).
+      enum: [REGISTRAR, ESCALAR, RESOLVER, REABRIR, SEGUIMIENTO]
+      x-etiquetas:
+        REGISTRAR: Registro
+        ESCALAR: Escalamiento
+        RESOLVER: Resolución
+        REABRIR: Reapertura
+        SEGUIMIENTO: Seguimiento
+    NivelRiesgo:
+      type: string
+      description: Nivel de riesgo de una HDU (D66). Semáforo rojo, amarillo y verde, siempre con su texto.
+      enum: [BAJO, MEDIO, ALTO]
+      x-etiquetas:
+        BAJO: Bajo
+        MEDIO: Medio
+        ALTO: Alto
+    OrigenRiesgo:
+      type: string
+      description: '`MANUAL`, fijado por el QE responsable; `SUGERIDO`, calculado (D66).'
+      enum: [MANUAL, SUGERIDO]
+    CodigoFactorRiesgo:
+      type: string
+      description: |
+        Factores del riesgo sugerido (D67, tabla 3.4 del backlog E4). El nivel
+        sugerido es el máximo de los factores aplicables.
+
+        | Código | Condición | Nivel |
+        | --- | --- | --- |
+        | `IMPEDIMENTO_ABIERTO` | Al menos un impedimento `ABIERTO` o `ESCALADO` | MEDIO |
+        | `IMPEDIMENTO_ANTIGUO` | Algún `ABIERTO` con `RIESGO_DIAS_IMPEDIMENTO_ALTO` (5) días o más | ALTO |
+        | `IMPEDIMENTO_ESCALADO` | Al menos un `ESCALADO` | ALTO |
+        | `SPRINT_VENCIDO` | El sprint vigente terminó antes de hoy | ALTO |
+        | `ATRASO_SPRINT_ALTO` | Faltan `RIESGO_DIAS_SPRINT_ALTO` (3) días o menos y avance < `RIESGO_AVANCE_ALTO` (70) | ALTO |
+        | `ATRASO_SPRINT_MEDIO` | Faltan `RIESGO_DIAS_SPRINT_MEDIO` (7) días o menos y avance < `RIESGO_AVANCE_MEDIO` (50) | MEDIO |
+      enum: [IMPEDIMENTO_ABIERTO, IMPEDIMENTO_ANTIGUO, IMPEDIMENTO_ESCALADO, SPRINT_VENCIDO, ATRASO_SPRINT_ALTO, ATRASO_SPRINT_MEDIO]
+    PropositoResponsable:
+      type: string
+      description: '`REGISTRO`, candidatos al registrar; `ESCALAMIENTO`, destinos de un escalamiento (D63, D64).'
+      enum: [REGISTRO, ESCALAMIENTO]
+    ResponsableImpedimento:
+      type: object
+      description: |
+        Responsable de resolver el impedimento (D63). Persona de Quality360
+        (`id` con valor) o tercero escrito a mano (`id` en `null`, `externo: true`).
+        `nombre` es una instantánea. El responsable no otorga permisos (D57).
+      required: [id, nombre, externo]
+      additionalProperties: false
+      properties:
+        id:
+          oneOf:
+            - $ref: '#/components/schemas/Uuid'
+            - type: 'null'
+        nombre:
+          type: string
+          maxLength: 150
+        externo:
+          type: boolean
+    Impedimento:
+      type: object
+      description: Impedimento de una HDU (E4-B01#1). Las fechas y `diasAbierto` siguen D74.
+      required: [id, hduId, certificacionId, tipo, titulo, descripcion, estado, responsable, creadoPor, fechaRegistro, abiertoDesde, fechaResolucion, diasAbierto, esNuevo, actualizadoEn, operacionesPermitidas]
+      properties:
+        id:
+          $ref: '#/components/schemas/Uuid'
+        hduId:
+          $ref: '#/components/schemas/Uuid'
+        certificacionId:
+          description: Ciclo de certificación activo al registrar, o `null` si la HDU no tenía ciclo o Certificaciones no respondió (D58).
+          oneOf:
+            - $ref: '#/components/schemas/Uuid'
+            - type: 'null'
+        tipo:
+          $ref: '#/components/schemas/TipoImpedimento'
+        titulo:
+          type: string
+          minLength: 5
+          maxLength: 200
+        descripcion:
+          type: string
+          maxLength: 1000
+        estado:
+          $ref: '#/components/schemas/EstadoImpedimento'
+        responsable:
+          $ref: '#/components/schemas/ResponsableImpedimento'
+        creadoPor:
+          $ref: '#/components/schemas/PersonaRol'
+        fechaRegistro:
+          $ref: '#/components/schemas/FechaHora'
+        abiertoDesde:
+          $ref: '#/components/schemas/FechaHora'
+          description: Igual a `fechaRegistro` al registrar; se reinicia al reabrir (D74).
+        fechaResolucion:
+          oneOf:
+            - $ref: '#/components/schemas/FechaHora'
+            - type: 'null'
+        diasAbierto:
+          type: integer
+          minimum: 0
+          description: Días de calendario (America/Santiago) entre `abiertoDesde` y hoy, o `fechaResolucion` si está resuelto (D74).
+        esNuevo:
+          type: boolean
+          description: Registrado hace menos de 24 horas y no resuelto (D72, D86). El portal muestra la insignia «Nuevo».
+        actualizadoEn:
+          $ref: '#/components/schemas/FechaHora'
+        operacionesPermitidas:
+          type: array
+          description: Operaciones que quien consulta puede ejecutar ahora (estado y relación con la HDU). Vacío si no es el QE responsable o si la HDU está cerrada (D75). Orienta la interfaz; el servicio vuelve a validar.
+          items:
+            $ref: '#/components/schemas/OperacionImpedimento'
+    AccionImpedimentoRegistro:
+      type: object
+      description: Fila del historial de un impedimento (`accion_impedimento`, solo inserción, D65).
+      required: [id, impedimentoId, tipo, estadoAnterior, estado, actor, fecha, comentario, detalle]
+      additionalProperties: false
+      properties:
+        id:
+          $ref: '#/components/schemas/Uuid'
+        impedimentoId:
+          $ref: '#/components/schemas/Uuid'
+        tipo:
+          $ref: '#/components/schemas/TipoAccionImpedimento'
+        estadoAnterior:
+          description: '`null` en `REGISTRAR`.'
+          oneOf:
+            - $ref: '#/components/schemas/EstadoImpedimento'
+            - type: 'null'
+        estado:
+          $ref: '#/components/schemas/EstadoImpedimento'
+          description: Estado resultante.
+        actor:
+          $ref: '#/components/schemas/PersonaRol'
+        fecha:
+          $ref: '#/components/schemas/FechaHora'
+        comentario:
+          type: string
+          description: Comentario, motivo de reapertura o, en `REGISTRAR`, el texto fijo «Registro del impedimento».
+        detalle:
+          description: Solo en `ESCALAR`.
+          oneOf:
+            - type: object
+              required: [responsableAnterior, responsableNuevo]
+              additionalProperties: false
+              properties:
+                responsableAnterior:
+                  $ref: '#/components/schemas/ResponsableImpedimento'
+                responsableNuevo:
+                  $ref: '#/components/schemas/ResponsableImpedimento'
+            - type: 'null'
+    PermisosImpedimentosHdu:
+      type: object
+      description: |
+        Lo que quien consulta puede hacer en la HDU (D75, matriz 3.6 del
+        backlog E4). El portal muestra u omite los botones según estos valores
+        y nunca deduce la relación por su cuenta. El servicio vuelve a validar.
+      required: [puedeRegistrar, puedeGestionar, puedeVerRiesgo, puedeFijarRiesgo]
+      additionalProperties: false
+      properties:
+        puedeRegistrar:
+          type: boolean
+          description: Analista asignado o QE responsable, con la HDU no cerrada.
+        puedeGestionar:
+          type: boolean
+          description: QE responsable con la HDU no cerrada.
+        puedeVerRiesgo:
+          type: boolean
+          description: Falso solo para el Analista QA (D73).
+        puedeFijarRiesgo:
+          type: boolean
+          description: QE responsable con la HDU no cerrada.
+    ImpedimentosHdu:
+      type: object
+      description: Sección «Impedimentos» del detalle de HDU (E4-F01, E4-F03).
+      required: [hduId, hduCerrada, bloqueada, abiertos, escalados, resueltos, permisos, items]
+      additionalProperties: false
+      properties:
+        hduId:
+          $ref: '#/components/schemas/Uuid'
+        hduCerrada:
+          type: boolean
+        bloqueada:
+          type: boolean
+          description: Al menos un impedimento `ABIERTO` o `ESCALADO` (D59).
+        abiertos:
+          type: integer
+          minimum: 0
+        escalados:
+          type: integer
+          minimum: 0
+        resueltos:
+          type: integer
+          minimum: 0
+        permisos:
+          $ref: '#/components/schemas/PermisosImpedimentosHdu'
+        items:
+          type: array
+          description: Abiertos y escalados primero (`abiertoDesde` ascendente), luego resueltos (`fechaResolucion` descendente).
+          items:
+            $ref: '#/components/schemas/Impedimento'
+    ImpedimentoDetalle:
+      description: Impedimento con su HDU, permisos e historial completo, más antiguo primero (E4-F03, E4-B04#3).
+      allOf:
+        - $ref: '#/components/schemas/Impedimento'
+        - type: object
+          required: [hdu, hduCerrada, permisos, acciones]
+          properties:
+            hdu:
+              $ref: '#/components/schemas/HduReferencia'
+            hduCerrada:
+              type: boolean
+            permisos:
+              $ref: '#/components/schemas/PermisosImpedimentosHdu'
+            acciones:
+              type: array
+              items:
+                $ref: '#/components/schemas/AccionImpedimentoRegistro'
+    NuevoImpedimento:
+      type: object
+      description: |
+        Registro (E4-B01). Va `responsableId` (un candidato de `REGISTRO`) o
+        `responsableNombre` (tercero), no ambos. Sin ninguno, o con ambos,
+        400 `VALIDACION` en `responsableNombre`. Con `tipo: OTRO`, la
+        descripción exige 20 caracteres.
+      required: [tipo, titulo, descripcion]
+      additionalProperties: false
+      properties:
+        tipo:
+          $ref: '#/components/schemas/TipoImpedimento'
+        titulo:
+          type: string
+          minLength: 5
+          maxLength: 200
+        descripcion:
+          type: string
+          minLength: 10
+          maxLength: 1000
+        responsableId:
+          $ref: '#/components/schemas/Uuid'
+        responsableNombre:
+          type: string
+          minLength: 3
+          maxLength: 150
+    SolicitudComentarioImpedimento:
+      type: object
+      description: Resolver o agregar seguimiento. Comentario en blanco → 422 `COMENTARIO_REQUERIDO`.
+      required: [comentario]
+      additionalProperties: false
+      properties:
+        comentario:
+          type: string
+          minLength: 3
+          maxLength: 500
+    SolicitudEscalamiento:
+      type: object
+      description: Destino (candidato de `ESCALAMIENTO` o tercero) y comentario (D64). Mismo destino que el responsable actual → 422 `RESPONSABLE_INVALIDO`.
+      required: [comentario]
+      additionalProperties: false
+      properties:
+        responsableId:
+          $ref: '#/components/schemas/Uuid'
+        responsableNombre:
+          type: string
+          minLength: 3
+          maxLength: 150
+        comentario:
+          type: string
+          minLength: 3
+          maxLength: 500
+    SolicitudReapertura:
+      type: object
+      description: Motivo en blanco → 422 `MOTIVO_REQUERIDO`.
+      required: [motivo]
+      additionalProperties: false
+      properties:
+        motivo:
+          type: string
+          minLength: 3
+          maxLength: 500
+    ResultadoAccionImpedimento:
+      type: object
+      required: [impedimento, accion, hdu]
+      additionalProperties: false
+      properties:
+        impedimento:
+          $ref: '#/components/schemas/Impedimento'
+        accion:
+          $ref: '#/components/schemas/AccionImpedimentoRegistro'
+        hdu:
+          type: object
+          description: Bloqueo de la HDU después del cambio (E4-B02#2).
+          required: [bloqueada, abiertos]
+          additionalProperties: false
+          properties:
+            bloqueada:
+              type: boolean
+            abiertos:
+              type: integer
+              minimum: 0
+              description: '`ABIERTO` + `ESCALADO`.'
+    CandidatosResponsable:
+      type: object
+      description: Candidatos activos para el selector de responsable (tabla 3.5 del backlog E4). El portal agrega siempre «Otro (nombre)».
+      required: [hduId, proposito, items, preseleccionadoId]
+      additionalProperties: false
+      properties:
+        hduId:
+          $ref: '#/components/schemas/Uuid'
+        proposito:
+          $ref: '#/components/schemas/PropositoResponsable'
+        items:
+          type: array
+          description: Sin repetidos (si el QE responsable es también el supervisor, aparece una vez).
+          items:
+            $ref: '#/components/schemas/PersonaRol'
+        preseleccionadoId:
+          description: En `REGISTRO`, el QE responsable; en `ESCALAMIENTO`, `null`.
+          oneOf:
+            - $ref: '#/components/schemas/Uuid'
+            - type: 'null'
+    DetalleFactorRiesgo:
+      type: object
+      description: |
+        Valores con los que el portal arma la frase de cada factor (D76). Los
+        umbrales salen de la configuración del servicio (D67); el portal no los
+        fija. Campos por código:
+        - `IMPEDIMENTO_ABIERTO`: `impedimentos` (abiertos + escalados).
+        - `IMPEDIMENTO_ANTIGUO`: `impedimentoId`, `diasAbierto` (el más antiguo) y `umbralDias`.
+        - `IMPEDIMENTO_ESCALADO`: `impedimentos` (escalados).
+        - `SPRINT_VENCIDO`: `sprint`, `sprintFin` y `diasRestantes` (negativo).
+        - `ATRASO_SPRINT_ALTO` y `ATRASO_SPRINT_MEDIO`: `sprint`, `sprintFin`, `diasRestantes`, `umbralDias`, `avance` y `umbralAvance`.
+      additionalProperties: false
+      properties:
+        impedimentos:
+          type: integer
+          minimum: 1
+        impedimentoId:
+          $ref: '#/components/schemas/Uuid'
+        diasAbierto:
+          type: integer
+          minimum: 0
+        umbralDias:
+          type: integer
+          minimum: 0
+        sprint:
+          $ref: '#/components/schemas/CatalogoRef'
+        sprintFin:
+          $ref: '#/components/schemas/Fecha'
+        diasRestantes:
+          type: integer
+          description: Fecha de fin menos hoy; el día de término es 0.
+        avance:
+          type: number
+          minimum: 0
+          maximum: 100
+        umbralAvance:
+          type: number
+          minimum: 0
+          maximum: 100
+    FactorRiesgo:
+      type: object
+      required: [codigo, nivel, detalle]
+      additionalProperties: false
+      properties:
+        codigo:
+          $ref: '#/components/schemas/CodigoFactorRiesgo'
+        nivel:
+          $ref: '#/components/schemas/NivelRiesgo'
+        detalle:
+          $ref: '#/components/schemas/DetalleFactorRiesgo'
+    RiesgoFijado:
+      type: object
+      description: Última fila de `riesgo_hdu` de la HDU (D65).
+      required: [nivel, nivelAnterior, justificacion, sugeridoAlFijar, actor, fecha]
+      additionalProperties: false
+      properties:
+        nivel:
+          $ref: '#/components/schemas/NivelRiesgo'
+        nivelAnterior:
+          oneOf:
+            - $ref: '#/components/schemas/NivelRiesgo'
+            - type: 'null'
+        justificacion:
+          type: string
+        sugeridoAlFijar:
+          description: Nivel sugerido en el momento de fijar; `null` si no se pudo calcular.
+          oneOf:
+            - $ref: '#/components/schemas/NivelRiesgo'
+            - type: 'null'
+        actor:
+          $ref: '#/components/schemas/PersonaRol'
+        fecha:
+          $ref: '#/components/schemas/FechaHora'
+    RiesgoHdu:
+      type: object
+      description: |
+        Panel «Riesgo» del detalle (E4-F04, E4-B03). Reglas D66–D68:
+        - `nivelVigente` = `fijado.nivel` si existe; si no, `nivelSugerido`.
+          `null` con `hduCerrada` y sin nivel fijado = «Sin evaluar».
+        - Sugerencia: `estado: ok` con su nivel, o `indisponible` con
+          `nivelSugerido: null`. Nunca `BAJO` por una fuente caída. Si falta
+          el avance, los factores de atraso van en `factoresNoEvaluados`; si
+          los factores evaluados ya dan `ALTO`, se informa `ALTO` con
+          `calculoParcial: true`.
+        - HDU cerrada: sin sugerencia (`motivoSinSugerencia: HDU_CERRADA`).
+      required: [hduId, hduCerrada, nivelVigente, origen, fijado, nivelSugerido, estado, motivoSinSugerencia, calculoParcial, factores, factoresNoEvaluados, sugerenciaDistinta, fechaReferencia, permisos]
+      additionalProperties: false
+      properties:
+        hduId:
+          $ref: '#/components/schemas/Uuid'
+        hduCerrada:
+          type: boolean
+        nivelVigente:
+          oneOf:
+            - $ref: '#/components/schemas/NivelRiesgo'
+            - type: 'null'
+        origen:
+          oneOf:
+            - $ref: '#/components/schemas/OrigenRiesgo'
+            - type: 'null'
+        fijado:
+          oneOf:
+            - $ref: '#/components/schemas/RiesgoFijado'
+            - type: 'null'
+        nivelSugerido:
+          oneOf:
+            - $ref: '#/components/schemas/NivelRiesgo'
+            - type: 'null'
+        estado:
+          $ref: '#/components/schemas/EstadoBloque'
+          description: Estado de la sugerencia.
+        motivoSinSugerencia:
+          oneOf:
+            - type: string
+              enum: [HDU_CERRADA, FUENTE_NO_DISPONIBLE]
+            - type: 'null'
+        calculoParcial:
+          type: boolean
+        factores:
+          type: array
+          description: Factores aplicables, del nivel más alto al más bajo. Vacío con `BAJO` («Sin factores de riesgo»).
+          items:
+            $ref: '#/components/schemas/FactorRiesgo'
+        factoresNoEvaluados:
+          type: array
+          description: Factores que no se pudieron evaluar por una fuente caída (D68).
+          items:
+            $ref: '#/components/schemas/CodigoFactorRiesgo'
+        sugerenciaDistinta:
+          type: boolean
+          description: Hay nivel fijado y una sugerencia distinta. El portal avisa «La sugerencia actual es X» (D66).
+        fechaReferencia:
+          $ref: '#/components/schemas/Fecha'
+          description: «Hoy» usado en el cálculo (America/Santiago, o `Q360_FECHA_REFERENCIA` fuera de producción).
+        permisos:
+          type: object
+          required: [puedeFijarRiesgo]
+          additionalProperties: false
+          properties:
+            puedeFijarRiesgo:
+              type: boolean
+    CambioRiesgo:
+      type: object
+      description: Justificación en blanco → 422 `JUSTIFICACION_REQUERIDA`; nivel fuera del catálogo → 400 `VALIDACION` (`VALOR_NO_PERMITIDO`).
+      required: [nivel, justificacion]
+      additionalProperties: false
+      properties:
+        nivel:
+          $ref: '#/components/schemas/NivelRiesgo'
+        justificacion:
+          type: string
+          minLength: 3
+          maxLength: 500
+    ResultadoCambioRiesgo:
+      type: object
+      required: [cambio, riesgo]
+      additionalProperties: false
+      properties:
+        cambio:
+          type: boolean
+          description: Falso si el nivel y la justificación son iguales a los vigentes; no se agrega fila.
+        riesgo:
+          $ref: '#/components/schemas/RiesgoHdu'
+    RiesgoResumen:
+      type: object
+      description: |
+        Riesgo vigente para listados y bandejas. `estado: indisponible` con
+        `nivelVigente: null` = «No disponible»; `estado: ok` con
+        `nivelVigente: null` = «Sin evaluar» (HDU cerrada sin nivel fijado).
+        Un nivel fijado se informa aunque la sugerencia no se pueda calcular.
+      required: [nivelVigente, origen, estado, calculoParcial]
+      additionalProperties: false
+      properties:
+        nivelVigente:
+          oneOf:
+            - $ref: '#/components/schemas/NivelRiesgo'
+            - type: 'null'
+        origen:
+          oneOf:
+            - $ref: '#/components/schemas/OrigenRiesgo'
+            - type: 'null'
+        estado:
+          $ref: '#/components/schemas/EstadoBloque'
+        calculoParcial:
+          type: boolean
+    ItemListaImpedimento:
+      description: Fila de `GET /v1/impedimentos` (E4-F02).
+      allOf:
+        - $ref: '#/components/schemas/Impedimento'
+        - type: object
+          required: [hdu, celula, analista, qeResponsable, riesgo, soloLectura]
+          properties:
+            hdu:
+              $ref: '#/components/schemas/HduReferencia'
+            celula:
+              $ref: '#/components/schemas/CatalogoRef'
+            analista:
+              oneOf:
+                - $ref: '#/components/schemas/Persona'
+                - type: 'null'
+            qeResponsable:
+              $ref: '#/components/schemas/Persona'
+            riesgo:
+              $ref: '#/components/schemas/RiesgoResumen'
+            soloLectura:
+              type: boolean
+              description: Verdadero si quien consulta no es el QE responsable de la HDU (QE supervisor, Líder, Administrador, Auditor). El portal muestra «Solo lectura».
+    PaginaImpedimentos:
+      type: object
+      required: [items, total, pagina, tamanoPagina, orden, contadores]
+      additionalProperties: false
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/ItemListaImpedimento'
+        total:
+          type: integer
+          minimum: 0
+        pagina:
+          type: integer
+          minimum: 1
+        tamanoPagina:
+          type: integer
+          minimum: 1
+          maximum: 100
+        orden:
+          type: string
+          description: Orden aplicado. Si el pedido depende del riesgo y Certificaciones no respondió, se informa el de respaldo `diasAbierto:desc` (D74).
+        contadores:
+          type: object
+          description: Sobre todo el ámbito, sin filtros. Solo datos propios de Impedimentos.
+          required: [abiertos, escalados, nuevos]
+          additionalProperties: false
+          properties:
+            abiertos:
+              type: integer
+              minimum: 0
+              description: '`ABIERTO` + `ESCALADO`.'
+            escalados:
+              type: integer
+              minimum: 0
+            nuevos:
+              type: integer
+              minimum: 0
+              description: No resueltos registrados hace menos de 24 horas.
+    ItemRiesgoHdu:
+      type: object
+      description: Fila de «Riesgo por HDU» (E4-F04#3).
+      required: [hdu, celula, sprint, analista, qeResponsable, avance, impedimentosAbiertos, bloqueada, riesgo, actualizadoEn, soloLectura]
+      additionalProperties: false
+      properties:
+        hdu:
+          $ref: '#/components/schemas/HduReferencia'
+        celula:
+          $ref: '#/components/schemas/CatalogoRef'
+        sprint:
+          $ref: '#/components/schemas/CatalogoRef'
+        analista:
+          oneOf:
+            - $ref: '#/components/schemas/Persona'
+            - type: 'null'
+        qeResponsable:
+          $ref: '#/components/schemas/Persona'
+        avance:
+          description: aprobados / 10 × 100 (D16, D68); `null` si Certificaciones no respondió.
+          oneOf:
+            - type: number
+              minimum: 0
+              maximum: 100
+            - type: 'null'
+        impedimentosAbiertos:
+          type: integer
+          minimum: 0
+        bloqueada:
+          type: boolean
+        riesgo:
+          $ref: '#/components/schemas/RiesgoResumen'
+        actualizadoEn:
+          description: Fecha del último nivel fijado, o `null` si nunca se fijó.
+          oneOf:
+            - $ref: '#/components/schemas/FechaHora'
+            - type: 'null'
+        soloLectura:
+          type: boolean
+    PaginaRiesgoHdu:
+      type: object
+      required: [items, total, pagina, tamanoPagina, orden]
+      additionalProperties: false
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/ItemRiesgoHdu'
+        total:
+          type: integer
+          minimum: 0
+        pagina:
+          type: integer
+          minimum: 1
+        tamanoPagina:
+          type: integer
+          minimum: 1
+          maximum: 100
+        orden:
+          type: string
+    EntradaGestion:
+      type: object
+      description: |
+        Entrada del historial de gestión (E4-B04): una acción de impedimento
+        (`tipo: IMPEDIMENTO`) o un cambio de nivel de riesgo (`tipo: RIESGO`,
+        acción `FIJAR_RIESGO`). En `RIESGO`, `anterior` y `nuevo` son
+        niveles y `comentario` es la justificación.
+      required: [id, tipo, accion, hdu, impedimento, actor, fecha, anterior, nuevo, comentario, sugeridoAlFijar, detalle]
+      additionalProperties: false
+      properties:
+        id:
+          $ref: '#/components/schemas/Uuid'
+        tipo:
+          type: string
+          enum: [IMPEDIMENTO, RIESGO]
+        accion:
+          type: string
+          enum: [REGISTRAR, ESCALAR, RESOLVER, REABRIR, SEGUIMIENTO, FIJAR_RIESGO]
+        hdu:
+          $ref: '#/components/schemas/HduReferencia'
+        impedimento:
+          description: '`null` en `RIESGO`.'
+          oneOf:
+            - type: object
+              required: [id, titulo, tipo]
+              additionalProperties: false
+              properties:
+                id:
+                  $ref: '#/components/schemas/Uuid'
+                titulo:
+                  type: string
+                tipo:
+                  $ref: '#/components/schemas/TipoImpedimento'
+            - type: 'null'
+        actor:
+          $ref: '#/components/schemas/PersonaRol'
+        fecha:
+          $ref: '#/components/schemas/FechaHora'
+        anterior:
+          type: [string, 'null']
+        nuevo:
+          type: string
+        comentario:
+          type: [string, 'null']
+        sugeridoAlFijar:
+          description: Solo en `RIESGO`.
+          oneOf:
+            - $ref: '#/components/schemas/NivelRiesgo'
+            - type: 'null'
+        detalle:
+          type: [object, 'null']
+          description: En `ESCALAR`, `{responsableAnterior, responsableNuevo}`.
+    HistorialGestionHdu:
+      type: object
+      required: [hduId, orden, items]
+      additionalProperties: false
+      properties:
+        hduId:
+          $ref: '#/components/schemas/Uuid'
+        orden:
+          type: string
+          enum: ['fecha:asc', 'fecha:desc']
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/EntradaGestion'
+    PaginaGestionImpedimentos:
+      type: object
+      required: [items, total, pagina, tamanoPagina]
+      additionalProperties: false
+      properties:
+        items:
+          type: array
+          description: Del más reciente al más antiguo.
+          items:
+            $ref: '#/components/schemas/EntradaGestion'
+        total:
+          type: integer
+          minimum: 0
+        pagina:
+          type: integer
+          minimum: 1
+        tamanoPagina:
+          type: integer
+          minimum: 1
+          maximum: 100
+    ItemAuditorImpedimento:
+      description: Fila de la vista «Impedimentos» del Auditor (E4-B04).
+      allOf:
+        - $ref: '#/components/schemas/Impedimento'
+        - type: object
+          required: [hdu]
+          properties:
+            hdu:
+              $ref: '#/components/schemas/HduReferencia'
+    PaginaAuditorImpedimentos:
+      type: object
+      required: [items, total, pagina, tamanoPagina]
+      additionalProperties: false
+      properties:
+        items:
+          type: array
+          description: Del registro más reciente al más antiguo.
+          items:
+            $ref: '#/components/schemas/ItemAuditorImpedimento'
+        total:
+          type: integer
+          minimum: 0
+        pagina:
+          type: integer
+          minimum: 1
+        tamanoPagina:
+          type: integer
+          minimum: 1
+          maximum: 100
+
+    # ------------------------------------- E4 · contratos internos (D85, D86)
+    HduEvaluable:
+      type: object
+      description: Datos que Organización ya tiene y envía para evaluar una HDU (D69).
+      required: [hduId, estado, sprintFin, avance]
+      additionalProperties: false
+      properties:
+        hduId:
+          $ref: '#/components/schemas/Uuid'
+        estado:
+          $ref: '#/components/schemas/EstadoHdu'
+        sprintFin:
+          description: Fin del sprint vigente, o `null` si no tiene.
+          oneOf:
+            - $ref: '#/components/schemas/Fecha'
+            - type: 'null'
+        avance:
+          description: '`SeguimientoHdu.porcentaje`; `null` si Certificaciones no respondió.'
+          oneOf:
+            - type: number
+              minimum: 0
+              maximum: 100
+            - type: 'null'
+    SolicitudEvaluacionImpedimentos:
+      type: object
+      required: [hdu]
+      additionalProperties: false
+      properties:
+        hdu:
+          type: array
+          minItems: 1
+          maxItems: 1000
+          items:
+            $ref: '#/components/schemas/HduEvaluable'
+        incluirImpedimentos:
+          type: boolean
+          default: false
+          description: Si es verdadero, la respuesta trae los impedimentos `ABIERTO` y `ESCALADO` del lote (para las listas de las bandejas).
+    EvaluacionImpedimentosHdu:
+      type: object
+      required: [hduId, bloqueada, abiertos, escalados, nuevos, riesgo, nivelFijado, nivelSugerido]
+      additionalProperties: false
+      properties:
+        hduId:
+          $ref: '#/components/schemas/Uuid'
+        bloqueada:
+          type: boolean
+        abiertos:
+          type: integer
+          minimum: 0
+          description: '`ABIERTO` + `ESCALADO`.'
+        escalados:
+          type: integer
+          minimum: 0
+        nuevos:
+          type: integer
+          minimum: 0
+        riesgo:
+          $ref: '#/components/schemas/RiesgoResumen'
+        nivelFijado:
+          oneOf:
+            - $ref: '#/components/schemas/NivelRiesgo'
+            - type: 'null'
+        nivelSugerido:
+          oneOf:
+            - $ref: '#/components/schemas/NivelRiesgo'
+            - type: 'null'
+    ResultadoEvaluacionImpedimentos:
+      type: object
+      required: [fechaReferencia, items, impedimentos]
+      additionalProperties: false
+      properties:
+        fechaReferencia:
+          $ref: '#/components/schemas/Fecha'
+        items:
+          type: array
+          description: Una evaluación por HDU pedida, en el mismo orden.
+          items:
+            $ref: '#/components/schemas/EvaluacionImpedimentosHdu'
+        impedimentos:
+          type: array
+          description: Con `incluirImpedimentos`, los `ABIERTO` y `ESCALADO` del lote, ordenados por `abiertoDesde` ascendente; si no, vacío.
+          items:
+            $ref: '#/components/schemas/Impedimento'
+    ImpedimentoBloqueante:
+      type: object
+      required: [id, titulo, tipo, estado, diasAbierto]
+      additionalProperties: false
+      properties:
+        id:
+          $ref: '#/components/schemas/Uuid'
+        titulo:
+          type: string
+        tipo:
+          $ref: '#/components/schemas/TipoImpedimento'
+        estado:
+          type: string
+          enum: [ABIERTO, ESCALADO]
+        diasAbierto:
+          type: integer
+          minimum: 0
+    ListaImpedimentosBloqueantes:
+      type: object
+      description: Impedimentos que impiden cerrar una HDU (D60, D77). `items` trae hasta 20, los más antiguos primero; `total` los cuenta todos.
+      required: [total, items]
+      additionalProperties: false
+      properties:
+        total:
+          type: integer
+          minimum: 0
+        items:
+          type: array
+          maxItems: 20
+          items:
+            $ref: '#/components/schemas/ImpedimentoBloqueante'
+    ImpedimentosAbiertosHdu:
+      description: Respuesta de la consulta de cierre (`GET /v1/interno/hdu/{hduId}/impedimentos/abiertos`).
+      allOf:
+        - $ref: '#/components/schemas/ListaImpedimentosBloqueantes'
+        - type: object
+          required: [hduId]
+          properties:
+            hduId:
+              $ref: '#/components/schemas/Uuid'
+
+    # ----------------------------------------- E4 · bloques de bandeja (D87)
+    BloqueBloqueoFila:
+      description: Bloqueo de una fila de HDU en la bandeja (columna «Bloqueo»).
+      oneOf:
+        - type: object
+          required: [fuente, estado, datos]
+          additionalProperties: false
+          properties:
+            fuente: {type: string, const: impedimentos.impedimentos}
+            estado: {type: string, const: ok}
+            datos:
+              type: object
+              required: [bloqueada, abiertos]
+              additionalProperties: false
+              properties:
+                bloqueada:
+                  type: boolean
+                abiertos:
+                  type: integer
+                  minimum: 0
+        - $ref: '#/components/schemas/BloqueIndisponible'
+    BloqueRiesgoFila:
+      description: Riesgo vigente de una fila de HDU (columna «Riesgo» del Líder).
+      oneOf:
+        - type: object
+          required: [fuente, estado, datos]
+          additionalProperties: false
+          properties:
+            fuente: {type: string, const: impedimentos.riesgo}
+            estado: {type: string, const: ok}
+            datos:
+              $ref: '#/components/schemas/RiesgoResumen'
+        - $ref: '#/components/schemas/BloqueIndisponible'
+    ItemImpedimentoBandeja:
+      type: object
+      description: Fila de impedimento en una bandeja. Organización la arma con la evaluación de Impedimentos y sus propios datos de la HDU.
+      required: [id, hdu, celula, analista, tipo, titulo, estado, responsable, diasAbierto, fechaRegistro, esNuevo, escaladoAMi, riesgo]
+      additionalProperties: false
+      properties:
+        id:
+          $ref: '#/components/schemas/Uuid'
+        hdu:
+          $ref: '#/components/schemas/HduReferencia'
+        celula:
+          $ref: '#/components/schemas/CatalogoRef'
+        analista:
+          oneOf:
+            - $ref: '#/components/schemas/UsuarioResumen'
+            - type: 'null'
+        tipo:
+          $ref: '#/components/schemas/TipoImpedimento'
+        titulo:
+          type: string
+        estado:
+          type: string
+          enum: [ABIERTO, ESCALADO]
+        responsable:
+          $ref: '#/components/schemas/ResponsableImpedimento'
+        creadoPor:
+          $ref: '#/components/schemas/PersonaRol'
+        diasAbierto:
+          type: integer
+          minimum: 0
+        fechaRegistro:
+          $ref: '#/components/schemas/FechaHora'
+        esNuevo:
+          type: boolean
+        escaladoAMi:
+          type: boolean
+          description: Estado `ESCALADO` y `responsable.id` igual a quien consulta.
+        riesgo:
+          $ref: '#/components/schemas/RiesgoResumen'
+    BloqueListaImpedimentos:
+      oneOf:
+        - type: object
+          required: [fuente, estado, datos]
+          additionalProperties: false
+          properties:
+            fuente: {type: string, const: impedimentos.impedimentos}
+            estado: {type: string, const: ok}
+            datos:
+              type: object
+              required: [items, total]
+              additionalProperties: false
+              properties:
+                items:
+                  type: array
+                  items:
+                    $ref: '#/components/schemas/ItemImpedimentoBandeja'
+                total:
+                  type: integer
+                  minimum: 0
+                  description: Todos los que cumplen la regla de la lista, aunque `items` traiga menos.
+        - $ref: '#/components/schemas/BloqueIndisponible'
+    ImpedimentosBandejaAnalista:
+      type: object
+      description: Sin riesgo (D73).
+      required: [contadores]
+      additionalProperties: false
+      properties:
+        contadores:
+          type: object
+          required: [impedimentosAbiertos]
+          additionalProperties: false
+          properties:
+            impedimentosAbiertos:
+              $ref: '#/components/schemas/Contador'
+              description: '`ABIERTO` + `ESCALADO` de mis HDU.'
+    ImpedimentosBandejaQe:
+      type: object
+      description: Ámbito de la bandeja del QE (HDU donde es responsable, E7-F03#3). La lista no suma filas a `acciones` (D71).
+      required: [contadores, lista]
+      additionalProperties: false
+      properties:
+        contadores:
+          type: object
+          required: [impedimentosAbiertos, impedimentosNuevos, hduRiesgoAlto]
+          additionalProperties: false
+          properties:
+            impedimentosAbiertos:
+              $ref: '#/components/schemas/Contador'
+            impedimentosNuevos:
+              $ref: '#/components/schemas/Contador'
+              description: No resueltos registrados hace menos de 24 horas (D72).
+            hduRiesgoAlto:
+              $ref: '#/components/schemas/Contador'
+              description: HDU no cerradas con riesgo vigente `ALTO`. `indisponible` si alguna HDU del ámbito tiene el riesgo `indisponible` (nunca cuenta de menos).
+        lista:
+          $ref: '#/components/schemas/BloqueListaImpedimentos'
+          description: Hasta 10, orden D74 (riesgo vigente y días abiertos).
+    ImpedimentosBandejaLider:
+      type: object
+      description: Solo lectura. Sin células, contadores en 0 con `ok` y lista vacía.
+      required: [contadores, lista]
+      additionalProperties: false
+      properties:
+        contadores:
+          type: object
+          required: [impedimentosAbiertos, hduBloqueadas, escaladosAMi]
+          additionalProperties: false
+          properties:
+            impedimentosAbiertos:
+              $ref: '#/components/schemas/Contador'
+            hduBloqueadas:
+              $ref: '#/components/schemas/Contador'
+            escaladosAMi:
+              $ref: '#/components/schemas/Contador'
+        lista:
+          $ref: '#/components/schemas/BloqueListaImpedimentos'
+          description: Todos los abiertos y escalados de sus células, hasta 50; los escalados a él primero y luego orden D74 (D79).
+    ImpedimentosBandejaAdmin:
+      type: object
+      description: Solo consulta (D57, D83). No altera los bloques certificados ni su independencia de Certificaciones.
+      required: [contadores, escalados]
+      additionalProperties: false
+      properties:
+        contadores:
+          type: object
+          required: [impedimentosAbiertos, hduBloqueadas, hduRiesgoAlto]
+          additionalProperties: false
+          properties:
+            impedimentosAbiertos:
+              $ref: '#/components/schemas/Contador'
+            hduBloqueadas:
+              $ref: '#/components/schemas/Contador'
+            hduRiesgoAlto:
+              $ref: '#/components/schemas/Contador'
+              description: Necesita el avance de Certificaciones; si no responde, puede quedar `indisponible` sin afectar al resto de la bandeja.
+        escalados:
+          $ref: '#/components/schemas/BloqueListaImpedimentos'
+          description: Escalados a este Administrador, hasta 50, los más antiguos primero.
+    ImpedimentosBandejaAuditor:
+      type: object
+      required: [contadores]
+      additionalProperties: false
+      properties:
+        contadores:
+          type: object
+          required: [impedimentosAbiertos, hduBloqueadas]
+          additionalProperties: false
+          properties:
+            impedimentosAbiertos:
+              $ref: '#/components/schemas/Contador'
+            hduBloqueadas:
+              $ref: '#/components/schemas/Contador'
 
   headers:
     XTraceId:
@@ -2571,6 +3763,13 @@ components:
       schema:
         type: string
         pattern: '^[a-z]+:(asc|desc)$'
+    FiltroSoloBloqueadas:
+      name: soloBloqueadas
+      in: query
+      required: false
+      description: E4 (D87). Solo HDU con impedimentos `ABIERTO` o `ESCALADO`. Depende de Impedimentos; si no responde, la lista viene `indisponible`, nunca sin filtrar.
+      schema:
+        type: boolean
     XTraceIdSolicitud:
       name: x-trace-id
       in: header

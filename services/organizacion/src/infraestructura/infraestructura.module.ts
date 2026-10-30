@@ -15,7 +15,9 @@ import { SUPERVISION_REPOSITORIO } from '../dominio/repositorios/supervision.rep
 import { USUARIO_REPOSITORIO } from '../dominio/repositorios/usuario.repositorio.js';
 import { PROVEEDOR_CHECKLIST } from '../aplicacion/puertos/proveedor-checklist.js';
 import { PROVEEDOR_IDENTIDAD } from '../aplicacion/puertos/proveedor-identidad.js';
+import { PROVEEDOR_IMPEDIMENTOS } from '../aplicacion/puertos/proveedor-impedimentos.js';
 import { PROVEEDOR_SEGUIMIENTO } from '../aplicacion/puertos/proveedor-seguimiento.js';
+import { ProveedorImpedimentosHttp } from './impedimentos/proveedor-impedimentos.http.js';
 import { ProveedorChecklistHttp } from './certificaciones/proveedor-checklist.http.js';
 import { ProveedorSeguimientoHttp } from './certificaciones/proveedor-seguimiento.http.js';
 import { AuditoriaPrismaRepositorio } from './repositorios/auditoria.prisma.repositorio.js';
@@ -40,6 +42,7 @@ import { ProveedorIdentidadSupabase } from './supabase/proveedor-identidad.servi
     { provide: PROVEEDOR_IDENTIDAD, useClass: ProveedorIdentidadSupabase },
     { provide: PROVEEDOR_CHECKLIST, useClass: ProveedorChecklistHttp },
     { provide: PROVEEDOR_SEGUIMIENTO, useClass: ProveedorSeguimientoHttp },
+    { provide: PROVEEDOR_IMPEDIMENTOS, useClass: ProveedorImpedimentosHttp },
     ResolutorAccesoOrganizacion,
   ],
   exports: [
@@ -53,6 +56,7 @@ import { ProveedorIdentidadSupabase } from './supabase/proveedor-identidad.servi
     PROVEEDOR_IDENTIDAD,
     PROVEEDOR_CHECKLIST,
     PROVEEDOR_SEGUIMIENTO,
+    PROVEEDOR_IMPEDIMENTOS,
     ResolutorAccesoOrganizacion,
   ],
 })
