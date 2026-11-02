@@ -150,7 +150,7 @@ describe('buscarPagina', () => {
     assert.equal(u.pathname, '/rest/api/3/search/jql');
     assert.equal(u.searchParams.get('jql'), 'project = QTY AND issuetype in ("Story", "Historia") ORDER BY key ASC');
     assert.equal(u.searchParams.get('maxResults'), '50');
-    assert.equal(u.searchParams.get('fields'), 'summary,description,priority,issuetype,status,assignee,customfield_10020');
+    assert.equal(u.searchParams.get('fields'), 'summary,description,priority,issuetype,status,assignee,labels,customfield_10020');
     assert.equal(u.searchParams.has('nextPageToken'), false);
   });
 
@@ -165,7 +165,7 @@ describe('buscarPagina', () => {
   it('sin campo Sprint no lo pide ni lo lee', async () => {
     const { cliente, llamadas } = falso([json({ issues: [issue('QTY-1', { customfield_10020: [{ name: 'S', state: 'active' }] })], isLast: true })]);
     const r = await cliente.buscarPagina(CRED, { ...consulta, campoSprint: null }, opciones());
-    assert.equal(llamadas[0]?.url.searchParams.get('fields'), 'summary,description,priority,issuetype,status,assignee');
+    assert.equal(llamadas[0]?.url.searchParams.get('fields'), 'summary,description,priority,issuetype,status,assignee,labels');
     assert.deepEqual(r.ok && r.valor.issues[0]?.sprints, []);
   });
 
@@ -184,7 +184,7 @@ describe('buscarPagina', () => {
     assert.ok(r.ok);
     assert.deepEqual(r.valor.issues[0], {
       clave: 'QTY-12', tipo: 'Story', titulo: 'Historia QTY-12', descripcionAdf: { type: 'doc', version: 1, content: [] },
-      prioridad: 'High', estado: 'To Do', responsable: 'Ana',
+      prioridad: 'High', estado: 'To Do', responsable: 'Ana', labels: [],
       sprints: [
         { nombre: 'E5 Sprint 1', estado: 'active', fin: '2026-11-10T10:00:00.000Z' },
         { nombre: 'Externo 9', estado: 'closed', fin: '2026-01-02T00:00:00.000Z' },
@@ -199,7 +199,57 @@ describe('buscarPagina', () => {
     const { cliente } = falso([json({ issues: [{ key: 'QTY-5', fields: { summary: 'x', description: null, priority: null, assignee: null, status: null, customfield_10020: null } }], isLast: true })]);
     const r = await cliente.buscarPagina(CRED, consulta, opciones());
     assert.ok(r.ok);
-    assert.deepEqual(r.valor.issues[0], { clave: 'QTY-5', tipo: '', titulo: 'x', descripcionAdf: null, prioridad: null, estado: null, responsable: null, sprints: [] });
+    assert.deepEqual(r.valor.issues[0], {
+      clave: 'QTY-5',
+      tipo: '',
+      titulo: 'x',
+      descripcionAdf: null,
+      prioridad: null,
+      estado: null,
+      responsable: null,
+      sprints: [],
+      labels: [],
+    });
+   });
+  it('lee la etiqueta celula-pagos desde una respuesta Jira', async () => {
+    const { cliente } = falso([
+      json({
+        issues: [{
+          key: 'HDU-1',
+          fields: {
+            summary: 'Validar límite diario de transferencias bancarias',
+            labels: ['celula-pagos'],
+          },
+        }],
+        isLast: true,
+      }),
+    ]);
+
+    const r = await cliente.buscarPagina(CRED, consulta, opciones());
+
+    assert.ok(r.ok);
+    assert.equal(r.valor.issues[0]?.clave, 'HDU-1');
+    assert.deepEqual(r.valor.issues[0]?.labels, ['celula-pagos']);
+  });
+  it('lee la etiqueta celula-clientes desde una respuesta Jira', async () => {
+    const { cliente } = falso([
+      json({
+        issues: [{
+          key: 'HDU-2',
+          fields: {
+            summary: 'Validar actualización de datos de contacto del cliente',
+            labels: ['celula-clientes'],
+          },
+        }],
+        isLast: true,
+      }),
+    ]);
+
+    const r = await cliente.buscarPagina(CRED, consulta, opciones());
+
+    assert.ok(r.ok);
+    assert.equal(r.valor.issues[0]?.clave, 'HDU-2');
+    assert.deepEqual(r.valor.issues[0]?.labels, ['celula-clientes']);
   });
 
   it('un summary que no es texto da título null', async () => {

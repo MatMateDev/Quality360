@@ -17,6 +17,7 @@ export interface SprintJira { nombre: string; estado: 'active' | 'future' | 'clo
 export interface IssueJira {
   clave: string; tipo: string; titulo: string | null; descripcionAdf: unknown;
   prioridad: string | null; estado: string | null; responsable: string | null; sprints: SprintJira[];
+  labels?: string[];
 }
 export interface PaginaJira { issues: IssueJira[]; nextPageToken: string | null; esUltima: boolean }
 export interface FuenteJira {
