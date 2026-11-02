@@ -220,7 +220,7 @@ export function armarJql(proyecto: string, tipos: string[], despuesDe?: string):
 
 function camposPedidos(campoSprint: string | null): string {
   if (campoSprint !== null && !PATRON_CAMPO.test(campoSprint)) throw new ParametroJiraInvalido('campoSprint');
-  const base = ['summary', 'description', 'priority', 'issuetype', 'status', 'assignee'];
+  const base = ['summary', 'description', 'priority', 'issuetype', 'status', 'assignee', 'labels'];
   return (campoSprint === null ? base : [...base, campoSprint]).join(',');
 }
 
@@ -238,6 +238,9 @@ function leerIssue(bruta: unknown, campoSprint: string | null): IssueJira | null
     estado: texto(objeto(campos.status)?.name),
     responsable: texto(objeto(campos.assignee)?.displayName),
     sprints: campoSprint === null ? [] : leerSprints(campos[campoSprint]),
+    labels: Array.isArray(campos.labels)
+       ? campos.labels.filter((etiqueta: unknown): etiqueta is string => typeof etiqueta === 'string')
+       : [],
   };
 }
 

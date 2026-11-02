@@ -5,10 +5,42 @@ import { mapearPrioridadJira } from './prioridad.js';
 import { elegirSprint } from './sprint.js';
 import { LIMITES, PATRON_CODIGO, limpiarControl, limpiarLinea, recortar, type AdvertenciaFila, type FilaMapeada, type MotivoFila } from './tipos.js';
 
+
+const CELULAS_POR_ETIQUETA: Record<string, string> = {
+  'celula-pagos': 'Pagos',
+  'celula-clientes': 'Clientes',
+};
+function obtenerCelulaDesdeEtiquetas(
+  labels: readonly string[] | undefined,
+): { nombre: string | null; invalida: boolean } {
+  const etiquetas = [
+    ...new Set(
+      (labels ?? [])
+        .map((etiqueta) => etiqueta.trim().toLowerCase())
+        .filter((etiqueta) => etiqueta.startsWith('celula-')),
+    ),
+  ];
+
+  if (etiquetas.length === 0) {
+    return { nombre: null, invalida: false };
+  }
+
+  const etiqueta = etiquetas[0];
+  if (etiquetas.length !== 1 || !etiqueta) {
+    return { nombre: null, invalida: true };
+  }
+
+  const nombre = CELULAS_POR_ETIQUETA[etiqueta];
+
+  return nombre
+    ? { nombre, invalida: false }
+    : { nombre: null, invalida: true };
+}
 /**
  * @param posicion posición de la issue en la lectura (1 la primera): es la `fila` del detalle.
  * @param sitio sitio ya validado con `validarSitio` (D95); con él se arma `urlExterna`.
  */
+
 export function mapearIssue(issue: IssueJira, posicion: number, sitio: string): FilaMapeada {
   const advertencias: AdvertenciaFila[] = [];
   let error: MotivoFila | null = null;
@@ -16,6 +48,9 @@ export function mapearIssue(issue: IssueJira, posicion: number, sitio: string): 
   const clave = typeof issue.clave === 'string' ? issue.clave.trim() : '';
   const codigoValido = clave.length > 0 && clave.length <= LIMITES.codigoMax && PATRON_CODIGO.test(clave);
   if (!codigoValido) error = 'CODIGO_INVALIDO';
+  const celulaDesdeEtiquetas = obtenerCelulaDesdeEtiquetas(issue.labels);
+  if (celulaDesdeEtiquetas.invalida) error ??= 'CELULA_NO_ENCONTRADA';
+
 
   let titulo: string | null = limpiarLinea(typeof issue.titulo === 'string' ? issue.titulo : '');
   if (titulo === '') {
@@ -47,6 +82,7 @@ export function mapearIssue(issue: IssueJira, posicion: number, sitio: string): 
     descripcion,
     prioridad,
     sprint: elegirSprint(issue.sprints),
+    celula: celulaDesdeEtiquetas.nombre,
     // Una clave inválida no se convierte en enlace ni se guarda como clave externa.
     claveExterna: codigoValido ? clave : null,
     urlExterna: codigoValido ? `${sitio}/browse/${clave}` : null,

@@ -202,7 +202,7 @@ describe('mapearIssue', () => {
   it('caso base (QTY-1): campos mapeados, enlace y referencia', () => {
     assert.deepEqual(mapearIssue(base(), 1, SITIO), {
       fila: 1, codigo: 'QTY-1', titulo: 'Login con doble factor', descripcion: 'Como usuario quiero activar 2FA', prioridad: 'ALTA',
-      sprint: 'E5 Sprint 2', claveExterna: 'QTY-1', urlExterna: 'https://equipo.atlassian.net/browse/QTY-1',
+      sprint: 'E5 Sprint 2', celula: null, claveExterna: 'QTY-1', urlExterna: 'https://equipo.atlassian.net/browse/QTY-1',
       advertencias: [], referencia: { estado: 'In Progress', responsable: 'Ana Torres' }, error: null,
     });
   });
@@ -284,9 +284,60 @@ describe('mapearIssue', () => {
 
   it('aFilaUpsert deja solo los campos del contrato', () => {
     const claves = Object.keys(aFilaUpsert(mapearIssue(base(), 1, SITIO))).sort();
-    assert.deepEqual(claves, ['claveExterna', 'codigo', 'descripcion', 'fila', 'prioridad', 'sprint', 'titulo', 'urlExterna']);
+    assert.deepEqual(claves, ['celula', 'claveExterna', 'codigo', 'descripcion', 'fila', 'prioridad', 'sprint', 'titulo', 'urlExterna']);
+  });
+  it('HDU-1: asigna la célula Pagos desde etiquetas Jira', () => {
+    const issue = base({
+      clave: 'HDU-1',
+      titulo: 'Validar límite diario de transferencias bancarias',
+      labels: ['celula-pagos'],
+    });
+
+    const resultado = mapearIssue(issue, 1, SITIO);
+
+    assert.equal(resultado.codigo, 'HDU-1');
+    assert.equal(resultado.celula, 'Pagos');
+    assert.equal(resultado.error, null);
   });
 
+  it('HDU-2: asigna la célula Clientes desde etiquetas Jira', () => {
+    const issue = base({
+      clave: 'HDU-2',
+      titulo: 'Validar actualización de datos de contacto del cliente',
+      labels: ['celula-clientes'],
+    });
+
+    const resultado = mapearIssue(issue, 2, SITIO);
+
+    assert.equal(resultado.codigo, 'HDU-2');
+    assert.equal(resultado.celula, 'Clientes');
+    assert.equal(resultado.error, null);
+  });
+
+  it('rechaza una etiqueta de célula desconocida', () => {
+    const issue = base({
+      clave: 'HDU-3',
+      labels: ['celula-desconocida'],
+    });
+
+    const resultado = mapearIssue(issue, 3, SITIO);
+
+    assert.equal(resultado.celula, null);
+    assert.equal(resultado.error, 'CELULA_NO_ENCONTRADA');
+  });
+
+  it('rechaza dos etiquetas de células contradictorias', () => {
+    const issue = base({
+      clave: 'HDU-4',
+      labels: ['celula-pagos', 'celula-clientes'],
+    });
+
+    const resultado = mapearIssue(issue, 4, SITIO);
+
+    assert.equal(resultado.codigo, 'HDU-4');
+    assert.equal(resultado.celula, null);
+    assert.equal(resultado.error, 'CELULA_NO_ENCONTRADA');
+  });
   it('la URL externa cabe en 300 caracteres con clave de 40', () => {
     const f = mapearIssue(base({ clave: 'A'.repeat(40) }), 1, 'https://' + 'a'.repeat(63) + '.atlassian.net');
     assert.ok((f.urlExterna ?? '').length <= 300);
