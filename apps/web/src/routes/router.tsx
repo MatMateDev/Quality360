@@ -5,8 +5,14 @@ import { Layout } from "@/components/Layout";
 import { AdminInicioPage } from "@/pages/admin/AdminInicioPage";
 import { AdminSupervisionPage } from "@/pages/admin/AdminSupervisionPage";
 import { AdminUsuariosPage } from "@/pages/admin/AdminUsuariosPage";
+import { PaginaConexionJira } from "@/pages/admin/integraciones/PaginaConexionJira";
+import { PaginaHistorial } from "@/pages/admin/integraciones/PaginaHistorial";
+import { PaginaImportar } from "@/pages/admin/integraciones/PaginaImportar";
+import { PaginaIntegraciones } from "@/pages/admin/integraciones/PaginaIntegraciones";
+import { PaginaSincronizar } from "@/pages/admin/integraciones/PaginaSincronizar";
 import { HduDetailPage } from "@/pages/hdu/HduDetailPage";
 import { AuditorBandejaPage } from "@/pages/auditor/AuditorBandejaPage";
+import { AuditorIntegracionesPage } from "@/pages/auditor/AuditorIntegracionesPage";
 import { AuditorImpedimentosPage } from "@/pages/auditor/AuditorImpedimentosPage";
 import { AuditorAuditoriaUsuariosPage, AuditorBitacoraPage, AuditorCertificadosPage } from "@/pages/auditor/AuditorPestanasPage";
 import { LiderBandejaPage } from "@/pages/lider/LiderBandejaPage";
@@ -23,6 +29,7 @@ import { QeEquipoPage } from "@/pages/qe/QeEquipoPage";
 import { QeHduFormPage } from "@/pages/qe/QeHduFormPage";
 import { QeHduListPage } from "@/pages/qe/QeHduListPage";
 import { QeImpedimentosPage } from "@/pages/qe/QeImpedimentosPage";
+import { QeIntegracionesPage } from "@/pages/qe/QeIntegracionesPage";
 import { QeInicioPage } from "@/pages/qe/QeInicioPage";
 import { QeRiesgoPage } from "@/pages/qe/QeRiesgoPage";
 
@@ -48,6 +55,13 @@ export function AppRoutes() {
             <Route path="admin" element={<AdminInicioPage />} />
             <Route path="admin/usuarios" element={<AdminUsuariosPage />} />
             <Route path="admin/supervision" element={<AdminSupervisionPage />} />
+            {/* E5: cuatro pestañas por ruta; «Conexión» es el índice y no redirige. */}
+            <Route path="admin/integraciones" element={<PaginaIntegraciones />}>
+              <Route index element={<PaginaConexionJira />} />
+              <Route path="sincronizar" element={<PaginaSincronizar />} />
+              <Route path="importar" element={<PaginaImportar />} />
+              <Route path="historial" element={<PaginaHistorial />} />
+            </Route>
           </Route>
 
           <Route element={<RequireRole roles={["QE"]} />}>
@@ -58,6 +72,7 @@ export function AppRoutes() {
             <Route path="qe/aprobaciones" element={<QeAprobacionesPage />} />
             <Route path="qe/impedimentos" element={<QeImpedimentosPage />} />
             <Route path="qe/impedimentos/riesgo" element={<QeRiesgoPage />} />
+            <Route path="qe/integraciones" element={<QeIntegracionesPage />} />
           </Route>
 
           <Route element={<RequireRole roles={["LIDER_QA"]} />}>
@@ -71,6 +86,7 @@ export function AppRoutes() {
             <Route path="auditor/bitacora" element={<AuditorBitacoraPage />} />
             <Route path="auditor/auditoria-usuarios" element={<AuditorAuditoriaUsuariosPage />} />
             <Route path="auditor/impedimentos" element={<AuditorImpedimentosPage />} />
+            <Route path="auditor/integraciones" element={<AuditorIntegracionesPage />} />
           </Route>
 
           <Route element={<RequireRole roles={["ANALISTA_QA"]} />}>

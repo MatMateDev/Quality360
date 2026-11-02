@@ -18,7 +18,11 @@ const METODOS_CON_CUERPO = new Set(['POST', 'PUT', 'PATCH']);
 
 export interface OpcionesReenvio {
   ruta: string;
-  base?: string;
+  /**
+   * Base del servicio; por defecto, Organización. `null` = servicio opcional no
+   * configurado (D127, D129): no se llama a nadie y se responde 503.
+   */
+  base?: string | null;
   /** Propagar la query string de la solicitud original. */
   conConsulta?: boolean;
   tiempoLimiteMs?: number;
@@ -35,14 +39,24 @@ export class Reenviador {
     return this.configuracion.certificacionesUrl;
   }
 
-  /** Base de Impedimentos (E4, D85). */
-  get impedimentosUrl(): string {
+  /** Base de Impedimentos (E4, D85); `null` si no está configurada (D129). */
+  get impedimentosUrl(): string | null {
     return this.configuracion.impedimentosUrl;
   }
 
   /** Tiempo límite al reenviar a Impedimentos. */
   get tiempoLimiteImpedimentosMs(): number {
     return this.configuracion.tiempoLimiteImpedimentosMs;
+  }
+
+  /** Base de Integraciones (E5, D127); `null` si no está configurada. */
+  get integracionesUrl(): string | null {
+    return this.configuracion.integracionesUrl;
+  }
+
+  /** Tiempo límite al reenviar a Integraciones (D115). */
+  get tiempoLimiteIntegracionesMs(): number {
+    return this.configuracion.tiempoLimiteIntegracionesMs;
   }
 
   /** Identidad ya verificada por `IdentidadGuard`. */
@@ -58,13 +72,16 @@ export class Reenviador {
   }
 
   async consultar(solicitud: SolicitudGateway, opciones: OpcionesReenvio): Promise<ResultadoServicio> {
+    const base = opciones.base === undefined ? this.configuracion.organizacionUrl : opciones.base;
+    if (base === null) return { tipo: 'fallo', motivo: 'servicio no configurado' };
+
     const cuerpo =
       METODOS_CON_CUERPO.has(solicitud.method) && solicitud.body !== undefined
         ? JSON.stringify(solicitud.body)
         : undefined;
 
     return solicitarServicio({
-      base: opciones.base ?? this.configuracion.organizacionUrl,
+      base,
       ruta: opciones.ruta,
       metodo: solicitud.method,
       token: opciones.publico === true ? null : this.identidadDe(solicitud).token,

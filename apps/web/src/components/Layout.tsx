@@ -16,6 +16,8 @@ const ENLACES_POR_ROL: Record<Rol, EnlaceNav[]> = {
     { a: "/admin", etiqueta: "Bandeja", fin: true },
     { a: "/admin/usuarios", etiqueta: "Usuarios" },
     { a: "/admin/supervision", etiqueta: "Supervisión" },
+    // E5: sin `fin`, queda activo en las cuatro pestañas de /admin/integraciones.
+    { a: "/admin/integraciones", etiqueta: "Integraciones" },
   ],
   QE: [
     { a: "/qe", etiqueta: "Bandeja", fin: true },
@@ -23,6 +25,7 @@ const ENLACES_POR_ROL: Record<Rol, EnlaceNav[]> = {
     { a: "/qe/hdu", etiqueta: "Historias supervisadas" },
     // E4: sin `fin`, queda activo también en /qe/impedimentos/riesgo.
     { a: "/qe/impedimentos", etiqueta: "Impedimentos" },
+    { a: "/qe/integraciones", etiqueta: "Integraciones" },
   ],
   ANALISTA_QA: [
     { a: "/qa", etiqueta: "Bandeja", fin: true },

@@ -38,10 +38,11 @@ test.describe("E1-F02 · Portal QE", () => {
   }
 
   // Reescrita en E7 (D29): la primera opción del menú pasó de «Inicio» a «Bandeja». Las demás no cambian.
-  test("[E1-F02#3] el menú solo trae bandeja, equipo, historias supervisadas, perfil y cerrar sesión", async ({ page }) => {
+  // Actualizada en E5 (D107): se agrega «Integraciones» después de «Impedimentos» (dato de la prueba, sección 9 del backlog E5).
+  test("[E1-F02#3] el menú solo trae bandeja, equipo, historias supervisadas, impedimentos, integraciones, perfil y cerrar sesión", async ({ page }) => {
     await page.goto(`${env.portalUrl}/qe`);
     const nav = page.getByRole("navigation", { name: "Portal" });
-    await expect(nav.getByRole("link")).toHaveText(["Bandeja", "Equipo", "Historias supervisadas", "Impedimentos", "Perfil"]);
+    await expect(nav.getByRole("link")).toHaveText(["Bandeja", "Equipo", "Historias supervisadas", "Impedimentos", "Integraciones", "Perfil"]);
     await expect(page.getByRole("button", { name: "Cerrar sesión" })).toBeVisible();
     await expect(nav.getByRole("link", { name: "Usuarios" })).toHaveCount(0);
     await expect(nav.getByRole("link", { name: "Supervisión" })).toHaveCount(0);

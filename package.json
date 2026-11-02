@@ -23,6 +23,7 @@
     "seed": "node --env-file-if-exists=infrastructure/seed/mvp/.env.carga infrastructure/seed/mvp/cargar.mjs",
     "seed:e7": "node --env-file-if-exists=infrastructure/seed/mvp/.env.carga infrastructure/seed/e7/cargar.mjs",
     "seed:e4": "node --env-file-if-exists=infrastructure/seed/mvp/.env.carga infrastructure/seed/e4/cargar.mjs",
+    "seed:e5": "node --env-file-if-exists=infrastructure/seed/mvp/.env.carga infrastructure/seed/e5/cargar.mjs",
     "local": "node infrastructure/local/levantar.mjs"
   }
 }

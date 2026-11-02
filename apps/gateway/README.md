@@ -29,13 +29,29 @@ curl http://localhost:3000/health              # {"estado":"ok"}
 | `GET /v1/qe/analistas`, `GET /v1/qe/analistas-asignables` | Organización. |
 | `GET /v1/usuarios`, `POST /v1/usuarios`, `PATCH /v1/usuarios/{id}`, `PUT /v1/usuarios/{id}/rol` | Organización. |
 | `PUT /v1/analistas/{id}/supervisor`, `GET /v1/analistas/{id}/supervision/historial` | Organización. |
-| `GET /v1/auditoria`, `GET /v1/catalogos/celulas`, `GET /v1/catalogos/sprints` | Organización. |
+| `GET /v1/auditoria`, `GET /v1/catalogos/celulas`, `GET /v1/catalogos/sprints` | Organización. Sprints propaga el filtro `?celulaId` y cada sprint trae `celulaId` (E5, D120). |
 | `GET /v1/hdu`, `POST /v1/hdu`, `PUT /v1/hdu/{id}/analista`, `POST /v1/hdu/{id}/estado`, `GET /v1/hdu/{id}/historial` | Organización. |
-| `GET /v1/hdu/{id}` | Organización (obligatoria) + bloque `checklist` de Certificaciones. |
-| E4 (D85): `GET /v1/catalogos/tipos-impedimento`; `GET\|POST /v1/hdu/{hduId}/impedimentos`; `GET /v1/hdu/{hduId}/impedimentos/responsables`; `GET\|PUT /v1/hdu/{hduId}/riesgo`; `GET /v1/hdu/{hduId}/gestion-impedimentos`; `GET /v1/impedimentos`; `GET /v1/impedimentos/{id}`; `POST /v1/impedimentos/{id}/(resolver\|escalar\|reabrir\|seguimiento)`; `GET /v1/riesgo/hdu`; `GET /v1/auditor/(impedimentos\|gestion-impedimentos)`; `GET /v1/auditor/exportaciones/(impedimentos\|gestion-impedimentos)` (CSV tal cual) | Impedimentos (`IMPEDIMENTOS_URL`), sin composición. Caído → 503. El 409 `HDU_BLOQUEADA` y el 503 del cierre (`POST /v1/hdu/{id}/estado`) los responde Organización y llegan tal cual. |
-| `/v1/certificaciones/*`, `/v1/integraciones/*` | 501 `CAPACIDAD_NO_DISPONIBLE` hasta que esos servicios existan. |
+| `GET /v1/hdu/{id}` | Organización (obligatoria) + bloque `checklist` de Certificaciones. Desde E5 conserva `descripcion`, `origen`, `claveExterna` y `urlExterna` tal como los responde Organización (D108, D124). |
+| E4 (D85): `GET /v1/catalogos/tipos-impedimento`; `GET\|POST /v1/hdu/{hduId}/impedimentos`; `GET /v1/hdu/{hduId}/impedimentos/responsables`; `GET\|PUT /v1/hdu/{hduId}/riesgo`; `GET /v1/hdu/{hduId}/gestion-impedimentos`; `GET /v1/impedimentos`; `GET /v1/impedimentos/{id}`; `POST /v1/impedimentos/{id}/(resolver\|escalar\|reabrir\|seguimiento)`; `GET /v1/riesgo/hdu`; `GET /v1/auditor/(impedimentos\|gestion-impedimentos)`; `GET /v1/auditor/exportaciones/(impedimentos\|gestion-impedimentos)` (CSV tal cual) | Impedimentos (`IMPEDIMENTOS_URL`), sin composición. Caído, o `IMPEDIMENTOS_URL` sin configurar (D129) → 503. El 409 `HDU_BLOQUEADA` y el 503 del cierre (`POST /v1/hdu/{id}/estado`) los responde Organización y llegan tal cual. |
+| E5 (D127): `GET\|PUT /v1/integraciones/jira/configuracion`; `POST /v1/integraciones/jira/configuracion/probar`; `GET /v1/integraciones/jira/configuracion/eventos`; `POST /v1/integraciones/jira/sincronizaciones`; `POST /v1/integraciones/archivos/(vista-previa\|importaciones)`; `GET /v1/integraciones/ejecuciones`; `GET /v1/integraciones/ejecuciones/{id}`; `GET /v1/integraciones/ejecuciones/{id}/detalle`; `GET /v1/integraciones/estado` | Integraciones (`INTEGRACIONES_URL`), sin composición, con tiempo límite propio (`INTEGRACIONES_TIMEOUT_MS`, 12 s). Caído, o `INTEGRACIONES_URL` sin configurar o inválida → 503 `SERVICIO_NO_DISPONIBLE`. `archivos/*` admite cuerpos de hasta 1,5 MB; más → 413 `ARCHIVO_MUY_GRANDE`. |
+| `/v1/certificaciones/*` (prefijo sin ruta declarada) | 501 `CAPACIDAD_NO_DISPONIBLE`. |
 
-Las rutas están declaradas una por una: **no hay proxy comodín**. Lo que no está en la tabla responde 404 `NO_ENCONTRADO`, incluidas las rutas internas de Organización.
+Las rutas están declaradas una por una: **no hay proxy comodín**. Lo que no está en la tabla responde 404 `NO_ENCONTRADO`, incluidas las rutas internas de Organización e Integraciones (`/v1/interno/*`, por ejemplo `/v1/interno/integraciones/hdu/upsert`).
+
+## Servicios opcionales: Impedimentos e Integraciones (D127, D129)
+
+Sin `IMPEDIMENTOS_URL` o `INTEGRACIONES_URL`, el portal no se cae: **solo** las rutas de ese servicio responden 503 `SERVICIO_NO_DISPONIBLE`.
+
+- **Producción (`NODE_ENV=production`):** si la variable falta, la URL queda sin configurar. El gateway arranca, `/health` y el resto de `/v1/*` funcionan, y el registro dice una sola vez «`<VARIABLE>` no configurada o inválida», sin el valor.
+- **Desarrollo:** si falta, usa `http://localhost:3003` (Impedimentos) y `http://localhost:3004` (Integraciones).
+- **Valor inválido** (no es una URL `http` o `https`), en cualquier entorno: mismo trato que si faltara, con el mismo aviso.
+- La sesión se verifica antes: sin token, estas rutas siguen respondiendo 401, así que el 503 por configuración solo se ve con sesión.
+- Sin Impedimentos, el cierre de HDU lo resuelve Organización con su propia `IMPEDIMENTOS_URL` (D60, D91); el gateway no interviene.
+
+## Cuerpo de las solicitudes
+
+- `/v1/integraciones/archivos/*`: JSON de hasta 1,5 MB (el archivo de hasta 1 MB viaja como texto). Si lo supera, 413 `ARCHIVO_MUY_GRANDE` con la forma de `ErrorArchivo` (`ejecucionId: null`, `columnasFaltantes: []`), sin llegar a Integraciones.
+- El resto: 100 KB (límite por defecto de Express). Un cuerpo mayor o un JSON mal formado responde 400 `VALIDACION`.
 
 ## Composición y fuentes caídas
 
@@ -82,7 +98,9 @@ Comportamiento observado con Supabase Auth local (GoTrue v2.196.0), cubierto por
 
 ## Variables de entorno
 
-Ver `.env.example`. Obligatoria: `SUPABASE_URL` (o bien `SUPABASE_JWT_ISSUER` más `SUPABASE_JWKS_URL`). El resto tiene valores por defecto razonables para local, salvo `SUPABASE_JWT_SECRET`, que si no existe deshabilita el respaldo HS256. `IMPEDIMENTOS_URL` cae en `http://localhost:3003` en local, pero con `NODE_ENV=production` es obligatoria (sin ella el gateway no arranca). `IMPEDIMENTOS_TIMEOUT_MS` es opcional y por defecto vale `TIEMPO_LIMITE_SERVICIO_MS`.
+Ver `.env.example`. Obligatoria: `SUPABASE_URL` (o bien `SUPABASE_JWT_ISSUER` más `SUPABASE_JWKS_URL`). El resto tiene valores por defecto razonables para local, salvo `SUPABASE_JWT_SECRET`, que si no existe deshabilita el respaldo HS256. `IMPEDIMENTOS_URL` e `INTEGRACIONES_URL` son **opcionales** también en producción (ver «Servicios opcionales»): si faltan, solo sus rutas responden 503. `IMPEDIMENTOS_TIMEOUT_MS` es opcional y por defecto vale `TIEMPO_LIMITE_SERVICIO_MS`. `INTEGRACIONES_TIMEOUT_MS` vale 12000 por defecto y debe ser mayor que el presupuesto de Integraciones (`INTEGRACIONES_PRESUPUESTO_MS`, 8000), para que el gateway no corte una sincronización antes que el servicio (D115). `INTEGRACIONES_LLAVE_CIFRADO` **no** es del gateway: va solo en el proyecto de Integraciones.
+
+Un tiempo límite inválido (por ejemplo, `INTEGRACIONES_TIMEOUT_MS=0`) sí impide arrancar: es un error de configuración que no afecta a un solo servicio.
 
 ## Pruebas
 
@@ -90,4 +108,4 @@ Ver `.env.example`. Obligatoria: `SUPABASE_URL` (o bien `SUPABASE_JWT_ISSUER` m�
 npm test --workspace apps/gateway
 ```
 
-136 pruebas de integración con servicios falsos (las de E4 en `pruebas/e4-impedimentos.test.ts`), sin Supabase ni Docker: bloque `indisponible` con la fuente caída o lenta, respuesta directa de una fuente con 403, servicio caído → 503, token vencido → `SESION_EXPIRADA`, eliminación de `X-Q360-Servicio-Token`, rutas `/v1/interno/*` no expuestas, recorrido de ruta manipulado, 501 de otros servicios, JSON mal formado, CORS, helmet y límite de tasa.
+Pruebas de integración con servicios falsos (las de E4 en `pruebas/e4-impedimentos.test.ts` y las de E5 en `pruebas/e5-integraciones.test.ts`), sin Supabase ni Docker: bloque `indisponible` con la fuente caída o lenta, respuesta directa de una fuente con 403, servicio caído → 503, token vencido → `SESION_EXPIRADA`, eliminación de `X-Q360-Servicio-Token`, rutas `/v1/interno/*` no expuestas, recorrido de ruta manipulado, 501 de `/v1/certificaciones`, JSON mal formado, CORS, helmet y límite de tasa. En E5: reenvío, 401 y 403 por cada una de las 11 operaciones, 503 con `INTEGRACIONES_URL` ausente o inválida (y con `IMPEDIMENTOS_URL` ausente, D129), arranque en producción sin ambas variables, límite de 1,5 MB en `archivos/*` y de 100 KB en el resto, tiempo límite propio, `?celulaId` en sprints y los campos nuevos del detalle de HDU.

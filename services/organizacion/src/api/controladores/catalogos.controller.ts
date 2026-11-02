@@ -1,12 +1,18 @@
 import { Controller, Get, Query } from '@nestjs/common';
 import { Roles } from '@quality360/auth-nest';
-import { IsBoolean, IsIn, IsOptional } from 'class-validator';
+import { IsBoolean, IsIn, IsOptional, IsUUID } from 'class-validator';
 
 import { CatalogosAplicacion } from '../../aplicacion/catalogos.servicio.js';
 import { ROLES, type Rol } from '../../dominio/tipos.js';
 import { TransformBooleanoQuery } from '../dto/comunes.dto.js';
 
 const ROLES_TODOS = ['ADMINISTRADOR', 'QE', 'ANALISTA_QA', 'LIDER_QA', 'AUDITOR'] as const;
+
+class SprintsQueryDto {
+  @IsOptional()
+  @IsUUID('all')
+  celulaId?: string;
+}
 
 class PersonasQueryDto {
   @IsOptional()
@@ -29,10 +35,11 @@ export class CatalogosController {
     return this.catalogos.celulas();
   }
 
+  /** E5 (D120): cada sprint trae `celulaId` y `?celulaId=` deja solo los de esa célula. */
   @Roles(...ROLES_TODOS)
   @Get('sprints')
-  async sprints() {
-    return this.catalogos.sprints();
+  async sprints(@Query() query: SprintsQueryDto) {
+    return this.catalogos.sprints(query.celulaId);
   }
 
   /** Personas por rol para elegir al QE de una reasignación (D54). Solo el Administrador: trae correos. */

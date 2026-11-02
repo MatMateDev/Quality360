@@ -1,0 +1,511 @@
+/* E5 · integración con Jira y archivos. Reutiliza el sistema visual de E7/E4; los colores son alias de tokens.css. */
+
+/* ------------------------------------------------------------- insignias */
+.badge-resultado,
+.badge-origen,
+.chip-conexion,
+.chip-advertencia {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 10px;
+  border: 1px solid currentColor;
+  border-radius: 999px;
+  font-size: 13px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.badge-resultado--exitosa,
+.chip-conexion--ok {
+  color: var(--q360-color-res-exitosa);
+  background-color: var(--q360-color-res-exitosa-suave);
+}
+
+.badge-resultado--con-errores,
+.chip-advertencia {
+  color: var(--q360-color-res-con-errores);
+  background-color: var(--q360-color-res-con-errores-suave);
+}
+
+.badge-resultado--incompleta {
+  color: var(--q360-color-res-incompleta);
+  background-color: var(--q360-color-res-incompleta-suave);
+}
+
+.badge-resultado--fallida,
+.chip-conexion--fallida {
+  color: var(--q360-color-res-fallida);
+  background-color: var(--q360-color-res-fallida-suave);
+}
+
+.badge-resultado--neutra,
+.chip-conexion--sin-probar,
+.badge-origen {
+  color: var(--q360-color-res-neutra);
+  background-color: var(--q360-color-res-neutra-suave);
+}
+
+.chips-advertencia {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 4px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.chip-advertencia {
+  white-space: normal;
+  font-size: 12px;
+}
+
+.estado-token {
+  font-weight: 700;
+  color: var(--q360-color-texto);
+}
+
+/* ------------------------------------------------------------- conexión */
+.franja-estado-conexion {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 16px 24px;
+}
+
+.formulario-jira {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 0 24px;
+  align-items: start;
+}
+
+.fieldset-integracion {
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+/* DEF-E5-03: un nombre largo de célula o sprint no debe ensanchar el formulario a 375 px. */
+.fieldset-integracion select {
+  max-width: 100%;
+}
+
+.fieldset-integracion:disabled {
+  opacity: 0.7;
+}
+
+.campos-columna {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 16px;
+}
+
+.campos-fila {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 16px;
+}
+
+.campo input[type="file"] {
+  padding: 8px;
+}
+
+.acciones-formulario--integracion {
+  flex-wrap: wrap;
+  margin-bottom: 24px;
+}
+
+.lista-eventos-config {
+  margin: 0;
+}
+
+@media (min-width: 900px) {
+  .formulario-jira {
+    grid-template-columns: 3fr 2fr;
+  }
+
+  .campos-fila {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+/* ------------------------------------------------------- paneles y resultados */
+.panel-resultado {
+  margin: 0 0 20px;
+  padding: 16px 20px;
+  border: 1px solid var(--q360-color-borde);
+  border-left-width: 4px;
+  border-radius: var(--q360-radio-grande);
+  background-color: var(--q360-color-superficie);
+}
+
+.panel-resultado:focus-visible {
+  outline: 3px solid var(--q360-foco-color);
+  outline-offset: 2px;
+}
+
+.panel-resultado--fallida {
+  border-left-color: var(--q360-color-res-fallida);
+  color: var(--q360-color-res-fallida);
+  background-color: var(--q360-color-res-fallida-suave);
+}
+
+.panel-resultado--fallida a,
+.panel-resultado--fallida .boton--secundario {
+  color: var(--q360-color-res-fallida);
+}
+
+.panel-resultado--incompleta {
+  border-left-color: var(--q360-color-res-incompleta);
+  background-color: var(--q360-color-res-incompleta-suave);
+  color: var(--q360-color-res-incompleta);
+}
+
+.panel-resultado--exitosa {
+  border-left-color: var(--q360-color-res-exitosa);
+}
+
+.panel-resultado--con-errores {
+  border-left-color: var(--q360-color-res-con-errores);
+}
+
+.panel-resultado__titulo {
+  margin: 0 0 8px;
+  font-weight: 700;
+}
+
+.panel-resultado__cabecera {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 16px;
+  margin-bottom: 12px;
+}
+
+.panel-resultado__cabecera h2,
+.panel-resultado__cabecera h3 {
+  margin: 0;
+}
+
+.acciones-sugeridas ul {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 20px;
+  margin: 6px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.acciones-sugeridas {
+  margin-top: 8px;
+}
+
+.acciones-sugeridas .boton {
+  background-color: var(--q360-color-superficie);
+}
+
+.panel-espera {
+  margin: 0 0 20px;
+}
+
+.barra-espera {
+  height: 8px;
+  margin-bottom: 12px;
+  overflow: hidden;
+  border-radius: 999px;
+  background-color: var(--q360-color-borde);
+}
+
+.barra-espera span {
+  display: block;
+  width: 40%;
+  height: 100%;
+  background-color: var(--q360-color-acento);
+  animation: barra-espera 1.4s ease-in-out infinite;
+}
+
+@keyframes barra-espera {
+  0% {
+    transform: translateX(-100%);
+  }
+
+  100% {
+    transform: translateX(260%);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .barra-espera span {
+    width: 100%;
+    animation: none;
+  }
+}
+
+/* ------------------------------------------------------------- resumen */
+.resumen-ejecucion {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr) 1.2fr;
+  gap: 12px;
+  margin: 0 0 16px;
+}
+
+.resumen-ejecucion--previa {
+  grid-template-columns: repeat(4, 1fr) 1.2fr;
+}
+
+.resumen-ejecucion__item {
+  margin: 0;
+  padding: 14px;
+}
+
+.resumen-ejecucion__item dt,
+.resumen-ejecucion__item dd {
+  margin: 0;
+}
+
+.resumen-ejecucion__aparte {
+  border-style: dashed;
+}
+
+.resumen-ejecucion__nota {
+  display: block;
+  margin-top: 6px;
+  color: var(--q360-color-texto-secundario);
+  font-size: 12px;
+}
+
+/* ------------------------------------------------------------- listas */
+.lista-filas-ejecucion {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.fila-resultado {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 12px;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--q360-color-borde);
+  overflow-wrap: anywhere;
+}
+
+.fila-resultado > * {
+  min-width: 0;
+}
+
+.celda-cambios ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  overflow-wrap: anywhere;
+}
+
+.disclosure {
+  margin: 12px 0;
+}
+
+.disclosure__boton {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 40px;
+  padding: 4px 0;
+  border: 0;
+  background: none;
+  color: var(--q360-color-texto);
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+/* ------------------------------------------------------------- importar */
+.pasos-importacion {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 20px;
+  margin: 0 0 16px;
+  padding: 0;
+  list-style: none;
+  counter-reset: paso;
+}
+
+.pasos-importacion li {
+  color: var(--q360-color-texto-secundario);
+}
+
+.pasos-importacion li::before {
+  counter-increment: paso;
+  content: counter(paso) " ";
+  font-weight: 700;
+}
+
+.pasos-importacion li[aria-current="step"] {
+  color: var(--q360-color-texto);
+  font-weight: 700;
+  text-decoration: underline;
+  text-underline-offset: 4px;
+}
+
+.archivo-seleccionado {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 16px;
+  margin: 8px 0;
+}
+
+.formato-archivo {
+  margin: 0 0 16px;
+  padding: 14px 16px;
+  border: 1px solid var(--q360-color-borde);
+  border-radius: var(--q360-radio);
+  background-color: var(--q360-color-superficie-sutil);
+}
+
+.formato-archivo table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+}
+
+.formato-archivo th,
+.formato-archivo td {
+  padding: 4px 8px;
+  text-align: left;
+  border-bottom: 1px solid var(--q360-color-borde);
+}
+
+.vista-previa .tarjetas-resumen {
+  margin-bottom: 12px;
+}
+
+.celda-titulo-corta {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+}
+
+/* ------------------------------------------------------------- historial y detalle */
+.tarjetas-ultima-ejecucion {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 16px;
+  margin-bottom: 20px;
+}
+
+.contadores-fila {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
+  gap: 2px 12px;
+  margin: 8px 0;
+}
+
+.contadores-fila div {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.contadores-fila dt,
+.contadores-fila dd {
+  margin: 0;
+}
+
+.detalle-ejecucion__meta {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px 24px;
+  margin: 0 0 16px;
+}
+
+.detalle-ejecucion__meta dt {
+  color: var(--q360-color-texto-secundario);
+  font-size: 13px;
+}
+
+.detalle-ejecucion__meta dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.celda-numero {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.nota-origen {
+  color: var(--q360-color-texto-secundario);
+}
+
+.descripcion-hdu {
+  margin: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+@media (min-width: 900px) {
+  .tarjetas-ultima-ejecucion {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 750px) {
+  .acciones-formulario--integracion {
+    flex-direction: column-reverse;
+  }
+
+  .acciones-formulario--integracion .boton,
+  .acciones-vista-previa .boton {
+    width: 100%;
+    min-height: var(--q360-objetivo-tactil);
+  }
+
+  .resumen-ejecucion,
+  .resumen-ejecucion--previa {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .detalle-ejecucion__meta {
+    grid-template-columns: 1fr;
+  }
+
+  .campo input,
+  .campo select {
+    min-height: var(--q360-objetivo-tactil);
+  }
+
+  .disclosure__boton,
+  .acciones-sugeridas a,
+  .acciones-sugeridas .boton {
+    min-height: var(--q360-objetivo-tactil);
+  }
+}
+
+.acciones-vista-previa {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 16px;
+}
+
+@media (max-width: 750px) {
+  .acciones-vista-previa {
+    flex-direction: column;
+  }
+}
+
+.mensaje-sin-cambios {
+  margin: 0 0 16px;
+  padding: 12px 16px;
+  color: var(--q360-color-res-neutra);
+  background-color: var(--q360-color-res-neutra-suave);
+  border-radius: var(--q360-radio);
+  font-weight: 600;
+}

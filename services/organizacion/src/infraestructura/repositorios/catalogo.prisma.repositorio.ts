@@ -7,7 +7,7 @@ import { PrismaService } from '../prisma/prisma.service.js';
 
 /** Solo los campos del dominio: los atributos nuevos del modelo de datos no salen por la API. */
 const CAMPOS_CELULA = { id: true, nombre: true } as const;
-const CAMPOS_SPRINT = { id: true, nombre: true, inicio: true, fin: true } as const;
+const CAMPOS_SPRINT = { id: true, nombre: true, inicio: true, fin: true, celulaId: true } as const;
 
 @Injectable()
 export class CatalogoPrismaRepositorio implements CatalogoRepositorio {
@@ -17,8 +17,20 @@ export class CatalogoPrismaRepositorio implements CatalogoRepositorio {
     return this.prisma.celula.findMany({ select: CAMPOS_CELULA, orderBy: { nombre: 'asc' } });
   }
 
-  async listarSprints(): Promise<Sprint[]> {
-    return this.prisma.sprint.findMany({ select: CAMPOS_SPRINT, orderBy: { inicio: 'asc' } });
+  async listarSprints(celulaId?: string): Promise<Sprint[]> {
+    return this.prisma.sprint.findMany({
+      where: celulaId === undefined ? undefined : { celulaId },
+      select: CAMPOS_SPRINT,
+      orderBy: { inicio: 'asc' },
+    });
+  }
+
+  async buscarSprintDeCelulaPorNombre(celulaId: string, nombre: string): Promise<Sprint | null> {
+    return this.prisma.sprint.findFirst({ where: { celulaId, nombre: { equals: nombre, mode: 'insensitive' } }, select: CAMPOS_SPRINT });
+  }
+
+  async buscarCelulaPorNombre(nombre: string): Promise<Celula | null> {
+    return this.prisma.celula.findFirst({ where: { nombre: { equals: nombre, mode: 'insensitive' } }, select: CAMPOS_CELULA });
   }
 
   async buscarCelula(id: string): Promise<Celula | null> {

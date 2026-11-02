@@ -23,43 +23,37 @@ npm run seed
 
 Lee `X_Q360_SERVICIO_TOKEN` y `ORGANIZACION_URL` del entorno o de `infrastructure/seed/mvp/.env.carga` (no versionado; el token debe ser el mismo que usa Organización). El cargador es `cargar.mjs`: idempotente, con rechazos por fila y salida distinta de cero si alguna fila falla. Correrlo dos veces no duplica datos.
 
-> El servicio `services/integraciones` (adaptadores CSV/JSON y Jira con registro de importaciones) queda pendiente para E5; esta carga no depende de él.
+> **Esta carga no pasa por el servicio `services/integraciones` ni deja registro en el esquema
+> `integraciones`.** El cargador es un script de Node que habla solo con Organización. El esquema
+> `integraciones` guarda únicamente las ejecuciones de E5 (sincronización con Jira e importación de
+> archivos desde el portal); no existe una tabla `Importacion` ni se registra aquí la semilla.
 
-El script (`services/integraciones/src/cli/seed.ts`):
+`cargar.mjs`, en este orden:
 
-1. Valida `datos.json` contra `esquema.json` con Ajv. Si el archivo no cumple el
-   esquema, no llama a ninguna API y termina con error.
-2. Crea usuarios, células, sprints y HDU llamando a
-   `POST /v1/interno/carga/{usuarios,celulas,sprints,hdu}` de Organización con la
-   cabecera `X-Q360-Servicio-Token` (`ORGANIZACION_X_Q360_SERVICIO_TOKEN`). Estas
-   cuatro rutas ya son idempotentes por su clave natural (correo, nombre o código):
-   si la fila ya existe, Organización responde `200` con `creado: false` y no
-   cambia nada.
-3. Inicia sesión como la administradora sembrada (password grant contra Supabase
-   Auth local) y, con esa sesión real, aplica el historial de supervisión
-   (`PUT /v1/analistas/{id}/supervisor`), la asignación de analista por HDU
-   (`PUT /v1/hdu/{id}/analista`) y el avance de estado de cada HDU
-   (`POST /v1/hdu/{id}/estado`, un paso a la vez, según D10). Antes de repetir un
-   historial de supervisión de más de un paso (la reasignación de Diego),
-   consulta `GET /v1/analistas/{id}/supervision/historial`: si ya existe, no
-   repite los pasos intermedios.
-4. Cada fila que Organización rechaza (400/404/409/422) queda con su motivo; no
-   aborta el archivo completo.
-5. Registra la corrida completa (origen, archivo, fecha, filas aceptadas,
-   filas rechazadas y el motivo de cada rechazo) en la tabla `Importacion` del
-   esquema `integraciones`, con el rol `svc_integraciones`.
+1. Crea células, sprints, usuarios y HDU llamando a
+   `POST /v1/interno/carga/{celulas,sprints,usuarios,hdu}` de Organización con la cabecera
+   `X-Q360-Servicio-Token`. Estas rutas son idempotentes por su clave natural (nombre, correo o
+   código): si la fila ya existe, Organización responde `200` con `creado: false` y no cambia nada.
+2. Aplica el historial de supervisión (`PUT /v1/analistas/{id}/supervisor`), la asignación de
+   analista por HDU (`PUT /v1/hdu/{id}/analista`) y el avance de estado de cada HDU
+   (`POST /v1/hdu/{id}/estado`, un paso a la vez, según D10). El historial completo solo se
+   aplica a un analista creado en esa corrida; en las siguientes se confirma solo el supervisor final.
+3. Cada paso que Organización rechaza (400/404/409/422) queda en el resumen con su motivo y no
+   aborta el resto; si hubo algún rechazo, el comando termina con código 1.
 
-Variables de entorno relevantes (`services/integraciones/.env`):
-`ORGANIZACION_URL`, `X_Q360_SERVICIO_TOKEN`, `SUPABASE_URL`, `SUPABASE_ANON_KEY`,
-`DATABASE_URL` (rol `svc_integraciones`, `?schema=integraciones`). Organización
-debe estar arriba con `PERMITIR_CARGA_SEMILLA=true` y el mismo
-`X_Q360_SERVICIO_TOKEN`.
+Variables de entorno: `X_Q360_SERVICIO_TOKEN` (obligatoria), `ORGANIZACION_URL` (por defecto
+`http://localhost:3001`) y `CONTRASENA_DEMO` (opcional). Organización debe estar arriba con
+`PERMITIR_CARGA_SEMILLA=true` y el mismo `X_Q360_SERVICIO_TOKEN`.
+
+`esquema.json` describe la forma de `datos.json`, pero `cargar.mjs` hoy **no** lo aplica: Organización
+valida cada fila al recibirla.
 
 ## Formatos de archivo aceptados
 
-El comando `seed` solo lee `datos.json` (JSON). El adaptador `ArchivoFuente`
-del dominio de Integraciones (para historias de Jira/CSV, E2 en adelante)
-también acepta CSV; ver `services/integraciones/README.md`.
+El comando `seed` solo lee `datos.json` (JSON propio de la semilla). La importación de historias
+desde CSV o JSON (`codigo, titulo, descripcion, prioridad, celula, sprint, qe_correo`) es de E5 y
+se hace desde el portal; ver `docs/backlog/e5-integracion-jira.md`, sección 5.2. Los sprints y
+datos que necesita E5 los deja `npm run seed:e5` (ver `infrastructure/seed/e5/README.md`).
 
 ## Contraseña de demo
 
@@ -113,6 +107,6 @@ no supervisa a nadie).
 
 - La semilla no lleva ninguna HDU a `CERRADA`: el cierre depende del checklist
   de Certificaciones (D11), fuera del control de Integraciones.
-- El adaptador Jira (`JiraFuente`) no participa en esta semilla: solo lee, y
-  sin credenciales reporta la fuente como «no configurada» (ver
-  `services/integraciones/README.md`).
+- Jira no participa en esta semilla. La integración (E5) es solo de lectura, se configura desde el
+  portal y, sin configuración, el servicio responde `JIRA_NO_CONFIGURADO` (ver
+  `docs/backlog/e5-integracion-jira.md`).

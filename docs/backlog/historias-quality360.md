@@ -526,47 +526,49 @@ Quiero que el sistema audite la gestión de impedimentos y riesgos. Para tener t
 
 ## ÉPICA 5 — INTEGRACIÓN CON JIRA CLOUD
 
-Sincronización de lectura de HDU desde Jira Cloud e importación alternativa por CSV/JSON.
+> Escenarios refinados el 2026-10-29; la intención de los originales del `.xlsx` se conserva, con los cambios de actor que decidió el usuario (el Administrador configura, sincroniza e importa; QE y Auditor ven el historial en solo lectura). Fuente completa (catálogos, mapeo, modelo de datos, efectos sobre lo certificado, Jira simulado y 102 casos de prueba): `docs/backlog/e5-integracion-jira.md`. Diseño: `docs/diseno/e5-integracion-jira.md`. Decisiones D93–D112 en el backlog E5 y D113–D128 en `docs/arquitectura/decisiones-mvp.md` (sección «Corrida E5»).
+
+Sincronización manual de HDU desde Jira Cloud e importación alternativa por CSV/JSON.
 
 ### E5-F01 · Administrador
 
-Quiero configurar la conexión con Jira Cloud (sitio, credenciales y proyecto). Para habilitar la sincronización de HDU.
+Quiero configurar la conexión con Jira Cloud (sitio, credenciales, proyecto y destino de las HDU). Para habilitar la sincronización de HDU.
 
 | # | Criterio | Contexto | Evento | Resultado esperado |
 | --- | --- | --- | --- | --- |
-| 1 | Configuración válida | El Administrador ingresa los datos. | Presiona Probar conexión. | Se confirma la conexión y se guarda la configuración. |
-| 2 | Credenciales inválidas | El token es incorrecto. | Presiona Probar conexión. | Se informa el error sin exponer el token. |
-| 3 | Credenciales protegidas | La configuración existe. | Vuelve a abrir la pantalla. | El token se muestra enmascarado. |
+| 1 | Configuración válida | El Administrador ingresa sitio, correo, API token, proyecto y el destino (célula, QE y sprint de respaldo de esa célula). | Pulsa «Probar y guardar». | Se confirma la conexión («Conexión exitosa con Jira como <nombre>»), se guarda cifrada, el estado pasa a «Conectado» y el token queda como «Configurado · termina en <últimos 4>». |
+| 2 | Credenciales inválidas | El token es incorrecto (o el sitio o el proyecto no existen). | Pulsa «Probar y guardar». | Se informa el error con su mensaje claro, sin mostrar el token, y no se guarda nada: se conserva la configuración anterior. |
+| 3 | Credenciales protegidas | La configuración existe. | Vuelve a abrir la pantalla. | El token nunca aparece: el campo está vacío y el estado dice «Configurado · termina en <últimos 4>». Guardar con el campo vacío conserva el token. |
 
-### E5-F02 · Quality Engineer (QE)
+### E5-F02 · Administrador
 
 Quiero sincronizar las HDU de un proyecto Jira hacia Quality360. Para no registrarlas manualmente.
 
 | # | Criterio | Contexto | Evento | Resultado esperado |
 | --- | --- | --- | --- | --- |
-| 1 | Sincronización | La conexión está configurada. | Presiona Sincronizar. | Se muestran las HDU nuevas y actualizadas, con resumen del resultado. |
-| 2 | Sin cambios | No hay historias nuevas. | Presiona Sincronizar. | Se informa que no hubo cambios. |
-| 3 | Error de API | Jira no responde. | Presiona Sincronizar. | Se informa el error y se sugiere la importación alternativa. |
+| 1 | Sincronización | La conexión está configurada. | Pulsa «Sincronizar con Jira». | Se muestran las HDU nuevas y las actualizadas, con el resumen (leídas, creadas, actualizadas, omitidas, con error) y las filas con error. Si quedan más historias que el tope, se avisa y se ofrece «Continuar». |
+| 2 | Sin cambios | Jira no tiene historias nuevas ni modificadas. | Pulsa «Sincronizar con Jira». | Se informa «Sin cambios: Jira no tiene historias nuevas ni modificadas», con los contadores en 0 salvo «omitidas». |
+| 3 | Error de API | Jira no responde, rechaza la credencial o limita la tasa. | Pulsa «Sincronizar con Jira». | Se informa el error con su mensaje y se sugiere «Importar un archivo». La ejecución queda registrada como fallida. |
 
-### E5-F03 · Quality Engineer (QE)
+### E5-F03 · Administrador
 
 Quiero importar HDU desde un archivo CSV o JSON. Para contar con una alternativa cuando Jira no esté disponible.
 
 | # | Criterio | Contexto | Evento | Resultado esperado |
 | --- | --- | --- | --- | --- |
-| 1 | Importación válida | El archivo cumple el formato. | Sube el archivo. | Se muestra una vista previa y luego se importan las HDU. |
-| 2 | Formato inválido | El archivo tiene columnas faltantes. | Sube el archivo. | Se indican los errores por fila sin importar nada. |
-| 3 | Duplicados | Algunas HDU ya existen. | Confirma la importación. | Se actualizan las existentes y se informan cuántas. |
+| 1 | Importación válida | El archivo cumple el formato. | Selecciona el archivo y confirma la vista previa. | Se muestra una vista previa (qué se creará, actualizará u omitirá) y, al confirmar, se importan las HDU con su resumen. |
+| 2 | Formato inválido | Al archivo le faltan columnas obligatorias, está vacío o es ilegible. | Selecciona el archivo. | Se indican los errores del archivo y no se ofrece importar; no se crea nada. |
+| 3 | Duplicados y filas con error | Algunas HDU ya existen y otras filas tienen errores. | Confirma la importación. | Se actualizan las existentes (solo título, descripción y prioridad), se importan las filas válidas y se informan cuántas y cuáles quedaron omitidas o con error. Con «modo estricto», una fila con error impide importar todo. |
 
-### E5-F04 · Quality Engineer (QE)
+### E5-F04 · Administrador, QE y Auditor
 
-Quiero ver el estado y el historial de sincronizaciones. Para confiar en la información importada.
+Quiero ver el estado y el historial de sincronizaciones e importaciones. Para confiar en la información importada.
 
 | # | Criterio | Contexto | Evento | Resultado esperado |
 | --- | --- | --- | --- | --- |
-| 1 | Última sincronización | Existen sincronizaciones previas. | Abre el panel de integración. | Se muestra fecha, resultado y cantidad de HDU de la última ejecución. |
-| 2 | Historial | Hay varias ejecuciones. | Abre el historial. | Se listan con fecha, origen (Jira/CSV) y resultado. |
-| 3 | Detalle de errores | Una ejecución falló parcialmente. | Abre el detalle. | Se muestran las filas o issues con error. |
+| 1 | Última ejecución | Existen ejecuciones previas. | Abre el panel de integración. | Se muestra fecha, origen, resultado, contadores y quién la ejecutó, para la última ejecución y para la última completada (exitosa o con errores). |
+| 2 | Historial | Hay varias ejecuciones. | Abre el historial. | Se listan con fecha, origen (Jira, CSV, JSON), actor y resultado, de la más reciente a la más antigua, con filtros. |
+| 3 | Detalle de errores | Una ejecución falló parcialmente. | Abre el detalle. | Se muestran las filas o issues con error y su motivo, con la visibilidad que corresponde a su rol. |
 
 ### E5-B01 · Administrador
 
@@ -574,29 +576,29 @@ Quiero que el sistema almacene la configuración de Jira de forma segura. Para p
 
 | # | Criterio | Contexto | Evento | Resultado esperado |
 | --- | --- | --- | --- | --- |
-| 1 | Cifrado | Se guarda un token. | Se procesa. | Se almacena cifrado y nunca se devuelve en claro. |
-| 2 | Prueba de conexión | Se solicita probar. | Se invoca la API de Jira. | Se devuelve el resultado sin exponer credenciales. |
-| 3 | Solo administrador | Un QE intenta configurar. | Se procesa. | Se rechaza. |
+| 1 | Cifrado | Se guarda un token. | Se procesa. | Se almacena cifrado (AES-256-GCM) y nunca se devuelve en claro; solo se informa que está configurado y sus últimos 4 caracteres. |
+| 2 | Prueba de conexión | Se solicita probar. | Se invoca la API de Jira. | Se devuelve el resultado (éxito o código de error) sin exponer credenciales. |
+| 3 | Solo administrador | Un QE (u otro rol) intenta configurar, probar o ver la configuración. | Se procesa. | 403 `ACCESO_DENEGADO`; nada cambia. |
 
-### E5-B02 · Quality Engineer (QE)
+### E5-B02 · Administrador
 
 Quiero que el sistema consuma la API REST de Jira Cloud y mapee las issues a HDU. Para sincronizar la información de lectura.
 
 | # | Criterio | Contexto | Evento | Resultado esperado |
 | --- | --- | --- | --- | --- |
-| 1 | Mapeo de campos | Se obtienen issues del proyecto. | Se procesa. | Clave, título, sprint, estado y responsable se mapean a la HDU. |
-| 2 | Paginación | El proyecto tiene más issues que el tamaño de página. | Se procesa. | Se recorren todas las páginas. |
-| 3 | Límite de tasa | Jira responde con límite excedido. | Se procesa. | Se reintenta con espera y se registra el evento. |
+| 1 | Mapeo de campos | Se obtienen las issues del proyecto. | Se procesa. | Clave, título, descripción, prioridad y sprint se mapean y se crean las HDU que no existen; las que existen se actualizan solo en título, descripción y prioridad. Estado y responsable de Jira no se mapean. |
+| 2 | Paginación y tope | El proyecto tiene más issues que el tamaño de página o que el tope por ejecución. | Se procesa. | Se recorren las páginas de a 50 hasta el tope de 100; si queda más, la ejecución termina incompleta y se puede continuar sin duplicar. |
+| 3 | Límite de tasa | Jira responde con límite excedido. | Se procesa. | Se reintenta con espera (máximo 2 veces) y se registra el evento; si persiste, termina con lo procesado y el código `JIRA_LIMITE_DE_TASA`. |
 
-### E5-B03 · Quality Engineer (QE)
+### E5-B03 · Administrador
 
-Quiero que el sistema importe HDU desde CSV/JSON validando su contenido. Para mantener la calidad de los datos.
+Quiero que el sistema importe HDU desde CSV/JSON validando su contenido y que cree o actualice según corresponda. Para mantener la calidad de los datos.
 
 | # | Criterio | Contexto | Evento | Resultado esperado |
 | --- | --- | --- | --- | --- |
-| 1 | Validación | Se recibe un archivo. | Se procesa. | Se valida esquema, tipos y campos obligatorios. |
-| 2 | Upsert | Una HDU ya existe. | Se procesa. | Se actualiza sin duplicar y se conserva su checklist. |
-| 3 | Transacción | Falla una fila en modo estricto. | Se procesa. | No se importa ninguna y se devuelve el detalle. |
+| 1 | Validación | Se recibe un archivo. | Se procesa. | Se valida estructura, columnas, tipos y campos obligatorios; los errores de estructura rechazan el archivo y los de fila se informan fila por fila. |
+| 2 | Upsert | Una HDU ya existe. | Se procesa. | Se actualiza sin duplicar, solo título, descripción y prioridad; nunca el estado, el analista, el QE, el checklist ni los impedimentos. |
+| 3 | Transacción | Falla una fila. | Se procesa. | En modo normal, las demás se importan y se informa el detalle; en modo estricto no se importa ninguna. |
 
 ### E5-B04 · Administrador
 
@@ -604,9 +606,9 @@ Quiero que el sistema registre cada ejecución de sincronización o importación
 
 | # | Criterio | Contexto | Evento | Resultado esperado |
 | --- | --- | --- | --- | --- |
-| 1 | Registro | Termina una ejecución. | Se procesa. | Se guarda origen, actor, fecha, totales y errores. |
-| 2 | Consulta | Se solicita el historial. | Se procesa. | Se devuelve ordenado por fecha. |
-| 3 | Sin secretos | Se registra un error de autenticación. | Se guarda. | No se incluyen tokens en el registro. |
+| 1 | Registro | Termina una ejecución (también las fallidas). | Se procesa. | Se guarda origen, actor, fechas, duración, resultado, contadores (creadas, actualizadas, omitidas, con error) y el detalle por fila, con la suma de contadores igual a las leídas. |
+| 2 | Consulta | Se solicita el historial o un detalle. | Se procesa. | Se devuelve ordenado por fecha, con filtros y paginación, y con la visibilidad de cada rol. |
+| 3 | Sin secretos | Se registra un error de autenticación. | Se guarda. | No se incluyen tokens, cabeceras ni el texto que devolvió Jira en ningún registro. |
 
 ## ÉPICA 6 — INDICADORES Y DASHBOARDS
 

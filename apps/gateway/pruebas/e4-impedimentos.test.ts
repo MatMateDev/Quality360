@@ -430,9 +430,47 @@ describe('Configuración IMPEDIMENTOS_URL e IMPEDIMENTOS_TIMEOUT_MS', () => {
     assert.equal(configuracion.tiempoLimiteImpedimentosMs, 2500);
   });
 
-  it('con NODE_ENV=production es obligatoria; una URL o un tiempo inválidos impiden arrancar', () => {
-    assert.throws(() => cargarConfiguracion({ SUPABASE_URL: 'https://x.supabase.co', NODE_ENV: 'production' }), conMotivo(/IMPEDIMENTOS_URL/));
-    assert.throws(() => cargarConfiguracion({ SUPABASE_URL: 'http://127.0.0.1:54321', IMPEDIMENTOS_URL: 'ftp://x' }), conMotivo(/IMPEDIMENTOS_URL/));
+  it('D129: sin IMPEDIMENTOS_URL en producción, o con una URL inválida, NO impide arrancar: queda null con un aviso sin el valor', () => {
+    const sinUrl = cargarConfiguracion({ SUPABASE_URL: 'https://x.supabase.co', NODE_ENV: 'production' });
+    assert.equal(sinUrl.impedimentosUrl, null);
+    assert.ok(sinUrl.avisos.includes('IMPEDIMENTOS_URL no configurada o inválida'));
+
+    for (const invalida of ['ftp://x', 'no es una url']) {
+      const configuracion = cargarConfiguracion({ SUPABASE_URL: 'http://127.0.0.1:54321', IMPEDIMENTOS_URL: invalida });
+      assert.equal(configuracion.impedimentosUrl, null, invalida);
+      assert.ok(configuracion.avisos.every((aviso) => !aviso.includes(invalida)), 'el aviso no incluye el valor');
+    }
+  });
+
+  it('un tiempo límite inválido sigue impidiendo arrancar', () => {
     assert.throws(() => cargarConfiguracion({ SUPABASE_URL: 'http://127.0.0.1:54321', IMPEDIMENTOS_TIMEOUT_MS: '0' }), conMotivo(/IMPEDIMENTOS_TIMEOUT_MS/));
+  });
+});
+
+describe('D129: Impedimentos no configurado solo apaga sus rutas', () => {
+  it('con impedimentosUrl null, las rutas de E4 responden 503 sin llamar a nadie; sin token, 401', async () => {
+    const sinImpedimentos = await crearAppPrueba({ organizacionUrl: organizacion.url, impedimentosUrl: null });
+    try {
+      const token = await autorizacion();
+      for (const { metodo, ruta, cuerpo } of RUTAS) {
+        let solicitud = request(sinImpedimentos.getHttpServer())[metodo](ruta).set('authorization', token);
+        if (cuerpo !== undefined) solicitud = solicitud.send(cuerpo);
+        const respuesta = await solicitud;
+        assert.equal(respuesta.status, 503, ruta);
+        assert.equal(respuesta.body.codigo, 'SERVICIO_NO_DISPONIBLE', ruta);
+        assert.equal(respuesta.body.traceId, respuesta.headers['x-trace-id']);
+      }
+      assert.equal((await request(sinImpedimentos.getHttpServer()).get('/v1/impedimentos')).status, 401);
+      assert.equal(impedimentos.solicitudes.length + totalOtros(), 0);
+
+      organizacion.responder(`POST /v1/hdu/${HDU_ID}/estado`, { estado: 200, cuerpo: { ok: 'estado' } });
+      const cierre = await request(sinImpedimentos.getHttpServer())
+        .post(`/v1/hdu/${HDU_ID}/estado`)
+        .set('authorization', token)
+        .send({ estado: 'EN_PRUEBAS' });
+      assert.equal(cierre.status, 200, 'las rutas de Organización siguen funcionando');
+    } finally {
+      await sinImpedimentos.close();
+    }
   });
 });

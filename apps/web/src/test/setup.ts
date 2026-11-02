@@ -3,6 +3,7 @@ import { cleanup } from "@testing-library/react";
 import { afterAll, afterEach, beforeAll } from "vitest";
 import { reiniciarSimulacionMock } from "@/auth/mockAuthProvider";
 import { limpiarSesion } from "@/auth/sessionStore";
+import { reiniciarE5 } from "@/mocks/dataE5";
 import { reiniciarFuentes } from "@/mocks/dataE7";
 import { server } from "@/mocks/server";
 
@@ -18,6 +19,7 @@ afterEach(async () => {
   sessionStorage.clear();
   reiniciarSimulacionMock();
   reiniciarFuentes();
+  reiniciarE5();
 });
 
 afterAll(() => server.close());

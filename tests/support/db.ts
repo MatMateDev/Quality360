@@ -27,3 +27,4 @@ export async function conConexion<T>(databaseUrl: string, fn: (cliente: pg.Clien
 export const conOrganizacion = <T>(fn: (cliente: pg.Client) => Promise<T>) => conConexion(env.databaseUrlOrganizacion, fn);
 export const conCertificaciones = <T>(fn: (cliente: pg.Client) => Promise<T>) => conConexion(env.databaseUrlCertificaciones, fn);
 export const conImpedimentos = <T>(fn: (cliente: pg.Client) => Promise<T>) => conConexion(env.databaseUrlImpedimentos, fn);
+export const conIntegraciones = <T>(fn: (cliente: pg.Client) => Promise<T>) => conConexion(env.databaseUrlIntegraciones, fn);

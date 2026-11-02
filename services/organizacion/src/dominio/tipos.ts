@@ -48,7 +48,8 @@ export type AccionAuditoria =
   | 'REASIGNAR_ANALISTA'
   | 'ASIGNAR_CELULAS_LIDER'
   | 'EXPORTAR'
-  | 'REASIGNAR_QE_RESPONSABLE';
+  | 'REASIGNAR_QE_RESPONSABLE'
+  | 'ACTUALIZAR_HDU';
 
 /** Motivo del acceso a una HDU (comun.v1.yaml#/components/schemas/AccesoHdu). */
 export type RelacionAccesoHdu =
@@ -101,7 +102,12 @@ export interface Sprint {
   readonly nombre: string;
   readonly inicio: Date;
   readonly fin: Date;
+  /** Célula a la que pertenece el sprint (E5, D120). */
+  readonly celulaId: string;
 }
+
+/** Fuente de una HDU (E5, D97): las creadas a mano y las de la semilla son `MANUAL`. */
+export type OrigenHdu = 'MANUAL' | 'JIRA' | 'CSV' | 'JSON';
 
 export interface Hdu {
   readonly id: string;
@@ -116,6 +122,11 @@ export interface Hdu {
   readonly estadoActualizadoEn: Date;
   readonly creadoPor: Actor;
   readonly creadoEn: Date;
+  readonly descripcion: string | null;
+  readonly origen: OrigenHdu;
+  /** Clave de la issue de Jira (solo origen `JIRA`, D124). */
+  readonly claveExterna: string | null;
+  readonly urlExterna: string | null;
 }
 
 export interface ConteoPorEstado {

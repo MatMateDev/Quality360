@@ -17,6 +17,8 @@ import { env } from "./support/env";
  */
 export default defineConfig({
   testDir: ".",
+  // Jira simulado de E5 (puerto 4010); lo arranca la corrida y lo cierra al terminar.
+  globalSetup: "./support/jira-falso/globalSetup.ts",
   // Generoso porque las pruebas de escritura comparten el límite de tasa
   // real del gateway (30 escrituras/min) con el resto de la suite: un
   // reintento tras 429 puede esperar casi un minuto (ver tests/support/api.ts).
@@ -37,14 +39,14 @@ export default defineConfig({
     {
       name: "e2e",
       testDir: "./e2e",
-      testIgnore: [/.*\.setup\.ts/, /e7-.*\.spec\.ts/, /e4-.*\.spec\.ts/],
+      testIgnore: [/.*\.setup\.ts/, /e7-.*\.spec\.ts/, /e4-.*.spec.ts/, /e5-.*.spec.ts/],
       dependencies: ["setup"],
       use: { ...devices["Desktop Chrome"], baseURL: env.portalUrl },
     },
     {
       name: "api",
       testDir: "./api",
-      testIgnore: [/e7-.*\.spec\.ts/, /e4-.*\.spec\.ts/],
+      testIgnore: [/e7-.*\.spec\.ts/, /e4-.*.spec.ts/, /e5-.*.spec.ts/],
       use: {},
     },
     // Certificación de E7 · Bandejas por rol (fixture `npm run seed:e7`; usuarios adm1, qe1... @quality360.local).
@@ -88,6 +90,25 @@ export default defineConfig({
       retries: 1,
       testDir: "./e2e",
       testMatch: /e4-.*.spec.ts/,
+      dependencies: ["e7-setup"],
+      timeout: 240_000,
+      use: { ...devices["Desktop Chrome"], baseURL: env.portalUrl, actionTimeout: 15_000, navigationTimeout: 30_000 },
+    },
+    // Certificación de E5 · Integración con Jira (fixture seed:e7 + seed:e4 + seed:e5; Jira falso en :4010; reutiliza las sesiones de e7-setup).
+    {
+      name: "e5-api",
+      testDir: "./api",
+      testMatch: /e5-.*.spec.ts/,
+      dependencies: ["e7-setup"],
+      timeout: 240_000,
+      use: {},
+    },
+    {
+      name: "e5-e2e",
+      // El portal escribe por el gateway real (:3000), que limita a 30 escrituras/min: un reintento por prueba y la corrida lo informa como «flaky».
+      retries: 1,
+      testDir: "./e2e",
+      testMatch: /e5-.*.spec.ts/,
       dependencies: ["e7-setup"],
       timeout: 240_000,
       use: { ...devices["Desktop Chrome"], baseURL: env.portalUrl, actionTimeout: 15_000, navigationTimeout: 30_000 },

@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import type { Prisma } from '#prisma';
 
 import { ConflictoUnicidad } from '../../dominio/errores/conflicto-unicidad.js';
+import { normalizarCodigoHdu } from '../../dominio/reglas/alta-hdu.js';
 import type { FiltroAmbitoHdu } from '../../dominio/reglas/ambito.js';
 import type {
   DatosNuevaHdu,
@@ -55,44 +56,64 @@ async function contarPorEstado(prisma: PrismaService, where: Prisma.HduWhereInpu
   return { total, porEstado };
 }
 
+/**
+ * Alta de una HDU dentro de una transacción: la HDU en `PENDIENTE` con su sprint vigente y la auditoría
+ * `CREAR_HDU`. Es el ÚNICO camino de alta: lo usan `POST /v1/hdu` (E2-B01) y el upsert de E5 (D100), así que
+ * ninguno puede saltarse el historial inicial (la fila misma, con `creado_por` y `estado_actualizado_en`) ni
+ * la auditoría. `origen` solo aparece en la auditoría cuando no es `MANUAL`.
+ */
+export async function crearHduEnTransaccion(tx: Prisma.TransactionClient, datos: DatosNuevaHdu, actor: Actor): Promise<Hdu> {
+  const origen = datos.origen ?? 'MANUAL';
+  const creada = await tx.hdu.create({
+    data: {
+      codigo: datos.codigo,
+      codigoNormalizado: normalizarCodigoHdu(datos.codigo),
+      titulo: datos.titulo,
+      descripcion: datos.descripcion ?? null,
+      celulaId: datos.celulaId,
+      historiaSprints: { create: { sprintId: datos.sprintId } },
+      prioridad: datos.prioridad,
+      qeResponsableId: datos.qeResponsableId,
+      estado: 'PENDIENTE',
+      creadoPorTipo: actor.tipo,
+      creadoPorId: actor.id,
+      creadoPorNombre: actor.nombre,
+      origen,
+      claveExterna: datos.claveExterna ?? null,
+      urlExterna: datos.urlExterna ?? null,
+    },
+    include: INCLUYE_SPRINT_VIGENTE,
+  });
+  await tx.auditoria.create({
+    data: {
+      actorTipo: actor.tipo,
+      actorId: actor.id,
+      actorNombre: actor.nombre,
+      entidad: 'HDU',
+      entidadId: creada.id,
+      accion: 'CREAR_HDU',
+      antes: undefined,
+      despues: {
+        codigo: creada.codigo,
+        titulo: creada.titulo,
+        celulaId: creada.celulaId,
+        sprintId: datos.sprintId,
+        prioridad: creada.prioridad,
+        ...(origen === 'MANUAL' ? {} : { origen }),
+      },
+      motivo: null,
+    },
+  });
+  return aHduDominio(creada);
+}
+
 @Injectable()
 export class HduPrismaRepositorio implements HduRepositorio {
   constructor(private readonly prisma: PrismaService) {}
 
   async crear(datos: DatosNuevaHdu, actor: Actor): Promise<Hdu> {
     try {
-      return await this.prisma.$transaction(async (tx) => {
-        const creada = await tx.hdu.create({
-          data: {
-            codigo: datos.codigo,
-            codigoNormalizado: datos.codigo.toLowerCase(),
-            titulo: datos.titulo,
-            celulaId: datos.celulaId,
-            historiaSprints: { create: { sprintId: datos.sprintId } },
-            prioridad: datos.prioridad,
-            qeResponsableId: datos.qeResponsableId,
-            estado: 'PENDIENTE',
-            creadoPorTipo: actor.tipo,
-            creadoPorId: actor.id,
-            creadoPorNombre: actor.nombre,
-          },
-          include: INCLUYE_SPRINT_VIGENTE,
-        });
-        await tx.auditoria.create({
-          data: {
-            actorTipo: actor.tipo,
-            actorId: actor.id,
-            actorNombre: actor.nombre,
-            entidad: 'HDU',
-            entidadId: creada.id,
-            accion: 'CREAR_HDU',
-            antes: undefined,
-            despues: { codigo: creada.codigo, titulo: creada.titulo, celulaId: creada.celulaId, sprintId: datos.sprintId, prioridad: creada.prioridad },
-            motivo: null,
-          },
-        });
-        return aHduDominio(creada);
-      });
+      return await this.prisma.$transaction((tx) => crearHduEnTransaccion(tx, datos, actor));
     } catch (error) {
       if (esErrorUnicidad(error, 'historia_usuario_codigo_normalizado_key')) throw new ConflictoUnicidad('codigo');
       throw error;

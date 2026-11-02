@@ -1,0 +1,145 @@
+// Quality360 · Integraciones (E5). Modelo de datos de la Corrida E5 (D94, D104, D111, D123, sección 6.1 del
+// backlog E5 en docs/backlog/e5-integracion-jira.md y «Modelo de datos» en docs/arquitectura/decisiones-mvp.md).
+//
+// Las tablas viven en el esquema `integraciones` de Postgres (infrastructure/db/001_esquemas_roles.sql): la
+// conexión se hace SIEMPRE con el rol `svc_integraciones`, cuya DATABASE_URL debe incluir
+// `?schema=integraciones`. Sin llaves foráneas hacia otro esquema (regla no negociable 3): `celula_id`,
+// `qe_responsable_id`, `sprint_respaldo_id`, `actor_id` e `id_historia` son UUID de Organización.
+//
+// Lo que Prisma no expresa vive en la migración 20261029000000_e5_integracion_jira:
+//  - configuracion_jira: una sola fila (`id = 1`), `token_iv` de 12 bytes, `token_tag` de 16, catálogo de
+//    `estado_conexion`. REVOKE DELETE.
+//  - evento_configuracion: solo inserción (CHECK jsonb_typeof = 'array'). REVOKE UPDATE, DELETE.
+//  - ejecucion_integracion: CHECK de catálogo (`origen`, `resultado`), `ejecucion_cierre_ck`
+//    ((resultado = 'EN_CURSO') = (terminada_en IS NULL)), `ejecucion_contadores_ck` (suma = leídas al cerrar),
+//    `ejecucion_archivo_ck`, `ejecucion_continuar_ck`; índice único parcial `ejecucion_en_curso_key`
+//    ON ((true)) WHERE terminada_en IS NULL (una sola ejecución activa); disparador
+//    `ejecucion_cerrada_inmutable` (BEFORE UPDATE). REVOKE DELETE.
+//  - detalle_ejecucion: solo inserción; CHECK de `resultado`, `detalle_motivo_ck`, `detalle_historia_ck`;
+//    disparador `detalle_solo_en_curso` (BEFORE INSERT). REVOKE UPDATE, DELETE.
+//  - Índices: (iniciada_en DESC), (origen, iniciada_en DESC), (resultado, iniciada_en DESC),
+//    (id_ejecucion, resultado, fila) e (id_historia).
+
+generator client {
+  provider = "prisma-client-js"
+  output   = "../generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+/// Configuración de Jira: una sola fila. El API token se guarda cifrado con AES-256-GCM
+/// (IV de 12 bytes, etiqueta de 16, dato asociado `q360:jira:token:v1`); lo único en claro son los
+/// últimos 4 caracteres. Una prueba fallida solo actualiza `estado_conexion` y `ultima_prueba_*` (D112).
+model ConfiguracionJira {
+  id                     Int       @id @default(1) @db.SmallInt
+  sitioUrl               String    @map("sitio_url") @db.VarChar(100)
+  correo                 String    @db.VarChar(150)
+  proyectoClave          String    @map("proyecto_clave") @db.VarChar(10)
+  /// Lista separada por comas, hasta 5 tipos.
+  tiposIssue             String    @default("Story,Historia") @map("tipos_issue") @db.VarChar(200)
+  /// `customfield_*` detectado con `GET /rest/api/3/field` (esquema gh-sprint).
+  campoSprint            String?   @map("campo_sprint") @db.VarChar(30)
+  celulaId               String    @map("celula_id") @db.Uuid
+  qeResponsableId        String    @map("qe_responsable_id") @db.Uuid
+  sprintRespaldoId       String    @map("sprint_respaldo_id") @db.Uuid
+  tokenCifrado           Bytes     @map("token_cifrado")
+  tokenIv                Bytes     @map("token_iv")
+  tokenTag               Bytes     @map("token_tag")
+  llaveVersion           Int       @default(1) @map("llave_version") @db.SmallInt
+  tokenUltimos4          String    @map("token_ultimos4") @db.Char(4)
+  estadoConexion         String    @map("estado_conexion") @db.VarChar(12)
+  ultimaPruebaEn         DateTime? @map("ultima_prueba_en") @db.Timestamptz(6)
+  ultimaPruebaCodigo     String?   @map("ultima_prueba_codigo") @db.VarChar(40)
+  actualizadoPorId       String    @map("actualizado_por_id") @db.Uuid
+  actualizadoPorNombre   String    @map("actualizado_por_nombre") @db.VarChar(150)
+  actualizadoEn          DateTime  @default(now()) @map("actualizado_en") @db.Timestamptz(6)
+
+  @@map("configuracion_jira")
+}
+
+/// Cambios de configuración (D111). Solo inserción. `campos_cambiados` son nombres de campo, nunca valores.
+model EventoConfiguracion {
+  id               String   @id @default(dbgenerated("gen_random_uuid()")) @map("id_evento") @db.Uuid
+  actorId          String   @map("actor_id") @db.Uuid
+  actorNombre      String   @map("actor_nombre") @db.VarChar(150)
+  fecha            DateTime @default(now()) @db.Timestamptz(6)
+  camposCambiados  Json     @map("campos_cambiados")
+  tokenCambiado    Boolean  @map("token_cambiado")
+  /// `OK` o el código de error de la prueba que acompañó al guardado.
+  resultadoPrueba  String   @map("resultado_prueba") @db.VarChar(40)
+
+  @@index([fecha(sort: Desc)], map: "evento_configuracion_fecha_idx")
+  @@map("evento_configuracion")
+}
+
+/// Una sincronización o importación (D103, D104). Se inserta `EN_CURSO` y se cierra una sola vez.
+model EjecucionIntegracion {
+  id                 String    @id @default(dbgenerated("gen_random_uuid()")) @map("id_ejecucion") @db.Uuid
+  origen             String    @db.VarChar(5)
+  estricto           Boolean   @default(false)
+  vincularExistentes Boolean   @default(false) @map("vincular_existentes")
+  actorId            String    @map("actor_id") @db.Uuid
+  actorNombre        String    @map("actor_nombre") @db.VarChar(150)
+  actorRol           String    @map("actor_rol") @db.VarChar(30)
+  iniciadaEn         DateTime  @default(now()) @map("iniciada_en") @db.Timestamptz(6)
+  terminadaEn        DateTime? @map("terminada_en") @db.Timestamptz(6)
+  duracionMs         Int?      @map("duracion_ms")
+  resultado          String    @db.VarChar(12)
+  leidas             Int       @default(0)
+  creadas            Int       @default(0)
+  actualizadas       Int       @default(0)
+  omitidas           Int       @default(0)
+  conError           Int       @default(0) @map("con_error")
+  conAdvertencias    Int       @default(0) @map("con_advertencias")
+  reintentos429      Int       @default(0) @map("reintentos_429")
+  /// Solo códigos y mensajes fijos del servicio; nunca texto de Jira.
+  codigoError        String?   @map("codigo_error") @db.VarChar(40)
+  mensajeError       String?   @map("mensaje_error") @db.VarChar(300)
+  proyectoClave      String?   @map("proyecto_clave") @db.VarChar(10)
+  sitioHost          String?   @map("sitio_host") @db.VarChar(100)
+  archivoNombre      String?   @map("archivo_nombre") @db.VarChar(150)
+  archivoTamano      Int?      @map("archivo_tamano")
+  /// SHA-256 del contenido recibido. El contenido no se guarda (D104).
+  archivoHuella      String?   @map("archivo_huella") @db.Char(64)
+  hayMas             Boolean   @default(false) @map("hay_mas")
+  continuarDesde     String?   @map("continuar_desde") @db.VarChar(40)
+  /// Esperas por 429: `[{tipo, espera_ms, fecha}]`.
+  eventos            Json?
+
+  detalle DetalleEjecucion[]
+
+  @@index([iniciadaEn(sort: Desc)], map: "ejecucion_integracion_iniciada_idx")
+  @@index([origen, iniciadaEn(sort: Desc)], map: "ejecucion_integracion_origen_idx")
+  @@index([resultado, iniciadaEn(sort: Desc)], map: "ejecucion_integracion_resultado_idx")
+  @@map("ejecucion_integracion")
+}
+
+/// Una fila de archivo o una issue de Jira. Solo inserción. Sin llave foránea de `id_historia` (es de Organización).
+model DetalleEjecucion {
+  id           String   @id @default(dbgenerated("gen_random_uuid()")) @map("id_detalle") @db.Uuid
+  ejecucionId  String   @map("id_ejecucion") @db.Uuid
+  /// Número de fila de datos del archivo (la primera es 1) o posición de la issue.
+  fila         Int
+  codigo       String?  @db.VarChar(60)
+  titulo       String?  @db.VarChar(200)
+  historiaId   String?  @map("id_historia") @db.Uuid
+  /// `ACTUALIZADA` tiene 11 caracteres: la sección 6.1 del backlog E5 decía varchar(10) y no cabe.
+  resultado    String   @db.VarChar(12)
+  motivo       String?  @db.VarChar(40)
+  mensaje      String?  @db.VarChar(200)
+  advertencias Json?
+  /// `{campo: {antes, despues}}`, valores recortados a 200 caracteres.
+  cambios      Json?
+  /// Estado y responsable de la issue de Jira; solo informativo.
+  referencia   Json?
+
+  ejecucion EjecucionIntegracion @relation(fields: [ejecucionId], references: [id], onDelete: Restrict)
+
+  @@unique([ejecucionId, fila], map: "detalle_ejecucion_fila_key")
+  @@index([ejecucionId, resultado, fila], map: "detalle_ejecucion_resultado_idx")
+  @@index([historiaId], map: "detalle_ejecucion_historia_idx")
+  @@map("detalle_ejecucion")
+}

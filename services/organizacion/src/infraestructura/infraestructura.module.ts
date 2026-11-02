@@ -11,6 +11,8 @@ import { AUDITORIA_REPOSITORIO } from '../dominio/repositorios/auditoria.reposit
 import { CATALOGO_REPOSITORIO } from '../dominio/repositorios/catalogo.repositorio.js';
 import { CELULA_LIDER_REPOSITORIO } from '../dominio/repositorios/celula-lider.repositorio.js';
 import { HDU_REPOSITORIO } from '../dominio/repositorios/hdu.repositorio.js';
+import { INTEGRACION_HDU_REPOSITORIO } from '../dominio/repositorios/integracion-hdu.repositorio.js';
+import { IntegracionHduPrismaRepositorio } from './repositorios/integracion-hdu.prisma.repositorio.js';
 import { SUPERVISION_REPOSITORIO } from '../dominio/repositorios/supervision.repositorio.js';
 import { USUARIO_REPOSITORIO } from '../dominio/repositorios/usuario.repositorio.js';
 import { PROVEEDOR_CHECKLIST } from '../aplicacion/puertos/proveedor-checklist.js';
@@ -39,6 +41,7 @@ import { ProveedorIdentidadSupabase } from './supabase/proveedor-identidad.servi
     { provide: CELULA_LIDER_REPOSITORIO, useClass: CelulaLiderPrismaRepositorio },
     { provide: HDU_REPOSITORIO, useClass: HduPrismaRepositorio },
     { provide: AUDITORIA_REPOSITORIO, useClass: AuditoriaPrismaRepositorio },
+    { provide: INTEGRACION_HDU_REPOSITORIO, useClass: IntegracionHduPrismaRepositorio },
     { provide: PROVEEDOR_IDENTIDAD, useClass: ProveedorIdentidadSupabase },
     { provide: PROVEEDOR_CHECKLIST, useClass: ProveedorChecklistHttp },
     { provide: PROVEEDOR_SEGUIMIENTO, useClass: ProveedorSeguimientoHttp },
@@ -53,6 +56,7 @@ import { ProveedorIdentidadSupabase } from './supabase/proveedor-identidad.servi
     CELULA_LIDER_REPOSITORIO,
     HDU_REPOSITORIO,
     AUDITORIA_REPOSITORIO,
+    INTEGRACION_HDU_REPOSITORIO,
     PROVEEDOR_IDENTIDAD,
     PROVEEDOR_CHECKLIST,
     PROVEEDOR_SEGUIMIENTO,

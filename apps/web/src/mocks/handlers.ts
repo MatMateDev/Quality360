@@ -30,7 +30,9 @@ import {
 import { analistaEnEquipoDe, autenticar, esUsuarioMock, exigirRol } from "./comun";
 import { aplicarCelulasLider, celulasVigentesDe } from "./dataE7";
 import { handlersE4, verificarImpedimentosCierre } from "./handlersE4";
+import { handlersE5 } from "./handlersE5";
 import { handlersE7 } from "./handlersE7";
+import { origenesHdu } from "./dataE5";
 
 const BASE = env.gatewayUrl;
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -114,6 +116,9 @@ function usuarioAAudiencia(usuario: UsuarioMock) {
 }
 
 export const handlers = [
+  // E5 va primero: reemplaza el catálogo de sprints (suma `celulaId`, D120) sin tocar los demás.
+  ...handlersE5,
+
   http.get(`${BASE}/health`, () => HttpResponse.json({ estado: "ok" })),
 
   // ---------------------------------------------------------------- sesión
@@ -659,6 +664,8 @@ export const handlers = [
       ...construirHduDetalle(hdu, actor),
       // D11: la fuente de checklist de Certificaciones siempre responde indisponible en esta corrida.
       checklist: { fuente: "certificaciones.checklist", estado: "indisponible" },
+      // E5 (D108): descripción y origen; una HDU sin entrada simula un servidor que aún no los trae.
+      ...(origenesHdu.get(hdu.id) ?? {}),
     });
   }),
 

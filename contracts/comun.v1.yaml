@@ -7,7 +7,8 @@ info:
     identifier: LicenseRef-Capstone-Duoc-UC
   description: |
     Esquemas, respuestas y parámetros compartidos por `gateway.v1.yaml`,
-    `organizacion.v1.yaml`, `certificaciones.v1.yaml` e `impedimentos.v1.yaml`. No es un contrato
+    `organizacion.v1.yaml`, `certificaciones.v1.yaml`, `impedimentos.v1.yaml` e
+    `integraciones.v1.yaml`. No es un contrato
     desplegable: se referencia con `$ref: './comun.v1.yaml#/...'`.
 
     ## Convenciones (ADR 0007)
@@ -136,6 +137,16 @@ components:
         | `CATALOGO_INVALIDO` | 422 | La célula o el sprint indicados no existen. |
         | `EVIDENCIA_INVALIDA` | 422 | La evidencia debe ser un enlace https o un archivo PDF, PNG o JPEG de hasta 10 MB. |
         | `EXPORTACION_EXCEDE_LIMITE` | 422 | La exportación supera las 50.000 filas. Acota los filtros. |
+        | `JIRA_NO_CONFIGURADO` | 409 | Configura la conexión con Jira antes de sincronizar. (E5) |
+        | `INTEGRACION_EN_CURSO` | 409 | Ya hay una sincronización en curso. (E5, D104; el portal usa «Ya hay una importación o sincronización en curso» en Importar) |
+        | `TOKEN_NO_DESCIFRABLE` | 409 | Vuelve a ingresar el API token. (E5, D94) |
+        | `ARCHIVO_MUY_GRANDE` | 413 | El archivo supera el máximo de 1 MB. (E5, D102) |
+        | `ARCHIVO_VACIO` | 422 | El archivo está vacío o no tiene filas de datos. (E5) |
+        | `FORMATO_NO_SOPORTADO` | 422 | El formato no es compatible. Usa un archivo .csv o .json. (E5) |
+        | `ARCHIVO_ILEGIBLE` | 422 | No pudimos leer el archivo. Revisa que sea un CSV bien formado o un JSON con una lista de historias. (E5) |
+        | `COLUMNAS_FALTANTES` | 422 | Faltan las columnas: codigo, titulo. (E5; `ErrorArchivo.columnasFaltantes`) |
+        | `DEMASIADAS_FILAS` | 422 | El archivo supera el máximo de 500 filas. (E5) |
+        | `LLAVE_CIFRADO_NO_DISPONIBLE` | 503 | La integración no está habilitada en el servidor. (E5, D94) |
         | `DEMASIADAS_SOLICITUDES` | 429 | Demasiadas solicitudes. Intenta más tarde. |
         | `ERROR_INTERNO` | 500 | Ocurrió un error inesperado. |
         | `SERVICIO_NO_DISPONIBLE` | 503 | El servicio no está disponible. Intenta nuevamente. |
@@ -174,6 +185,16 @@ components:
         - CATALOGO_INVALIDO
         - EVIDENCIA_INVALIDA
         - EXPORTACION_EXCEDE_LIMITE
+        - JIRA_NO_CONFIGURADO
+        - INTEGRACION_EN_CURSO
+        - TOKEN_NO_DESCIFRABLE
+        - ARCHIVO_MUY_GRANDE
+        - ARCHIVO_VACIO
+        - FORMATO_NO_SOPORTADO
+        - ARCHIVO_ILEGIBLE
+        - COLUMNAS_FALTANTES
+        - DEMASIADAS_FILAS
+        - LLAVE_CIFRADO_NO_DISPONIBLE
         - DEMASIADAS_SOLICITUDES
         - ERROR_INTERNO
         - SERVICIO_NO_DISPONIBLE
@@ -1148,6 +1169,9 @@ components:
           $ref: '#/components/schemas/Fecha'
         fin:
           $ref: '#/components/schemas/Fecha'
+        celulaId:
+          $ref: '#/components/schemas/Uuid'
+          description: 'E5 (D120). Célula a la que pertenece el sprint. Aditivo: el selector de la configuración de Jira filtra por la célula elegida.'
     ListaSprints:
       type: object
       required: [items]
@@ -1216,6 +1240,21 @@ components:
                 $ref: '#/components/schemas/EstadoHdu'
             permisos:
               $ref: '#/components/schemas/PermisosHdu'
+            descripcion:
+              type: [string, 'null']
+              maxLength: 1000
+              description: 'E5 (D108). Texto plano; el portal no interpreta HTML ni enlaces. Aditivo: solo en el detalle, no en `GET /v1/hdu`, bandejas ni CSV.'
+            origen:
+              $ref: '#/components/schemas/OrigenHdu'
+              description: E5 (D97, D108). Aditivo; las HDU anteriores a E5 son `MANUAL`.
+            claveExterna:
+              type: [string, 'null']
+              maxLength: 60
+              description: E5 (D124). Clave de la issue de Jira si la HDU vino o se vinculó desde Jira; si no, `null`.
+            urlExterna:
+              type: [string, 'null']
+              maxLength: 300
+              description: E5 (D124). Enlace a la issue en Jira; el portal puede mostrar «Abrir en Jira» con `rel="noopener noreferrer"`.
     PaginaHdu:
       type: object
       required: [items, total, pagina, tamanoPagina]
@@ -1650,7 +1689,10 @@ components:
         | `ASIGNAR_ANALISTA` | Asignación de analista | no |
         | `REASIGNAR_ANALISTA` | Reasignación de analista | no |
         | `REASIGNAR_QE_RESPONSABLE` | Reasignación de QE responsable (D54) | no |
-      enum: [CREAR_USUARIO, ACTUALIZAR_USUARIO, ACTIVAR_USUARIO, DESACTIVAR_USUARIO, CAMBIAR_ROL, ASIGNAR_SUPERVISOR, CAMBIAR_SUPERVISOR, CREAR_HDU, CAMBIAR_ESTADO_HDU, ASIGNAR_ANALISTA, REASIGNAR_ANALISTA, ASIGNAR_CELULAS_LIDER, EXPORTAR, REASIGNAR_QE_RESPONSABLE]
+        | `ACTUALIZAR_HDU` | Actualización de HDU desde integración (E5, D100; antes y después de título, descripción y prioridad) | no |
+
+        `CREAR_HDU` de una HDU importada guarda `origen` en `despues` (D100).
+      enum: [CREAR_USUARIO, ACTUALIZAR_USUARIO, ACTIVAR_USUARIO, DESACTIVAR_USUARIO, CAMBIAR_ROL, ASIGNAR_SUPERVISOR, CAMBIAR_SUPERVISOR, CREAR_HDU, CAMBIAR_ESTADO_HDU, ASIGNAR_ANALISTA, REASIGNAR_ANALISTA, ASIGNAR_CELULAS_LIDER, EXPORTAR, REASIGNAR_QE_RESPONSABLE, ACTUALIZAR_HDU]
     OperacionAuditoriaUsuarios:
       type: string
       description: Subconjunto de `AccionAuditoria` que forma la auditoría de usuarios (entidades `USUARIO`, `SUPERVISION` y `EXPORTACION`). Es el filtro `operacion` del Auditor (D45).
@@ -3625,6 +3667,954 @@ components:
               $ref: '#/components/schemas/Contador'
             hduBloqueadas:
               $ref: '#/components/schemas/Contador'
+
+    # ------------------------------------------------- E5 · integración con Jira
+    OrigenHdu:
+      type: string
+      description: |
+        De dónde vino la HDU (D97). Las creadas con `POST /v1/hdu` y las de la
+        semilla son `MANUAL`. Etiquetas del portal: «Manual», «Jira», «CSV»,
+        «JSON» (D108).
+      enum: [MANUAL, JIRA, CSV, JSON]
+    OrigenEjecucion:
+      type: string
+      description: 'Fuente de una ejecución de integración. Etiquetas: «Jira», «CSV», «JSON».'
+      enum: [JIRA, CSV, JSON]
+    ResultadoEjecucion:
+      type: string
+      description: |
+        Resultado de una ejecución (D103, D119).
+
+        | Código | Etiqueta | Cuándo |
+        | --- | --- | --- |
+        | `EN_CURSO` | En curso | Insertada al iniciar y aún sin cerrar |
+        | `EXITOSA` | Exitosa | Completa y sin filas con error. «Sin cambios» es `EXITOSA` con `creadas = 0` y `actualizadas = 0` |
+        | `CON_ERRORES` | Con errores | Completa, con al menos una fila con error |
+        | `INCOMPLETA` | Incompleta | Cortada por tope, tiempo, límite de tasa u Organización, con parte procesada |
+        | `FALLIDA` | Fallida | No se procesó nada (credencial, sitio, archivo, modo estricto…) |
+        | `INTERRUMPIDA` | Interrumpida | Quedó `EN_CURSO` más de 5 minutos y la cerró la siguiente ejecución (D104) |
+
+        «Última completada» = la más reciente `EXITOSA` o `CON_ERRORES` (D121).
+      enum: [EN_CURSO, EXITOSA, CON_ERRORES, INCOMPLETA, FALLIDA, INTERRUMPIDA]
+    ResultadoFila:
+      type: string
+      description: 'Resultado de una fila o issue. Etiquetas: «Creada», «Actualizada», «Omitida», «Error».'
+      enum: [CREADA, ACTUALIZADA, OMITIDA, ERROR]
+    AccionVistaPrevia:
+      type: string
+      description: 'Lo que haría la importación con la fila. Etiquetas: «Crear», «Actualizar», «Omitir», «Con error».'
+      enum: [CREAR, ACTUALIZAR, OMITIR, ERROR]
+    MotivoFila:
+      type: string
+      description: |
+        Motivo de una fila `OMITIDA` o `ERROR` (sección 4.2 del backlog E5; el
+        portal muestra el mensaje de su tabla local, D105).
+
+        | Código | Resultado | Mensaje |
+        | --- | --- | --- |
+        | `SIN_CAMBIOS` | OMITIDA | Sin cambios |
+        | `HDU_CERRADA` | OMITIDA | La HDU está cerrada y no se modifica |
+        | `HDU_MANUAL_EXISTENTE` | OMITIDA | Ya existe una HDU creada a mano con este código |
+        | `CODIGO_INVALIDO` | ERROR | El código no es válido |
+        | `TITULO_VACIO` | ERROR | El título es obligatorio |
+        | `TITULO_LARGO` | ERROR | El título supera los 200 caracteres |
+        | `PRIORIDAD_INVALIDA` | ERROR | La prioridad no es válida |
+        | `CODIGO_DUPLICADO_EN_ARCHIVO` | ERROR | El código está repetido en el archivo |
+        | `CELULA_NO_ENCONTRADA` | ERROR | La célula no existe |
+        | `SPRINT_NO_ENCONTRADO` | ERROR | El sprint no existe (se busca solo entre los sprints de la célula de la fila, D120) |
+        | `SPRINT_REQUERIDO` | ERROR | Indica un sprint de esa célula (la fila trae una célula distinta de la configurada y no trae sprint, D120) |
+        | `QE_INVALIDO` | ERROR | El QE responsable no es válido |
+        | `ERROR_INTERNO` | ERROR | No pudimos procesar esta fila |
+      enum: [SIN_CAMBIOS, HDU_CERRADA, HDU_MANUAL_EXISTENTE, CODIGO_INVALIDO, TITULO_VACIO, TITULO_LARGO, PRIORIDAD_INVALIDA, CODIGO_DUPLICADO_EN_ARCHIVO, CELULA_NO_ENCONTRADA, SPRINT_NO_ENCONTRADO, SPRINT_REQUERIDO, QE_INVALIDO, ERROR_INTERNO]
+    AdvertenciaFila:
+      type: string
+      description: |
+        Advertencias: no cambian el resultado de la fila y se cuentan en
+        `conAdvertencias` (D119). Etiquetas del portal:
+
+        | Código | Etiqueta |
+        | --- | --- |
+        | `SPRINT_NO_ENCONTRADO` | Sprint no encontrado: se usó el de respaldo (solo Jira) |
+        | `PRIORIDAD_AUSENTE` | Sin prioridad |
+        | `PRIORIDAD_DESCONOCIDA` | Prioridad no reconocida |
+        | `TITULO_TRUNCADO` | Título recortado a 200 caracteres |
+        | `DESCRIPCION_TRUNCADA` | Descripción recortada a 1.000 caracteres |
+        | `COLUMNA_IGNORADA` | Se ignoraron columnas que el importador no usa (una vez por archivo, en la cabecera) |
+      enum: [SPRINT_NO_ENCONTRADO, PRIORIDAD_AUSENTE, PRIORIDAD_DESCONOCIDA, TITULO_TRUNCADO, DESCRIPCION_TRUNCADA, COLUMNA_IGNORADA]
+    EstadoConexionJira:
+      type: string
+      description: 'Etiquetas: «Sin probar», «Conectado», «Falló la última prueba».'
+      enum: [SIN_PROBAR, OK, FALLIDA]
+    CodigoErrorIntegracion:
+      type: string
+      description: |
+        Error de una ejecución o de una prueba de conexión. **No es un error
+        HTTP**: viaja en una respuesta 200 (D105) o en la ejecución
+        registrada. El mensaje es siempre el fijo del servicio, nunca el texto
+        de Jira. Sugerencias (D117, en orden: la primera es la principal):
+
+        | Código | Mensaje | `sugerencias` |
+        | --- | --- | --- |
+        | `JIRA_CREDENCIAL_INVALIDA` | Jira rechazó el correo o el API token. Revisa la conexión. | `IR_A_CONEXION`, `IMPORTAR_ARCHIVO` |
+        | `JIRA_SIN_PERMISO` | La cuenta de Jira no tiene permiso para leer este proyecto. | `REVISAR_PERMISOS`, `IMPORTAR_ARCHIVO` |
+        | `JIRA_SITIO_NO_ENCONTRADO` | No pudimos conectar con ese sitio de Jira. Revisa la dirección. | `IR_A_CONEXION`, `IMPORTAR_ARCHIVO` |
+        | `JIRA_PROYECTO_NO_ENCONTRADO` | No encontramos el proyecto en Jira. | `IR_A_CONEXION`, `IMPORTAR_ARCHIVO` |
+        | `JIRA_LIMITE_DE_TASA` | Jira pidió esperar demasiado. Reintenta en unos minutos. | `CONTINUAR` si hay `continuarDesde`, si no `REINTENTAR`; `IMPORTAR_ARCHIVO` |
+        | `JIRA_TIEMPO_AGOTADO` | Jira no respondió a tiempo. | `REINTENTAR`, `IMPORTAR_ARCHIVO` |
+        | `JIRA_NO_DISPONIBLE` | Jira no está disponible por ahora. | `REINTENTAR`, `IMPORTAR_ARCHIVO` |
+        | `JIRA_RESPUESTA_INVALIDA` | Jira respondió algo que no entendimos. | `REINTENTAR`, `IMPORTAR_ARCHIVO` |
+        | `PRESUPUESTO_DE_TIEMPO` | Se alcanzó el tiempo máximo. Continúa para procesar el resto. | Jira: `CONTINUAR`. Archivo: `IMPORTAR_MISMO_ARCHIVO` |
+        | `ORGANIZACION_NO_DISPONIBLE` | No pudimos guardar las HDU en este momento. | Jira: `REINTENTAR`. Archivo: `IMPORTAR_MISMO_ARCHIVO`. **Nunca** `IMPORTAR_ARCHIVO` |
+        | `MODO_ESTRICTO` | No se importó nada porque el modo estricto detectó filas con error. | `CORREGIR_ARCHIVO` |
+        | `ARCHIVO_VACIO`, `FORMATO_NO_SOPORTADO`, `ARCHIVO_ILEGIBLE`, `COLUMNAS_FALTANTES`, `DEMASIADAS_FILAS` | Los de `CodigoError` | `CORREGIR_ARCHIVO` |
+
+        Un `INCOMPLETA` por tope de issues no trae código: `hayMas: true` y
+        `codigoError: null` (D96).
+      enum: [JIRA_CREDENCIAL_INVALIDA, JIRA_SIN_PERMISO, JIRA_SITIO_NO_ENCONTRADO, JIRA_PROYECTO_NO_ENCONTRADO, JIRA_LIMITE_DE_TASA, JIRA_TIEMPO_AGOTADO, JIRA_NO_DISPONIBLE, JIRA_RESPUESTA_INVALIDA, PRESUPUESTO_DE_TIEMPO, ORGANIZACION_NO_DISPONIBLE, MODO_ESTRICTO, ARCHIVO_VACIO, FORMATO_NO_SOPORTADO, ARCHIVO_ILEGIBLE, COLUMNAS_FALTANTES, DEMASIADAS_FILAS]
+    SugerenciaIntegracion:
+      type: string
+      description: |
+        Acción sugerida (D117). El portal la convierte en enlace solo para el
+        Administrador; QE y Auditor ven el texto.
+
+        | Código | Texto | Acción del Administrador |
+        | --- | --- | --- |
+        | `IR_A_CONEXION` | Ir a Conexión | Pestaña Conexión |
+        | `REVISAR_PERMISOS` | Revisa los permisos de la cuenta sobre el proyecto | — |
+        | `REINTENTAR` | Reintentar | Repite la operación |
+        | `CONTINUAR` | Continuar | `boton-continuar` con `continuarDesde` |
+        | `IMPORTAR_ARCHIVO` | Importar un archivo | Pestaña Importar archivo |
+        | `IMPORTAR_MISMO_ARCHIVO` | Importar el mismo archivo | `boton-importar-de-nuevo` (archivo en memoria, D118) |
+        | `CORREGIR_ARCHIVO` | Corrige el archivo y vuelve a seleccionarlo | Selector de archivo |
+        | `AVISAR_DESPLIEGUE` | Avisa al responsable del despliegue | — |
+      enum: [IR_A_CONEXION, REVISAR_PERMISOS, REINTENTAR, CONTINUAR, IMPORTAR_ARCHIVO, IMPORTAR_MISMO_ARCHIVO, CORREGIR_ARCHIVO, AVISAR_DESPLIEGUE]
+    ErrorIntegracion:
+      type: object
+      required: [codigo, mensaje, sugerencias]
+      additionalProperties: false
+      properties:
+        codigo:
+          $ref: '#/components/schemas/CodigoErrorIntegracion'
+        mensaje:
+          type: string
+          maxLength: 300
+          description: Mensaje fijo del servicio para el código. Nunca contiene texto de Jira, cabeceras, URL internas ni el token.
+        sugerencias:
+          type: array
+          items:
+            $ref: '#/components/schemas/SugerenciaIntegracion'
+    ActorEjecucion:
+      type: object
+      required: [id, nombre, rol]
+      additionalProperties: false
+      properties:
+        id:
+          $ref: '#/components/schemas/Uuid'
+        nombre:
+          type: string
+        rol:
+          $ref: '#/components/schemas/Rol'
+    ArchivoEjecucion:
+      type: object
+      description: Lo único que se guarda de un archivo (D104). Nunca su contenido.
+      required: [nombre, tamano, huella]
+      additionalProperties: false
+      properties:
+        nombre:
+          type: string
+          maxLength: 150
+        tamano:
+          type: integer
+          minimum: 0
+          description: Bytes del contenido en UTF-8.
+        huella:
+          type: string
+          pattern: '^[0-9a-f]{64}$'
+          description: SHA-256 en hexadecimal del contenido recibido.
+    EventoEjecucion:
+      type: object
+      required: [tipo, esperaMs, fecha]
+      additionalProperties: false
+      properties:
+        tipo:
+          type: string
+          const: JIRA_LIMITE_DE_TASA
+        esperaMs:
+          type: integer
+          minimum: 0
+          description: Espera aplicada según `Retry-After` (D105). En la base se guarda como `espera_ms`.
+        fecha:
+          $ref: '#/components/schemas/FechaHora'
+    Ejecucion:
+      type: object
+      description: |
+        Una sincronización o importación (E5-B04). Es lo que devuelven
+        `POST /v1/integraciones/jira/sincronizaciones` y
+        `POST /v1/integraciones/archivos/importaciones` (D113): el `id` es el
+        `ejecucionId` con el que el portal carga las filas en
+        `GET /v1/integraciones/ejecuciones/{id}/detalle`. Invariante al cerrar:
+        `creadas + actualizadas + omitidas + conError = leidas`. Con
+        `resultado: EN_CURSO`, `terminadaEn` y `duracionMs` son `null` y los
+        contadores aún no son definitivos (el portal muestra «—»).
+      required: [id, origen, resultado, actor, iniciadaEn, terminadaEn, duracionMs, estricto, vincularExistentes, leidas, creadas, actualizadas, omitidas, conError, conAdvertencias, reintentos429, eventos, codigoError, mensajeError, sugerencias, proyecto, sitioHost, archivo, hayMas, continuarDesde]
+      additionalProperties: false
+      properties:
+        id:
+          $ref: '#/components/schemas/Uuid'
+        origen:
+          $ref: '#/components/schemas/OrigenEjecucion'
+        resultado:
+          $ref: '#/components/schemas/ResultadoEjecucion'
+        actor:
+          $ref: '#/components/schemas/ActorEjecucion'
+        iniciadaEn:
+          $ref: '#/components/schemas/FechaHora'
+        terminadaEn:
+          oneOf:
+            - $ref: '#/components/schemas/FechaHora'
+            - type: 'null'
+        duracionMs:
+          type: [integer, 'null']
+          minimum: 0
+        estricto:
+          type: boolean
+        vincularExistentes:
+          type: boolean
+        leidas:
+          type: integer
+          minimum: 0
+        creadas:
+          type: integer
+          minimum: 0
+        actualizadas:
+          type: integer
+          minimum: 0
+        omitidas:
+          type: integer
+          minimum: 0
+        conError:
+          type: integer
+          minimum: 0
+        conAdvertencias:
+          type: integer
+          minimum: 0
+          description: Filas con al menos una advertencia. Informativo, no suma.
+        reintentos429:
+          type: integer
+          minimum: 0
+        eventos:
+          type: array
+          items:
+            $ref: '#/components/schemas/EventoEjecucion'
+        codigoError:
+          oneOf:
+            - $ref: '#/components/schemas/CodigoErrorIntegracion'
+            - type: 'null'
+        mensajeError:
+          type: [string, 'null']
+          maxLength: 300
+          description: Mensaje fijo del código (D105).
+        sugerencias:
+          type: array
+          description: Vacía si no hay `codigoError`.
+          items:
+            $ref: '#/components/schemas/SugerenciaIntegracion'
+        proyecto:
+          type: [string, 'null']
+          description: Clave del proyecto de Jira (instantánea). `null` en archivos.
+        sitioHost:
+          type: [string, 'null']
+          description: Host del sitio de Jira, sin ruta ni credenciales. `null` en archivos.
+        archivo:
+          oneOf:
+            - $ref: '#/components/schemas/ArchivoEjecucion'
+            - type: 'null'
+        hayMas:
+          type: boolean
+          description: Solo Jira. `true` si quedó más por leer (tope, tiempo o límite de tasa).
+        continuarDesde:
+          type: [string, 'null']
+          maxLength: 40
+          description: Solo Jira. Última clave procesada; «Continuar» la envía en el cuerpo (D96).
+    PaginaEjecuciones:
+      type: object
+      required: [items, total, pagina, tamanoPagina]
+      additionalProperties: false
+      properties:
+        items:
+          type: array
+          description: Por `iniciadaEn` descendente salvo `orden`.
+          items:
+            $ref: '#/components/schemas/Ejecucion'
+        total:
+          type: integer
+          minimum: 0
+        pagina:
+          type: integer
+          minimum: 1
+        tamanoPagina:
+          type: integer
+          minimum: 1
+          maximum: 100
+          description: Tamaño efectivo (un valor mayor a 100 se recorta, D49).
+    CambioValor:
+      type: object
+      required: [antes, despues]
+      additionalProperties: false
+      properties:
+        antes:
+          type: [string, 'null']
+          maxLength: 200
+        despues:
+          type: [string, 'null']
+          maxLength: 200
+    CambiosHdu:
+      type: object
+      description: Campos que cambió una actualización (D98). Valores recortados a 200 caracteres. Solo estos tres campos pueden aparecer.
+      additionalProperties: false
+      properties:
+        titulo:
+          $ref: '#/components/schemas/CambioValor'
+        descripcion:
+          $ref: '#/components/schemas/CambioValor'
+        prioridad:
+          $ref: '#/components/schemas/CambioValor'
+    ReferenciaJira:
+      type: object
+      description: Estado y responsable de la issue en Jira. Solo informativo; no se guardan en la HDU (D101).
+      required: [estado, responsable]
+      additionalProperties: false
+      properties:
+        estado:
+          type: [string, 'null']
+          maxLength: 100
+        responsable:
+          type: [string, 'null']
+          maxLength: 150
+    FilaEjecucion:
+      type: object
+      required: [fila, codigo, titulo, idHistoria, resultado, motivo, advertencias, cambios, referencia]
+      additionalProperties: false
+      properties:
+        fila:
+          type: integer
+          minimum: 1
+          description: Número de fila de datos del archivo (la primera fila de datos es 1) o posición de la issue en la lectura de Jira.
+        codigo:
+          type: [string, 'null']
+          maxLength: 60
+        titulo:
+          type: [string, 'null']
+          description: '`null` para el QE en filas con error (D106).'
+        idHistoria:
+          oneOf:
+            - $ref: '#/components/schemas/Uuid'
+            - type: 'null'
+        resultado:
+          $ref: '#/components/schemas/ResultadoFila'
+        motivo:
+          oneOf:
+            - $ref: '#/components/schemas/MotivoFila'
+            - type: 'null'
+        advertencias:
+          type: array
+          items:
+            $ref: '#/components/schemas/AdvertenciaFila'
+        cambios:
+          oneOf:
+            - $ref: '#/components/schemas/CambiosHdu'
+            - type: 'null'
+        referencia:
+          oneOf:
+            - $ref: '#/components/schemas/ReferenciaJira'
+            - type: 'null'
+    PaginaFilasEjecucion:
+      type: object
+      required: [items, total, pagina, tamanoPagina, filasOcultas]
+      additionalProperties: false
+      properties:
+        items:
+          type: array
+          description: Por `fila` ascendente.
+          items:
+            $ref: '#/components/schemas/FilaEjecucion'
+        total:
+          type: integer
+          minimum: 0
+          description: Filas visibles para quien consulta, con los filtros aplicados.
+        pagina:
+          type: integer
+          minimum: 1
+        tamanoPagina:
+          type: integer
+          minimum: 1
+          maximum: 100
+        filasOcultas:
+          type: integer
+          minimum: 0
+          description: Filas de HDU fuera del ámbito del QE (D106). Siempre 0 para Administrador y Auditor.
+    EjecucionEnCurso:
+      type: object
+      required: [id, origen, iniciadaEn, abandonada]
+      additionalProperties: false
+      properties:
+        id:
+          $ref: '#/components/schemas/Uuid'
+        origen:
+          $ref: '#/components/schemas/OrigenEjecucion'
+        iniciadaEn:
+          $ref: '#/components/schemas/FechaHora'
+        abandonada:
+          type: boolean
+          description: '`true` si lleva más de 5 minutos: la siguiente ejecución la cerrará como `INTERRUMPIDA` (D104).'
+    EstadoIntegracion:
+      type: object
+      required: [ultimaEjecucion, ultimaCompletada, enCurso]
+      additionalProperties: false
+      properties:
+        ultimaEjecucion:
+          oneOf:
+            - $ref: '#/components/schemas/Ejecucion'
+            - type: 'null'
+        ultimaCompletada:
+          description: La más reciente `EXITOSA` o `CON_ERRORES` (D121).
+          oneOf:
+            - $ref: '#/components/schemas/Ejecucion'
+            - type: 'null'
+        enCurso:
+          oneOf:
+            - $ref: '#/components/schemas/EjecucionEnCurso'
+            - type: 'null'
+        jiraConfigurado:
+          type: boolean
+          description: Solo para el Administrador; ausente para QE y Auditor.
+        continuar:
+          description: |
+            Solo para el Administrador. Presente si la última ejecución de Jira
+            es `INCOMPLETA` con `continuarDesde` y no hay otra en curso: el
+            portal muestra `boton-continuar` (diseño 4.3).
+          type: object
+          required: [desde, ejecucionId]
+          additionalProperties: false
+          properties:
+            desde:
+              type: string
+              maxLength: 40
+            ejecucionId:
+              $ref: '#/components/schemas/Uuid'
+    TokenJiraEstado:
+      type: object
+      description: Lo único que se informa del token (D94). Nunca su valor ni su cifrado.
+      required: [configurado, ultimos4, descifrable]
+      additionalProperties: false
+      properties:
+        configurado:
+          type: boolean
+        ultimos4:
+          type: [string, 'null']
+          minLength: 4
+          maxLength: 4
+        descifrable:
+          type: boolean
+          description: '`false` si la llave cambió (`TOKEN_NO_DESCIFRABLE`): el portal pide volver a ingresarlo.'
+    ConfiguracionJira:
+      type: object
+      description: |
+        Configuración sin secretos. Sin configuración guardada:
+        `configurado: false` y el resto en `null` (salvo `tiposIssue` con el
+        valor por defecto y `token.configurado: false`).
+      required: [configurado, llaveDisponible, sitio, correo, proyecto, tiposIssue, celula, qeResponsable, sprintRespaldo, token, estadoConexion, ultimaPruebaEn, ultimaPruebaCodigo, avisosDestino, actualizadoEn, actualizadoPor]
+      additionalProperties: false
+      properties:
+        configurado:
+          type: boolean
+        llaveDisponible:
+          type: boolean
+          description: '`false` si falta o es inválida la llave de cifrado. El portal muestra `aviso-integracion-deshabilitada` con el formulario deshabilitado; guardar, probar y sincronizar responden 503 `LLAVE_CIFRADO_NO_DISPONIBLE`. No revela el nombre ni el valor de la variable.'
+        sitio:
+          type: [string, 'null']
+        correo:
+          type: [string, 'null']
+        proyecto:
+          type: [string, 'null']
+        tiposIssue:
+          type: array
+          items:
+            type: string
+        celula:
+          oneOf:
+            - $ref: '#/components/schemas/CatalogoRef'
+            - type: 'null'
+        qeResponsable:
+          oneOf:
+            - $ref: '#/components/schemas/Persona'
+            - type: 'null'
+        sprintRespaldo:
+          oneOf:
+            - $ref: '#/components/schemas/CatalogoRef'
+            - type: 'null'
+        token:
+          $ref: '#/components/schemas/TokenJiraEstado'
+        estadoConexion:
+          $ref: '#/components/schemas/EstadoConexionJira'
+        ultimaPruebaEn:
+          oneOf:
+            - $ref: '#/components/schemas/FechaHora'
+            - type: 'null'
+        ultimaPruebaCodigo:
+          oneOf:
+            - $ref: '#/components/schemas/CodigoErrorIntegracion'
+            - type: 'null'
+        avisosDestino:
+          type: array
+          description: Destino que dejó de ser válido después de guardarse (p. ej. el QE por defecto se desactivó). Las filas nuevas darán `QE_INVALIDO` o `CATALOGO_INVALIDO` hasta corregirlo.
+          items:
+            type: string
+            enum: [QE_INVALIDO, CATALOGO_INVALIDO]
+        actualizadoEn:
+          oneOf:
+            - $ref: '#/components/schemas/FechaHora'
+            - type: 'null'
+        actualizadoPor:
+          oneOf:
+            - $ref: '#/components/schemas/Persona'
+            - type: 'null'
+    SolicitudConfiguracionJira:
+      type: object
+      description: |
+        «Probar y guardar» (D112). `token` es obligatorio solo si no hay uno
+        guardado y descifrable; ausente o vacío conserva el guardado (D116).
+        Orden de validación: 400 (formato) → 422 (destino, con Organización)
+        → prueba con Jira → guardar.
+      required: [sitio, correo, proyecto, celulaId, qeResponsableId, sprintRespaldoId]
+      additionalProperties: false
+      properties:
+        sitio:
+          type: string
+          maxLength: 100
+          description: '`https://<subdominio>.atlassian.net` (D95). Otro valor → 400 `VALIDACION` con `campo: sitio` y `VALOR_NO_PERMITIDO`, sin llamada saliente.'
+        correo:
+          type: string
+          format: email
+          maxLength: 150
+        token:
+          type: string
+          minLength: 8
+          maxLength: 200
+          writeOnly: true
+        proyecto:
+          type: string
+          pattern: '^[A-Z][A-Z0-9_]{1,9}$'
+        tiposIssue:
+          type: array
+          minItems: 1
+          maxItems: 5
+          default: [Story, Historia]
+          items:
+            type: string
+            minLength: 1
+            maxLength: 40
+            pattern: '^[\p{L}\p{N} _-]+$'
+        celulaId:
+          $ref: '#/components/schemas/Uuid'
+        qeResponsableId:
+          $ref: '#/components/schemas/Uuid'
+        sprintRespaldoId:
+          $ref: '#/components/schemas/Uuid'
+          description: 'Debe pertenecer a `celulaId` (D120); si no, 422 `CATALOGO_INVALIDO` con `campo: sprintRespaldoId`.'
+    SolicitudPruebaJira:
+      type: object
+      description: «Probar sin guardar». Cada campo ausente se toma de la configuración guardada; sin configuración y con campos faltantes → 400.
+      additionalProperties: false
+      properties:
+        sitio:
+          type: string
+          maxLength: 100
+        correo:
+          type: string
+          format: email
+          maxLength: 150
+        token:
+          type: string
+          minLength: 8
+          maxLength: 200
+          writeOnly: true
+        proyecto:
+          type: string
+          pattern: '^[A-Z][A-Z0-9_]{1,9}$'
+        tiposIssue:
+          type: array
+          minItems: 1
+          maxItems: 5
+          items:
+            type: string
+            minLength: 1
+            maxLength: 40
+    ResultadoPruebaJira:
+      type: object
+      required: [ok, usuarioJira, proyecto, error]
+      additionalProperties: false
+      properties:
+        ok:
+          type: boolean
+        usuarioJira:
+          type: [string, 'null']
+          description: '`displayName` de la cuenta de Jira (para «Conexión exitosa con Jira como …»).'
+        proyecto:
+          oneOf:
+            - type: object
+              required: [clave, nombre]
+              additionalProperties: false
+              properties:
+                clave:
+                  type: string
+                nombre:
+                  type: string
+            - type: 'null'
+        error:
+          oneOf:
+            - $ref: '#/components/schemas/ErrorIntegracion'
+            - type: 'null'
+    ResultadoGuardadoJira:
+      type: object
+      required: [guardado, prueba, configuracion]
+      additionalProperties: false
+      properties:
+        guardado:
+          type: boolean
+          description: '`false` si la prueba falló; la configuración anterior no cambia (D112).'
+        prueba:
+          $ref: '#/components/schemas/ResultadoPruebaJira'
+        configuracion:
+          $ref: '#/components/schemas/ConfiguracionJira'
+    CampoConfiguracionJira:
+      type: string
+      description: 'Etiquetas: Sitio, Correo, API token, Proyecto, Tipos de issue, Célula, QE responsable, Sprint de respaldo.'
+      enum: [sitio, correo, token, proyecto, tiposIssue, celulaId, qeResponsableId, sprintRespaldoId]
+    EventoConfiguracionJira:
+      type: object
+      required: [id, fecha, actor, camposCambiados, tokenCambiado, resultadoPrueba]
+      additionalProperties: false
+      properties:
+        id:
+          $ref: '#/components/schemas/Uuid'
+        fecha:
+          $ref: '#/components/schemas/FechaHora'
+        actor:
+          $ref: '#/components/schemas/Persona'
+        camposCambiados:
+          type: array
+          description: Nombres de los campos, nunca valores. `token` aparece como «API token (cambiado)».
+          items:
+            $ref: '#/components/schemas/CampoConfiguracionJira'
+        tokenCambiado:
+          type: boolean
+        resultadoPrueba:
+          type: string
+          description: '`OK` o el `CodigoErrorIntegracion` de la prueba que acompañó al guardado.'
+    PaginaEventosConfiguracionJira:
+      type: object
+      required: [items, total, pagina, tamanoPagina]
+      additionalProperties: false
+      properties:
+        items:
+          type: array
+          description: Del más reciente al más antiguo.
+          items:
+            $ref: '#/components/schemas/EventoConfiguracionJira'
+        total:
+          type: integer
+          minimum: 0
+        pagina:
+          type: integer
+          minimum: 1
+        tamanoPagina:
+          type: integer
+          minimum: 1
+          maximum: 100
+    SolicitudSincronizacion:
+      type: object
+      additionalProperties: false
+      properties:
+        continuarDesde:
+          type: string
+          maxLength: 40
+          pattern: '^[A-Za-z0-9][A-Za-z0-9._-]*$'
+          description: Clave desde la que continuar (`key > "<clave>"`, D96). Se valida antes de interpolarla en la consulta.
+        vincularExistentes:
+          type: boolean
+          default: false
+    SolicitudArchivo:
+      type: object
+      description: |
+        Archivo leído por el portal y enviado como texto (D102). Orden: 413
+        si `contenido` supera 1 MB (1.048.576 bytes en UTF-8) → 422
+        `FORMATO_NO_SOPORTADO` si `formato` no es `CSV` ni `JSON` → 422 de
+        estructura → filas. `formato` es texto libre a propósito: un valor
+        desconocido es 422, no 400 (E5-B03-T03).
+      required: [formato, nombre, contenido]
+      additionalProperties: false
+      properties:
+        formato:
+          type: string
+          maxLength: 10
+          examples: [CSV, JSON]
+        nombre:
+          type: string
+          minLength: 1
+          maxLength: 150
+        contenido:
+          type: string
+          description: Texto UTF-8 con o sin BOM. No se guarda ni se registra (D104).
+        estricto:
+          type: boolean
+          default: false
+        vincularExistentes:
+          type: boolean
+          default: false
+    FilaVistaPrevia:
+      type: object
+      required: [fila, codigo, titulo, accion, motivo, advertencias, cambios]
+      additionalProperties: false
+      properties:
+        fila:
+          type: integer
+          minimum: 1
+        codigo:
+          type: [string, 'null']
+        titulo:
+          type: [string, 'null']
+        accion:
+          $ref: '#/components/schemas/AccionVistaPrevia'
+        motivo:
+          oneOf:
+            - $ref: '#/components/schemas/MotivoFila'
+            - type: 'null'
+        advertencias:
+          type: array
+          items:
+            $ref: '#/components/schemas/AdvertenciaFila'
+        cambios:
+          oneOf:
+            - $ref: '#/components/schemas/CambiosHdu'
+            - type: 'null'
+    VistaPreviaArchivo:
+      type: object
+      description: Simulación sin escribir ni registrar (D102). Trae las ≤ 500 filas de una vez; el portal pagina en el cliente.
+      required: [formato, filas, crear, actualizar, omitir, errores, advertencias, columnasIgnoradas, detalle]
+      additionalProperties: false
+      properties:
+        formato:
+          $ref: '#/components/schemas/OrigenEjecucion'
+        filas:
+          type: integer
+          minimum: 1
+          maximum: 500
+        crear:
+          type: integer
+          minimum: 0
+        actualizar:
+          type: integer
+          minimum: 0
+        omitir:
+          type: integer
+          minimum: 0
+        errores:
+          type: integer
+          minimum: 0
+        advertencias:
+          type: integer
+          minimum: 0
+        columnasIgnoradas:
+          type: array
+          description: Columnas que el importador no usa (`COLUMNA_IGNORADA`, una vez por archivo).
+          items:
+            type: string
+        detalle:
+          type: array
+          description: En el orden del archivo.
+          items:
+            $ref: '#/components/schemas/FilaVistaPrevia'
+    ErrorArchivo:
+      description: |
+        Error de estructura del archivo (D102, sección 4.3 del backlog E5). En
+        `importaciones`, la ejecución `FALLIDA` queda registrada y su id va en
+        `ejecucionId` (E5-B04-T13); en `vista-previa`, `ejecucionId` es `null`.
+        `COLUMNAS_FALTANTES` lista todas las faltantes. Nunca incluye
+        contenido del archivo.
+      allOf:
+        - $ref: '#/components/schemas/Error'
+        - type: object
+          required: [ejecucionId, columnasFaltantes]
+          properties:
+            ejecucionId:
+              oneOf:
+                - $ref: '#/components/schemas/Uuid'
+                - type: 'null'
+            columnasFaltantes:
+              type: array
+              items:
+                type: string
+                enum: [codigo, titulo]
+
+    # Upsert interno de Organización (D100)
+    DestinoHdu:
+      type: object
+      required: [celulaId, qeResponsableId, sprintRespaldoId]
+      additionalProperties: false
+      properties:
+        celulaId:
+          $ref: '#/components/schemas/Uuid'
+        qeResponsableId:
+          $ref: '#/components/schemas/Uuid'
+        sprintRespaldoId:
+          $ref: '#/components/schemas/Uuid'
+    DestinoHduResuelto:
+      type: object
+      description: Nombres del destino y su validez actual (D120). El sprint de respaldo debe pertenecer a la célula.
+      required: [celula, qeResponsable, sprintRespaldo, errores]
+      additionalProperties: false
+      properties:
+        celula:
+          oneOf:
+            - $ref: '#/components/schemas/CatalogoRef'
+            - type: 'null'
+        qeResponsable:
+          oneOf:
+            - $ref: '#/components/schemas/Persona'
+            - type: 'null'
+          description: '`null` si no existe; con nombre si existe aunque ya no sea QE activo (en ese caso `errores` trae `qeResponsableId`).'
+        sprintRespaldo:
+          oneOf:
+            - $ref: '#/components/schemas/CatalogoRef'
+            - type: 'null'
+        errores:
+          type: array
+          description: Vacío si el destino es válido.
+          items:
+            $ref: '#/components/schemas/DetalleError'
+    FilaUpsertHdu:
+      type: object
+      description: |
+        Una fila ya mapeada por Integraciones (D101, sección 5 del backlog E5):
+        títulos y descripciones recortados, prioridad normalizada, código
+        validado. Organización vuelve a validar y nunca confía en el llamador.
+        Los límites del esquema son amplios a propósito: un valor fuera de la
+        regla de negocio es un error **de la fila**, no un 400 del lote.
+      required: [fila, codigo, titulo]
+      additionalProperties: false
+      properties:
+        fila:
+          type: integer
+          minimum: 1
+        codigo:
+          type: string
+          maxLength: 200
+        titulo:
+          type: [string, 'null']
+          maxLength: 1000
+        descripcion:
+          type: [string, 'null']
+          maxLength: 1000
+          description: '`null` o vacío nunca borra (D98).'
+        prioridad:
+          description: '`null` = ausente o desconocida: `MEDIA` al crear, sin cambio al actualizar.'
+          oneOf:
+            - $ref: '#/components/schemas/PrioridadHdu'
+            - type: 'null'
+        celula:
+          type: [string, 'null']
+          maxLength: 120
+          description: Nombre de la célula (solo archivo). Se ignora al actualizar.
+        sprint:
+          type: [string, 'null']
+          maxLength: 120
+          description: Nombre del sprint, buscado sin distinguir mayúsculas **solo entre los sprints de la célula de la fila** (D120). Se ignora al actualizar.
+        qeCorreo:
+          type: [string, 'null']
+          maxLength: 150
+          description: Correo de un QE activo (solo archivo). Se ignora al actualizar.
+        claveExterna:
+          type: [string, 'null']
+          maxLength: 60
+          description: Clave de la issue en Jira (solo origen `JIRA`).
+        urlExterna:
+          type: [string, 'null']
+          maxLength: 300
+          pattern: '^https?://'
+          description: Enlace a la issue (`<sitio>/browse/<clave>`), armado por Integraciones con el sitio validado (D95).
+    SolicitudUpsertHdu:
+      type: object
+      required: [origen, destino, sprintNoEncontrado, filas]
+      additionalProperties: false
+      properties:
+        origen:
+          $ref: '#/components/schemas/OrigenEjecucion'
+        soloSimular:
+          type: boolean
+          default: false
+          description: Vista previa y primera pasada del modo estricto. No escribe ni audita.
+        vincularExistentes:
+          type: boolean
+          default: false
+        estricto:
+          type: boolean
+          default: false
+          description: Si es `true`, el lote es una sola transacción (todo o nada dentro del lote, D125).
+        destino:
+          $ref: '#/components/schemas/DestinoHdu'
+        sprintNoEncontrado:
+          type: string
+          description: '`RESPALDO` (Jira: usa el sprint de respaldo con la advertencia `SPRINT_NO_ENCONTRADO`) o `ERROR` (archivo: la fila es error `SPRINT_NO_ENCONTRADO`).'
+          enum: [RESPALDO, ERROR]
+        filas:
+          type: array
+          minItems: 1
+          maxItems: 25
+          items:
+            $ref: '#/components/schemas/FilaUpsertHdu'
+    ResultadoFilaUpsert:
+      type: object
+      required: [fila, codigo, resultado, motivo, idHistoria, advertencias, cambios]
+      additionalProperties: false
+      properties:
+        fila:
+          type: integer
+          minimum: 1
+        codigo:
+          type: string
+        resultado:
+          $ref: '#/components/schemas/ResultadoFila'
+        motivo:
+          oneOf:
+            - $ref: '#/components/schemas/MotivoFila'
+            - type: 'null'
+        idHistoria:
+          description: Id de la HDU creada, actualizada u omitida por existir. `null` si la fila es error o si `soloSimular` y no existe.
+          oneOf:
+            - $ref: '#/components/schemas/Uuid'
+            - type: 'null'
+        advertencias:
+          type: array
+          description: Solo `SPRINT_NO_ENCONTRADO` (las demás las calcula Integraciones al mapear).
+          items:
+            $ref: '#/components/schemas/AdvertenciaFila'
+        cambios:
+          oneOf:
+            - $ref: '#/components/schemas/CambiosHdu'
+            - type: 'null'
+    ResultadoUpsertHdu:
+      type: object
+      required: [simulado, filas]
+      additionalProperties: false
+      properties:
+        simulado:
+          type: boolean
+        filas:
+          type: array
+          description: Una por fila pedida, en el mismo orden.
+          items:
+            $ref: '#/components/schemas/ResultadoFilaUpsert'
 
   headers:
     XTraceId:

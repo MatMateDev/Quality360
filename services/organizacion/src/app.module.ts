@@ -23,6 +23,8 @@ import { SaludController } from './api/controladores/salud.controller.js';
 import { SesionController } from './api/controladores/sesion.controller.js';
 import { SupervisionController } from './api/controladores/supervision.controller.js';
 import { UsuariosController } from './api/controladores/usuarios.controller.js';
+import { IntegracionesInternoController } from './api/controladores/integraciones-interno.controller.js';
+import { AdministradorConSesionGuard } from './api/guardias/administrador-con-sesion.guard.js';
 import { CargaSemillaGuard } from './api/guardias/carga-semilla.guard.js';
 import { SesionOServicioGuard } from './api/guardias/sesion-o-servicio.guard.js';
 import { ConfiguracionModule } from './configuracion.module.js';
@@ -63,8 +65,9 @@ export class AppModule {
         CatalogosController,
         HduController,
         CargaSemillaController,
+        IntegracionesInternoController,
       ],
-      providers: [SesionOServicioGuard, CargaSemillaGuard],
+      providers: [SesionOServicioGuard, CargaSemillaGuard, AdministradorConSesionGuard],
     };
   }
 }

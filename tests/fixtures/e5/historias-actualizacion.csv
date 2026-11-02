@@ -1,0 +1,5 @@
+codigo,titulo,descripcion,prioridad,celula,sprint,qe_correo
+ARC-1,Alta de cliente actualizada,Registro básico,CRITICA,,,
+ARC-2,Baja de cliente,,MEDIA,,,
+E7-H1,Título desde archivo,Descripción desde archivo,ALTA,,,
+ARC-5,Alta quinta,,BAJA,,,

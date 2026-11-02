@@ -82,4 +82,16 @@
   --q360-color-imp-escalado-suave: #eef4ff;
   --q360-color-imp-resuelto: #0f5132;
   --q360-color-imp-resuelto-suave: #e5f6ec;
+
+  /* E5 · resultado de una ejecución o de una fila: solo ALIAS de los pares de E4 (ningún hexadecimal nuevo). */
+  --q360-color-res-exitosa: var(--q360-color-imp-resuelto);
+  --q360-color-res-exitosa-suave: var(--q360-color-imp-resuelto-suave);
+  --q360-color-res-con-errores: var(--q360-color-imp-abierto);
+  --q360-color-res-con-errores-suave: var(--q360-color-imp-abierto-suave);
+  --q360-color-res-incompleta: var(--q360-color-imp-escalado);
+  --q360-color-res-incompleta-suave: var(--q360-color-imp-escalado-suave);
+  --q360-color-res-fallida: var(--q360-color-riesgo-alto);
+  --q360-color-res-fallida-suave: var(--q360-color-riesgo-alto-suave);
+  --q360-color-res-neutra: var(--q360-color-solo-lectura);
+  --q360-color-res-neutra-suave: var(--q360-color-solo-lectura-suave);
 }

@@ -22,8 +22,8 @@ export class CatalogosAplicacion {
     return { items: await this.catalogos.listarCelulas() };
   }
 
-  async sprints(): Promise<{ items: Sprint[] }> {
-    return { items: await this.catalogos.listarSprints() };
+  async sprints(celulaId?: string): Promise<{ items: Sprint[] }> {
+    return { items: await this.catalogos.listarSprints(celulaId) };
   }
 
   /**
