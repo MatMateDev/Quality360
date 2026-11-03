@@ -219,12 +219,12 @@ export class IntegracionesAplicacion {
     // 4. No existe: célula, sprint y QE.
     const nombreCelula = textoNoVacio(fila.celula);
     let celula: Celula | null;
-    if (nombreCelula !== null) celula = await this.catalogos.buscarCelulaPorNombre(nombreCelula);
+    if (nombreCelula !== null) celula = await unidad.buscarCelulaPorNombre(nombreCelula);
     else celula = contexto.destino.celula;
     if (celula === null) return this.errorDeFila(fila, 'CELULA_NO_ENCONTRADA');
 
     const nombreSprint = textoNoVacio(fila.sprint);
-    const sprintDeLaCelula = nombreSprint === null ? null : await this.catalogos.buscarSprintDeCelulaPorNombre(celula.id, nombreSprint);
+    const sprintDeLaCelula = nombreSprint === null ? null : await unidad.buscarSprintDeCelulaPorNombre(celula.id, nombreSprint);
     const sprint = elegirSprint({
       nombreEnFila: nombreSprint,
       sprintDeLaCelula,
@@ -235,7 +235,7 @@ export class IntegracionesAplicacion {
     if (!sprint.ok) return this.errorDeFila(fila, sprint.motivo);
 
     const correoQe = textoNoVacio(fila.qeCorreo);
-    const qe = correoQe === null ? contexto.qeDestino : await this.usuarios.buscarPorCorreo(correoQe.toLowerCase());
+    const qe = correoQe === null ? contexto.qeDestino : await unidad.buscarUsuarioPorCorreo(correoQe.toLowerCase());
     if (!esQeResponsableValido(qe)) return this.errorDeFila(fila, 'QE_INVALIDO');
 
     let idHistoria: string | null = null;

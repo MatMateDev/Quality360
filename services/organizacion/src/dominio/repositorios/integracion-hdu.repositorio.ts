@@ -1,5 +1,5 @@
 import type { HduExistente } from '../reglas/upsert-hdu.js';
-import type { Actor, OrigenHdu, PrioridadHdu } from '../tipos.js';
+import type { Actor, Celula, OrigenHdu, PrioridadHdu, Sprint, Usuario } from '../tipos.js';
 
 /** Token de inyección del repositorio del upsert de E5. */
 export const INTEGRACION_HDU_REPOSITORIO = Symbol('INTEGRACION_HDU_REPOSITORIO');
@@ -32,6 +32,10 @@ export interface DatosActualizacionUpsert {
 /** Las operaciones de una HDU dentro de UNA transacción (o sin escribir, en una simulación). */
 export interface UnidadTrabajoUpsert {
   buscarPorCodigoNormalizado(codigoNormalizado: string): Promise<HduParaUpsert | null>;
+  /** Las referencias de la fila usan la misma conexión que el alta, incluso con un pool de tamaño 1. */
+  buscarCelulaPorNombre(nombre: string): Promise<Celula | null>;
+  buscarSprintDeCelulaPorNombre(celulaId: string, nombre: string): Promise<Sprint | null>;
+  buscarUsuarioPorCorreo(correo: string): Promise<Usuario | null>;
   /** Mismo camino de alta que `POST /v1/hdu`: HDU en `PENDIENTE`, sprint vigente, historial inicial y auditoría `CREAR_HDU`. */
   crear(datos: DatosAltaUpsert, actor: Actor): Promise<{ id: string }>;
   /** Actualiza y audita `ACTUALIZAR_HDU` con antes y después. Nunca toca estado, analista, QE, célula ni sprint. */
