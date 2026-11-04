@@ -12,6 +12,7 @@ import { actorDeSolicitud } from '../guardias/obtener-actor.js';
 import { AdministradorConSesionGuard } from '../guardias/administrador-con-sesion.guard.js';
 import type { SolicitudConActor } from '../guardias/sesion-o-servicio.guard.js';
 import { leerDestino, leerSolicitudUpsert } from '../validacion/integraciones.js';
+import { leerEstadoCodigos, leerValidarAsignaciones } from '../validacion/integraciones-consulta.js';
 
 @Publico()
 @UseGuards(AdministradorConSesionGuard)
@@ -27,6 +28,20 @@ export class IntegracionesInternoController {
   @HttpCode(200)
   async destino(@Body() cuerpo: unknown) {
     return this.integraciones.resolverDestino(leerDestino(cuerpo));
+  }
+
+  /** Lectura (D136): estado de las HDU por código para clasificar una consulta de Jira. */
+  @Post('hdu/estado-codigos')
+  @HttpCode(200)
+  async estadoCodigos(@Body() cuerpo: unknown) {
+    return this.integraciones.estadoCodigos(leerEstadoCodigos(cuerpo));
+  }
+
+  /** Lectura (D138, D151): valida combinaciones de asignación y propone el sprint. */
+  @Post('asignaciones/validar')
+  @HttpCode(200)
+  async validarAsignaciones(@Body() cuerpo: unknown) {
+    return this.integraciones.validarAsignaciones(leerValidarAsignaciones(cuerpo));
   }
 
   @Post('hdu/upsert')

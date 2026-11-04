@@ -27,7 +27,9 @@ info:
       `/v1/interno/acceso` y `/v1/interno/hdu/ambito`, valida el destino con
       `POST /v1/interno/integraciones/destino` y escribe HDU solo con
       `POST /v1/interno/integraciones/hdu/upsert`, siempre con el token del
-      usuario (nunca con la credencial de servicio).
+      usuario (nunca con la credencial de servicio). Consulta de Jira (D136,
+      D138, D151): lee con `POST /v1/interno/integraciones/hdu/estado-codigos`
+      y valida con `POST /v1/interno/integraciones/asignaciones/validar`.
 
     **Reglas que aplica en cada solicitud**
     - Identidad desde el token verificado (`sub`); rol y `activo` desde su base
@@ -411,6 +413,90 @@ paths:
         '500':
           $ref: '#/components/responses/ErrorInterno'
 
+  /v1/interno/integraciones/hdu/estado-codigos:
+    post:
+      operationId: estadoCodigosHduIntegracion
+      tags: [Acceso interno]
+      summary: Estado de HDU por código (clasificación de una consulta)
+      description: |
+        Lectura (usa POST para enviar la lista). Integraciones la llama al
+        guardar cada tanda de una consulta de Jira (D136) con el token del
+        Administrador: por cada código (sin distinguir mayúsculas, D97) dice
+        si existe y, si existe, su id, estado, origen, título, descripción,
+        prioridad y el nombre del QE responsable. 1 a 100 códigos (101 → 400).
+        No escribe ni audita. Solo Administrador activo; la credencial de
+        servicio → 403. Un código con formato inválido se responde `existe:
+        false` (la regla de formato la aplica Integraciones al mapear).
+      x-roles: [ADMINISTRADOR]
+      x-hdu: [E5-B02#4, E5-B05#2]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: './comun.v1.yaml#/components/schemas/SolicitudEstadoCodigos'
+      responses:
+        '200':
+          description: Estado por código, en el orden pedido.
+          content:
+            application/json:
+              schema:
+                $ref: './comun.v1.yaml#/components/schemas/ResultadoEstadoCodigos'
+        '400':
+          $ref: '#/components/responses/Validacion'
+        '401':
+          $ref: '#/components/responses/NoAutenticado'
+        '403':
+          $ref: '#/components/responses/AccesoDenegado'
+        '500':
+          $ref: '#/components/responses/ErrorInterno'
+
+  /v1/interno/integraciones/asignaciones/validar:
+    post:
+      operationId: validarAsignacionesIntegracion
+      tags: [Acceso interno]
+      summary: Validar asignaciones y proponer sprint
+      description: |
+        Lectura (usa POST para enviar la lista). Integraciones la llama al
+        editar filas de una consulta y antes de confirmar (D138, D140), con el
+        token del Administrador; 1 a 100 combinaciones. Reglas, solo para los
+        campos presentes: célula existente y activa (`CATALOGO_INVALIDO`,
+        campo `celulaId`); QE activo con rol QE (`QE_INVALIDO`); analista
+        activo con rol Analista QA (`ANALISTA_INVALIDO`) **y del equipo
+        vigente del QE de la misma combinación** (`ANALISTA_FUERA_DE_EQUIPO`;
+        también si viene `analistaId` sin `qeResponsableId`); sprint existente
+        y **de la célula** (`CATALOGO_INVALIDO`, campo `sprintId`, D120).
+        Devuelve los nombres para guardarlos en la fila (D148) y
+        `celulaSinLiderActivo` (aviso, D138). Con `proponerSprint` y sin
+        `sprintId`, propone (D137): el sprint de esa célula cuyo nombre
+        coincide sin distinguir mayúsculas con `nombreJira` (`JIRA`); si no,
+        `respaldoId` si es de la célula (`RESPALDO`); si no, ninguno. Responde
+        200 aunque haya errores. Solo Administrador activo; la credencial de
+        servicio → 403.
+      x-roles: [ADMINISTRADOR]
+      x-hdu: [E5-F05#4, E5-F05#11, E5-B05#4, E5-B05#8]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: './comun.v1.yaml#/components/schemas/SolicitudValidarAsignaciones'
+      responses:
+        '200':
+          description: Resultado por combinación, en el orden pedido.
+          content:
+            application/json:
+              schema:
+                $ref: './comun.v1.yaml#/components/schemas/ResultadoValidarAsignaciones'
+        '400':
+          $ref: '#/components/responses/Validacion'
+        '401':
+          $ref: '#/components/responses/NoAutenticado'
+        '403':
+          $ref: '#/components/responses/AccesoDenegado'
+        '500':
+          $ref: '#/components/responses/ErrorInterno'
+
   /v1/interno/integraciones/hdu/upsert:
     post:
       operationId: upsertHduIntegracion
@@ -454,8 +540,30 @@ paths:
         mismo sin escribir ni auditar. Un fallo inesperado en una fila →
         `ERROR` `ERROR_INTERNO` sin afectar a las demás. No llama a
         Certificaciones ni a Impedimentos.
+
+        **Modo confirmación** (con `consultaId`, D140, D151). Cada fila trae
+        `operacion`; `destino` y `sprintNoEncontrado` no se usan.
+        - `CREAR`: reglas de la fila (paso 1); si el código ya existe →
+          `OMITIDA` `HDU_CREADA_DESPUES` (nunca actualiza; también si la
+          unicidad salta al insertar, E5-B05-T21). Vuelve a validar
+          `asignacion` con D138 (célula activa, QE activo con rol QE,
+          analista activo del equipo vigente del QE, sprint de la célula);
+          si falla → `ERROR` `ASIGNACION_INVALIDA` con `errorAsignacion`.
+          Crea en `PENDIENTE` **con** la célula, el sprint, el QE y el
+          analista elegidos, `creado_por` = el Administrador, por el mismo
+          caso de uso que `POST /v1/hdu` (historial inicial de estado), más
+          una entrada inicial en `hdu_historial_asignacion` (analista
+          anterior `null`, motivo fijo «Asignación inicial al confirmar la
+          consulta de Jira», actor el Administrador) y la auditoría
+          `CREAR_HDU` con `origen`, `consultaId` y la asignación (D141).
+        - `ACTUALIZAR`: paso 3 con `vincularExistentes: true` para esa fila
+          (D144): `CERRADA` → `OMITIDA` `HDU_CERRADA`; sin diferencias →
+          `OMITIDA` `SIN_CAMBIOS`; si no, actualiza solo título,
+          descripción y prioridad (`ACTUALIZAR_HDU` con antes y después);
+          una `MANUAL` pasa a `JIRA` con `claveExterna` y `urlExterna`. Si
+          la HDU no existe → `ERROR` `ERROR_INTERNO`.
       x-roles: [ADMINISTRADOR]
-      x-hdu: [E5-B02#1, E5-B03#2, E5-B03#3]
+      x-hdu: [E5-B02#1, E5-B03#2, E5-B03#3, E5-B05#6, E5-B05#7, E5-B05#9]
       requestBody:
         required: true
         content:
@@ -1590,10 +1698,21 @@ paths:
         reasignación (D54). Solo el Administrador, porque trae correos. Por
         defecto solo activos. E5 (D120): es también el catálogo de «QE
         responsable por defecto» de la configuración de Jira
-        (`?rol=QE&activo=true`); no se agrega otro.
+        (`?rol=QE&activo=true`); no se agrega otro. Consulta de Jira (D147):
+        `supervisorId=<qeId>` devuelve los Analistas QA **activos del equipo
+        vigente** de ese QE (selector de analista de la consulta); implica
+        `rol=ANALISTA_QA` (otro `rol` → 400) y `activo=true`. Un QE sin
+        analistas → 200 con `items: []` (es el dato real: «Este QE no tiene
+        analistas en su equipo»). Un `supervisorId` que no es QE activo → 422
+        `QE_INVALIDO`.
       x-roles: [ADMINISTRADOR]
-      x-hdu: [E7-B05#1, E5-F01#1]
+      x-hdu: [E7-B05#1, E5-F01#1, E5-F05#4, E5-B05#4]
       parameters:
+        - name: supervisorId
+          in: query
+          required: false
+          schema:
+            $ref: './comun.v1.yaml#/components/schemas/Uuid'
         - name: rol
           in: query
           required: false
@@ -1618,6 +1737,12 @@ paths:
           $ref: '#/components/responses/NoAutenticado'
         '403':
           $ref: '#/components/responses/AccesoDenegado'
+        '422':
+          description: '`QE_INVALIDO`: `supervisorId` no es un QE activo (D147).'
+          content:
+            application/json:
+              schema:
+                $ref: './comun.v1.yaml#/components/schemas/Error'
         '500':
           $ref: '#/components/responses/ErrorInterno'
 

@@ -2,9 +2,10 @@
  * Rutas de Integraciones (E5, D127): se reenvían tal cual a la misma ruta del
  * servicio (`INTEGRACIONES_URL`), sin composición.
  *
- * Declaradas una por una (las 10 rutas y 11 operaciones de
+ * Declaradas una por una (las 16 rutas y 18 operaciones de
  * `integraciones.v1.yaml`), sin comodín: lo que no está aquí responde 404 y
- * `/v1/interno/*` no se publica.
+ * `/v1/interno/*` no se publica. `POST jira/sincronizaciones` se retiró con la
+ * consulta y asignación (D132): responde 404 como cualquier ruta inexistente.
  *
  * - Si `INTEGRACIONES_URL` falta en producción o es inválida, la URL es `null`
  *   y estas rutas responden 503 `SERVICIO_NO_DISPONIBLE` sin llamar a nadie; el
@@ -14,9 +15,11 @@
  * - El cuerpo de hasta 1,5 MB de `archivos/*` lo admite `crear-app.ts`.
  * - El gateway no autoriza (D4, D126): el rol y el ámbito los decide
  *   Integraciones, y su 403 o 404 llega tal cual. Las escrituras pasan por el
- *   límite de tasa estricto.
+ *   límite de tasa estricto, salvo `PATCH jira/consultas/:id/items`, que usa
+ *   su propio cubo (D152).
+ * - Los 409, 410 y 422 de la consulta y sus cuerpos extendidos llegan tal cual.
  */
-import { Controller, Get, Param, Post, Put, Req, Res } from '@nestjs/common';
+import { Controller, Get, Param, Patch, Post, Put, Req, Res } from '@nestjs/common';
 import type { Response } from 'express';
 
 import { Reenviador, type SolicitudGateway } from '../aplicacion/reenviador.js';
@@ -58,11 +61,47 @@ export class IntegracionesController {
     await this.reenviar(solicitud, respuesta, '/v1/integraciones/jira/configuracion/eventos');
   }
 
-  // ------------------------------------------------------------ Sincronización (E5-B02)
+  // ------------------------------------------------------------ Consulta y asignación (E5-B02, E5-B05)
 
-  @Post('jira/sincronizaciones')
-  async sincronizar(@Req() solicitud: SolicitudGateway, @Res() respuesta: Response): Promise<void> {
-    await this.reenviar(solicitud, respuesta, '/v1/integraciones/jira/sincronizaciones');
+  @Post('jira/consultas')
+  async consultar(@Req() solicitud: SolicitudGateway, @Res() respuesta: Response): Promise<void> {
+    await this.reenviar(solicitud, respuesta, '/v1/integraciones/jira/consultas');
+  }
+
+  // Antes de `jira/consultas/:id`, para que `actual` no se tome como id.
+  @Get('jira/consultas/actual')
+  async consultaActual(@Req() solicitud: SolicitudGateway, @Res() respuesta: Response): Promise<void> {
+    await this.reenviar(solicitud, respuesta, '/v1/integraciones/jira/consultas/actual');
+  }
+
+  @Get('jira/consultas/:id')
+  async consulta(@Param('id') id: string, @Req() solicitud: SolicitudGateway, @Res() respuesta: Response): Promise<void> {
+    await this.reenviar(solicitud, respuesta, `/v1/integraciones/jira/consultas/${uuidDeRuta(id)}`);
+  }
+
+  @Post('jira/consultas/:id/continuaciones')
+  async continuar(@Param('id') id: string, @Req() solicitud: SolicitudGateway, @Res() respuesta: Response): Promise<void> {
+    await this.reenviar(solicitud, respuesta, `/v1/integraciones/jira/consultas/${uuidDeRuta(id)}/continuaciones`);
+  }
+
+  @Get('jira/consultas/:id/items')
+  async items(@Param('id') id: string, @Req() solicitud: SolicitudGateway, @Res() respuesta: Response): Promise<void> {
+    await this.reenviar(solicitud, respuesta, `/v1/integraciones/jira/consultas/${uuidDeRuta(id)}/items`);
+  }
+
+  @Patch('jira/consultas/:id/items')
+  async editarItems(@Param('id') id: string, @Req() solicitud: SolicitudGateway, @Res() respuesta: Response): Promise<void> {
+    await this.reenviar(solicitud, respuesta, `/v1/integraciones/jira/consultas/${uuidDeRuta(id)}/items`);
+  }
+
+  @Post('jira/consultas/:id/confirmaciones')
+  async confirmar(@Param('id') id: string, @Req() solicitud: SolicitudGateway, @Res() respuesta: Response): Promise<void> {
+    await this.reenviar(solicitud, respuesta, `/v1/integraciones/jira/consultas/${uuidDeRuta(id)}/confirmaciones`);
+  }
+
+  @Post('jira/consultas/:id/descartes')
+  async descartar(@Param('id') id: string, @Req() solicitud: SolicitudGateway, @Res() respuesta: Response): Promise<void> {
+    await this.reenviar(solicitud, respuesta, `/v1/integraciones/jira/consultas/${uuidDeRuta(id)}/descartes`);
   }
 
   // ------------------------------------------------------------ Archivos (E5-B03)

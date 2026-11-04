@@ -9,7 +9,7 @@ import { middlewareTraza } from '@quality360/auth-nest';
 import helmet from 'helmet';
 
 import { AppModule } from './app.module.js';
-import type { ConfiguracionGateway } from './configuracion.js';
+import { AVISO_URL_OPCIONAL, type ConfiguracionGateway } from './configuracion.js';
 import { RUTA_ARCHIVOS, archivoMuyGrande, lectorCuerpoArchivos, lectoresCuerpoGenerales } from './middlewares/cuerpo.js';
 import { manejadorErrores } from './middlewares/errores-express.js';
 import { crearLimitadores } from './middlewares/limite-tasa.js';
@@ -32,10 +32,13 @@ export async function crearApp(
     bodyParser: false,
   });
 
-  // Servicios opcionales sin URL (D127, D129): se dice una sola vez, sin el valor.
+  // Servicios opcionales sin URL (D127, D129) y límites tolerantes (D152): se dice una
+  // sola vez, sin el valor.
   if (opciones.registro !== false) {
     const registro = new Logger('Configuracion');
-    for (const aviso of configuracion.avisos) registro.warn(`${aviso}: sus rutas responderán 503`);
+    for (const aviso of configuracion.avisos) {
+      registro.warn(aviso.endsWith(AVISO_URL_OPCIONAL) ? `${aviso}: sus rutas responderán 503` : aviso);
+    }
   }
 
   app.disable('x-powered-by');
@@ -60,6 +63,7 @@ export async function crearApp(
   const limitadores = crearLimitadores(configuracion);
   app.use('/v1', limitadores.general);
   app.use('/v1', limitadores.escritura);
+  app.use('/v1', limitadores.consulta);
 
   // Cuerpo: 1,5 MB solo en /v1/integraciones/archivos/* (413 ARCHIVO_MUY_GRANDE);
   // el resto, el límite por defecto. Va después del límite de tasa.

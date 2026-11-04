@@ -57,19 +57,25 @@ async function esperarOrganizacion() {
 
 try {
   await esperarOrganizacion();
-  const celula = (await servicio('POST', '/v1/interno/carga/celulas', { nombre: datos.celula })).json.celula;
+  const celulas = new Map();
+  async function celulaDe(nombre) {
+    if (!celulas.has(nombre)) celulas.set(nombre, (await servicio('POST', '/v1/interno/carga/celulas', { nombre })).json.celula);
+    return celulas.get(nombre);
+  }
   const resumen = [];
   for (const s of datos.sprints) {
+    const nombreCelula = s.celula ?? datos.celula;
+    const celula = await celulaDe(nombreCelula);
     const inicio = sumarDias(hoy, s.inicioDias);
     const fin = sumarDias(hoy, s.finDias);
     const r = await servicio('POST', '/v1/interno/carga/sprints', { nombre: s.nombre, inicio, fin, celulaId: celula.id });
     // Idempotencia por nombre: si ya existía en otra célula, no sirve para CEL-C (D120).
     if (r.json.sprint.celulaId && r.json.sprint.celulaId !== celula.id) {
-      throw new Error(`${s.nombre} ya existe en otra célula: la regla sprint–célula (D120) lo hace inutilizable para ${datos.celula}.`);
+      throw new Error(`${s.nombre} ya existe en otra célula: la regla sprint–célula (D120) lo hace inutilizable para ${nombreCelula}.`);
     }
-    resumen.push(`${s.nombre} (${r.json.creado ? 'creado' : 'ya existía'})`);
+    resumen.push(`${s.nombre} en ${nombreCelula} (${r.json.creado ? 'creado' : 'ya existía'})`);
   }
-  console.log(`Semilla E5 cargada en ${datos.celula}: ${resumen.join('; ')}.`);
+  console.log(`Semilla E5 cargada:${resumen.join('; ')}.`);
 } catch (e) {
   console.error(`Semilla E5 incompleta: ${e.message}`);
   process.exit(1);

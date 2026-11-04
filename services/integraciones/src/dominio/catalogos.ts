@@ -5,6 +5,7 @@
 import type {
   AdvertenciaFila,
   CodigoErrorIntegracion,
+  FaseEjecucion,
   ErrorIntegracion,
   MotivoFila,
   OrigenEjecucion,
@@ -24,6 +25,7 @@ const MENSAJES_ERROR: Readonly<Record<CodigoErrorIntegracion, string>> = {
   PRESUPUESTO_DE_TIEMPO: 'Se alcanzó el tiempo máximo. Continúa para procesar el resto.',
   ORGANIZACION_NO_DISPONIBLE: 'No pudimos guardar las HDU en este momento.',
   MODO_ESTRICTO: 'No se importó nada porque el modo estricto detectó filas con error.',
+  TOPE_DE_CONSULTA: 'La consulta llegó a 500 filas. Confirma lo que corresponda y consulta de nuevo para traer el resto.',
   ARCHIVO_VACIO: 'El archivo está vacío o no tiene filas de datos.',
   FORMATO_NO_SOPORTADO: 'El formato no es compatible. Usa un archivo .csv o .json.',
   ARCHIVO_ILEGIBLE: 'No pudimos leer el archivo. Revisa que sea un CSV bien formado o un JSON con una lista de historias.',
@@ -35,7 +37,9 @@ const MENSAJES_ERROR: Readonly<Record<CodigoErrorIntegracion, string>> = {
  * Sugerencias en orden: la primera es la acción principal (D117). `ORGANIZACION_NO_DISPONIBLE` nunca sugiere
  * importar un archivo, porque el archivo también escribe a través de Organización.
  */
-export function sugerenciasDe(codigo: CodigoErrorIntegracion, origen: OrigenEjecucion, hayContinuarDesde: boolean): SugerenciaIntegracion[] {
+export function sugerenciasDe(codigo: CodigoErrorIntegracion, origen: OrigenEjecucion, hayContinuarDesde: boolean, fase: FaseEjecucion = 'CONSULTA'): SugerenciaIntegracion[] {
+  // Las ejecuciones directas anteriores a D132 ya no se continúan (D150).
+  const puedeContinuar = fase !== 'DIRECTA';
   const esJira = origen === 'JIRA';
   switch (codigo) {
     case 'JIRA_CREDENCIAL_INVALIDA':
@@ -45,13 +49,15 @@ export function sugerenciasDe(codigo: CodigoErrorIntegracion, origen: OrigenEjec
     case 'JIRA_SIN_PERMISO':
       return ['REVISAR_PERMISOS', 'IMPORTAR_ARCHIVO'];
     case 'JIRA_LIMITE_DE_TASA':
-      return [hayContinuarDesde ? 'CONTINUAR' : 'REINTENTAR', 'IMPORTAR_ARCHIVO'];
+      return [hayContinuarDesde && puedeContinuar ? 'CONTINUAR' : 'REINTENTAR', 'IMPORTAR_ARCHIVO'];
     case 'JIRA_TIEMPO_AGOTADO':
     case 'JIRA_NO_DISPONIBLE':
     case 'JIRA_RESPUESTA_INVALIDA':
       return ['REINTENTAR', 'IMPORTAR_ARCHIVO'];
     case 'PRESUPUESTO_DE_TIEMPO':
-      return [esJira ? 'CONTINUAR' : 'IMPORTAR_MISMO_ARCHIVO'];
+      return [esJira ? (puedeContinuar ? 'CONTINUAR' : 'REINTENTAR') : 'IMPORTAR_MISMO_ARCHIVO'];
+    case 'TOPE_DE_CONSULTA':
+      return [];
     case 'ORGANIZACION_NO_DISPONIBLE':
       return [esJira ? 'REINTENTAR' : 'IMPORTAR_MISMO_ARCHIVO'];
     case 'MODO_ESTRICTO':
@@ -90,6 +96,8 @@ const MENSAJES_FILA: Readonly<Record<MotivoFila, string>> = {
   SPRINT_NO_ENCONTRADO: 'El sprint no existe',
   SPRINT_REQUERIDO: 'Indica un sprint de esa célula',
   QE_INVALIDO: 'El QE responsable no es válido',
+  HDU_CREADA_DESPUES: 'La HDU se creó mientras revisabas la consulta. No se modificó',
+  ASIGNACION_INVALIDA: 'La asignación ya no es válida',
   ERROR_INTERNO: 'No pudimos procesar esta fila',
 };
 

@@ -157,6 +157,7 @@ Agrégalas **antes** de pulsar Deploy:
 | `IMPEDIMENTOS_TIMEOUT_MS` | Opcional; si falta, vale `TIEMPO_LIMITE_SERVICIO_MS` |
 | `INTEGRACIONES_URL` | URL real de `quality360-integraciones`. **Opcional** (D127): si falta o es inválida, el gateway arranca igual y solo «Integraciones» muestra «No disponible» (503) |
 | `INTEGRACIONES_TIMEOUT_MS` | Opcional (12000 por defecto). Debe ser mayor que `INTEGRACIONES_PRESUPUESTO_MS` de Integraciones |
+| `LIMITE_TASA_CONSULTA_MAX` | Opcional (120 por minuto por defecto, D152). Cubo propio de `PATCH /v1/integraciones/jira/consultas/{id}/items`; un valor inválido usa el de por defecto y no impide arrancar |
 | `PORTAL_ORIGENES` | `https://quality360-portal.vercel.app` (ajústala cuando exista) |
 | `CONFIAR_PROXY` | `1` |
 | `TIEMPO_LIMITE_FUENTE_MS` | `10000` |

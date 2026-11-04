@@ -341,6 +341,34 @@ export type ListaPersonas = components["schemas"]["ListaPersonas"];
 export type PersonaCatalogo = components["schemas"]["PersonaCatalogo"];
 export type EstadoConexionJira = components["schemas"]["EstadoConexionJira"];
 
+// E5 · consulta de Jira y asignación (D132–D152)
+export type FaseEjecucion = components["schemas"]["FaseEjecucion"];
+export type EstadoConsulta = components["schemas"]["EstadoConsulta"];
+export type GrupoConsulta = components["schemas"]["GrupoConsulta"];
+export type OrigenSprintPropuesto = components["schemas"]["OrigenSprintPropuesto"];
+export type Consulta = components["schemas"]["Consulta"];
+export type ConsultaActual = components["schemas"]["ConsultaActual"];
+export type ResultadoConsultaJira = components["schemas"]["ResultadoConsultaJira"];
+export type ItemConsulta = components["schemas"]["ItemConsulta"];
+export type PaginaItemsConsulta = components["schemas"]["PaginaItemsConsulta"];
+export type AsignacionFila = components["schemas"]["AsignacionFila"];
+export type AsignacionNombres = components["schemas"]["AsignacionNombres"];
+export type CampoAsignacion = components["schemas"]["CampoAsignacion"];
+export type CambioAsignacion = components["schemas"]["CambioAsignacion"];
+/** `marcarListas` tiene valor por defecto en el contrato: el tipo generado lo exige, el portal lo manda solo cuando corresponde. */
+export type SolicitudEdicionItems = Omit<components["schemas"]["SolicitudEdicionItems"], "marcarListas"> & { marcarListas?: boolean };
+export type ResultadoEdicionItems = components["schemas"]["ResultadoEdicionItems"];
+export type FilaRechazada = components["schemas"]["FilaRechazada"];
+export type ResultadoConfirmacion = components["schemas"]["ResultadoConfirmacion"];
+export type Persona = components["schemas"]["Persona"];
+export type SolicitudConsultaJira =components["schemas"]["SolicitudConsultaJira"];
+export type SolicitudConfirmacion = components["schemas"]["SolicitudConfirmacion"];
+export type SugerenciaAsignacion = components["schemas"]["SugerenciaAsignacion"];
+export type MotivoRechazoFila = components["schemas"]["MotivoRechazoFila"];
+export type ErrorConsultaAbierta = components["schemas"]["ErrorConsultaAbierta"];
+export type ErrorConsulta = components["schemas"]["ErrorConsulta"];
+export type ErrorAsignacionesInvalidas = components["schemas"]["ErrorAsignacionesInvalidas"];
+
 /** Una ruta pedida antes del login solo se reutiliza si pertenece al portal del propio rol (D41). */
 export function rutaPermitidaParaRol(ruta: string, rol: Rol): boolean {
   const duenio = rolDePortal(ruta);

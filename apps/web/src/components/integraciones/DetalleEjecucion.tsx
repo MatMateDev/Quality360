@@ -6,7 +6,8 @@ import { Paginacion } from "@/components/bandeja/Paginacion";
 import { TablaBandeja, type Columna } from "@/components/bandeja/TablaBandeja";
 import type { FiltrosUrl } from "@/lib/filtrosUrl";
 import { formatearFecha } from "@/lib/formato";
-import { textoMotivo } from "@/lib/mensajesIntegracion";
+import { ETIQUETAS_FASE, textoMotivo } from "@/lib/mensajesIntegracion";
+import { textoAsignacionNombres } from "@/lib/mensajesAsignacion";
 import { RUTAS_INTEGRACIONES } from "@/lib/rutasIntegraciones";
 import { formatearDuracion, formatearTamano, origenDe } from "@/lib/textosEjecucion";
 import { ErrorApi } from "@/lib/httpClient";
@@ -14,6 +15,7 @@ import { ETIQUETAS_ROL, type Ejecucion, type FilaEjecucion } from "@/types/domin
 import { CeldaCambios } from "./CeldaCambios";
 import { ErrorIntegracion } from "./ErrorIntegracion";
 import { ChipsAdvertencias, InsigniaFilaEjecucion, InsigniaResultado } from "./Insignias";
+import { ResumenConsulta } from "./ResumenConsulta";
 import { ResumenEjecucion } from "./ResumenEjecucion";
 
 interface Props {
@@ -73,7 +75,7 @@ export function DetalleEjecucion({ id, filtros, soloLectura, continuarId }: Prop
         {ejecucion.data ? (
           <>
             <Cabecera ejecucion={ejecucion.data} titulo={titulo} soloLectura={soloLectura} continuarId={continuarId} />
-            <Filas ejecucion={ejecucion.data} filas={filas} soloErrores={soloErrores} pagina={pagina} filtros={filtros} />
+            {ejecucion.data.fase === "CONSULTA" ? <NotaConsulta soloLectura={soloLectura} /> : <Filas ejecucion={ejecucion.data} filas={filas} soloErrores={soloErrores} pagina={pagina} filtros={filtros} />}
           </>
         ) : null}
       </BloqueDatos>
@@ -94,6 +96,10 @@ function Cabecera({ ejecucion: e, titulo, soloLectura, continuarId }: { ejecucio
         </span>
       </div>
       <dl className="detalle-ejecucion__meta">
+        <div>
+          <dt>Fase</dt>
+          <dd data-testid="fase-ejecucion">{ETIQUETAS_FASE[e.fase]}</dd>
+        </div>
         <div>
           <dt>Origen</dt>
           <dd>{origenDe(e)}{e.archivo ? ` (${formatearTamano(e.archivo.tamano)})` : ""}</dd>
@@ -140,13 +146,22 @@ function Cabecera({ ejecucion: e, titulo, soloLectura, continuarId }: { ejecucio
       {e.codigoError ? (
         <ErrorIntegracion testId="error-ejecucion" codigo={e.codigoError} contexto={{ conError: e.conError }} sugerencias={e.sugerencias} acciones={acciones} enfocar={false} />
       ) : null}
-      {!soloLectura && continuarId === e.id ? (
+      {!soloLectura && continuarId === e.id && e.fase !== "DIRECTA" ? (
         <p className="mensaje-aviso" role="note">
           <Link to={RUTAS_INTEGRACIONES.sincronizar}>Ir a Sincronizar para continuar</Link>
         </p>
       ) : null}
-      <ResumenEjecucion ejecucion={e} enCurso={e.resultado === "EN_CURSO"} />
+      {e.fase === "CONSULTA" ? <ResumenConsulta cifras={e} /> : <ResumenEjecucion ejecucion={e} enCurso={e.resultado === "EN_CURSO"} />}
     </section>
+  );
+}
+
+/** Una consulta no tiene filas de detalle: viven en la consulta abierta (diseño §11). */
+function NotaConsulta({ soloLectura }: { soloLectura: boolean }) {
+  return (
+    <p className="campo-ayuda" data-testid="nota-detalle-consulta">
+      El detalle de una consulta está en {soloLectura ? "Consultar Jira" : <Link to={RUTAS_INTEGRACIONES.sincronizar}>Consultar Jira</Link>} mientras esté abierta.
+    </p>
   );
 }
 
@@ -197,6 +212,9 @@ function Filas({ ejecucion: e, filas, soloErrores, pagina, filtros }: { ejecucio
       ),
     },
     { id: "cambios", titulo: "Cambios", render: (f) => <CeldaCambios cambios={f.cambios} /> },
+    ...(e.fase === "CONFIRMACION"
+      ? [{ id: "asignacion", titulo: "Asignación", render: (f: FilaEjecucion) => <span data-testid={`celda-asignacion-${f.fila}`}>{textoAsignacionNombres(f.asignacion)}</span> } satisfies Columna<FilaEjecucion>]
+      : []),
     ...(e.origen === "JIRA"
       ? [
           {

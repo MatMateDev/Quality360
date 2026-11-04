@@ -27,13 +27,15 @@ interface Props {
   /** Mueve el foco al panel al aparecer (se anuncia). */
   enfocar?: boolean;
   idReintentar?: string;
+  /** Texto propio del botón de reintento («Consultar de nuevo»); por defecto el de la sugerencia. */
+  textoReintentar?: string;
 }
 
 /**
  * Panel `role="alert"` de un error de integración. El texto sale de la tabla local por código (D105, D117): nunca se
  * muestra el `mensajeError` que llega del servidor. Las sugerencias son enlaces/botones solo si hay `acciones`.
  */
-export function ErrorIntegracion({ testId, codigo, contexto, titulo, sugerencias = [], acciones, pie, enfocar = true, idReintentar }: Props) {
+export function ErrorIntegracion({ testId, codigo, contexto, titulo, sugerencias = [], acciones, pie, enfocar = true, idReintentar, textoReintentar }: Props) {
   const raiz = useRef<HTMLDivElement>(null);
   useEffect(() => {
     if (enfocar) raiz.current?.focus();
@@ -57,7 +59,7 @@ export function ErrorIntegracion({ testId, codigo, contexto, titulo, sugerencias
       if (s === "REINTENTAR" && acciones.reintentar)
         return (
           <button key={s} type="button" className="boton boton--secundario" data-testid={idReintentar ?? "boton-reintentar-sincronizacion"} onClick={acciones.reintentar}>
-            {texto}
+            {textoReintentar ?? texto}
           </button>
         );
       if (s === "CONTINUAR" && acciones.continuar)

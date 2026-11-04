@@ -23,6 +23,8 @@ export function configuracionPrueba(organizacionUrl: string | null, cambios: Par
     esperaMax429Ms: 3000,
     topeIssues: 100,
     enCursoMaxMs: 300_000,
+    consultaVigenciaMs: 86_400_000,
+    consultaTopeItems: 500,
     permitirHostPrueba: true,
     verificador: resolverOpcionesVerificador({ emisor: EMISOR, audiencia: AUDIENCIA, secretoHs256: SECRETO }),
     ...cambios,

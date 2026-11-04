@@ -68,6 +68,8 @@ function unidadEscritura(tx: Prisma.TransactionClient): UnidadTrabajoUpsert {
             origen: datos.origen,
             claveExterna: datos.claveExterna,
             urlExterna: datos.urlExterna,
+            analistaId: datos.analistaId ?? null,
+            consultaId: datos.consultaId ?? null,
           },
           actor,
         );

@@ -2,6 +2,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
+import { clasificarFila } from '../../../src/dominio/consulta/clasificacion.js';
 import { adfATexto } from '../../../src/dominio/mapeo/adf-a-texto.js';
 import { validarFilasArchivo, type FilaCruda } from '../../../src/dominio/mapeo/fila-archivo.js';
 import { mapearIssue } from '../../../src/dominio/mapeo/issue.js';
@@ -207,6 +208,33 @@ describe('mapearIssue', () => {
     });
   });
 
+  it('datos borde (E5 consulta §13): título 200 sin espacios, descripción 1.000 y sprint 80 pasan intactos, sin SPRINT_NO_ENCONTRADO', () => {
+    const titulo = 'T'.repeat(200);
+    const descripcion = 'd'.repeat(1000);
+    const sprint = 'S'.repeat(80);
+    const f = mapearIssue(base({ clave: 'QTY-15', titulo, descripcionAdf: doc(parrafo(texto(descripcion))), sprints: [{ nombre: sprint, estado: 'active', fin: null }] }), 15, SITIO);
+    assert.equal(f.titulo, titulo);
+    assert.equal(f.descripcion, descripcion);
+    assert.equal(f.sprint, sprint);
+    assert.deepEqual(f.advertencias, []);
+    assert.equal(f.error, null);
+  });
+
+  it('mapearIssue nunca agrega SPRINT_NO_ENCONTRADO (se calcula al asignar); un sprint desconocido se entrega por nombre', () => {
+    const f = mapearIssue(base({ sprints: [{ nombre: 'Sprint que no existe en Quality360', estado: 'future', fin: null }] }), 1, SITIO);
+    assert.equal(f.sprint, 'Sprint que no existe en Quality360');
+    assert.equal(f.error, null);
+    assert.equal(f.advertencias.includes('SPRINT_NO_ENCONTRADO'), false);
+    assert.equal(mapearIssue(base({ sprints: [] }), 1, SITIO).sprint, null);
+  });
+
+  it('un carácter más allá del borde trunca: título 201 y descripción 1.001 con su advertencia', () => {
+    const f = mapearIssue(base({ titulo: 'T'.repeat(201), descripcionAdf: doc(parrafo(texto('d'.repeat(1001)))) }), 1, SITIO);
+    assert.equal(f.titulo?.length, 200);
+    assert.equal(f.descripcion?.length, 1000);
+    assert.deepEqual(f.advertencias, ['TITULO_TRUNCADO', 'DESCRIPCION_TRUNCADA']);
+  });
+
   it('QTY-3: descripción null no es error, prioridad Highest y sprint cerrado', () => {
     const f = mapearIssue(base({ clave: 'QTY-3', descripcionAdf: null, prioridad: 'Highest', sprints: [{ nombre: 'Sprint Externo 9', estado: 'closed', fin: '2026-01-01' }] }), 3, SITIO);
     assert.equal(f.prioridad, 'CRITICA');
@@ -314,7 +342,7 @@ describe('mapearIssue', () => {
     assert.equal(resultado.error, null);
   });
 
-  it('rechaza una etiqueta de célula desconocida', () => {
+  it('una etiqueta de célula desconocida no rechaza la fila: célula null y se usa la de la Conexión', () => {
     const issue = base({
       clave: 'HDU-3',
       labels: ['celula-desconocida'],
@@ -323,10 +351,11 @@ describe('mapearIssue', () => {
     const resultado = mapearIssue(issue, 3, SITIO);
 
     assert.equal(resultado.celula, null);
-    assert.equal(resultado.error, 'CELULA_NO_ENCONTRADA');
+    assert.equal(resultado.error, null);
+    assert.equal(clasificarFila(resultado, null).grupo, 'NUEVA');
   });
 
-  it('rechaza dos etiquetas de células contradictorias', () => {
+  it('dos etiquetas de células contradictorias no rechazan la fila: célula null y grupo NUEVA', () => {
     const issue = base({
       clave: 'HDU-4',
       labels: ['celula-pagos', 'celula-clientes'],
@@ -336,7 +365,8 @@ describe('mapearIssue', () => {
 
     assert.equal(resultado.codigo, 'HDU-4');
     assert.equal(resultado.celula, null);
-    assert.equal(resultado.error, 'CELULA_NO_ENCONTRADA');
+    assert.equal(resultado.error, null);
+    assert.equal(clasificarFila(resultado, null).grupo, 'NUEVA');
   });
   it('la URL externa cabe en 300 caracteres con clave de 40', () => {
     const f = mapearIssue(base({ clave: 'A'.repeat(40) }), 1, 'https://' + 'a'.repeat(63) + '.atlassian.net');

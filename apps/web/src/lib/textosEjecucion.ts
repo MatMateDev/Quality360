@@ -26,11 +26,16 @@ export function textoSinCambios(e: Pick<Ejecucion, "leidas">, modo: Modo): strin
 }
 
 export function titularResultado(e: Pick<Ejecucion, "resultado" | "conError">, modo: Modo): string | null {
-  const nombre = modo === "jira" ? "Sincronización completa." : "Importación completa.";
+  const nombre = modo === "jira" ? "Consulta completa." : "Importación completa.";
   if (e.resultado === "EXITOSA") return nombre;
   if (e.resultado === "CON_ERRORES") return `${nombre} ${e.conError} ${e.conError === 1 ? "fila tuvo errores y las demás se procesaron" : "filas tuvieron errores y las demás se procesaron"}.`;
   if (e.resultado === "INTERRUMPIDA") return "La ejecución quedó sin terminar.";
   return null;
+}
+
+/** «10 nuevas · 0 cambiaron · 0 sin cambios» (una consulta no crea ni actualiza: diseño §11). */
+export function textoContadoresConsulta(e: Pick<Ejecucion, "nuevas" | "cambiaron" | "sinCambios">): string {
+  return `${e.nuevas} ${e.nuevas === 1 ? "nueva" : "nuevas"} · ${e.cambiaron} ${e.cambiaron === 1 ? "cambió" : "cambiaron"} · ${e.sinCambios} sin cambios`;
 }
 
 export function formatearTamano(bytes: number): string {

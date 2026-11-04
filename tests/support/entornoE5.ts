@@ -145,3 +145,36 @@ export async function integracionesCaida(): Promise<{ gatewayUrl: string; portal
     },
   };
 }
+
+/**
+ * Proxy HTTP delante de Organización que corta (destruye el socket) toda petición cuya URL contenga `fragmento`, tras `permitir` llamadas
+ * a esa ruta. Sirve para dejar caer solo la clasificación (`estado-codigos`), la pre-validación (`asignaciones/validar`) o el upsert.
+ */
+export async function proxyCortaRuta(destino: string, puerto: number, fragmento: string, permitir = 0): Promise<ProxyOrganizacion & { llamadas: () => number; reanudar: () => void }> {
+  const { createServer, request } = await import("node:http");
+  let llamadas = 0;
+  let cortar = true;
+  const destinoUrl = new URL(destino);
+  const servidor = createServer((req, res) => {
+    const coincide = (req.url ?? "").includes(fragmento);
+    if (coincide) llamadas += 1;
+    if (coincide && cortar && llamadas > permitir) {
+      req.socket.destroy();
+      return;
+    }
+    const saliente = request({ host: destinoUrl.hostname, port: destinoUrl.port, path: req.url, method: req.method, headers: req.headers }, (r) => {
+      res.writeHead(r.statusCode ?? 502, r.headers);
+      r.pipe(res);
+    });
+    saliente.on("error", () => req.socket.destroy());
+    req.pipe(saliente);
+  });
+  await new Promise<void>((ok) => servidor.listen(puerto, "127.0.0.1", () => ok()));
+  return {
+    url: `http://127.0.0.1:${puerto}`,
+    llamadasUpsert: () => llamadas,
+    llamadas: () => llamadas,
+    reanudar: () => { cortar = false; },
+    cerrar: () => new Promise<void>((ok) => { servidor.closeAllConnections?.(); servidor.close(() => ok()); }),
+  };
+}

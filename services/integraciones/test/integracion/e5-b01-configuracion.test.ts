@@ -134,13 +134,13 @@ describe('E5-B01#1 · cifrado', () => {
     assert.equal(get.body.token.descifrable, false);
   });
 
-  it('E5-B01-T04 con una llave distinta: sincronizar y probar (sin token en el cuerpo) dan 409 TOKEN_NO_DESCIFRABLE sin llamar a Jira; con la llave original vuelve a funcionar', async () => {
+  it('E5-B01-T04 con una llave distinta: consultar y probar (sin token en el cuerpo) dan 409 TOKEN_NO_DESCIFRABLE sin llamar a Jira; con la llave original vuelve a funcionar', async () => {
     const a = await montar({ org });
     assert.equal((await guardarConfiguracion(a)).status, 200);
 
     // La instancia «B» comparte la base de la «A» pero tiene otra llave.
     const b = await montar({ org, conservarDatos: true, config: { llaveCifrado: Buffer.alloc(32, 99) } });
-    const sincronizar = await b.pedir('post', '/v1/integraciones/jira/sincronizaciones', 'adm1', {});
+    const sincronizar = await b.pedir('post', '/v1/integraciones/jira/consultas', 'adm1', {});
     const probar = await b.pedir('post', '/v1/integraciones/jira/configuracion/probar', 'adm1', {});
     const get = await b.pedir('get', '/v1/integraciones/jira/configuracion', 'adm1');
     const llamadasB = b.jira.llamadas.length;
@@ -449,7 +449,7 @@ describe('E5-B01-T12 · el esquema y los privilegios del rol svc_integraciones',
         WHERE c.contype = 'f' AND n.nspname = 'integraciones'`,
     );
     for (const fk of foraneas) {
-      assert.match(fk.referenciada, /^(integraciones\.)?(ejecucion_integracion)$/, `FK inesperada ${fk.tabla} → ${fk.referenciada}`);
+      assert.match(fk.referenciada, /^(integraciones\.)?(ejecucion_integracion|consulta_jira)$/, `FK inesperada ${fk.tabla} → ${fk.referenciada}`);
     }
     await assert.rejects(prismaServicio.$queryRawUnsafe('SELECT 1 FROM organizacion.historia_usuario'), /permission denied|42501/);
     await assert.rejects(prismaServicio.$executeRawUnsafe('DELETE FROM integraciones.evento_configuracion'), /permission denied|42501/);

@@ -24,6 +24,10 @@ export interface ConfiguracionIntegraciones {
   topeIssues: number;
   /** Una ejecución `EN_CURSO` de más de este tiempo se cierra como `INTERRUMPIDA` (D104). */
   enCursoMaxMs: number;
+  /** Vigencia de una consulta desde la última llamada a Jira (D134). */
+  consultaVigenciaMs: number;
+  /** Tope de filas de una consulta (D135). */
+  consultaTopeItems: number;
   /** Admite `http://127.0.0.1:<puerto>` como sitio de Jira. Siempre `false` con `NODE_ENV=production` (D95). */
   permitirHostPrueba: boolean;
   verificador: OpcionesVerificador;
@@ -82,6 +86,8 @@ export function cargarConfiguracion(entorno: NodeJS.ProcessEnv = process.env): C
     esperaMax429Ms: leerEntero(entorno.JIRA_ESPERA_MAX_429_MS, 3000, 'JIRA_ESPERA_MAX_429_MS', 0),
     topeIssues: leerEntero(entorno.JIRA_TOPE_ISSUES, 100, 'JIRA_TOPE_ISSUES'),
     enCursoMaxMs: leerEntero(entorno.INTEGRACIONES_EN_CURSO_MAX_MS, 300_000, 'INTEGRACIONES_EN_CURSO_MAX_MS'),
+    consultaVigenciaMs: leerEntero(entorno.INTEGRACIONES_CONSULTA_VIGENCIA_MS, 86_400_000, 'INTEGRACIONES_CONSULTA_VIGENCIA_MS'),
+    consultaTopeItems: leerEntero(entorno.INTEGRACIONES_CONSULTA_TOPE_ITEMS, 500, 'INTEGRACIONES_CONSULTA_TOPE_ITEMS'),
     permitirHostPrueba: !produccion && leerBooleano(entorno.INTEGRACIONES_PERMITIR_HOST_PRUEBA),
     verificador: opcionesDesdeEntorno(entorno),
   };

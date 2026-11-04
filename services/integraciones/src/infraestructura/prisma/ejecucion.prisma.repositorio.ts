@@ -17,7 +17,7 @@ import { PrismaService } from './prisma.service.js';
 type Cliente = Prisma.TransactionClient;
 
 /** El índice único parcial `ejecucion_en_curso_key` no lo conoce Prisma: llega como P2002 o como 23505 crudo. */
-function esViolacionDeUnicidad(error: unknown): boolean {
+export function esViolacionDeUnicidad(error: unknown): boolean {
   if (error instanceof Prisma.PrismaClientKnownRequestError) {
     if (error.code === 'P2002') return true;
     const codigoPg = (error.meta as { code?: unknown } | undefined)?.code;
@@ -46,6 +46,60 @@ async function cerrarComoInterrumpida(tx: Cliente, id: string, iniciadaEn: Date,
   });
 }
 
+/** Cierra como `INTERRUMPIDA` las abandonadas e inserta la nueva `EN_CURSO`. Lo comparten la consulta y la confirmación. */
+export async function iniciarEnTransaccion(tx: Cliente, datos: DatosInicioEjecucion, enCursoMaxMs: number) {
+  const limite = new Date(datos.iniciadaEn.getTime() - enCursoMaxMs);
+  const abandonadas = await tx.ejecucionIntegracion.findMany({ where: { terminadaEn: null, iniciadaEn: { lt: limite } }, select: { id: true, iniciadaEn: true } });
+  for (const abandonada of abandonadas) await cerrarComoInterrumpida(tx, abandonada.id, abandonada.iniciadaEn, datos.iniciadaEn);
+  return tx.ejecucionIntegracion.create({
+    data: {
+      origen: datos.origen,
+      fase: datos.fase ?? 'DIRECTA',
+      consultaId: datos.consultaId ?? null,
+      estricto: datos.estricto,
+      vincularExistentes: datos.vincularExistentes,
+      actorId: datos.actor.id,
+      actorNombre: datos.actor.nombre,
+      actorRol: datos.actor.rol,
+      iniciadaEn: datos.iniciadaEn,
+      resultado: 'EN_CURSO',
+      proyectoClave: datos.proyecto,
+      sitioHost: datos.sitioHost,
+      archivoNombre: datos.archivo?.nombre ?? null,
+      archivoTamano: datos.archivo?.tamano ?? null,
+      archivoHuella: datos.archivo?.huella ?? null,
+    },
+  });
+}
+
+/** Cierra una ejecución una sola vez; el disparador rechaza cualquier cambio posterior. */
+export function cerrarEnTransaccion(tx: Cliente, ejecucionId: string, cierre: DatosCierreEjecucion) {
+  return tx.ejecucionIntegracion.update({
+    where: { id: ejecucionId },
+    data: {
+      resultado: cierre.resultado,
+      terminadaEn: cierre.terminadaEn,
+      duracionMs: cierre.duracionMs,
+      leidas: cierre.leidas,
+      creadas: cierre.creadas,
+      actualizadas: cierre.actualizadas,
+      omitidas: cierre.omitidas,
+      conError: cierre.conError,
+      conAdvertencias: cierre.conAdvertencias,
+      nuevas: cierre.nuevas ?? 0,
+      cambiaron: cierre.cambiaron ?? 0,
+      sinCambios: cierre.sinCambios ?? 0,
+      ...(cierre.consultaId === undefined ? {} : { consultaId: cierre.consultaId }),
+      reintentos429: cierre.eventos.length,
+      codigoError: cierre.codigoError,
+      mensajeError: cierre.mensajeError,
+      hayMas: cierre.hayMas,
+      continuarDesde: cierre.continuarDesde,
+      eventos: cierre.eventos.map((evento) => ({ tipo: evento.tipo, espera_ms: evento.esperaMs, fecha: evento.fecha.toISOString() })),
+    },
+  });
+}
+
 function json(valor: unknown): Prisma.InputJsonValue | typeof Prisma.DbNull {
   return valor === null || valor === undefined ? Prisma.DbNull : (valor as Prisma.InputJsonValue);
 }
@@ -58,28 +112,7 @@ export class EjecucionPrismaRepositorio extends EjecucionRepositorio {
 
   async iniciar(datos: DatosInicioEjecucion, enCursoMaxMs: number): Promise<Ejecucion> {
     try {
-      const creada = await this.prisma.$transaction(async (tx) => {
-        const limite = new Date(datos.iniciadaEn.getTime() - enCursoMaxMs);
-        const abandonadas = await tx.ejecucionIntegracion.findMany({ where: { terminadaEn: null, iniciadaEn: { lt: limite } }, select: { id: true, iniciadaEn: true } });
-        for (const abandonada of abandonadas) await cerrarComoInterrumpida(tx, abandonada.id, abandonada.iniciadaEn, datos.iniciadaEn);
-        return tx.ejecucionIntegracion.create({
-          data: {
-            origen: datos.origen,
-            estricto: datos.estricto,
-            vincularExistentes: datos.vincularExistentes,
-            actorId: datos.actor.id,
-            actorNombre: datos.actor.nombre,
-            actorRol: datos.actor.rol,
-            iniciadaEn: datos.iniciadaEn,
-            resultado: 'EN_CURSO',
-            proyectoClave: datos.proyecto,
-            sitioHost: datos.sitioHost,
-            archivoNombre: datos.archivo?.nombre ?? null,
-            archivoTamano: datos.archivo?.tamano ?? null,
-            archivoHuella: datos.archivo?.huella ?? null,
-          },
-        });
-      });
+      const creada = await this.prisma.$transaction((tx) => iniciarEnTransaccion(tx, datos, enCursoMaxMs));
       return aEjecucion(creada);
     } catch (error) {
       if (esViolacionDeUnicidad(error)) throw new IntegracionEnCurso();
@@ -102,32 +135,13 @@ export class EjecucionPrismaRepositorio extends EjecucionRepositorio {
         advertencias: fila.advertencias,
         cambios: json(fila.cambios),
         referencia: json(fila.referencia),
+        asignacion: json(fila.asignacion),
       })),
     });
   }
 
   async cerrar(ejecucionId: string, cierre: DatosCierreEjecucion): Promise<Ejecucion> {
-    const cerrada = await this.prisma.ejecucionIntegracion.update({
-      where: { id: ejecucionId },
-      data: {
-        resultado: cierre.resultado,
-        terminadaEn: cierre.terminadaEn,
-        duracionMs: cierre.duracionMs,
-        leidas: cierre.leidas,
-        creadas: cierre.creadas,
-        actualizadas: cierre.actualizadas,
-        omitidas: cierre.omitidas,
-        conError: cierre.conError,
-        conAdvertencias: cierre.conAdvertencias,
-        reintentos429: cierre.eventos.length,
-        codigoError: cierre.codigoError,
-        mensajeError: cierre.mensajeError,
-        hayMas: cierre.hayMas,
-        continuarDesde: cierre.continuarDesde,
-        eventos: cierre.eventos.map((evento) => ({ tipo: evento.tipo, espera_ms: evento.esperaMs, fecha: evento.fecha.toISOString() })),
-      },
-    });
-    return aEjecucion(cerrada);
+    return aEjecucion(await cerrarEnTransaccion(this.prisma, ejecucionId, cierre));
   }
 
   async interrumpir(ejecucionId: string, terminadaEn: Date, duracionMs: number): Promise<void> {
@@ -148,6 +162,7 @@ export class EjecucionPrismaRepositorio extends EjecucionRepositorio {
     if (filtro.hastaExcluyente !== undefined) iniciadaEn.lt = filtro.hastaExcluyente;
     const where: Prisma.EjecucionIntegracionWhereInput = {
       ...(filtro.origen === undefined ? {} : { origen: filtro.origen }),
+      ...(filtro.fase === undefined ? {} : { fase: filtro.fase }),
       ...(filtro.resultado === undefined ? {} : { resultado: filtro.resultado }),
       ...(Object.keys(iniciadaEn).length === 0 ? {} : { iniciadaEn }),
     };
@@ -176,17 +191,15 @@ export class EjecucionPrismaRepositorio extends EjecucionRepositorio {
     return { items: filas.map(aFilaDetalle), total, ocultas: totalBase - total };
   }
 
-  async estado(): Promise<{ ultima: Ejecucion | null; ultimaCompletada: Ejecucion | null; ultimaJira: Ejecucion | null; enCurso: Ejecucion | null }> {
-    const [ultima, completada, jira, enCurso] = await this.prisma.$transaction([
+  async estado(): Promise<{ ultima: Ejecucion | null; ultimaCompletada: Ejecucion | null; enCurso: Ejecucion | null }> {
+    const [ultima, completada, enCurso] = await this.prisma.$transaction([
       this.prisma.ejecucionIntegracion.findFirst({ orderBy: [{ iniciadaEn: 'desc' }, { id: 'desc' }] }),
       this.prisma.ejecucionIntegracion.findFirst({ where: { resultado: { in: ['EXITOSA', 'CON_ERRORES'] } }, orderBy: [{ iniciadaEn: 'desc' }, { id: 'desc' }] }),
-      this.prisma.ejecucionIntegracion.findFirst({ where: { origen: 'JIRA' }, orderBy: [{ iniciadaEn: 'desc' }, { id: 'desc' }] }),
       this.prisma.ejecucionIntegracion.findFirst({ where: { terminadaEn: null }, orderBy: { iniciadaEn: 'desc' } }),
     ]);
     return {
       ultima: ultima === null ? null : aEjecucion(ultima),
       ultimaCompletada: completada === null ? null : aEjecucion(completada),
-      ultimaJira: jira === null ? null : aEjecucion(jira),
       enCurso: enCurso === null ? null : aEjecucion(enCurso),
     };
   }

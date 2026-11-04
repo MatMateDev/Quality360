@@ -93,10 +93,6 @@ export async function guardarConfigBase(request: APIRequestContext, sobre: Recor
   return api.put(request, "/v1/integraciones/jira/configuracion", { token: await tk("adm1"), body: await cuerpoConfigBase(request, sobre) });
 }
 
-export async function sincronizar(request: APIRequestContext, body: Record<string, unknown> = {}, baseURL?: string): Promise<RespuestaApi<any>> {
-  return api.post(request, "/v1/integraciones/jira/sincronizaciones", { token: await tk("adm1"), body, baseURL });
-}
-
 export function cuerpoArchivo(nombre: string, contenido?: string, extra: Record<string, unknown> = {}): Record<string, unknown> {
   const formato = nombre.toLowerCase().endsWith(".json") ? "JSON" : "CSV";
   return { formato, nombre, contenido: contenido ?? leerFixture(nombre), ...extra };
@@ -161,7 +157,7 @@ async function borrarCascada(c: import("pg").Client, tabla: string, donde: strin
  */
 export async function limpiarE5(): Promise<void> {
   await conConexion(DATABASE_URL_DUENO, async (c) => {
-    const ids = (await c.query(`SELECT id_historia FROM organizacion.historia_usuario WHERE origen <> 'MANUAL' OR codigo LIKE $1`, [`${PREFIJO_MANUAL}%`])).rows.map((r) => r.id_historia as string);
+    const ids = (await c.query(`SELECT id_historia FROM organizacion.historia_usuario WHERE origen <> 'MANUAL' OR codigo LIKE $1 OR codigo ~ '^(QTY|BIG|EXACTO|ENORME)-[0-9]+$'`, [`${PREFIJO_MANUAL}%`])).rows.map((r) => r.id_historia as string);
     if (ids.length > 0) {
       // Los disparadores de integridad (RI) de Impedimentos fallan con «permission denied» al borrar su tabla de acciones; el dueño de la base
       // (superusuario) los desactiva durante la limpieza.
@@ -176,6 +172,7 @@ export async function limpiarE5(): Promise<void> {
       await borrarCascada(c, "organizacion.historia_usuario", "id_historia = ANY($1::uuid[])", ids);
       await c.query("SET session_replication_role = DEFAULT");
     }
+    await c.query("TRUNCATE integraciones.consulta_item, integraciones.consulta_jira CASCADE");
     await c.query("TRUNCATE integraciones.detalle_ejecucion, integraciones.ejecucion_integracion, integraciones.evento_configuracion, integraciones.configuracion_jira CASCADE");
   });
   await jiraFalso.reset();
@@ -203,13 +200,6 @@ export function contieneSecreto(texto: string, token = TOKEN_FALSO): string | un
   return cadenasSecretas(token).find((s) => texto.includes(s));
 }
 
-/** Sincroniza y devuelve la ejecución. Falla si la API no responde 200. */
-export async function sincronizarOk(request: APIRequestContext, body: Record<string, unknown> = {}): Promise<any> {
-  const r = await sincronizar(request, body);
-  if (r.status !== 200) throw new Error(`sincronizar: ${r.status} ${JSON.stringify(r.body)}`);
-  return r.body;
-}
-
 /** Escritura de HDU manual de la prueba (QE responsable). */
 export async function crearHduManual(request: APIRequestContext, codigo: string, qe: ClaveE7 = "qe2"): Promise<RespuestaApi<any>> {
   const d = await destino(request);
@@ -217,18 +207,6 @@ export async function crearHduManual(request: APIRequestContext, codigo: string,
     token: await tk(qe),
     body: { codigo, titulo: `Manual ${codigo}`, prioridad: "MEDIA", celulaId: d.celulaId, sprintId: d.sprint1Id },
   });
-}
-
-/** Prepara R1–R4 del estado previo de E5-F04. */
-export async function prepararR1aR4(request: APIRequestContext): Promise<{ r1: any; r2: any; r3: any; r4: any }> {
-  await estadoConfigBase(request);
-  const r1 = await sincronizarOk(request);
-  const r2 = (await importar(request, "historias-validas.csv")).body;
-  const r3 = (await importar(request, "historias-con-errores.csv")).body;
-  await jiraFalso.modo("CAIDO");
-  const r4 = await sincronizarOk(request);
-  await jiraFalso.modo("NORMAL");
-  return { r1, r2, r3, r4 };
 }
 
 /**

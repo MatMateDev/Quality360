@@ -53,6 +53,7 @@ function detalleDeError(fila: FilaMapeada): FilaDetalle {
     advertencias: unirAdvertencias(fila.advertencias),
     cambios: null,
     referencia: fila.referencia,
+    asignacion: null,
   };
 }
 
@@ -68,6 +69,7 @@ function detalleDeResultado(fila: FilaMapeada, resultado: ResultadoFilaUpsert): 
     advertencias: unirAdvertencias(fila.advertencias, resultado.advertencias),
     cambios: resultado.cambios,
     referencia: fila.referencia,
+    asignacion: null,
   };
 }
 

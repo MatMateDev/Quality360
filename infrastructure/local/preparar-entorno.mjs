@@ -29,7 +29,10 @@ const completos = () =>
   readFileSync(join(RAIZ, 'apps/gateway/.env'), 'utf8').includes('IMPEDIMENTOS_URL=') &&
   // E5: Integraciones con su llave de cifrado de desarrollo (D128); el gateway le reenvía.
   readFileSync(join(RAIZ, 'services/integraciones/.env'), 'utf8').includes('INTEGRACIONES_LLAVE_CIFRADO=') &&
-  readFileSync(join(RAIZ, 'apps/gateway/.env'), 'utf8').includes('INTEGRACIONES_URL=');
+  readFileSync(join(RAIZ, 'apps/gateway/.env'), 'utf8').includes('INTEGRACIONES_URL=') &&
+  // E5 consulta: variables sin valor fijo (vacío = valor por defecto del servicio).
+  readFileSync(join(RAIZ, 'services/integraciones/.env'), 'utf8').includes('INTEGRACIONES_CONSULTA_VIGENCIA_MS=') &&
+  readFileSync(join(RAIZ, 'apps/gateway/.env'), 'utf8').includes('LIMITE_TASA_CONSULTA_MAX=');
 if (!forzar && completos()) {
   console.log('Configuración local ya existe (usa --forzar para regenerarla).');
   process.exit(0);
@@ -122,6 +125,10 @@ escribir('services/integraciones/.env', {
   INTEGRACIONES_LLAVE_CIFRADO: llaveCifrado,
   // Solo local: deja que el Jira simulado (127.0.0.1:4010) pase la validación del sitio (D95).
   INTEGRACIONES_PERMITIR_HOST_PRUEBA: 'true',
+  // E5 consulta (D134, D135): sin valor fijo; vacío = por defecto (24 h y 500 filas). Para la instancia I6
+  // se sobreescribe con la variable del proceso (tiene prioridad sobre --env-file), ver infrastructure/README.md.
+  INTEGRACIONES_CONSULTA_VIGENCIA_MS: '',
+  INTEGRACIONES_CONSULTA_TOPE_ITEMS: '',
   X_Q360_SERVICIO_TOKEN: token,
 });
 escribir('apps/gateway/.env', {
@@ -135,6 +142,8 @@ escribir('apps/gateway/.env', {
   CERTIFICACIONES_URL: 'http://localhost:3002',
   IMPEDIMENTOS_URL: 'http://localhost:3003',
   INTEGRACIONES_URL: 'http://localhost:3004',
+  // D152: cubo propio de la edición de la consulta; vacío = 120 por minuto.
+  LIMITE_TASA_CONSULTA_MAX: '',
 });
 escribir('apps/web/.env.local', {
   VITE_USAR_MOCKS: 'false',

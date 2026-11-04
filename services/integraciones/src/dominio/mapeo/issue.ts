@@ -49,7 +49,8 @@ export function mapearIssue(issue: IssueJira, posicion: number, sitio: string): 
   const codigoValido = clave.length > 0 && clave.length <= LIMITES.codigoMax && PATRON_CODIGO.test(clave);
   if (!codigoValido) error = 'CODIGO_INVALIDO';
   const celulaDesdeEtiquetas = obtenerCelulaDesdeEtiquetas(issue.labels);
-  if (celulaDesdeEtiquetas.invalida) error ??= 'CELULA_NO_ENCONTRADA';
+  // Una etiqueta desconocida o contradictoria no invalida la fila: en la consulta (D136) la célula la elige el Administrador
+  // y la sugerida es la de la Conexión; `celula` queda null y solo una etiqueta reconocida aporta una pista.
 
 
   let titulo: string | null = limpiarLinea(typeof issue.titulo === 'string' ? issue.titulo : '');

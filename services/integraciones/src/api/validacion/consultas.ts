@@ -3,12 +3,13 @@ import { errorValidacion } from '@quality360/auth-nest';
 
 import type { EntradaDetalle, EntradaListado } from '../../aplicacion/historial.servicio.js';
 import { diaSiguiente, inicioDeDiaSantiago } from '../../dominio/fechas.js';
-import type { OrigenEjecucion, ResultadoEjecucion, ResultadoFila } from '../../dominio/tipos.js';
+import type { FaseEjecucion, OrigenEjecucion, ResultadoEjecucion, ResultadoFila } from '../../dominio/tipos.js';
 import { Acumulador, consultaBooleana, consultaEnumerada, consultaFecha, consultaTexto, leerPaginacion } from './comunes.js';
 
 type Consulta = Record<string, unknown>;
 
 const ORIGENES: readonly OrigenEjecucion[] = ['JIRA', 'CSV', 'JSON'];
+const FASES: readonly FaseEjecucion[] = ['DIRECTA', 'CONSULTA', 'CONFIRMACION'];
 const RESULTADOS: readonly ResultadoEjecucion[] = ['EN_CURSO', 'EXITOSA', 'CON_ERRORES', 'INCOMPLETA', 'FALLIDA', 'INTERRUMPIDA'];
 const RESULTADOS_FILA: readonly ResultadoFila[] = ['CREADA', 'ACTUALIZADA', 'OMITIDA', 'ERROR'];
 
@@ -16,6 +17,7 @@ const RESULTADOS_FILA: readonly ResultadoFila[] = ['CREADA', 'ACTUALIZADA', 'OMI
 export function leerListado(consulta: Consulta): EntradaListado {
   const a = new Acumulador();
   const origen = consultaEnumerada(consulta, 'origen', ORIGENES, a);
+  const fase = consultaEnumerada(consulta, 'fase', FASES, a);
   const resultado = consultaEnumerada(consulta, 'resultado', RESULTADOS, a);
   const desde = consultaFecha(consulta, 'desde', a);
   const hasta = consultaFecha(consulta, 'hasta', a);
@@ -31,6 +33,7 @@ export function leerListado(consulta: Consulta): EntradaListado {
   return {
     filtro: {
       origen,
+      fase,
       resultado,
       desde: desde === undefined ? undefined : inicioDeDiaSantiago(desde),
       hastaExcluyente: hasta === undefined ? undefined : inicioDeDiaSantiago(diaSiguiente(hasta)),

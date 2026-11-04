@@ -286,7 +286,7 @@ export function PaginaImportar() {
 
         {enCurso ? (
           <p className="mensaje-aviso" role="status" data-testid="aviso-en-curso">
-            Ya hay una importación o sincronización en curso. Espera a que termine.
+            Ya hay una consulta, confirmación o importación en curso. Espera a que termine.
           </p>
         ) : null}
         {fallo && fase === "vista-previa" ? (
