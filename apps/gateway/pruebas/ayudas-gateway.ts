@@ -146,6 +146,7 @@ export function configuracionPrueba(opciones: OpcionesAppPrueba): ConfiguracionG
       ventanaMs: 60_000,
       maximo: 1000,
       maximoEscritura: 1000,
+      maximoConsulta: 1000,
       ...opciones.limiteTasa,
     },
     verificador: resolverOpcionesVerificador({

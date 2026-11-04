@@ -9,6 +9,7 @@ import { ExcepcionQ360, MENSAJES, accesoDenegado, noEncontrado } from '@quality3
 import { ConflictoUnicidad } from '../dominio/errores/conflicto-unicidad.js';
 import { normalizarCodigoHdu } from '../dominio/reglas/alta-hdu.js';
 import { celulaPermitidaParaLider, evaluarAccesoHdu, filtroAmbitoHdu } from '../dominio/reglas/ambito.js';
+import { analistaEstaEnEquipo, esAnalistaAsignable } from '../dominio/reglas/asignacion-hdu.js';
 import { puedeAsignarAnalistaHdu, puedeCambiarEstadoHdu, puedeReasignarQeResponsable } from '../dominio/reglas/permisos-hdu.js';
 import { transicionesPermitidas, validarTransicion } from '../dominio/reglas/transiciones-hdu.js';
 import { CATALOGO_REPOSITORIO, type CatalogoRepositorio } from '../dominio/repositorios/catalogo.repositorio.js';
@@ -170,13 +171,13 @@ export class HduAplicacion {
     if (hdu.estado === 'CERRADA') throw hduCerrada();
 
     const analista = await this.usuarios.buscarPorId(analistaIdSolicitado);
-    if (analista === null || analista.rol !== 'ANALISTA_QA' || !analista.activo) throw analistaInvalido();
+    if (!esAnalistaAsignable(analista)) throw analistaInvalido();
 
     const esAdmin = !contexto.esServicio && contexto.rol === 'ADMINISTRADOR';
     if (!esAdmin) {
       const qeEquipo = contexto.esServicio ? hdu.qeResponsableId : (contexto.actorId as string);
       const equipo = await this.supervision.listarAnalistasVigentesIds(qeEquipo);
-      if (!equipo.includes(analistaIdSolicitado)) throw analistaFueraDeEquipo();
+      if (!analistaEstaEnEquipo(equipo, analistaIdSolicitado)) throw analistaFueraDeEquipo();
     }
 
     const motivo = motivoCrudo?.trim() ?? '';

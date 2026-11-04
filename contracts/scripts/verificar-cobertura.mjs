@@ -1,4 +1,4 @@
-// Verifica que los contratos cubren los escenarios de E1, E2, E3, E4, E5 y E7 del backlog.
+// Verifica que los contratos cubren los escenarios de E1, E2, E3, E4, E5 (con su complemento de consulta y asignación) y E7 del backlog.
 // Uso: npm run contracts:check
 // Un escenario está cubierto si su ID aparece en `x-hdu` de alguna operación,
 // en `x-hdu-transversal` o en `x-escenarios-sin-operacion` de algún contrato.
@@ -8,15 +8,21 @@ import { fileURLToPath } from 'node:url';
 
 const raiz = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 // Escenarios esperados por épica: protege contra un backlog mal leído (3 por HDU).
-const ESPERADOS_POR_EPICA = { E1: 78, E2: 24, E3: 24, E4: 24, E5: 24, E7: 36 };
+// E5 = 24 certificados + 5 agregados a F02/B02/F04/B04 + 27 de F05/B05 (e5-consulta-asignacion.md, sección 11).
+const ESPERADOS_POR_EPICA = { E1: 78, E2: 24, E3: 24, E4: 24, E5: 56, E7: 36 };
 const EPICAS = Object.keys(ESPERADOS_POR_EPICA);
 const ID = /E\d-[FB]\d{2}#\d+/g;
 
-// 1. Escenarios del backlog
-const backlog = readFileSync(join(raiz, 'docs', 'backlog', 'historias-quality360.md'), 'utf8');
+// 1. Escenarios del backlog: el principal más los complementos que agregan o reescriben escenarios
+//    (mismo formato: `### <HDU> ·` y filas `| n |`). Un escenario repetido cuenta una vez.
+const ARCHIVOS_BACKLOG = ['historias-quality360.md', 'e5-consulta-asignacion.md'];
 const esperados = new Set();
 let hdu = null;
-for (const linea of backlog.split(/\r?\n/)) {
+const lineasBacklog = ARCHIVOS_BACKLOG.flatMap((archivo) => [
+  '## (inicio de archivo)',
+  ...readFileSync(join(raiz, 'docs', 'backlog', archivo), 'utf8').split(/\r?\n/),
+]);
+for (const linea of lineasBacklog) {
   const titulo = linea.match(/^### (E\d-[FB]\d{2}) ·/);
   if (titulo) {
     hdu = EPICAS.includes(titulo[1].slice(0, 2)) ? titulo[1] : null;

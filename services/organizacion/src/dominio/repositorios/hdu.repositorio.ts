@@ -23,6 +23,9 @@ export interface DatosNuevaHdu {
   readonly origen?: OrigenHdu;
   readonly claveExterna?: string | null;
   readonly urlExterna?: string | null;
+  /** Confirmación de una consulta de Jira (D141): analista inicial y consulta de origen. */
+  readonly analistaId?: string | null;
+  readonly consultaId?: string | null;
 }
 
 export interface FiltroHdu {
@@ -64,6 +67,8 @@ export interface HduRepositorio {
   crear(datos: DatosNuevaHdu, actor: Actor): Promise<Hdu>;
   buscarPorId(id: string): Promise<Hdu | null>;
   buscarPorCodigoNormalizado(codigoNormalizado: string): Promise<Hdu | null>;
+  /** Una sola consulta para varios códigos (clasificación de una consulta de Jira, D136). */
+  buscarPorCodigosNormalizados(codigosNormalizados: readonly string[]): Promise<Hdu[]>;
   /** Las HDU que existen entre `ids` (sin orden garantizado). */
   buscarPorIds(ids: readonly string[]): Promise<Hdu[]>;
   /** Todas las HDU del ámbito, sin paginar (las bandejas filtran, ordenan y paginan en memoria). */

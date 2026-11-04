@@ -1,4 +1,4 @@
-import { useCallback, useMemo } from "react";
+import { useCallback, useEffect, useMemo, useRef } from "react";
 import { useSearchParams } from "react-router-dom";
 
 export type DireccionOrden = "asc" | "desc";
@@ -33,17 +33,23 @@ export function useFiltrosUrl() {
 
   const get = useCallback((clave: string) => params.get(clave) ?? "", [params]);
 
+  // El `setParams` funcional de React Router evalúa la función contra los parámetros del último render, no contra
+  // el cambio anterior aún no aplicado: dos cambios seguidos pisaban el primero (DEF-E5C-03). Se acumulan aquí.
+  const vigentes = useRef(params);
+  useEffect(() => {
+    vigentes.current = params;
+  }, [params]);
+
   const set = useCallback(
     (cambios: Record<string, string | undefined>) => {
-      setParams((previos) => {
-        const siguientes = new URLSearchParams(previos);
-        for (const [clave, valor] of Object.entries(cambios)) {
-          if (valor) siguientes.set(clave, valor);
-          else siguientes.delete(clave);
-        }
-        if (!("pagina" in cambios)) siguientes.delete("pagina");
-        return siguientes;
-      });
+      const siguientes = new URLSearchParams(vigentes.current);
+      for (const [clave, valor] of Object.entries(cambios)) {
+        if (valor) siguientes.set(clave, valor);
+        else siguientes.delete(clave);
+      }
+      if (!("pagina" in cambios)) siguientes.delete("pagina");
+      vigentes.current = siguientes;
+      setParams(siguientes);
     },
     [setParams],
   );

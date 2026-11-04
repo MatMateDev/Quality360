@@ -3,6 +3,7 @@
 import type {
   AdvertenciaFila,
   CampoConfiguracionJira,
+  FaseEjecucion,
   MotivoFila,
   OrigenEjecucion,
   OrigenHdu,
@@ -12,6 +13,11 @@ import type {
 } from "@/types/dominio";
 
 export const ETIQUETAS_ORIGEN_EJECUCION: Record<OrigenEjecucion, string> = { JIRA: "Jira", CSV: "CSV", JSON: "JSON" };
+
+/** Fase de una ejecución (D141): «Directa» agrupa las anteriores a D132 y las de archivo. */
+export const ETIQUETAS_FASE: Record<FaseEjecucion, string> = { DIRECTA: "Directa", CONSULTA: "Consulta", CONFIRMACION: "Confirmación" };
+
+export const FASES: FaseEjecucion[] = ["CONSULTA", "CONFIRMACION", "DIRECTA"];
 
 export const ETIQUETAS_ORIGEN_HDU: Record<OrigenHdu, string> = { MANUAL: "Manual", JIRA: "Jira", CSV: "CSV", JSON: "JSON" };
 
@@ -61,12 +67,25 @@ const MENSAJES: Record<string, string> = {
   JIRA_TIEMPO_AGOTADO: "Jira no respondió a tiempo.",
   JIRA_NO_DISPONIBLE: "Jira no está disponible por ahora.",
   JIRA_RESPUESTA_INVALIDA: "Jira respondió algo que no entendimos.",
-  JIRA_NO_CONFIGURADO: "Configura la conexión con Jira antes de sincronizar.",
+  JIRA_NO_CONFIGURADO: "Configura la conexión con Jira antes de consultar.",
   PRESUPUESTO_DE_TIEMPO: "Se alcanzó el tiempo máximo. Continúa para procesar el resto.",
   ORGANIZACION_NO_DISPONIBLE: "No pudimos guardar las HDU en este momento.",
   LLAVE_CIFRADO_NO_DISPONIBLE: "La integración no está habilitada en el servidor.",
   TOKEN_NO_DESCIFRABLE: "Vuelve a ingresar el API token.",
-  INTEGRACION_EN_CURSO: "Ya hay una sincronización en curso.",
+  INTEGRACION_EN_CURSO: "Ya hay una consulta o confirmación en curso.",
+  TOPE_DE_CONSULTA: "La consulta llegó a 500 filas. Confirma lo que corresponda y consulta de nuevo para traer el resto.",
+  CONSULTA_LLENA: "La consulta llegó a 500 filas. Confirma lo que corresponda y consulta de nuevo para traer el resto.",
+  CONSULTA_COMPLETA: "La consulta ya leyó todas las historias de Jira.",
+  CONSULTA_VENCIDA: "La consulta venció. Consulta Jira de nuevo.",
+  CONSULTA_NO_ABIERTA: "Esta consulta ya no está abierta.",
+  CONSULTA_NO_ENCONTRADA: "No encontramos esa consulta. Puede que ya no exista.",
+  CONSULTA_MODIFICADA: "Otra persona modificó la consulta. Recargamos la consulta con sus cambios; revisa y confirma de nuevo. No se creó ni se actualizó ninguna HDU.",
+  SIN_SELECCION: "Marca al menos una fila.",
+  QE_INVALIDO: "El QE responsable no es válido.",
+  CATALOGO_INVALIDO: "La célula o el sprint elegidos no son válidos.",
+  FILA_NO_MARCABLE: "Esta fila no se puede incluir.",
+  FILA_NO_ASIGNABLE: "Esta fila no se puede asignar.",
+  SIN_RESPUESTA_CONSULTA: "No recibimos respuesta del servidor. La consulta pudo haberse completado: revisa el Historial antes de reintentar.",
   SIN_RESPUESTA: "No recibimos respuesta del servidor. La operación pudo haberse completado: revisa el Historial antes de reintentar.",
   ARCHIVO_VACIO: "El archivo está vacío o no tiene filas de datos.",
   ARCHIVO_MUY_GRANDE: "El archivo supera el máximo de 1 MB.",
@@ -121,6 +140,8 @@ export const TEXTO_MOTIVO_FILA: Record<MotivoFila, string> = {
   SPRINT_NO_ENCONTRADO: "El sprint no existe",
   SPRINT_REQUERIDO: "Indica un sprint de la célula de la fila",
   QE_INVALIDO: "El QE responsable no es válido",
+  HDU_CREADA_DESPUES: "La HDU se creó mientras revisabas la consulta. No se modificó",
+  ASIGNACION_INVALIDA: "La asignación ya no es válida",
   ERROR_INTERNO: "No pudimos procesar esta fila",
 };
 

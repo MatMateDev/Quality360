@@ -12,6 +12,9 @@ interface Props {
   cerrarAlClicFuera?: boolean;
   /** `data-testid` del contenedor del diálogo. */
   testId?: string;
+  /** `data-testid` de los botones (solo los diálogos que los necesitan). */
+  testIdConfirmar?: string;
+  testIdCancelar?: string;
   onConfirmar: () => void;
   onCancelar: () => void;
 }
@@ -32,6 +35,8 @@ export function DialogoConfirmacion({
   deshabilitado = false,
   cerrarAlClicFuera = true,
   testId,
+  testIdConfirmar,
+  testIdCancelar,
   onConfirmar,
   onCancelar,
 }: Props) {
@@ -87,12 +92,13 @@ export function DialogoConfirmacion({
         <h2 id={idTitulo}>{titulo}</h2>
         {children}
         <div className="dialogo-acciones">
-          <button type="button" className="boton boton--secundario" onClick={onCancelar}>
+          <button type="button" className="boton boton--secundario" data-testid={testIdCancelar} onClick={onCancelar}>
             {etiquetaCancelar}
           </button>
           <button
             type="button"
             className={`boton ${peligro ? "boton--peligro" : "boton--primario"}`}
+            data-testid={testIdConfirmar}
             onClick={onConfirmar}
             disabled={deshabilitado}
           >

@@ -19,6 +19,9 @@ export interface DatosAltaUpsert {
   readonly origen: OrigenHdu;
   readonly claveExterna: string | null;
   readonly urlExterna: string | null;
+  /** Solo al confirmar una consulta (D141): analista inicial y consulta de origen. */
+  readonly analistaId?: string | null;
+  readonly consultaId?: string | null;
 }
 
 export interface DatosActualizacionUpsert {

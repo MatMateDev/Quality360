@@ -25,6 +25,8 @@ interface Issue {
   sprints: Array<{ name: string; state: string; endDate?: string }>;
   status: string;
   assignee: string | null;
+  /** Etiquetas de Jira (p. ej. `celula-pagos`); vacío por defecto. */
+  labels?: string[];
 }
 
 export interface SolicitudRegistrada {
@@ -62,10 +64,11 @@ function datosBase(): Map<string, Issue> {
   ]));
   for (let n = 1; n <= 230; n += 1) poner(crearIssue(`BIG-${n}`, "Story", `Historia grande ${n}`, adf(`Descripción ${n}`), "Medium"));
   for (let n = 1; n <= 100; n += 1) poner(crearIssue(`EXACTO-${n}`, "Story", `Historia exacta ${n}`, adf(`Descripción ${n}`), "Medium"));
+  for (let n = 1; n <= 520; n += 1) poner(crearIssue(`ENORME-${n}`, "Story", `Historia enorme ${n}`, adf(`Descripción ${n}`), "Medium"));
   return m;
 }
 
-const PROYECTOS: Record<string, string> = { QTY: "Quality Tracker", BIG: "Proyecto grande", EXACTO: "Proyecto exacto", VACIO: "Proyecto vacío" };
+const PROYECTOS: Record<string, string> = { QTY: "Quality Tracker", BIG: "Proyecto grande", EXACTO: "Proyecto exacto", VACIO: "Proyecto vacío", ENORME: "Proyecto enorme" };
 
 export interface JiraFalso {
   puerto: number;
@@ -106,6 +109,7 @@ export async function iniciarJiraFalso(puerto = Number(process.env.JIRA_FALSO_PU
         issuetype: { name: i.tipo },
         status: { name: i.status },
         assignee: i.assignee === null ? null : { displayName: i.assignee },
+        labels: i.labels ?? [],
         [campoSprint]: i.sprints.length === 0 ? null : i.sprints.map((s, idx) => ({ id: idx + 1, name: s.name, state: s.state, ...(s.endDate ? { endDate: s.endDate } : {}) })),
       },
     };
@@ -173,6 +177,7 @@ export async function iniciarJiraFalso(puerto = Number(process.env.JIRA_FALSO_PU
           ...(d.description !== undefined ? { description: d.description } : {}),
           ...(d.priority !== undefined ? { priority: d.priority } : {}),
           ...(d.sprints !== undefined ? { sprints: d.sprints } : {}),
+          ...(d.labels !== undefined ? { labels: d.labels } : {}),
         });
         return json(res, 200, { ok: true });
       }

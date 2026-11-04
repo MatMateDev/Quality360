@@ -19,6 +19,7 @@ Solo para entorno local.
 | --- | --- |
 | Sprint «E5 Sprint 1» | Célula CEL-C, de hoy a hoy + 13 días. Es el **sprint de respaldo** de la configuración base y el que usan QTY-2 y QTY-12 del Jira simulado |
 | Sprint «E5 Sprint 2» | Célula CEL-C, de hoy + 14 a hoy + 27 días. Lo usan QTY-1 y la fila `ARC-1` de `historias-validas.csv` |
+| Sprint «E5 Sprint A1» | Célula CEL-A, de hoy a hoy + 13 días. Lo usa la asignación de E5 (consulta); no crea HDU |
 
 «Hoy» es el día en `America/Santiago`. El script crea la célula CEL-C si no existe (alta idempotente) y
 no crea HDU, usuarios ni nada más.

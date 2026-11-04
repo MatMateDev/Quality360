@@ -1,4 +1,4 @@
-// Prueba de punta a punta de E5 con los servicios REALES: Organización e Integraciones compilados (dist) sobre el
+// Prueba de punta a punta de E5 (consultar, editar, confirmar) con los servicios REALES: Organización e Integraciones compilados (dist) sobre el
 // Supabase local, más un Jira falso mínimo (node:http) en 127.0.0.1. No usa mocks de Organización ni del cliente de Jira.
 // Requisitos: Supabase local arriba, `npm run build` en services/organizacion y services/integraciones.
 // Uso: node services/integraciones/scripts/e2e-real.mjs
@@ -29,7 +29,7 @@ const issues = [1, 2, 3].map((n) => ({
     issuetype: { name: 'Story' },
     status: { name: 'In Progress' },
     assignee: { displayName: 'Dev Falso' },
-    customfield_10020: [{ name: 'E2E Sprint', state: 'active', endDate: null }],
+    customfield_10020: [{ name: `E2E Sprint ${sufijo}`, state: 'active', endDate: null }],
   },
 }));
 const PROYECTO = 'E2E';
@@ -118,22 +118,71 @@ try {
   assert.equal(JSON.stringify(guardado.body).includes(TOKEN_JIRA), false);
   console.log('OK configuración: guardada tras probar contra el Jira falso');
 
-  // 2. Sincronización real: Jira falso -> mapeo real -> upsert de Organización real.
-  const sync = await pedir('POST', '/v1/integraciones/jira/sincronizaciones', {});
-  assert.equal(sync.status, 200, JSON.stringify(sync.body));
-  assert.deepEqual([sync.body.resultado, sync.body.leidas, sync.body.creadas], ['EXITOSA', 3, 3], JSON.stringify(sync.body));
-  const detalle = await pedir('GET', `/v1/integraciones/ejecuciones/${sync.body.id}/detalle`, undefined);
+  // 2. Consultar -> editar -> confirmar con los servicios reales: Jira falso -> mapeo -> clasificación y validación en
+  //    Organización real -> upsert en modo confirmación de Organización real.
+  const analista = await semilla('usuarios', { nombre: `Analista E2E ${sufijo}`, correo: `ana.${sufijo}@e2e.local`, rol: 'ANALISTA_QA', contrasenaInicial: claveUsuario });
+  const idAnalista = (analista.usuario ?? analista).id;
+  const supervision = await fetch(`http://127.0.0.1:${PUERTO_ORG}/v1/analistas/${idAnalista}/supervisor`, { method: 'PUT', headers: H, body: JSON.stringify({ qeId: idQe }) });
+  assert.equal(supervision.status, 200, await supervision.text());
+
+  const consulta = await pedir('POST', '/v1/integraciones/jira/consultas', {});
+  assert.equal(consulta.status, 200, JSON.stringify(consulta.body));
+  assert.deepEqual([consulta.body.ejecucion.fase, consulta.body.ejecucion.resultado, consulta.body.ejecucion.leidas, consulta.body.ejecucion.nuevas, consulta.body.ejecucion.creadas], ['CONSULTA', 'EXITOSA', 3, 3, 0], JSON.stringify(consulta.body.ejecucion));
+  const idConsulta = consulta.body.consulta.id;
+  assert.equal(consulta.body.consulta.estado, 'ABIERTA');
+  console.log('OK consulta: 3 nuevas leídas de Jira; ninguna HDU creada todavía');
+
+  const sinHdu = await (await fetch(`http://127.0.0.1:${PUERTO_ORG}/v1/interno/integraciones/hdu/estado-codigos`, { method: 'POST', headers: H, body: JSON.stringify({ codigos: [`${PROYECTO}-1`] }) })).json();
+  assert.equal(sinHdu.items[0].existe, false);
+
+  const nuevas = (await pedir('GET', `/v1/integraciones/jira/consultas/${idConsulta}/items?grupo=NUEVA`, undefined)).body.items;
+  assert.equal(nuevas.length, 3);
+  const invalida = await pedir('PATCH', `/v1/integraciones/jira/consultas/${idConsulta}/items`, { itemIds: [nuevas[0].id], asignacion: { celulaId: idCelula, qeId: idQe, analistaId: idQe } });
+  assert.deepEqual([invalida.status, invalida.body.codigo], [422, 'ANALISTA_INVALIDO'], JSON.stringify(invalida.body));
+  const editada = await pedir('PATCH', `/v1/integraciones/jira/consultas/${idConsulta}/items`, { grupo: 'NUEVA', todas: true, asignacion: { celulaId: idCelula, qeId: idQe, analistaId: idAnalista } });
+  assert.deepEqual([editada.status, editada.body.aplicadas, editada.body.rechazadas.length], [200, 3, 0], JSON.stringify(editada.body));
+  assert.ok(editada.body.items.every((i) => i.completa === true && i.asignacion.sprint.nombre === `E2E Sprint ${sufijo}` && i.asignacion.sprintOrigen === 'JIRA'), JSON.stringify(editada.body.items[0]));
+  const marcadas = await pedir('PATCH', `/v1/integraciones/jira/consultas/${idConsulta}/items`, { grupo: 'NUEVA', todas: true, marcarListas: true });
+  assert.deepEqual([marcadas.body.marcadas, marcadas.body.incompletas], [3, 0]);
+  console.log('OK edición: asignación inválida 422 ANALISTA_INVALIDO; 3 filas asignadas con sprint de Jira y marcadas');
+
+  const llamadasAntes = llamadasJira.length;
+  const vieja = await pedir('POST', `/v1/integraciones/jira/consultas/${idConsulta}/confirmaciones`, { version: 1 });
+  assert.deepEqual([vieja.status, vieja.body.codigo], [409, 'CONSULTA_MODIFICADA']);
+  const confirmacion = await pedir('POST', `/v1/integraciones/jira/consultas/${idConsulta}/confirmaciones`, { version: marcadas.body.version });
+  assert.equal(confirmacion.status, 200, JSON.stringify(confirmacion.body));
+  assert.deepEqual([confirmacion.body.ejecucion.fase, confirmacion.body.ejecucion.resultado, confirmacion.body.ejecucion.creadas, confirmacion.body.consulta.estado], ['CONFIRMACION', 'EXITOSA', 3, 'CONFIRMADA'], JSON.stringify(confirmacion.body));
+  assert.equal(llamadasJira.length, llamadasAntes, 'confirmar no debe llamar a Jira');
+  const detalle = await pedir('GET', `/v1/integraciones/ejecuciones/${confirmacion.body.ejecucion.id}/detalle`, undefined);
   assert.equal(detalle.body.total, 3);
+  assert.equal(detalle.body.items[0].asignacion.analista, `Analista E2E ${sufijo}`);
   const hdu = await (await fetch(`http://127.0.0.1:${PUERTO_ORG}/v1/hdu/${detalle.body.items[0].idHistoria}`, { headers: H })).json();
   assert.deepEqual([hdu.codigo, hdu.titulo, hdu.prioridad, hdu.origen, hdu.descripcion, hdu.estado], [`${PROYECTO}-1`, 'Historia Jira 1', 'ALTA', 'JIRA', 'Descripción ADF 1', 'PENDIENTE']);
   assert.equal(hdu.urlExterna, `http://127.0.0.1:${PUERTO_JIRA}/browse/${PROYECTO}-1`);
   assert.equal(hdu.celula.id, idCelula);
   assert.equal(hdu.qeResponsable.id, idQe);
-  console.log('OK sincronización: 3 HDU creadas en Organización real; detalle con origen, descripción ADF y enlace');
+  assert.equal(hdu.analista?.id, idAnalista);
+  const historial = await (await fetch(`http://127.0.0.1:${PUERTO_ORG}/v1/hdu/${hdu.id}/historial`, { headers: H })).json();
+  assert.ok(JSON.stringify(historial).includes(idAnalista), 'el historial de asignación debe registrar al analista');
+  console.log('OK confirmación: 3 HDU creadas en Organización real con célula, QE, analista y sprint; historial de asignación; sin llamar a Jira');
 
-  const otra = await pedir('POST', '/v1/integraciones/jira/sincronizaciones', {});
-  assert.deepEqual([otra.body.creadas, otra.body.omitidas], [0, 3]);
-  console.log('OK repetir: 3 omitidas (SIN_CAMBIOS)');
+  // Volver a consultar: sin cambios; luego un título nuevo en Jira cae en CAMBIO y se actualiza sin tocar la asignación.
+  const segunda = await pedir('POST', '/v1/integraciones/jira/consultas', {});
+  assert.deepEqual([segunda.body.ejecucion.nuevas, segunda.body.ejecucion.cambiaron, segunda.body.ejecucion.sinCambios], [0, 0, 3], JSON.stringify(segunda.body.ejecucion));
+  const idSegunda = segunda.body.consulta.id;
+  await pedir('POST', `/v1/integraciones/jira/consultas/${idSegunda}/descartes`, {});
+  issues[0].fields.summary = 'Historia Jira 1 (renombrada)';
+  const tercera = await pedir('POST', '/v1/integraciones/jira/consultas', {});
+  assert.deepEqual([tercera.body.ejecucion.cambiaron, tercera.body.ejecucion.sinCambios], [1, 2], JSON.stringify(tercera.body.ejecucion));
+  const cambio = (await pedir('GET', `/v1/integraciones/jira/consultas/${tercera.body.consulta.id}/items?grupo=CAMBIO`, undefined)).body.items[0];
+  assert.equal(cambio.cambios.titulo.despues, 'Historia Jira 1 (renombrada)');
+  const marcaCambio = await pedir('PATCH', `/v1/integraciones/jira/consultas/${tercera.body.consulta.id}/items`, { itemIds: [cambio.id], marcada: true });
+  assert.equal(marcaCambio.status, 200, JSON.stringify(marcaCambio.body));
+  const actualiza = await pedir('POST', `/v1/integraciones/jira/consultas/${tercera.body.consulta.id}/confirmaciones`, { version: marcaCambio.body.version });
+  assert.deepEqual([actualiza.body.ejecucion.actualizadas, actualiza.body.ejecucion.creadas, actualiza.body.consulta.estado], [1, 0, 'CONFIRMADA'], JSON.stringify(actualiza.body));
+  const despues = await (await fetch(`http://127.0.0.1:${PUERTO_ORG}/v1/hdu/${hdu.id}`, { headers: H })).json();
+  assert.deepEqual([despues.titulo, despues.analista?.id, despues.qeResponsable.id, despues.estado], ['Historia Jira 1 (renombrada)', idAnalista, idQe, 'PENDIENTE']);
+  console.log('OK actualización: el título cambió y la asignación, el estado y el QE quedaron iguales');
 
   // 3. Importación de un CSV pequeño (vista previa y escritura) contra Organización real.
   const csv = [`codigo,titulo,descripcion,prioridad`, `CSV-${sufijo}-1,Primera del archivo,Detalle,alta`, `CSV-${sufijo}-2,Segunda del archivo,,baja`, `CSV-${sufijo}-3,,sin título,media`].join('\n');
@@ -145,6 +194,7 @@ try {
   assert.deepEqual([estricto.body.resultado, estricto.body.codigoError], ['FALLIDA', 'MODO_ESTRICTO']);
   const estado = await pedir('GET', '/v1/integraciones/estado', undefined);
   assert.equal(estado.body.ultimaCompletada.id, importacion.body.id);
+  assert.equal('continuar' in estado.body, false);
   console.log('OK importación CSV: vista previa 2 crear/1 error; importación 2 creadas; estricto rechaza');
 
   // 4. Sin secretos en los registros de ambos servicios.

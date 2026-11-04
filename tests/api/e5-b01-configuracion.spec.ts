@@ -6,9 +6,10 @@ import { cuerpoSinTrace } from "../support/e7";
 import {
   SITIO_CERRADO, SITIO_FALSO, TOKEN_FALSO, URL_I2, URL_I3, URL_I5,
   cadenasSecretas, contieneSecreto, hallazgosDeSecreto, cuerpoConfigBase, cuerpoPrueba, destino, estadoConfigBase, estadoSinConfig, guardarConfigBase, limpiarE5,
-  registroServicios, sincronizar, sql, tk,
+  registroServicios, sql, tk,
 } from "../support/e5";
 import { levantarIntegraciones, llaveAleatoria, type InstanciaE5 } from "../support/entornoE5";
+import { consultar } from "../support/e5c";
 import { jiraFalso } from "../support/jira-falso/cliente";
 import { TOKEN_NUEVO } from "../support/jira-falso/servidor";
 
@@ -91,11 +92,11 @@ test.describe("E5-B01 · Configuración segura de Jira", () => {
       expect(i2.salida()).not.toContain(TOKEN_FALSO);
     });
 
-    test("[E5-B01#1] T04 (negativo): con otra llave el token no se descifra: 409 TOKEN_NO_DESCIFRABLE en sincronizar y probar, sin llamar a Jira; con la llave A vuelve a funcionar", async ({ request }) => {
+    test("[E5-B01#1] T04 (negativo): con otra llave el token no se descifra: 409 TOKEN_NO_DESCIFRABLE en consultar y probar, sin llamar a Jira; con la llave A vuelve a funcionar", async ({ request }) => {
       await estadoConfigBase(request);
       i3 = await levantarIntegraciones(3105, { INTEGRACIONES_LLAVE_CIFRADO: llaveB });
       await jiraFalso.limpiarSolicitudes();
-      const s = await sincronizar(request, {}, URL_I3);
+      const s = await consultar(request, {}, URL_I3);
       const p = await api.post(request, "/v1/integraciones/jira/configuracion/probar", { token: await tk("adm1"), body: {}, baseURL: URL_I3 });
       for (const r of [s, p]) {
         expect(r.status).toBe(409);
@@ -283,8 +284,8 @@ test.describe("E5-B01 · Configuración segura de Jira", () => {
       const fk = await c.query(
         `SELECT conrelid::regclass::text t, confrelid::regclass::text r FROM pg_constraint WHERE contype='f' AND connamespace='integraciones'::regnamespace`,
       );
-      for (const f of fk.rows) expect(String(f.r), `FK de ${f.t}`).toMatch(/^(integraciones\.)?(ejecucion_integracion)$/);
-      const otras = await c.query(`SELECT 1 FROM pg_constraint WHERE contype='f' AND conrelid::regclass::text LIKE 'integraciones.%' AND confrelid::regclass::text NOT LIKE 'integraciones.%' AND confrelid::regclass::text NOT IN ('ejecucion_integracion')`);
+      for (const f of fk.rows) expect(String(f.r), `FK de ${f.t}`).toMatch(/^(integraciones\.)?(ejecucion_integracion|consulta_jira)$/);
+      const otras = await c.query(`SELECT 1 FROM pg_constraint WHERE contype='f' AND conrelid::regclass::text LIKE 'integraciones.%' AND confrelid::regclass::text NOT LIKE 'integraciones.%' AND confrelid::regclass::text NOT IN ('ejecucion_integracion', 'consulta_jira')`);
       expect(otras.rows).toHaveLength(0);
       await expect(c.query("SELECT 1 FROM organizacion.historia_usuario LIMIT 1")).rejects.toThrow(/permission denied|permiso denegado/i);
       await expect(c.query("DELETE FROM integraciones.evento_configuracion")).rejects.toThrow(/permission denied|permiso denegado/i);

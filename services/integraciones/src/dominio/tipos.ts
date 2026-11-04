@@ -6,6 +6,8 @@
 export type Rol = 'ADMINISTRADOR' | 'QE' | 'ANALISTA_QA' | 'LIDER_QA' | 'AUDITOR';
 
 export type OrigenEjecucion = 'JIRA' | 'CSV' | 'JSON';
+/** Fase de una ejecución (D141): importaciones y sincronizaciones anteriores a D132 son `DIRECTA`. */
+export type FaseEjecucion = 'DIRECTA' | 'CONSULTA' | 'CONFIRMACION';
 export type ResultadoEjecucion = 'EN_CURSO' | 'EXITOSA' | 'CON_ERRORES' | 'INCOMPLETA' | 'FALLIDA' | 'INTERRUMPIDA';
 export type ResultadoFila = 'CREADA' | 'ACTUALIZADA' | 'OMITIDA' | 'ERROR';
 export type EstadoConexion = 'SIN_PROBAR' | 'OK' | 'FALLIDA';
@@ -24,6 +26,8 @@ export type MotivoFila =
   | 'SPRINT_NO_ENCONTRADO'
   | 'SPRINT_REQUERIDO'
   | 'QE_INVALIDO'
+  | 'HDU_CREADA_DESPUES'
+  | 'ASIGNACION_INVALIDA'
   | 'ERROR_INTERNO';
 
 export type AdvertenciaFila =
@@ -47,7 +51,7 @@ export type CodigoErrorJira =
 export type CodigoErrorArchivo = 'ARCHIVO_VACIO' | 'FORMATO_NO_SOPORTADO' | 'ARCHIVO_ILEGIBLE' | 'COLUMNAS_FALTANTES' | 'DEMASIADAS_FILAS';
 
 /** Error de una ejecución o de una prueba: viaja en una respuesta 200 o en la ejecución registrada (D105). */
-export type CodigoErrorIntegracion = CodigoErrorJira | CodigoErrorArchivo | 'PRESUPUESTO_DE_TIEMPO' | 'ORGANIZACION_NO_DISPONIBLE' | 'MODO_ESTRICTO';
+export type CodigoErrorIntegracion = CodigoErrorJira | CodigoErrorArchivo | 'PRESUPUESTO_DE_TIEMPO' | 'ORGANIZACION_NO_DISPONIBLE' | 'MODO_ESTRICTO' | 'TOPE_DE_CONSULTA';
 
 export type SugerenciaIntegracion =
   | 'IR_A_CONEXION'
@@ -92,6 +96,13 @@ export interface Actor {
   readonly rol: Rol;
 }
 
+export interface AsignacionNombres {
+  readonly celula: string;
+  readonly qe: string;
+  readonly analista: string;
+  readonly sprint: string;
+}
+
 export interface Contadores {
   leidas: number;
   creadas: number;
@@ -130,6 +141,12 @@ export interface Ejecucion extends Contadores {
   readonly sitioHost: string | null;
   readonly archivo: ArchivoEjecucion | null;
   readonly hayMas: boolean;
+  readonly fase: FaseEjecucion;
+  readonly consultaId: string | null;
+  /** Solo fase `CONSULTA`: filas de la tanda por grupo; 0 en las demás (D141). */
+  readonly nuevas: number;
+  readonly cambiaron: number;
+  readonly sinCambios: number;
   readonly continuarDesde: string | null;
 }
 
@@ -145,6 +162,8 @@ export interface FilaDetalle {
   readonly advertencias: AdvertenciaFila[];
   readonly cambios: CambiosHdu | null;
   readonly referencia: ReferenciaJira | null;
+  /** Solo fase `CONFIRMACION` y filas `CREADA`: nombres de la asignación con que se creó la HDU (D141). */
+  readonly asignacion: AsignacionNombres | null;
 }
 
 /** Configuración de Jira tal como se guarda. El token solo viaja cifrado. */

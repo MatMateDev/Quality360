@@ -11,13 +11,14 @@ import { ArchivosController } from './api/controladores/archivos.controller.js';
 import { ConexionController } from './api/controladores/conexion.controller.js';
 import { HistorialController } from './api/controladores/historial.controller.js';
 import { SaludController } from './api/controladores/salud.controller.js';
-import { SincronizacionController } from './api/controladores/sincronizacion.controller.js';
+import { ConsultaController } from './api/controladores/consulta.controller.js';
 import { ArchivosAplicacion } from './aplicacion/archivos.servicio.js';
 import { ConfiguracionAplicacion } from './aplicacion/configuracion.servicio.js';
 import { HistorialAplicacion } from './aplicacion/historial.servicio.js';
 import {
   CifradorToken,
   ConfiguracionRepositorio,
+  ConsultaRepositorio,
   EjecucionRepositorio,
   FUENTE_JIRA,
   LectorArchivo,
@@ -26,13 +27,16 @@ import {
   Reloj,
   type FuenteJira,
 } from './aplicacion/puertos.js';
-import { SincronizacionAplicacion } from './aplicacion/sincronizacion.servicio.js';
+import { ConsultaAplicacion } from './aplicacion/consulta.servicio.js';
+import { ConfirmacionAplicacion } from './aplicacion/confirmacion.servicio.js';
+import { EdicionConsultaAplicacion } from './aplicacion/edicion-consulta.servicio.js';
 import { crearFuenteJira, crearLector, crearMapeador } from './composicion-externa.js';
 import { CONFIGURACION, type ConfiguracionIntegraciones } from './configuracion.js';
 import { CifradorTokenAesGcm } from './infraestructura/cifrado/cifrador-aes-gcm.js';
 import { OpcionesResolutorRemotoModule } from './infraestructura/opciones-resolutor-remoto.module.js';
 import { OrganizacionCliente } from './infraestructura/organizacion/organizacion.cliente.js';
 import { ConfiguracionPrismaRepositorio } from './infraestructura/prisma/configuracion.prisma.repositorio.js';
+import { ConsultaPrismaRepositorio } from './infraestructura/prisma/consulta.prisma.repositorio.js';
 import { EjecucionPrismaRepositorio } from './infraestructura/prisma/ejecucion.prisma.repositorio.js';
 import { PrismaService } from './infraestructura/prisma/prisma.service.js';
 
@@ -65,12 +69,13 @@ export class AppModule {
           filtroErroresGlobal: true,
         }),
       ],
-      controllers: [SaludController, ConexionController, SincronizacionController, ArchivosController, HistorialController],
+      controllers: [SaludController, ConexionController, ConsultaController, ArchivosController, HistorialController],
       providers: [
         { provide: CONFIGURACION, useValue: configuracion },
         PrismaService,
         { provide: ConfiguracionRepositorio, useClass: ConfiguracionPrismaRepositorio },
         { provide: EjecucionRepositorio, useClass: EjecucionPrismaRepositorio },
+        { provide: ConsultaRepositorio, useClass: ConsultaPrismaRepositorio },
         { provide: ProveedorOrganizacion, useClass: OrganizacionCliente },
         { provide: CifradorToken, useClass: CifradorTokenAesGcm },
         { provide: FUENTE_JIRA, useValue: extensiones.fuenteJira ?? crearFuenteJira(configuracion) },
@@ -78,7 +83,9 @@ export class AppModule {
         { provide: LectorArchivo, useValue: extensiones.lector ?? crearLector() },
         { provide: Reloj, useValue: extensiones.reloj ?? { ahora: () => new Date() } },
         ConfiguracionAplicacion,
-        SincronizacionAplicacion,
+        ConsultaAplicacion,
+        EdicionConsultaAplicacion,
+        ConfirmacionAplicacion,
         ArchivosAplicacion,
         HistorialAplicacion,
       ],

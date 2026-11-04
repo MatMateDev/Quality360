@@ -2,6 +2,7 @@ import { useId, useState } from "react";
 import { Link } from "react-router-dom";
 import { FILAS_POR_VEZ, esIndisponible, useFilasPorResultado } from "@/api/integraciones";
 import { BloqueEstado } from "@/components/BloqueEstado";
+import { textoAsignacionNombres } from "@/lib/mensajesAsignacion";
 import { textoMotivo } from "@/lib/mensajesIntegracion";
 import { ETIQUETAS_PRIORIDAD, type FilaEjecucion, type PrioridadHdu, type ResultadoFila } from "@/types/dominio";
 import { CeldaCambios } from "./CeldaCambios";
@@ -35,6 +36,7 @@ function FilaResultado({ fila, resultado }: { fila: FilaEjecucion; resultado: Re
       <CodigoFila fila={fila} />
       {fila.titulo ? <span>{fila.titulo}</span> : null}
       {resultado === "CREADA" && prioridad ? <span>{ETIQUETAS_PRIORIDAD[prioridad as PrioridadHdu] ?? prioridad}</span> : null}
+      {resultado === "CREADA" && fila.asignacion ? <span data-testid={`asignacion-fila-${fila.fila}`}>{textoAsignacionNombres(fila.asignacion)}</span> : null}
       {resultado === "ACTUALIZADA" ? <CeldaCambios cambios={fila.cambios} testId={`celda-cambios-${fila.fila}`} /> : null}
       {resultado === "OMITIDA" || resultado === "ERROR" ? (
         <>

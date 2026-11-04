@@ -19,6 +19,21 @@
 //    disparador `detalle_solo_en_curso` (BEFORE INSERT). REVOKE UPDATE, DELETE.
 //  - Índices: (iniciada_en DESC), (origen, iniciada_en DESC), (resultado, iniciada_en DESC),
 //    (id_ejecucion, resultado, fila) e (id_historia).
+//
+// Lo que Prisma no expresa vive en la migración 20261102000000_e5_consulta_asignacion (E5 · consulta y asignación):
+//  - consulta_jira: CHECK de catálogo (`estado`), `version >= 1`, `consulta_cierre_ck`
+//    ((estado = 'ABIERTA') = (cerrada_en IS NULL)), formato de `proyecto_clave`, contadores >= 0 con
+//    `total_filas <= 500` y `nuevas + cambiaron + sin_cambios + con_error = total_filas`; índice único parcial
+//    `consulta_abierta_key` ON ((true)) WHERE estado = 'ABIERTA' (una sola abierta); disparador
+//    `consulta_cerrada_inmutable` (BEFORE UPDATE). REVOKE DELETE, TRUNCATE.
+//  - consulta_item: columna generada `codigo_normalizado` = upper(codigo) y UNIQUE (id_consulta, codigo_normalizado);
+//    CHECK de catálogo (`grupo`, `prioridad`, `sprint_origen`), `motivo`, `cambios` solo en CAMBIO, asignación solo
+//    en NUEVA, `marcada_valida` y `aplicada_marcada`; disparador `item_solo_consulta_abierta` (BEFORE INSERT OR
+//    UPDATE). El DELETE se conserva: es la purga (D133). REVOKE TRUNCATE.
+//  - ejecucion_integracion: CHECK de `fase`, `ejecucion_fase_ck`, `ejecucion_consulta_ck`,
+//    `ejecucion_confirmacion_ck` y `ejecucion_contadores_ck` por fase (D141); el disparador
+//    `ejecucion_cerrada_inmutable` suma `fase` y `consulta_id` a la identidad.
+//  - detalle_ejecucion: CHECK `detalle_asignacion_ck` (objeto JSON).
 
 generator client {
   provider = "prisma-client-js"
@@ -34,42 +49,42 @@ datasource db {
 /// (IV de 12 bytes, etiqueta de 16, dato asociado `q360:jira:token:v1`); lo único en claro son los
 /// últimos 4 caracteres. Una prueba fallida solo actualiza `estado_conexion` y `ultima_prueba_*` (D112).
 model ConfiguracionJira {
-  id                     Int       @id @default(1) @db.SmallInt
-  sitioUrl               String    @map("sitio_url") @db.VarChar(100)
-  correo                 String    @db.VarChar(150)
-  proyectoClave          String    @map("proyecto_clave") @db.VarChar(10)
+  id                   Int       @id @default(1) @db.SmallInt
+  sitioUrl             String    @map("sitio_url") @db.VarChar(100)
+  correo               String    @db.VarChar(150)
+  proyectoClave        String    @map("proyecto_clave") @db.VarChar(10)
   /// Lista separada por comas, hasta 5 tipos.
-  tiposIssue             String    @default("Story,Historia") @map("tipos_issue") @db.VarChar(200)
+  tiposIssue           String    @default("Story,Historia") @map("tipos_issue") @db.VarChar(200)
   /// `customfield_*` detectado con `GET /rest/api/3/field` (esquema gh-sprint).
-  campoSprint            String?   @map("campo_sprint") @db.VarChar(30)
-  celulaId               String    @map("celula_id") @db.Uuid
-  qeResponsableId        String    @map("qe_responsable_id") @db.Uuid
-  sprintRespaldoId       String    @map("sprint_respaldo_id") @db.Uuid
-  tokenCifrado           Bytes     @map("token_cifrado")
-  tokenIv                Bytes     @map("token_iv")
-  tokenTag               Bytes     @map("token_tag")
-  llaveVersion           Int       @default(1) @map("llave_version") @db.SmallInt
-  tokenUltimos4          String    @map("token_ultimos4") @db.Char(4)
-  estadoConexion         String    @map("estado_conexion") @db.VarChar(12)
-  ultimaPruebaEn         DateTime? @map("ultima_prueba_en") @db.Timestamptz(6)
-  ultimaPruebaCodigo     String?   @map("ultima_prueba_codigo") @db.VarChar(40)
-  actualizadoPorId       String    @map("actualizado_por_id") @db.Uuid
-  actualizadoPorNombre   String    @map("actualizado_por_nombre") @db.VarChar(150)
-  actualizadoEn          DateTime  @default(now()) @map("actualizado_en") @db.Timestamptz(6)
+  campoSprint          String?   @map("campo_sprint") @db.VarChar(30)
+  celulaId             String    @map("celula_id") @db.Uuid
+  qeResponsableId      String    @map("qe_responsable_id") @db.Uuid
+  sprintRespaldoId     String    @map("sprint_respaldo_id") @db.Uuid
+  tokenCifrado         Bytes     @map("token_cifrado")
+  tokenIv              Bytes     @map("token_iv")
+  tokenTag             Bytes     @map("token_tag")
+  llaveVersion         Int       @default(1) @map("llave_version") @db.SmallInt
+  tokenUltimos4        String    @map("token_ultimos4") @db.Char(4)
+  estadoConexion       String    @map("estado_conexion") @db.VarChar(12)
+  ultimaPruebaEn       DateTime? @map("ultima_prueba_en") @db.Timestamptz(6)
+  ultimaPruebaCodigo   String?   @map("ultima_prueba_codigo") @db.VarChar(40)
+  actualizadoPorId     String    @map("actualizado_por_id") @db.Uuid
+  actualizadoPorNombre String    @map("actualizado_por_nombre") @db.VarChar(150)
+  actualizadoEn        DateTime  @default(now()) @map("actualizado_en") @db.Timestamptz(6)
 
   @@map("configuracion_jira")
 }
 
 /// Cambios de configuración (D111). Solo inserción. `campos_cambiados` son nombres de campo, nunca valores.
 model EventoConfiguracion {
-  id               String   @id @default(dbgenerated("gen_random_uuid()")) @map("id_evento") @db.Uuid
-  actorId          String   @map("actor_id") @db.Uuid
-  actorNombre      String   @map("actor_nombre") @db.VarChar(150)
-  fecha            DateTime @default(now()) @db.Timestamptz(6)
-  camposCambiados  Json     @map("campos_cambiados")
-  tokenCambiado    Boolean  @map("token_cambiado")
+  id              String   @id @default(dbgenerated("gen_random_uuid()")) @map("id_evento") @db.Uuid
+  actorId         String   @map("actor_id") @db.Uuid
+  actorNombre     String   @map("actor_nombre") @db.VarChar(150)
+  fecha           DateTime @default(now()) @db.Timestamptz(6)
+  camposCambiados Json     @map("campos_cambiados")
+  tokenCambiado   Boolean  @map("token_cambiado")
   /// `OK` o el código de error de la prueba que acompañó al guardado.
-  resultadoPrueba  String   @map("resultado_prueba") @db.VarChar(40)
+  resultadoPrueba String   @map("resultado_prueba") @db.VarChar(40)
 
   @@index([fecha(sort: Desc)], map: "evento_configuracion_fecha_idx")
   @@map("evento_configuracion")
@@ -108,33 +123,44 @@ model EjecucionIntegracion {
   continuarDesde     String?   @map("continuar_desde") @db.VarChar(40)
   /// Esperas por 429: `[{tipo, espera_ms, fecha}]`.
   eventos            Json?
+  /// `DIRECTA` (importaciones de archivo y sincronizaciones anteriores a D132), `CONSULTA` o `CONFIRMACION` (D141).
+  fase               String    @default("DIRECTA") @db.VarChar(12)
+  consultaId         String?   @map("consulta_id") @db.Uuid
+  /// Solo fase `CONSULTA`: filas de la tanda por grupo (D141).
+  nuevas             Int       @default(0)
+  cambiaron          Int       @default(0)
+  sinCambios         Int       @default(0) @map("sin_cambios")
 
-  detalle DetalleEjecucion[]
+  consulta ConsultaJira?      @relation(fields: [consultaId], references: [id], onDelete: Restrict)
+  detalle  DetalleEjecucion[]
 
   @@index([iniciadaEn(sort: Desc)], map: "ejecucion_integracion_iniciada_idx")
   @@index([origen, iniciadaEn(sort: Desc)], map: "ejecucion_integracion_origen_idx")
   @@index([resultado, iniciadaEn(sort: Desc)], map: "ejecucion_integracion_resultado_idx")
+  @@index([fase, iniciadaEn(sort: Desc)], map: "ejecucion_integracion_fase_idx")
   @@map("ejecucion_integracion")
 }
 
 /// Una fila de archivo o una issue de Jira. Solo inserción. Sin llave foránea de `id_historia` (es de Organización).
 model DetalleEjecucion {
-  id           String   @id @default(dbgenerated("gen_random_uuid()")) @map("id_detalle") @db.Uuid
-  ejecucionId  String   @map("id_ejecucion") @db.Uuid
+  id           String  @id @default(dbgenerated("gen_random_uuid()")) @map("id_detalle") @db.Uuid
+  ejecucionId  String  @map("id_ejecucion") @db.Uuid
   /// Número de fila de datos del archivo (la primera es 1) o posición de la issue.
   fila         Int
-  codigo       String?  @db.VarChar(60)
-  titulo       String?  @db.VarChar(200)
-  historiaId   String?  @map("id_historia") @db.Uuid
+  codigo       String? @db.VarChar(60)
+  titulo       String? @db.VarChar(200)
+  historiaId   String? @map("id_historia") @db.Uuid
   /// `ACTUALIZADA` tiene 11 caracteres: la sección 6.1 del backlog E5 decía varchar(10) y no cabe.
-  resultado    String   @db.VarChar(12)
-  motivo       String?  @db.VarChar(40)
-  mensaje      String?  @db.VarChar(200)
+  resultado    String  @db.VarChar(12)
+  motivo       String? @db.VarChar(40)
+  mensaje      String? @db.VarChar(200)
   advertencias Json?
   /// `{campo: {antes, despues}}`, valores recortados a 200 caracteres.
   cambios      Json?
   /// Estado y responsable de la issue de Jira; solo informativo.
   referencia   Json?
+  /// Solo fase `CONFIRMACION` y filas `CREADA`: nombres de célula, QE, analista y sprint (D141).
+  asignacion   Json?
 
   ejecucion EjecucionIntegracion @relation(fields: [ejecucionId], references: [id], onDelete: Restrict)
 
@@ -142,4 +168,91 @@ model DetalleEjecucion {
   @@index([ejecucionId, resultado, fila], map: "detalle_ejecucion_resultado_idx")
   @@index([historiaId], map: "detalle_ejecucion_historia_idx")
   @@map("detalle_ejecucion")
+}
+
+/// Una consulta de Jira (D133, D134): borrador revisable. Una sola `ABIERTA` a la vez. Al cerrarse (confirmada,
+/// reemplazada, vencida o descartada) sus filas se purgan y quedan solo la cabecera y los contadores.
+model ConsultaJira {
+  id                     String    @id @default(dbgenerated("gen_random_uuid()")) @map("id_consulta") @db.Uuid
+  estado                 String    @db.VarChar(12)
+  /// Sube con cada cambio de filas o de estado (D139).
+  version                Int       @default(1)
+  creadaPorId            String    @map("creada_por_id") @db.Uuid
+  creadaPorNombre        String    @map("creada_por_nombre") @db.VarChar(150)
+  creadaEn               DateTime  @default(now()) @map("creada_en") @db.Timestamptz(6)
+  /// Hora de la última llamada a Jira + INTEGRACIONES_CONSULTA_VIGENCIA_MS.
+  venceEn                DateTime  @map("vence_en") @db.Timestamptz(6)
+  cerradaEn              DateTime? @map("cerrada_en") @db.Timestamptz(6)
+  cerradaPorId           String?   @map("cerrada_por_id") @db.Uuid
+  cerradaPorNombre       String?   @map("cerrada_por_nombre") @db.VarChar(150)
+  proyectoClave          String    @map("proyecto_clave") @db.VarChar(10)
+  sitioHost              String    @map("sitio_host") @db.VarChar(100)
+  hayMas                 Boolean   @default(false) @map("hay_mas")
+  continuarDesde         String?   @map("continuar_desde") @db.VarChar(40)
+  /// Instantánea del destino de Conexión (D146). UUID de Organización, sin llave foránea.
+  sugerenciaCelulaId     String?   @map("sugerencia_celula_id") @db.Uuid
+  sugerenciaQeId         String?   @map("sugerencia_qe_id") @db.Uuid
+  sprintRespaldoId       String?   @map("sprint_respaldo_id") @db.Uuid
+  /// Nombres de la instantánea (D146): así leer la consulta no llama a Organización.
+  sugerenciaCelulaNombre String?   @map("sugerencia_celula_nombre") @db.VarChar(120)
+  sugerenciaQeNombre     String?   @map("sugerencia_qe_nombre") @db.VarChar(150)
+  sprintRespaldoNombre   String?   @map("sprint_respaldo_nombre") @db.VarChar(120)
+  /// Contadores: se conservan al purgar las filas.
+  totalFilas             Int       @default(0) @map("total_filas")
+  nuevas                 Int       @default(0)
+  cambiaron              Int       @default(0)
+  sinCambios             Int       @default(0) @map("sin_cambios")
+  conError               Int       @default(0) @map("con_error")
+  conAdvertencias        Int       @default(0) @map("con_advertencias")
+  descartadas            Int       @default(0)
+
+  items       ConsultaItem[]
+  ejecuciones EjecucionIntegracion[]
+
+  @@index([creadaEn(sort: Desc)], map: "consulta_jira_creada_idx")
+  @@map("consulta_jira")
+}
+
+/// Una fila de la consulta: solo lo mapeado de cada issue (D133), nunca la respuesta cruda de Jira.
+/// `consulta_item` es la única tabla de Integraciones con DELETE (la purga). Sin llaves foráneas hacia otro esquema:
+/// `id_historia`, `celula_id`, `qe_id`, `analista_id` y `sprint_id` son UUID de Organización.
+model ConsultaItem {
+  id                String    @id @default(dbgenerated("gen_random_uuid()")) @map("id_item") @db.Uuid
+  consultaId        String    @map("id_consulta") @db.Uuid
+  posicion          Int
+  grupo             String    @db.VarChar(11)
+  codigo            String?   @db.VarChar(60)
+  titulo            String?   @db.VarChar(200)
+  descripcion       String?   @db.VarChar(1000)
+  prioridad         String?   @db.VarChar(7)
+  sprintJira        String?   @map("sprint_jira") @db.VarChar(120)
+  referencia        Json?
+  advertencias      Json?
+  motivo            String?   @db.VarChar(40)
+  historiaId        String?   @map("id_historia") @db.Uuid
+  origenHdu         String?   @map("origen_hdu") @db.VarChar(6)
+  estadoHdu         String?   @map("estado_hdu") @db.VarChar(20)
+  qeHduNombre       String?   @map("qe_hdu_nombre") @db.VarChar(150)
+  cambios           Json?
+  celulaId          String?   @map("celula_id") @db.Uuid
+  qeId              String?   @map("qe_id") @db.Uuid
+  analistaId        String?   @map("analista_id") @db.Uuid
+  sprintId          String?   @map("sprint_id") @db.Uuid
+  celulaNombre      String?   @map("celula_nombre") @db.VarChar(120)
+  qeNombre          String?   @map("qe_nombre") @db.VarChar(150)
+  analistaNombre    String?   @map("analista_nombre") @db.VarChar(150)
+  sprintNombre      String?   @map("sprint_nombre") @db.VarChar(120)
+  sprintOrigen      String?   @map("sprint_origen") @db.VarChar(8)
+  avisoSinLider     Boolean   @default(false) @map("aviso_sin_lider")
+  marcada           Boolean   @default(false)
+  aplicada          Boolean   @default(false)
+  asignadoPorId     String?   @map("asignado_por_id") @db.Uuid
+  asignadoPorNombre String?   @map("asignado_por_nombre") @db.VarChar(150)
+  asignadoEn        DateTime? @map("asignado_en") @db.Timestamptz(6)
+
+  consulta ConsultaJira @relation(fields: [consultaId], references: [id], onDelete: Restrict)
+
+  @@unique([consultaId, posicion], map: "consulta_item_posicion_key")
+  @@index([consultaId, grupo, posicion], map: "consulta_item_grupo_idx")
+  @@map("consulta_item")
 }

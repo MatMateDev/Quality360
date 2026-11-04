@@ -2,6 +2,11 @@
  * Límite de tasa: uno general para `/v1/*` y otro más estricto para las
  * escrituras, que son las rutas sensibles (altas, cambios de rol, supervisión
  * y estados). Responde 429 `DEMASIADAS_SOLICITUDES` con `Retry-After`.
+ *
+ * La edición de la consulta de Jira (`PATCH /v1/integraciones/jira/consultas/{id}/items`)
+ * guarda cada cambio al instante, así que tiene su propio cubo (D152,
+ * `maximoConsulta`, misma clave por IP y misma ventana) y no consume el de
+ * escritura. El límite general sí la cuenta.
  */
 import { CABECERA_TRAZA, MENSAJES, obtenerTraceId } from '@quality360/auth-nest';
 import type { Request, RequestHandler, Response } from 'express';
@@ -13,6 +18,14 @@ const METODOS_ESCRITURA = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
 
 export function esEscritura(metodo: string): boolean {
   return METODOS_ESCRITURA.has(metodo.toUpperCase());
+}
+
+/** `/v1/integraciones/jira/consultas/{id}/items`, con o sin barra final. */
+const RUTA_EDICION_CONSULTA = /^\/v1\/integraciones\/jira\/consultas\/[^/]+\/items\/?$/;
+
+/** `PATCH` de las filas de una consulta (D152). */
+export function esEdicionConsulta(solicitud: Pick<Request, 'method' | 'baseUrl' | 'path'>): boolean {
+  return solicitud.method.toUpperCase() === 'PATCH' && RUTA_EDICION_CONSULTA.test(`${solicitud.baseUrl}${solicitud.path}`);
 }
 
 function responder429(solicitud: Request, respuesta: Response, ventanaMs: number): void {
@@ -36,10 +49,12 @@ function responder429(solicitud: Request, respuesta: Response, ventanaMs: number
 export interface Limitadores {
   general: RequestHandler;
   escritura: RequestHandler;
+  /** Solo `PATCH …/consultas/{id}/items` (D152). */
+  consulta: RequestHandler;
 }
 
 export function crearLimitadores(configuracion: ConfiguracionGateway): Limitadores {
-  const { ventanaMs, maximo, maximoEscritura } = configuracion.limiteTasa;
+  const { ventanaMs, maximo, maximoEscritura, maximoConsulta } = configuracion.limiteTasa;
 
   return {
     general: rateLimit({
@@ -54,7 +69,15 @@ export function crearLimitadores(configuracion: ConfiguracionGateway): Limitador
       limit: maximoEscritura,
       standardHeaders: false,
       legacyHeaders: false,
-      skip: (solicitud) => !esEscritura(solicitud.method),
+      skip: (solicitud) => !esEscritura(solicitud.method) || esEdicionConsulta(solicitud),
+      handler: (solicitud, respuesta) => responder429(solicitud, respuesta, ventanaMs),
+    }),
+    consulta: rateLimit({
+      windowMs: ventanaMs,
+      limit: maximoConsulta,
+      standardHeaders: false,
+      legacyHeaders: false,
+      skip: (solicitud) => !esEdicionConsulta(solicitud),
       handler: (solicitud, respuesta) => responder429(solicitud, respuesta, ventanaMs),
     }),
   };

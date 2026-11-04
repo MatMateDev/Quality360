@@ -114,7 +114,9 @@ Salida real (ejecutada el 2026-09-15 sobre `supabase_db_quality360`): los 4 role
   - **I3**, otra llave: `PORT=3105 INTEGRACIONES_LLAVE_CIFRADO=$(node -e "console.log(require('crypto').randomBytes(32).toString('base64'))") node --env-file=...`
   - **I4**, presupuesto corto: `PORT=3106 INTEGRACIONES_PRESUPUESTO_MS=2500 node --env-file=...`
   - **I5**, producción (prueba D95): `PORT=3107 NODE_ENV=production node --env-file=...`
-  Las variables del proceso tienen prioridad sobre `--env-file`. Los puertos 3105 a 3107 son una convención de esta guía; solo 3104 viene del backlog.
+  - **I6**, vencimiento de la consulta (E5 consulta, D134), puerto 3108: `PORT=3108 INTEGRACIONES_CONSULTA_VIGENCIA_MS=2000 node --env-file=services/integraciones/.env services/integraciones/dist/main.js`. I4 (presupuesto 2.500 ms) se reutiliza.
+  Las variables del proceso tienen prioridad sobre `--env-file`. Los puertos 3105 a 3108 son una convención de esta guía; solo 3104 viene del backlog.
+- **Variables de la consulta (sin valor fijo).** `INTEGRACIONES_CONSULTA_VIGENCIA_MS` y `INTEGRACIONES_CONSULTA_TOPE_ITEMS` (Integraciones) y `LIMITE_TASA_CONSULTA_MAX` (gateway) quedan vacías en los `.env` locales, que significa el valor por defecto (24 h, 500 filas, 120 por minuto). Si las defines en el entorno al lanzar `npm run local`, los procesos hijos las heredan y ganan a los `.env`.
 - **Perfil de pruebas del servicio:** `JIRA_TIEMPO_LIMITE_MS=1500`, `JIRA_ESPERA_MAX_429_MS=1500`, `INTEGRACIONES_PRESUPUESTO_MS=8000`, `JIRA_TOPE_ISSUES=100`; se pasan igual, como variables del proceso.
 
 ## Docker Compose

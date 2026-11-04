@@ -6,7 +6,7 @@ import { sugerenciasDe } from '../dominio/catalogos.js';
 import type { Ejecucion, EventoConfiguracion, FilaDetalle, SugerenciaIntegracion } from '../dominio/tipos.js';
 
 export function vistaEjecucion(e: Ejecucion) {
-  const sugerencias: SugerenciaIntegracion[] = e.codigoError === null ? [] : sugerenciasDe(e.codigoError, e.origen, e.continuarDesde !== null);
+  const sugerencias: SugerenciaIntegracion[] = e.codigoError === null ? [] : sugerenciasDe(e.codigoError, e.origen, e.continuarDesde !== null, e.fase);
   return {
     id: e.id,
     origen: e.origen,
@@ -33,6 +33,11 @@ export function vistaEjecucion(e: Ejecucion) {
     archivo: e.archivo,
     hayMas: e.hayMas,
     continuarDesde: e.continuarDesde,
+    fase: e.fase,
+    consultaId: e.consultaId,
+    nuevas: e.nuevas,
+    cambiaron: e.cambiaron,
+    sinCambios: e.sinCambios,
   };
 }
 
@@ -50,6 +55,7 @@ export function vistaFila(fila: FilaDetalle, ocultarContenido: boolean) {
     advertencias: fila.advertencias,
     cambios: fila.cambios,
     referencia: ocultarContenido ? null : fila.referencia,
+    asignacion: fila.asignacion,
   };
 }
 

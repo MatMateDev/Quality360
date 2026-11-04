@@ -16,7 +16,7 @@ import type {
   VistaPreviaArchivo,
 } from "@/types/dominio";
 import { autenticar, esUsuarioMock, exigirRol } from "./comun";
-import { ID, celulas, hdus, sprints, usuarios } from "./data";
+import { ID, analistasVigentesDe, celulas, hdus, sprints, usuarios } from "./data";
 import {
   MS_DIA,
   configuracionVacia,
@@ -25,7 +25,6 @@ import {
   ejecuciones,
   estadoConfig,
   eventosConfig,
-  filasCreadas,
   modoE5,
   sprintsE5,
   celulaDeSprintBase,
@@ -35,22 +34,22 @@ import {
 import { ERROR_ACCESO_DENEGADO, ERROR_NO_ENCONTRADO, cuerpoError, leerNumero, paginar } from "./utils";
 
 const BASE = env.gatewayUrl;
-const TEXTO_DE_JIRA = "TEXTO-DEL-SERVIDOR-QUE-EL-PORTAL-NO-DEBE-MOSTRAR (Authorization: Basic c2VjcmV0bw==)";
+export const TEXTO_DE_JIRA = "TEXTO-DEL-SERVIDOR-QUE-EL-PORTAL-NO-DEBE-MOSTRAR (Authorization: Basic c2VjcmV0bw==)";
 
 type Respuesta = HttpResponse<any>;
 
-const servicioNoDisponible = (): Respuesta => HttpResponse.json(cuerpoError("SERVICIO_NO_DISPONIBLE", "El servicio no está disponible. Intenta nuevamente."), { status: 503 });
+export const servicioNoDisponible = (): Respuesta => HttpResponse.json(cuerpoError("SERVICIO_NO_DISPONIBLE", "El servicio no está disponible. Intenta nuevamente."), { status: 503 });
 const errorInterno = (): Respuesta => HttpResponse.json(cuerpoError("ERROR_INTERNO", "Ocurrió un error inesperado."), { status: 500 });
-const denegado = (): Respuesta => HttpResponse.json(ERROR_ACCESO_DENEGADO(), { status: 403 });
+export const denegado = (): Respuesta => HttpResponse.json(ERROR_ACCESO_DENEGADO(), { status: 403 });
 
 /** Falla forzada de una fuente (`error` o `indisponible`) para un bloque concreto. */
-function fallaDe(estado: string): Respuesta | null {
+export function fallaDe(estado: string): Respuesta | null {
   if (estado === "error") return errorInterno();
   if (estado === "indisponible") return servicioNoDisponible();
   return null;
 }
 
-const SUGERENCIAS: Partial<Record<CodigoErrorIntegracion, SugerenciaIntegracion[]>> = {
+export const SUGERENCIAS: Partial<Record<CodigoErrorIntegracion, SugerenciaIntegracion[]>> = {
   JIRA_CREDENCIAL_INVALIDA: ["IR_A_CONEXION", "IMPORTAR_ARCHIVO"],
   JIRA_SIN_PERMISO: ["REVISAR_PERMISOS", "IMPORTAR_ARCHIVO"],
   JIRA_SITIO_NO_ENCONTRADO: ["IR_A_CONEXION", "IMPORTAR_ARCHIVO"],
@@ -68,7 +67,7 @@ function adminOQuizas(request: Request, ...roles: Parameters<typeof exigirRol>[1
   return { actor };
 }
 
-const soloAdmin = (request: Request) => adminOQuizas(request, "ADMINISTRADOR");
+export const soloAdmin = (request: Request) => adminOQuizas(request, "ADMINISTRADOR");
 const lectura = (request: Request) => adminOQuizas(request, "ADMINISTRADOR", "QE", "AUDITOR");
 
 // -------------------------------------------------------------- configuración
@@ -201,62 +200,14 @@ function cuerpoErrorArchivo(codigo: string, columnasFaltantes: string[], ejecuci
 
 // ---------------------------------------------------------------- ejecuciones
 
-function registrar(ejecucion: Ejecucion, filas: FilaMock[]): Ejecucion {
+export function registrar(ejecucion: Ejecucion, filas: FilaMock[]): Ejecucion {
   ejecuciones.unshift(ejecucion);
   detalles.set(ejecucion.id, filas);
   return ejecucion;
 }
 
-function nuevoId(): string {
+export function nuevoId(): string {
   return crypto.randomUUID();
-}
-
-function ejecucionDeSincronizacion(vincular: boolean): { ejecucion: Ejecucion; filas: FilaMock[] } {
-  const ahora = new Date();
-  const base = { id: nuevoId(), origen: "JIRA" as const, iniciadaEn: ahora.toISOString(), terminadaEn: new Date(ahora.getTime() + 3100).toISOString(), duracionMs: 3100, proyecto: "QTY", sitioHost: "su-empresa.atlassian.net", vincularExistentes: vincular };
-  const modo = modoE5.sincronizacion;
-  const fallida = (codigo: CodigoErrorIntegracion) =>
-    ejecucionBase({ ...base, resultado: "FALLIDA", codigoError: codigo, mensajeError: TEXTO_DE_JIRA, sugerencias: SUGERENCIAS[codigo] ?? ["IMPORTAR_ARCHIVO"] });
-  if (modo === "fallida") return { ejecucion: fallida("JIRA_NO_DISPONIBLE"), filas: [] };
-  if (modo === "fallida-credencial") return { ejecucion: fallida("JIRA_CREDENCIAL_INVALIDA"), filas: [] };
-  if (modo === "fallida-organizacion") return { ejecucion: fallida("ORGANIZACION_NO_DISPONIBLE"), filas: [] };
-  if (modo === "con-errores") {
-    const filas: FilaMock[] = [
-      ...filasCreadas("QTY", 10),
-      { fila: 11, codigo: "QTY-11", titulo: null, idHistoria: null, resultado: "ERROR", motivo: "TITULO_VACIO", advertencias: [], cambios: null, referencia: { estado: "Por hacer", responsable: null } },
-    ];
-    return { ejecucion: ejecucionBase({ ...base, resultado: "CON_ERRORES", leidas: 11, creadas: 10, conError: 1, conAdvertencias: 5, reintentos429: 2, eventos: [{ tipo: "JIRA_LIMITE_DE_TASA", esperaMs: 1000, fecha: base.iniciadaEn }, { tipo: "JIRA_LIMITE_DE_TASA", esperaMs: 1000, fecha: base.iniciadaEn }] }), filas };
-  }
-  if (modo === "sin-cambios") {
-    const filas: FilaMock[] = Array.from({ length: 5 }, (_, i) => ({ fila: i + 1, codigo: `QTY-${i + 1}`, titulo: `Historia QTY-${i + 1}`, idHistoria: null, resultado: "OMITIDA", motivo: "SIN_CAMBIOS", advertencias: [], cambios: null, referencia: null }));
-    return { ejecucion: ejecucionBase({ ...base, resultado: "EXITOSA", leidas: 5, omitidas: 5 }), filas };
-  }
-  if (modo === "incompleta") {
-    return { ejecucion: ejecucionBase({ ...base, resultado: "INCOMPLETA", leidas: 100, creadas: 100, hayMas: true, continuarDesde: "QTY-100", sugerencias: ["CONTINUAR"] }), filas: filasCreadas("QTY", 100) };
-  }
-  if (modo === "incompleta-tasa") {
-    return { ejecucion: ejecucionBase({ ...base, resultado: "INCOMPLETA", leidas: 50, creadas: 50, hayMas: true, continuarDesde: "QTY-50", codigoError: "JIRA_LIMITE_DE_TASA", mensajeError: TEXTO_DE_JIRA, sugerencias: ["CONTINUAR", "IMPORTAR_ARCHIVO"] }), filas: filasCreadas("QTY", 50) };
-  }
-  if (modo === "vincular-sugerido") {
-    const resultado: ResultadoFila = vincular ? "ACTUALIZADA" : "OMITIDA";
-    const filas: FilaMock[] = [
-      ...filasCreadas("QTY", 3),
-      ...Array.from({ length: 2 }, (_, i): FilaMock => ({
-        fila: 4 + i,
-        codigo: `MAN-${i + 1}`,
-        titulo: `Hecha a mano ${i + 1}`,
-        idHistoria: vincular ? `d5000000-0000-4000-8000-00000000009${i}` : null,
-        resultado,
-        motivo: vincular ? null : "HDU_MANUAL_EXISTENTE",
-        advertencias: [],
-        cambios: vincular ? { titulo: { antes: "Antes", despues: `Hecha a mano ${i + 1}` } } : null,
-        referencia: null,
-      })),
-    ];
-    return { ejecucion: ejecucionBase({ ...base, resultado: "EXITOSA", leidas: 5, creadas: 3, actualizadas: vincular ? 2 : 0, omitidas: vincular ? 0 : 2 }), filas };
-  }
-  // exitosa (y sin-respuesta: el servidor sí completó)
-  return { ejecucion: ejecucionBase({ ...base, resultado: "EXITOSA", leidas: 10, creadas: 10, conAdvertencias: 1 }), filas: filasCreadas("QTY", 10) };
 }
 
 function filtrarEjecuciones(): Ejecucion[] {
@@ -285,6 +236,19 @@ export const handlersE5 = [
     const caida = fallaDe(modoE5.catalogos);
     if (caida) return caida;
     const url = new URL(request.url);
+    const supervisorId = url.searchParams.get("supervisorId");
+    if (supervisorId) {
+      // D147: analistas activos del equipo vigente del QE; otro `rol` es 400 y un id que no es QE activo, 422.
+      if (url.searchParams.get("rol") && url.searchParams.get("rol") !== "ANALISTA_QA") return HttpResponse.json(cuerpoError("VALIDACION", "Parámetro inválido."), { status: 400 });
+      const qe = usuarios.find((u) => u.id === supervisorId && u.rol === "QE" && u.activo);
+      if (!qe) return HttpResponse.json(cuerpoError("QE_INVALIDO" as never, "El QE no es válido."), { status: 422 });
+      const equipo = analistasVigentesDe(qe.id)
+        .map((relacion) => usuarios.find((u) => u.id === relacion.analistaId))
+        .filter((u): u is NonNullable<typeof u> => Boolean(u?.activo))
+        .sort((a, b) => a.nombre.localeCompare(b.nombre))
+        .map((u) => ({ id: u.id, nombre: u.nombre, correo: u.correo, rol: u.rol }));
+      return HttpResponse.json({ items: equipo });
+    }
     const rol = url.searchParams.get("rol");
     const soloActivos = url.searchParams.get("activo") !== "false";
     const items = usuarios
@@ -387,23 +351,6 @@ export const handlersE5 = [
     return HttpResponse.json(paginar(items, 1, 10));
   }),
 
-  // ---------------------------------------------------------- sincronización
-  http.post(`${BASE}/v1/integraciones/jira/sincronizaciones`, async ({ request }) => {
-    const { actor, respuesta } = soloAdmin(request);
-    if (!actor) return respuesta;
-    if (modoE5.configuracion === "sin-llave") return HttpResponse.json(cuerpoError("LLAVE_CIFRADO_NO_DISPONIBLE", "No habilitada."), { status: 503 });
-    if (modoE5.configuracion === "vacia") return HttpResponse.json(cuerpoError("JIRA_NO_CONFIGURADO", "Sin configuración."), { status: 409 });
-    if (modoE5.configuracion === "no-descifrable") return HttpResponse.json(cuerpoError("TOKEN_NO_DESCIFRABLE", "Reingresa el token."), { status: 409 });
-    if (modoE5.sincronizacion === "en-curso") return HttpResponse.json(cuerpoError("INTEGRACION_EN_CURSO", "Ya hay una sincronización en curso."), { status: 409 });
-    await delay(modoE5.demoraMs); // La operación real tarda: deja ver el estado de espera.
-    const cuerpo = (await request.json().catch(() => ({}))) as { vincularExistentes?: boolean };
-    const { ejecucion, filas } = ejecucionDeSincronizacion(Boolean(cuerpo.vincularExistentes));
-    registrar(ejecucion, filas);
-    // La función de Vercel se cortó: el servidor sí terminó, pero el portal no recibe la respuesta (D115).
-    if (modoE5.sincronizacion === "sin-respuesta") return new HttpResponse("<html><body>504 Gateway Timeout</body></html>", { status: 504, headers: { "Content-Type": "text/html" } });
-    return HttpResponse.json(ejecucion);
-  }),
-
   // ----------------------------------------------------------------- archivos
   http.post(`${BASE}/v1/integraciones/archivos/vista-previa`, async ({ request }) => {
     const { actor, respuesta } = soloAdmin(request);
@@ -420,7 +367,7 @@ export const handlersE5 = [
   http.post(`${BASE}/v1/integraciones/archivos/importaciones`, async ({ request }) => {
     const { actor, respuesta } = soloAdmin(request);
     if (!actor) return respuesta;
-    if (modoE5.sincronizacion === "en-curso") return HttpResponse.json(cuerpoError("INTEGRACION_EN_CURSO", "Ya hay una sincronización en curso."), { status: 409 });
+    if (modoE5.consulta === "en-curso") return HttpResponse.json(cuerpoError("INTEGRACION_EN_CURSO", "Ya hay una consulta o confirmación en curso."), { status: 409 });
     await delay(modoE5.demoraMs);
     const cuerpo = (await request.json()) as { formato: string; nombre: string; contenido: string; estricto: boolean; vincularExistentes: boolean };
     const bytes = new TextEncoder().encode(cuerpo.contenido).length;
@@ -474,6 +421,8 @@ export const handlersE5 = [
     const p = new URL(request.url).searchParams;
     let items = [...filtrarEjecuciones()];
     const origen = p.get("origen");
+    const fase = p.get("fase");
+    if (fase) items = items.filter((e) => e.fase === fase);
     const resultado = p.get("resultado");
     const desde = p.get("desde");
     const hasta = p.get("hasta");
@@ -528,11 +477,10 @@ export const handlersE5 = [
     const lista = filtrarEjecuciones();
     const ultima = lista[0] ?? null;
     const completada = lista.find((e) => ESTADOS_COMPLETADOS.includes(e.resultado)) ?? null;
-    const enCurso = modoE5.sincronizacion === "en-curso" ? { id: nuevoId(), origen: "JIRA" as const, iniciadaEn: new Date(Date.now() - MS_DIA / 1000).toISOString(), abandonada: false } : null;
+    const enCurso = modoE5.consulta === "en-curso" ? { id: nuevoId(), origen: "JIRA" as const, fase: "CONSULTA" as const, iniciadaEn: new Date(Date.now() - MS_DIA / 1000).toISOString(), abandonada: false } : null;
     const cuerpo: Record<string, unknown> = { ultimaEjecucion: ultima, ultimaCompletada: completada, enCurso };
     if (actor.rol === "ADMINISTRADOR") {
       cuerpo.jiraConfigurado = modoE5.configuracion !== "vacia" && estadoConfig.actual.configurado;
-      if (ultima && ultima.resultado === "INCOMPLETA" && ultima.origen === "JIRA" && ultima.continuarDesde) cuerpo.continuar = { desde: ultima.continuarDesde, ejecucionId: ultima.id };
     }
     return HttpResponse.json(cuerpo);
   }),

@@ -13,7 +13,7 @@ const UUID = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a
 const ORIGENES = ['JIRA', 'CSV', 'JSON'] as const;
 const MAXIMO_FILAS = 25;
 
-class Acumulador {
+export class Acumulador {
   readonly detalles: DetalleError[] = [];
 
   falla(campo: string, codigo: CodigoDetalle, mensaje: string): void {
@@ -64,7 +64,7 @@ class Acumulador {
   }
 }
 
-function objeto(cuerpo: unknown): Record<string, unknown> {
+export function objeto(cuerpo: unknown): Record<string, unknown> {
   if (typeof cuerpo !== 'object' || cuerpo === null || Array.isArray(cuerpo)) {
     throw errorValidacion([{ campo: 'body', codigo: 'FORMATO_INVALIDO', mensaje: 'El cuerpo debe ser un objeto JSON.' }]);
   }
@@ -81,9 +81,41 @@ export function leerDestino(cuerpo: unknown): DestinoHdu {
   return destino;
 }
 
-const CAMPOS_FILA = ['fila', 'codigo', 'titulo', 'descripcion', 'prioridad', 'celula', 'sprint', 'qeCorreo', 'claveExterna', 'urlExterna'];
+const CAMPOS_FILA = ['fila', 'codigo', 'titulo', 'descripcion', 'prioridad', 'celula', 'sprint', 'qeCorreo', 'claveExterna', 'urlExterna', 'operacion', 'asignacion'];
+const CAMPOS_ASIGNACION_FILA = ['celulaId', 'qeResponsableId', 'analistaId', 'sprintId'] as const;
 
-function leerFila(valor: unknown, indice: number, a: Acumulador): FilaUpsert | null {
+/** `operacion` y `asignacion`: obligatorias en el modo confirmación (la asignación, solo en `CREAR`) y prohibidas sin él (400). */
+function leerOperacion(datos: Record<string, unknown>, prefijo: string, confirmacion: boolean, a: Acumulador): Pick<FilaUpsert, 'operacion' | 'asignacion'> {
+  if (!confirmacion) {
+    if (datos.operacion !== undefined) a.falla(`${prefijo}operacion`, 'NO_PERMITIDO', 'Solo se admite con consultaId.');
+    if (datos.asignacion !== undefined) a.falla(`${prefijo}asignacion`, 'NO_PERMITIDO', 'Solo se admite con consultaId.');
+    return {};
+  }
+  if (datos.operacion !== 'CREAR' && datos.operacion !== 'ACTUALIZAR') {
+    a.falla(`${prefijo}operacion`, datos.operacion === undefined ? 'REQUERIDO' : 'VALOR_NO_PERMITIDO', 'Debe ser CREAR o ACTUALIZAR.');
+    return {};
+  }
+  if (datos.operacion === 'ACTUALIZAR') {
+    if (datos.asignacion !== undefined) a.falla(`${prefijo}asignacion`, 'NO_PERMITIDO', 'Solo se admite en CREAR.');
+    return { operacion: 'ACTUALIZAR' };
+  }
+  const crudo = datos.asignacion;
+  if (typeof crudo !== 'object' || crudo === null || Array.isArray(crudo)) {
+    a.falla(`${prefijo}asignacion`, 'REQUERIDO', 'La asignación es obligatoria en CREAR.');
+    return {};
+  }
+  const d = crudo as Record<string, unknown>;
+  a.sinCamposExtra(d, CAMPOS_ASIGNACION_FILA, `${prefijo}asignacion.`);
+  const asignacion = {
+    celulaId: a.uuid(d, 'celulaId', `${prefijo}asignacion.`),
+    qeResponsableId: a.uuid(d, 'qeResponsableId', `${prefijo}asignacion.`),
+    analistaId: a.uuid(d, 'analistaId', `${prefijo}asignacion.`),
+    sprintId: a.uuid(d, 'sprintId', `${prefijo}asignacion.`),
+  };
+  return { operacion: 'CREAR', asignacion };
+}
+
+function leerFila(valor: unknown, indice: number, a: Acumulador, confirmacion: boolean): FilaUpsert | null {
   const prefijo = `filas[${indice}].`;
   if (typeof valor !== 'object' || valor === null || Array.isArray(valor)) {
     a.falla(`filas[${indice}]`, 'FORMATO_INVALIDO', 'Cada fila debe ser un objeto.');
@@ -113,30 +145,56 @@ function leerFila(valor: unknown, indice: number, a: Acumulador): FilaUpsert | n
   const urlExterna = a.textoAnulable(datos, 'urlExterna', 300, prefijo);
   if (urlExterna !== null && !/^https?:\/\//.test(urlExterna)) a.falla(`${prefijo}urlExterna`, 'FORMATO_INVALIDO', 'Debe empezar con http:// o https://.');
 
+  const { operacion, asignacion } = leerOperacion(datos, prefijo, confirmacion, a);
+
   if (a.detalles.length > antes) return null;
-  return { fila: numero as number, codigo, titulo, descripcion, prioridad, celula, sprint, qeCorreo, claveExterna, urlExterna };
+  return {
+    fila: numero as number,
+    codigo,
+    titulo,
+    descripcion,
+    prioridad,
+    celula,
+    sprint,
+    qeCorreo,
+    claveExterna,
+    urlExterna,
+    ...(operacion === undefined ? {} : { operacion }),
+    ...(asignacion === undefined ? {} : { asignacion }),
+  };
 }
 
 /** `POST /v1/interno/integraciones/hdu/upsert`: de 1 a 25 filas; 26 o más → 400 (E5-B03-T13). */
 export function leerSolicitudUpsert(cuerpo: unknown): SolicitudUpsert {
   const datos = objeto(cuerpo);
   const a = new Acumulador();
-  a.sinCamposExtra(datos, ['origen', 'soloSimular', 'vincularExistentes', 'estricto', 'destino', 'sprintNoEncontrado', 'filas'], '');
+  a.sinCamposExtra(datos, ['origen', 'consultaId', 'soloSimular', 'vincularExistentes', 'estricto', 'destino', 'sprintNoEncontrado', 'filas'], '');
+  const confirmacion = datos.consultaId !== undefined;
+  const consultaId = confirmacion ? a.uuid(datos, 'consultaId') : undefined;
 
   let origen: SolicitudUpsert['origen'] = 'CSV';
   if (typeof datos.origen !== 'string' || !(ORIGENES as readonly string[]).includes(datos.origen)) a.falla('origen', 'VALOR_NO_PERMITIDO', 'Debe ser JIRA, CSV o JSON.');
   else origen = datos.origen as SolicitudUpsert['origen'];
 
-  let sprintNoEncontrado: SolicitudUpsert['sprintNoEncontrado'] = 'ERROR';
-  if (datos.sprintNoEncontrado !== 'RESPALDO' && datos.sprintNoEncontrado !== 'ERROR') a.falla('sprintNoEncontrado', 'VALOR_NO_PERMITIDO', 'Debe ser RESPALDO o ERROR.');
+  let sprintNoEncontrado: SolicitudUpsert['sprintNoEncontrado'];
+  if (confirmacion) {
+    if (datos.sprintNoEncontrado !== undefined) a.falla('sprintNoEncontrado', 'NO_PERMITIDO', 'No se usa con consultaId.');
+  } else if (datos.sprintNoEncontrado !== 'RESPALDO' && datos.sprintNoEncontrado !== 'ERROR') a.falla('sprintNoEncontrado', 'VALOR_NO_PERMITIDO', 'Debe ser RESPALDO o ERROR.');
   else sprintNoEncontrado = datos.sprintNoEncontrado;
 
   const soloSimular = a.booleano(datos, 'soloSimular');
   const vincularExistentes = a.booleano(datos, 'vincularExistentes');
   const estricto = a.booleano(datos, 'estricto');
+  if (confirmacion) {
+    for (const campo of ['soloSimular', 'vincularExistentes', 'estricto']) {
+      if (datos[campo] === true) a.falla(campo, 'NO_PERMITIDO', 'No se usa con consultaId.');
+    }
+  }
 
-  let destino: DestinoHdu = { celulaId: '', qeResponsableId: '', sprintRespaldoId: '' };
-  if (typeof datos.destino !== 'object' || datos.destino === null || Array.isArray(datos.destino)) a.falla('destino', 'REQUERIDO', 'El destino es obligatorio.');
+  let destino: DestinoHdu | undefined;
+  if (confirmacion) {
+    if (datos.destino !== undefined) a.falla('destino', 'NO_PERMITIDO', 'No se usa con consultaId.');
+  } else if (typeof datos.destino !== 'object' || datos.destino === null || Array.isArray(datos.destino)) a.falla('destino', 'REQUERIDO', 'El destino es obligatorio.');
   else {
     const d = datos.destino as Record<string, unknown>;
     a.sinCamposExtra(d, ['celulaId', 'qeResponsableId', 'sprintRespaldoId'], 'destino.');
@@ -148,11 +206,20 @@ export function leerSolicitudUpsert(cuerpo: unknown): SolicitudUpsert {
   else if (datos.filas.length < 1 || datos.filas.length > MAXIMO_FILAS) a.falla('filas', 'LONGITUD_INVALIDA', `Un lote lleva de 1 a ${MAXIMO_FILAS} filas.`);
   else {
     datos.filas.forEach((valor, indice) => {
-      const fila = leerFila(valor, indice, a);
+      const fila = leerFila(valor, indice, a, confirmacion);
       if (fila !== null) filas.push(fila);
     });
   }
 
   a.lanzarSiHay();
-  return { origen, soloSimular, vincularExistentes, estricto, destino, sprintNoEncontrado, filas };
+  return {
+    origen,
+    ...(consultaId === undefined ? {} : { consultaId }),
+    soloSimular,
+    vincularExistentes,
+    estricto,
+    ...(destino === undefined ? {} : { destino }),
+    ...(sprintNoEncontrado === undefined ? {} : { sprintNoEncontrado }),
+    filas,
+  };
 }

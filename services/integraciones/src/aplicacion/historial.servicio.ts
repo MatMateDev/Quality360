@@ -76,15 +76,14 @@ export class HistorialAplicacion {
     };
   }
 
-  /** Última ejecución, última completada (D121) y la ejecución en curso; solo el Administrador ve `jiraConfigurado` y `continuar`. */
+  /** Última ejecución, última completada (D121) y la ejecución en curso; solo el Administrador ve `jiraConfigurado` (`continuar` ya no se emite, D150). */
   async estado(solicitante: Solicitante) {
-    const { ultima, ultimaCompletada, ultimaJira, enCurso } = await this.ejecuciones.estado();
+    const { ultima, ultimaCompletada, enCurso } = await this.ejecuciones.estado();
     const resultado: {
       ultimaEjecucion: ReturnType<typeof vistaEjecucion> | null;
       ultimaCompletada: ReturnType<typeof vistaEjecucion> | null;
       enCurso: { id: string; origen: Ejecucion['origen']; iniciadaEn: Date; abandonada: boolean } | null;
       jiraConfigurado?: boolean;
-      continuar?: { desde: string; ejecucionId: string };
     } = {
       ultimaEjecucion: ultima === null ? null : vistaEjecucion(ultima),
       ultimaCompletada: ultimaCompletada === null ? null : vistaEjecucion(ultimaCompletada),
@@ -95,10 +94,6 @@ export class HistorialAplicacion {
     };
     if (solicitante.rol === 'ADMINISTRADOR') {
       resultado.jiraConfigurado = (await this.configuraciones.obtener()) !== null;
-      // «Continuar» solo si la última ejecución de Jira quedó incompleta con una clave desde la cual seguir (D96).
-      if (enCurso === null && ultimaJira !== null && ultimaJira.resultado === 'INCOMPLETA' && ultimaJira.continuarDesde !== null) {
-        resultado.continuar = { desde: ultimaJira.continuarDesde, ejecucionId: ultimaJira.id };
-      }
     }
     return resultado;
   }

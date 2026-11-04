@@ -233,9 +233,9 @@ describe("E5-F03 · pestaña Importar archivo", () => {
     const selector = await abrirImportar();
     await user.upload(selector, csv(VALIDO));
     await screen.findByTestId("vista-previa");
-    modoE5.sincronizacion = "en-curso";
+    modoE5.consulta = "en-curso";
     await user.click(screen.getByTestId("boton-importar"));
-    expect(await screen.findByTestId("aviso-en-curso")).toHaveTextContent("Ya hay una importación o sincronización en curso. Espera a que termine.");
+    expect(await screen.findByTestId("aviso-en-curso")).toHaveTextContent("Ya hay una consulta, confirmación o importación en curso. Espera a que termine.");
     expect(screen.getByTestId("boton-importar")).toBeEnabled();
   });
 

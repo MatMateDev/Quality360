@@ -5,9 +5,11 @@ import type {
   Ejecucion,
   EventoConfiguracionJira,
   FilaEjecucion,
+  ItemConsulta,
+  Consulta,
   OrigenHdu,
 } from "@/types/dominio";
-import { ID } from "./data";
+import { ID, hdus } from "./data";
 
 /** Estado de cada fuente de E5, bloque por bloque, para forzar «error» e «indisponible» sin tocar el resto. */
 export type EstadoFuente = "ok" | "error" | "indisponible";
@@ -23,19 +25,26 @@ export interface ModoE5 {
   demoraMs: number;
   /** Servicio caído al validar un archivo (vista previa). */
   vistaPrevia: EstadoFuente;
-  /** Resultado que producirá el próximo `POST …/sincronizaciones`. */
-  sincronizacion:
+  /** Lo que lee el próximo `POST …/consultas` (y sus continuaciones). */
+  consulta:
     | "exitosa"
     | "con-errores"
+    | "con-cambios"
     | "incompleta"
     | "incompleta-tasa"
+    | "incompleta-tiempo"
+    | "tope"
     | "fallida"
     | "fallida-credencial"
     | "fallida-organizacion"
-    | "sin-cambios"
+    | "fallida-tasa"
+    | "sin-novedades"
     | "sin-respuesta"
-    | "en-curso"
-    | "vincular-sugerido";
+    | "en-curso";
+  /** Resultado de la próxima `POST …/confirmaciones`. */
+  confirmacion: "normal" | "incompleta" | "asignaciones-invalidas" | "organizacion-caida" | "sin-respuesta";
+  /** Fuente de las lecturas `GET …/consultas/*`. */
+  lecturaConsulta: EstadoFuente;
   /** Resultado de la próxima importación. */
   importacion: "normal" | "incompleta" | "sin-respuesta";
   /** `ok` o el código de error de la prueba de conexión. */
@@ -51,12 +60,16 @@ export const modoE5: ModoE5 = {
   catalogos: "ok",
   demoraMs: 150,
   vistaPrevia: "ok",
-  sincronizacion: "exitosa",
+  consulta: "exitosa",
+  confirmacion: "normal",
+  lecturaConsulta: "ok",
   importacion: "normal",
   prueba: "ok",
 };
 
-export interface FilaMock extends FilaEjecucion {
+export interface FilaMock extends Omit<FilaEjecucion, "asignacion"> {
+  /** Asignación en nombres de una fila confirmada; ausente = `null`. */
+  asignacion?: FilaEjecucion["asignacion"];
   /** HDU fuera del ámbito del QE (D106): se oculta y se cuenta en `filasOcultas`. */
   fueraDeAmbito?: boolean;
 }
@@ -145,6 +158,8 @@ const adminActor = { id: ID.admin, nombre: "Valentina Rojas", rol: "ADMINISTRADO
 
 export function ejecucionBase(parcial: Partial<Ejecucion> & Pick<Ejecucion, "id" | "origen" | "resultado">): Ejecucion {
   return {
+    fase: "DIRECTA",
+    consultaId: null,
     actor: adminActor,
     iniciadaEn: "2026-10-29T13:20:00Z",
     terminadaEn: "2026-10-29T13:20:03Z",
@@ -156,6 +171,9 @@ export function ejecucionBase(parcial: Partial<Ejecucion> & Pick<Ejecucion, "id"
     actualizadas: 0,
     omitidas: 0,
     conError: 0,
+    nuevas: 0,
+    cambiaron: 0,
+    sinCambios: 0,
     conAdvertencias: 0,
     reintentos429: 0,
     eventos: [],
@@ -308,14 +326,45 @@ export function reiniciarE5(): void {
     catalogos: "ok",
     demoraMs: 150,
     vistaPrevia: "ok",
-    sincronizacion: "exitosa",
+    consulta: "exitosa",
+    confirmacion: "normal",
+    lecturaConsulta: "ok",
     importacion: "normal",
     prueba: "ok",
   } satisfies ModoE5);
+  reiniciarConsulta();
   estadoConfig.actual = configuracionInicial();
   eventosConfig.splice(0, eventosConfig.length, ...eventosIniciales());
   ejecuciones.splice(0, ejecuciones.length, ...ejecucionesIniciales());
   detallesIniciales();
   origenesIniciales();
   ultimosTokens.length = 0;
+}
+
+// ------------------------------------------------------------ consulta de Jira (D132–D152)
+
+/** Estado en memoria de la consulta compartida entre Administradores (D134). */
+export interface EstadoConsultaMock {
+  consulta: Consulta | null;
+  ultimaCerrada: Consulta | null;
+  items: ItemConsulta[];
+  /** Issues del universo ya leídas (el `continuarDesde` del servidor). */
+  leidas: number;
+  /** Tandas ya leídas desde que se creó la consulta. */
+  tandas: number;
+  /** Veces que el mock "llamó a Jira": cancelar un diálogo no debe sumar. */
+  llamadasJira: number;
+}
+
+export const estadoConsulta: EstadoConsultaMock = { consulta: null, ultimaCerrada: null, items: [], leidas: 0, tandas: 0, llamadasJira: 0 };
+
+/** Ids de las HDU que creó una confirmación simulada (se quitan de `hdus` al reiniciar). */
+export const hduCreadasPorConsulta: string[] = [];
+
+export function reiniciarConsulta(): void {
+  for (const id of hduCreadasPorConsulta.splice(0)) {
+    const i = hdus.findIndex((h) => h.id === id);
+    if (i >= 0) hdus.splice(i, 1);
+  }
+  Object.assign(estadoConsulta, { consulta: null, ultimaCerrada: null, items: [], leidas: 0, tandas: 0, llamadasJira: 0 });
 }

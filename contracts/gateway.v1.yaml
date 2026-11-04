@@ -16,7 +16,13 @@ info:
       rutas responden 503 `SERVICIO_NO_DISPONIBLE` y el resto del gateway
       funciona. Cuerpo de hasta 1,5 MB solo en `/v1/integraciones/archivos/*`;
       tiempo límite propio (`INTEGRACIONES_TIMEOUT_MS`, 12 s por defecto)
-      porque sincronizar e importar duran hasta ~9 s (D114). `GET
+      porque consultar, confirmar e importar duran hasta ~9 s (D114).
+      Consulta y asignación (D132): `POST /v1/integraciones/jira/sincronizaciones`
+      se retira y responde 404; se suman las 8 operaciones de
+      `/v1/integraciones/jira/consultas*` (solo Administrador), reenviadas sin
+      composición, incluido `PATCH …/items` (el gateway debe aceptar `PATCH`
+      y propagar el código 410). `GET /v1/catalogos/personas` suma el filtro
+      `supervisorId` (D147). `GET
       /v1/hdu/{id}` suma `descripcion`, `origen`, `claveExterna` y
       `urlExterna` (D108); `GET /v1/catalogos/sprints` suma `celulaId` y el
       filtro `celulaId` (D120). Listados, bandejas y CSV no cambian.
@@ -99,12 +105,12 @@ tags:
     description: Historial de impedimentos y riesgo (E4-B04).
   - name: Conexión
     description: Configuración cifrada de Jira Cloud (E5-F01, E5-B01).
-  - name: Sincronización
-    description: Sincronización manual con Jira (E5-F02, E5-B02).
+  - name: Consulta
+    description: Consultar Jira, revisar, asignar y confirmar (E5-F02, E5-F05, E5-B02, E5-B05).
   - name: Archivos
     description: Importación de CSV/JSON (E5-F03, E5-B03).
   - name: Historial
-    description: Historial de sincronizaciones e importaciones (E5-F04, E5-B04).
+    description: Historial de consultas, confirmaciones e importaciones (E5-F04, E5-B04).
 
 x-hdu-transversal: [E1-B02#1, E1-B07#3, E1-B11#1]
 x-escenarios-sin-operacion:
@@ -1430,8 +1436,21 @@ paths:
     $ref: './integraciones.v1.yaml#/paths/~1v1~1integraciones~1jira~1configuracion~1probar'
   /v1/integraciones/jira/configuracion/eventos:
     $ref: './integraciones.v1.yaml#/paths/~1v1~1integraciones~1jira~1configuracion~1eventos'
-  /v1/integraciones/jira/sincronizaciones:
-    $ref: './integraciones.v1.yaml#/paths/~1v1~1integraciones~1jira~1sincronizaciones'
+  # Consulta y asignación (D132): se retira /v1/integraciones/jira/sincronizaciones (404) y se suman 7 rutas (8 operaciones).
+  /v1/integraciones/jira/consultas:
+    $ref: './integraciones.v1.yaml#/paths/~1v1~1integraciones~1jira~1consultas'
+  /v1/integraciones/jira/consultas/actual:
+    $ref: './integraciones.v1.yaml#/paths/~1v1~1integraciones~1jira~1consultas~1actual'
+  /v1/integraciones/jira/consultas/{id}:
+    $ref: './integraciones.v1.yaml#/paths/~1v1~1integraciones~1jira~1consultas~1{id}'
+  /v1/integraciones/jira/consultas/{id}/continuaciones:
+    $ref: './integraciones.v1.yaml#/paths/~1v1~1integraciones~1jira~1consultas~1{id}~1continuaciones'
+  /v1/integraciones/jira/consultas/{id}/items:
+    $ref: './integraciones.v1.yaml#/paths/~1v1~1integraciones~1jira~1consultas~1{id}~1items'
+  /v1/integraciones/jira/consultas/{id}/confirmaciones:
+    $ref: './integraciones.v1.yaml#/paths/~1v1~1integraciones~1jira~1consultas~1{id}~1confirmaciones'
+  /v1/integraciones/jira/consultas/{id}/descartes:
+    $ref: './integraciones.v1.yaml#/paths/~1v1~1integraciones~1jira~1consultas~1{id}~1descartes'
   /v1/integraciones/archivos/vista-previa:
     $ref: './integraciones.v1.yaml#/paths/~1v1~1integraciones~1archivos~1vista-previa'
   /v1/integraciones/archivos/importaciones:

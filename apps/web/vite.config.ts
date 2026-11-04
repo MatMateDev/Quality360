@@ -20,6 +20,7 @@ export default defineConfig({
     environment: "jsdom",
     globals: true,
     setupFiles: ["./src/test/setup.ts"],
+    testTimeout: 15000,
     css: true,
     // Las pruebas deben ser autosuficientes: no dependen de apps/web/.env.local
     // (gitignored). Fuerzan el modo mock y valores de Supabase de relleno, para

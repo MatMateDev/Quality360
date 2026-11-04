@@ -7,12 +7,13 @@ import { Paginacion } from "@/components/bandeja/Paginacion";
 import { TablaBandeja, type Columna } from "@/components/bandeja/TablaBandeja";
 import { hayFiltrosActivos, type FiltrosUrl } from "@/lib/filtrosUrl";
 import { formatearFecha } from "@/lib/formato";
-import { ETIQUETAS_ORIGEN_EJECUCION, INFO_RESULTADO_EJECUCION, RESULTADOS_EJECUCION } from "@/lib/mensajesIntegracion";
-import { origenDe } from "@/lib/textosEjecucion";
+import { ETIQUETAS_FASE, ETIQUETAS_ORIGEN_EJECUCION, FASES, INFO_RESULTADO_EJECUCION, RESULTADOS_EJECUCION } from "@/lib/mensajesIntegracion";
+import { origenDe, textoContadoresConsulta } from "@/lib/textosEjecucion";
 import { ETIQUETAS_ROL, type Ejecucion } from "@/types/dominio";
 import { InsigniaResultado } from "./Insignias";
 
 const CAMPOS: CampoFiltro[] = [
+  { clave: "fase", id: "filtro-fase", etiqueta: "Fase", tipo: "select", opciones: FASES.map((f) => ({ valor: f, etiqueta: ETIQUETAS_FASE[f] })) },
   { clave: "origen", id: "filtro-origen", etiqueta: "Origen", tipo: "select", opciones: Object.entries(ETIQUETAS_ORIGEN_EJECUCION).map(([valor, etiqueta]) => ({ valor, etiqueta })) },
   { clave: "resultado", id: "filtro-resultado", etiqueta: "Resultado", tipo: "select", opciones: RESULTADOS_EJECUCION.map((r) => ({ valor: r, etiqueta: INFO_RESULTADO_EJECUCION[r].etiqueta })) },
   { clave: "desde", id: "filtro-desde", etiqueta: "Desde", tipo: "fecha" },
@@ -22,7 +23,8 @@ const CAMPOS: CampoFiltro[] = [
 const CLAVES_FILTROS = CAMPOS.map((c) => c.clave);
 
 /** Un contador de una ejecución en curso es «—», no 0 (todavía no cerró). */
-const cifra = (e: Ejecucion, valor: number) => (e.resultado === "EN_CURSO" ? "—" : String(valor));
+const cifra = (e: Ejecucion, valor: number, clave?: string) =>
+  e.resultado === "EN_CURSO" || (e.fase === "CONSULTA" && (clave === "creadas" || clave === "actualizadas" || clave === "omitidas")) ? "—" : String(valor);
 
 /** `lista-ejecuciones` (E5-F04): filtros en la URL, orden por fecha y paginación del servidor, con estados propios. */
 export function TablaEjecuciones({ filtros }: { filtros: FiltrosUrl }) {
@@ -49,14 +51,31 @@ export function TablaEjecuciones({ filtros }: { filtros: FiltrosUrl }) {
     titulo,
     render: (e) => (
       <span className="celda-numero" style={clave === "conError" && e.conError > 0 ? { fontWeight: 700 } : undefined}>
-        {cifra(e, e[clave])}
+        {cifra(e, e[clave], clave)}
       </span>
     ),
   });
 
   const columnas: Columna<Ejecucion>[] = [
-    { id: "resultado", titulo: "Resultado", prioritaria: true, render: (e) => <span data-testid={`celda-resultado-${e.id}`}><InsigniaResultado resultado={e.resultado} /></span> },
+    {
+      id: "resultado",
+      titulo: "Resultado",
+      prioritaria: true,
+      render: (e) => (
+        <>
+          <span data-testid={`celda-resultado-${e.id}`}>
+            <InsigniaResultado resultado={e.resultado} />
+          </span>
+          {e.fase === "CONSULTA" ? (
+            <span className="contadores-consulta campo-ayuda" data-testid={`contadores-consulta-${e.id}`}>
+              {textoContadoresConsulta(e)}
+            </span>
+          ) : null}
+        </>
+      ),
+    },
     { id: "fecha", titulo: "Fecha", ordenable: true, prioritaria: true, render: (e) => <time dateTime={e.iniciadaEn}>{formatearFecha(e.iniciadaEn)}</time> },
+    { id: "fase", titulo: "Fase", render: (e) => <span data-testid={`celda-fase-${e.id}`}>{ETIQUETAS_FASE[e.fase]}</span> },
     {
       id: "origen",
       titulo: "Origen",
