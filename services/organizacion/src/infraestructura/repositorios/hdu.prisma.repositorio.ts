@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import type { Prisma } from '#prisma';
 
 import { ConflictoUnicidad } from '../../dominio/errores/conflicto-unicidad.js';
@@ -28,7 +28,7 @@ import {
   type UsuarioResumen,
 } from '../../dominio/tipos.js';
 import { esErrorUnicidad } from '../prisma/errores-prisma.js';
-import { INCLUYE_SPRINT_VIGENTE, aHduDominio } from '../prisma/mapeadores.js';
+import { CON_SPRINT_VIGENTE, INCLUYE_SPRINT_VIGENTE, aHduDominio, aHdusDominio } from '../prisma/mapeadores.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 
 function whereDeAmbito(ambito: FiltroAmbitoHdu): Prisma.HduWhereInput {
@@ -132,6 +132,9 @@ export async function crearHduEnTransaccion(tx: Prisma.TransactionClient, datos:
 
 @Injectable()
 export class HduPrismaRepositorio implements HduRepositorio {
+  private readonly registro = new Logger(HduPrismaRepositorio.name);
+  private readonly avisar = (mensaje: string): void => this.registro.warn(mensaje);
+
   constructor(private readonly prisma: PrismaService) {}
 
   async crear(datos: DatosNuevaHdu, actor: Actor): Promise<Hdu> {
@@ -156,18 +159,18 @@ export class HduPrismaRepositorio implements HduRepositorio {
   async buscarPorCodigosNormalizados(codigosNormalizados: readonly string[]): Promise<Hdu[]> {
     if (codigosNormalizados.length === 0) return [];
     const filas = await this.prisma.hdu.findMany({ where: { codigoNormalizado: { in: [...codigosNormalizados] } }, include: INCLUYE_SPRINT_VIGENTE });
-    return filas.map(aHduDominio);
+    return aHdusDominio(filas, this.avisar);
   }
 
   async buscarPorIds(ids: readonly string[]): Promise<Hdu[]> {
     if (ids.length === 0) return [];
     const filas = await this.prisma.hdu.findMany({ where: { id: { in: [...ids] } }, include: INCLUYE_SPRINT_VIGENTE });
-    return filas.map(aHduDominio);
+    return aHdusDominio(filas, this.avisar);
   }
 
   async listarTodasPorAmbito(ambito: FiltroAmbitoHdu): Promise<Hdu[]> {
     const filas = await this.prisma.hdu.findMany({ where: whereDeAmbito(ambito), include: INCLUYE_SPRINT_VIGENTE, orderBy: { codigo: 'asc' } });
-    return filas.map(aHduDominio);
+    return aHdusDominio(filas, this.avisar);
   }
 
   async listarIdsPorAmbito(ambito: FiltroAmbitoHdu): Promise<string[]> {
@@ -246,8 +249,10 @@ export class HduPrismaRepositorio implements HduRepositorio {
   }
 
   async listarPorAmbito(ambito: FiltroAmbitoHdu, filtro: FiltroHdu, paginacion: OpcionesPaginacion): Promise<Pagina<Hdu>> {
-    const where: Prisma.HduWhereInput = { AND: [whereDeAmbito(ambito), whereDeFiltro(filtro)] };
-    const [items, total] = await this.prisma.$transaction([
+    const delAmbito: Prisma.HduWhereInput = { AND: [whereDeAmbito(ambito), whereDeFiltro(filtro)] };
+    // Sin sprint vigente no hay `HduResumen` válido: se excluye en la base para que `total` y las páginas cuadren.
+    const where: Prisma.HduWhereInput = { AND: [delAmbito, CON_SPRINT_VIGENTE] };
+    const [items, total, sinSprint] = await this.prisma.$transaction([
       this.prisma.hdu.findMany({
         where,
         include: INCLUYE_SPRINT_VIGENTE,
@@ -256,8 +261,10 @@ export class HduPrismaRepositorio implements HduRepositorio {
         take: paginacion.tamanoPagina,
       }),
       this.prisma.hdu.count({ where }),
+      this.prisma.hdu.count({ where: { AND: [delAmbito, { NOT: CON_SPRINT_VIGENTE }] } }),
     ]);
-    return { items: items.map(aHduDominio), total, pagina: paginacion.pagina, tamanoPagina: paginacion.tamanoPagina };
+    if (sinSprint > 0) this.avisar(`${sinSprint} HU del ámbito sin sprint vigente excluidas de GET /v1/hdu`);
+    return { items: aHdusDominio(items, this.avisar), total, pagina: paginacion.pagina, tamanoPagina: paginacion.tamanoPagina };
   }
 
   async asignarAnalista(input: { hduId: string; analistaId: string; motivo: string | null; actor: Actor }): Promise<ResultadoAsignacionAnalista> {

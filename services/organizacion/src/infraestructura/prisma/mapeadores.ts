@@ -11,6 +11,13 @@ export const INCLUYE_SPRINT_VIGENTE = {
   historiaSprints: { where: { fechaRetiro: null, sprintId: { not: null } }, select: { sprintId: true }, take: 1 },
 } as const;
 
+/**
+ * HU con sprint vigente. El contrato exige `HduResumen.sprint` no nulo (comun.v1.yaml), así que una HU sin sprint
+ * vigente (dato inconsistente, p. ej. restos de una prueba fallida) no se puede representar: los listados la
+ * excluyen y la reportan en el registro en lugar de responder 500 a todos.
+ */
+export const CON_SPRINT_VIGENTE = { historiaSprints: { some: { fechaRetiro: null, sprintId: { not: null } } } } as const;
+
 export type UsuarioConRol = UsuarioPrisma & { rol: { nombre: string } };
 export type HduConSprint = HduPrisma & { historiaSprints: Array<{ sprintId: string | null }> };
 
@@ -29,6 +36,26 @@ export function aUsuarioDominio(fila: UsuarioConRol): Usuario {
     creadoEn: fila.creadoEn,
     actualizadoEn: fila.actualizadoEn,
   };
+}
+
+export function tieneSprintVigente(fila: HduConSprint): boolean {
+  const sprintId = fila.historiaSprints[0]?.sprintId;
+  return sprintId !== undefined && sprintId !== null;
+}
+
+/**
+ * Mapea una lista de HU y descarta las que no tienen sprint vigente, avisando sus códigos. Las lecturas de una sola
+ * HU (detalle, escrituras) siguen con `aHduDominio`, que falla: ahí no hay una respuesta válida que devolver.
+ */
+export function aHdusDominio(filas: readonly HduConSprint[], avisar: (mensaje: string) => void): Hdu[] {
+  const validas: Hdu[] = [];
+  const descartadas: string[] = [];
+  for (const fila of filas) {
+    if (tieneSprintVigente(fila)) validas.push(aHduDominio(fila));
+    else descartadas.push(`${fila.codigo} (${fila.id})`);
+  }
+  if (descartadas.length > 0) avisar(`HU sin sprint vigente excluidas del listado: ${descartadas.join(', ')}`);
+  return validas;
 }
 
 export function aHduDominio(fila: HduConSprint): Hdu {

@@ -58,6 +58,14 @@ export async function crearUsuarioDePrueba(rol: Rol, opciones: { nombre?: string
   return { id, nombre, correo, rol, token: sesion.data.session.access_token };
 }
 
+/** Borra cuentas de prueba de Supabase Auth; ignora las que ya no existen. El registro local lo borra quien llama. */
+export async function eliminarCuentasDePrueba(ids: readonly string[]): Promise<void> {
+  for (const id of ids) {
+    const { error } = await admin.auth.admin.deleteUser(id);
+    if (error && error.status !== 404) throw new Error(`No se pudo borrar la cuenta de prueba ${id}: ${error.message}`);
+  }
+}
+
 /** Limpia las tablas de `organizacion` entre pruebas (base local compartida, sin datos reales). */
 export async function limpiarBaseDeDatos(): Promise<void> {
   await prisma.$executeRawUnsafe(
