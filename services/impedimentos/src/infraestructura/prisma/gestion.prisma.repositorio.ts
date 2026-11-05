@@ -34,14 +34,14 @@ const ENTRADAS = Prisma.sql`
          a."actor_id", a."actor_nombre"::text, a."actor_rol"::text, a."fecha_accion" AS fecha,
          a."estado_anterior"::text AS anterior, a."estado"::text AS nuevo, a."descripcion"::text AS comentario,
          NULL::text AS sugerido, a."detalle" AS detalle
-    FROM "accion_impedimento" a JOIN "impedimento" i ON i."id_impedimento" = a."id_impedimento"
+    FROM "impedimentos"."accion_impedimento" a JOIN "impedimentos"."impedimento" i ON i."id_impedimento" = a."id_impedimento"
   UNION ALL
   SELECT r."id_riesgo", 'RIESGO'::text, 'FIJAR_RIESGO'::text,
          r."id_historia", NULL::uuid, NULL::text, NULL::text,
          r."actor_id", r."actor_nombre"::text, r."actor_rol"::text, r."fecha",
          r."nivel_anterior"::text, r."nivel"::text, r."justificacion"::text,
          r."sugerido_al_fijar"::text, NULL::jsonb
-    FROM "riesgo_hdu" r`;
+    FROM "impedimentos"."riesgo_hdu" r`;
 
 function condiciones(filtro: FiltroGestion, hduId?: string): Prisma.Sql {
   const partes: Prisma.Sql[] = [];

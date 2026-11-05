@@ -194,7 +194,7 @@ export class ConsultaPrismaRepositorio extends ConsultaRepositorio {
         (count(*) FILTER (WHERE grupo = 'CAMBIO' AND marcada))::int AS marcadas_cambio,
         (count(*) FILTER (WHERE aplicada))::int AS aplicadas,
         (count(*) FILTER (WHERE marcada AND NOT aplicada))::int AS pendientes
-      FROM consulta_item WHERE id_consulta = ${id}::uuid`;
+      FROM "integraciones"."consulta_item" WHERE id_consulta = ${id}::uuid`;
     const f = filas[0];
     if (f === undefined) return SIN_CONTEOS;
     return { asignadas: f.asignadas, completas: f.completas, marcadasNuevas: f.marcadas_nuevas, marcadasCambio: f.marcadas_cambio, aplicadas: f.aplicadas, pendientes: f.pendientes };
@@ -307,7 +307,7 @@ export class ConsultaPrismaRepositorio extends ConsultaRepositorio {
     const ids = [...new Set(itemIds)].sort();
     return this.prisma.$transaction(async (tx) => {
       if (ids.length > 0) {
-        await tx.$queryRaw`SELECT id_item FROM consulta_item WHERE id_consulta = ${consultaId}::uuid AND id_item = ANY(${ids}::uuid[])
+        await tx.$queryRaw`SELECT id_item FROM "integraciones"."consulta_item" WHERE id_consulta = ${consultaId}::uuid AND id_item = ANY(${ids}::uuid[])
           ORDER BY id_item FOR UPDATE`;
       }
       return bloqueoActual.run(tx, accion);
@@ -316,7 +316,7 @@ export class ConsultaPrismaRepositorio extends ConsultaRepositorio {
 
   async guardarEdiciones(consultaId: string, ediciones: readonly EdicionDeFila[], ahora: Date): Promise<number | null> {
     const guardar = async (tx: Cliente): Promise<number | null> => {
-      const filas = await tx.$queryRaw<Array<{ version: number }>>`UPDATE consulta_jira SET version = version + 1
+      const filas = await tx.$queryRaw<Array<{ version: number }>>`UPDATE "integraciones"."consulta_jira" SET version = version + 1
         WHERE id_consulta = ${consultaId}::uuid AND estado = 'ABIERTA' AND vence_en > ${ahora} RETURNING version`;
       const version = filas[0]?.version;
       if (version === undefined) return null;
@@ -342,7 +342,7 @@ export class ConsultaPrismaRepositorio extends ConsultaRepositorio {
             asignado_en: e.asignadoEn?.toISOString() ?? null,
           })),
         );
-        await tx.$executeRaw`UPDATE consulta_item AS t SET
+        await tx.$executeRaw`UPDATE "integraciones"."consulta_item" AS t SET
             celula_id = v.celula_id, qe_id = v.qe_id, analista_id = v.analista_id, sprint_id = v.sprint_id,
             celula_nombre = v.celula_nombre, qe_nombre = v.qe_nombre, analista_nombre = v.analista_nombre, sprint_nombre = v.sprint_nombre,
             sprint_origen = v.sprint_origen, aviso_sin_lider = v.aviso_sin_lider, marcada = v.marcada, advertencias = v.advertencias,
@@ -376,7 +376,7 @@ export class ConsultaPrismaRepositorio extends ConsultaRepositorio {
   ): Promise<{ tipo: 'OK'; ejecucion: Ejecucion } | { tipo: 'NO_ENCONTRADA' } | { tipo: 'CERRADA' | 'MODIFICADA'; consulta: Consulta }> {
     try {
       return await this.prisma.$transaction(async (tx) => {
-        await tx.$queryRaw`SELECT id_consulta FROM consulta_jira WHERE id_consulta = ${consultaId}::uuid FOR UPDATE`;
+        await tx.$queryRaw`SELECT id_consulta FROM "integraciones"."consulta_jira" WHERE id_consulta = ${consultaId}::uuid FOR UPDATE`;
         const fila = await tx.consultaJira.findUnique({ where: { id: consultaId } });
         if (fila === null) return { tipo: 'NO_ENCONTRADA' as const };
         const consulta = aConsulta(fila);

@@ -221,7 +221,7 @@ export class UsuarioPrismaRepositorio implements UsuarioRepositorio {
   }): Promise<ResultadoCambioRol> {
     return this.prisma.$transaction(async (tx) => {
       // Bloquea la fila del usuario: dos cambios simultáneos se serializan (D42).
-      await tx.$queryRaw`SELECT "id_usuario" FROM "usuario" WHERE "id_usuario" = ${input.id}::uuid FOR UPDATE`;
+      await tx.$queryRaw`SELECT "id_usuario" FROM "organizacion"."usuario" WHERE "id_usuario" = ${input.id}::uuid FOR UPDATE`;
       const fila = await tx.usuario.findUniqueOrThrow({ where: { id: input.id }, include: INCLUYE_ROL });
       const usuario = aUsuarioDominio(fila);
 
