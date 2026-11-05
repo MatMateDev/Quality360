@@ -181,7 +181,7 @@ export class HduPrismaRepositorio implements HduRepositorio {
 
   async fijarSprintVigente(hduId: string, sprintId: string): Promise<{ cambio: boolean }> {
     return this.prisma.$transaction(async (tx) => {
-      await tx.$queryRaw`SELECT "id_historia" FROM "historia_usuario" WHERE "id_historia" = ${hduId}::uuid FOR UPDATE`;
+      await tx.$queryRaw`SELECT "id_historia" FROM "organizacion"."historia_usuario" WHERE "id_historia" = ${hduId}::uuid FOR UPDATE`;
       const vigente = await tx.historiaSprint.findFirst({ where: { hduId, fechaRetiro: null } });
       if (vigente?.sprintId === sprintId) return { cambio: false };
       if (vigente !== null) await tx.historiaSprint.update({ where: { id: vigente.id }, data: { fechaRetiro: new Date() } });
@@ -208,7 +208,7 @@ export class HduPrismaRepositorio implements HduRepositorio {
 
   async reasignarQeResponsable(input: { hduId: string; qeNuevoId: string; motivo: string; actor: Actor }): Promise<ResultadoReasignacionQe> {
     return this.prisma.$transaction(async (tx) => {
-      await tx.$queryRaw`SELECT "id_historia" FROM "historia_usuario" WHERE "id_historia" = ${input.hduId}::uuid FOR UPDATE`;
+      await tx.$queryRaw`SELECT "id_historia" FROM "organizacion"."historia_usuario" WHERE "id_historia" = ${input.hduId}::uuid FOR UPDATE`;
       const antes = await tx.hdu.findUniqueOrThrow({ where: { id: input.hduId }, include: INCLUYE_SPRINT_VIGENTE });
       if (antes.qeResponsableId === input.qeNuevoId) {
         return { cambio: false, hdu: aHduDominio(antes), qeAnteriorId: antes.qeResponsableId, fecha: antes.estadoActualizadoEn };

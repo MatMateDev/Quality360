@@ -170,6 +170,66 @@ Pruebas de API con `GATEWAY_URL=http://localhost:3110` (gateway del mismo build 
 
 Resumen: CERTIFICADA 8 · OBSERVADA 2 · NO VERIFICABLE 0.
 
+## DEF-E5C-05 · SQL cruda sin esquema tras el pooler de Supabase
+
+Código: `b48a87d` (rama `worktree-agent-a60ce74ecc2208258`, base `2113a71`). Pruebas del 5-nov-2026. No se tocó código de producción.
+
+### Veredicto
+
+**CERTIFICADO, con reservas de entorno (ver «Límites»).** El defecto de producción (`42P01 relation "consulta_item" does not exist`) se reproduce con el código anterior y desaparece con `b48a87d`, sin depender de `ALTER ROLE ... SET search_path`. Defectos de producto nuevos: ninguno. Hallazgos de prueba y observaciones: abajo.
+
+### 1. Revisión del diff `2113a71..b48a87d`
+
+| Revisión | Resultado |
+| --- | --- |
+| Grep de `queryRaw`, `executeRaw`, `Prisma.sql`, `Prisma.raw`, `*Unsafe` en `services/*/src` (sin pruebas) | Toda tabla nombrada en SQL cruda lleva su esquema: `integraciones.consulta_item/consulta_jira` (5 sitios), `organizacion.usuario` (2) e `historia_usuario` (2), `impedimentos.impedimento`, `accion_impedimento`, `riesgo_hdu`. Quedan sin tabla `pg_advisory_xact_lock` (riesgo.prisma) y las composiciones `Prisma.sql` de condiciones. Sin SQL cruda en certificaciones, indicadores ni paquetes |
+| Funciones SQL/disparadores de todas las migraciones | Solo hay funciones en Integraciones (4). Las dos que leen tablas (`item_solo_consulta_abierta_fn`, `detalle_solo_en_curso_fn`) quedan con `SET search_path = integraciones, pg_catalog`. `consulta_cerrada_inmutable_fn` y `ejecucion_cerrada_inmutable_fn` solo usan `OLD`/`NEW` y no leen tablas. Organización, Impedimentos, Certificaciones e Indicadores no tienen funciones ni disparadores |
+| Migración `20261105000000_def_e5c_05_disparadores_con_esquema` | Idempotente: aplicada dos veces seguidas como dueño (`supabase_admin`) sin error; `prisma migrate status` «up to date» (checksum igual); aplicada desde cero sobre una base nueva con las 3 migraciones de Integraciones, `proconfig` correcto. No cambia el comportamiento: solo fija el `search_path` de la función (cuerpo intacto) |
+| Observación (no es defecto) | El `ALTER FUNCTION` sin esquema depende del `search_path` de la conexión de migración, igual que las migraciones anteriores (la nube usa `set local search_path`) |
+
+### 2. Suites de node (local, base `postgres`)
+
+| Servicio | Typecheck | Pruebas | Pasan | Fallan |
+| --- | --- | --- | --- | --- |
+| Integraciones | OK | 329 | 329 | 0 |
+| Organización | OK | 329 | 329 | 0 |
+| Impedimentos | OK | 80 | 80 | 0 |
+
+Rojo/verde de `def-e5c-05-sql-calificadas.test.ts`: con `src` de `2113a71` la segunda prueba de cada servicio falla con `42P01` (`consulta_item`, `usuario`, `accion_impedimento`); con `b48a87d` pasa (2 de 2 por servicio). Se restauró `b48a87d` después (árbol limpio).
+
+### 3. Réplica del pooler en el stack real
+
+`options=-c search_path=public` en la URL no aplica con Prisma, porque Prisma fija el `search_path` con su propio `SET` al conectar. Se emuló el pooler con un **PgBouncer 1.26 real en modo transacción** (contenedor `edoburu/pgbouncer`, `server_reset_query = DISCARD ALL` siempre) delante de Postgres: tras cada transacción se pierde el `search_path` que fija Prisma, justo lo que ocurre en la nube. Comprobado con `psql`: `SET search_path TO integraciones` seguido de `select ... from consulta_item` da `relation does not exist`. Organización, Impedimentos e Integraciones corrieron con `DATABASE_URL=...:6543/...?schema=x&connection_limit=1&pgbouncer=true&options=-c%20search_path%3Dpublic` (el rol no tenía `search_path`: `rolconfig` vacío). Gateway, Certificaciones y portal normales, con los cubos de tasa alzados. Las semillas `seed`, `seed:e7`, `seed:e4` y `seed:e5` se cargaron por esos servicios ya detrás del pooler.
+
+| Corrida (servicios detrás del pooler) | Resultado |
+| --- | --- |
+| `api/e5-b05-consulta-asignacion.spec.ts` (consultar, actual, editar, confirmar, descartar), base `postgres` | 48 pasan, 1 falla (T28, ver abajo) |
+| E5 completa `e5-api` + `e5-e2e` (209 casos, base aislada `q360_def05`) | 202 pasan, 7 fallan: 4 por el aislamiento de mi base (ver «Límites»), 3 por latencia (ver abajo) |
+| Repetición de los 3 de aislamiento que dependen de `auth.users` (B04 T15, B05 T18, F05 T22) con un `auth.users` de apoyo | 18 de 18 (incluye los 11 de sesión) |
+| B05 T35 (disparadores y permisos de BD) | Pasó en la corrida de `api/e5-b05` sobre la base `postgres`; en la base aislada falla solo porque la prueba tiene fija la URL `.../postgres` |
+| Flujo E2E de F05 (portal): consultar, asignar, confirmar, descartar, concurrencia | Verde en la corrida completa (T01–T22, T24–T29 y negativos) |
+| Una transición de impedimento (`e4-b02`) y una reasignación de QE / cambio de rol (`e7-b05`, `e1-b08`, `e1-b09`) | Verdes en la regresión de abajo |
+| Regresión `api` (E1–E3, modelo de datos, seguridad) + `e4-api` + `e7-api` | 259 pasan, 6 omitidas (valores absolutos de E7 / límite del proveedor, no certifican), 3 fallan por el aislamiento (`modelo-datos-aislamiento`: la base aislada no tiene el esquema `storage`) |
+
+Los tres casos de latencia (B05 T28, F05 T23, F03 T14) manejan 230–250 filas con presupuestos de 2,5–8 s. Con el emulador (Docker + `DISCARD ALL` por transacción) fallan: T28 reparte las 205 creaciones en 4–5 pasadas y la suma de «creadas» queda en 180 en vez de 205, sin llegar a revisar el recuento final de HDU. **Con los mismos servicios con conexión directa (`connection_limit=1`, sin pooler) pasan**: T28 2 de 2, T23 y T14 verdes (T14 falló una vez al ejecutarse junto a otras en la misma corrida y pasó después, es el intermitente OBS-5 conocido). Es decir, no vienen del cambio (que no agrega consultas), sino de la latencia del emulador.
+
+### Hallazgos
+
+| ID | Severidad | Dueño | Descripción |
+| --- | --- | --- | --- |
+| H-1 | Baja (prueba) | `q360-organizacion` | `services/organizacion/test/integracion/def-e5c-05-sql-calificadas.test.ts` crea célula, usuarios y la HDU `DEF-1` y no limpia al terminar. Si falla a mitad (como con el código anterior) queda una HDU sin sprint vigente en la base compartida. Reproducción: correr la prueba con `src` de `2113a71` y luego `GET /v1/hdu` |
+| H-2 | Media (preexistente, no del fix) | `q360-organizacion` | Con una HDU sin sprint vigente `GET /v1/hdu` responde 500 `ERROR_INTERNO` (`aHduDominio` lanza «no tiene sprint vigente») y bloquea todas las listas. Una HDU dañada no debería tumbar el listado |
+| H-3 | Informativo | `q360-integraciones` | Con timeouts de lote (INCOMPLETA) la suma de `creadas` de las pasadas no iguala las HDU nuevas (180 de 205 observado con el emulador); no se verificó si el resto queda como «actualizadas» ni se llegó a contar HDU duplicadas. Conviene un caso de integración que lo fije |
+
+### Límites
+
+- El pooler es una emulación (PgBouncer + `DISCARD ALL`), no el Supavisor de Supabase. Reproduce el síntoma de producción, pero no se corrió contra la nube.
+- No se corrió el stack completo contra el código anterior para ver T01 en rojo; el rojo del código anterior está en las pruebas de node (3 servicios) y en `psql` contra el emulador.
+- Otra sesión usó la misma base compartida `postgres` (sus suites de node vaciaron los usuarios de Organización a mitad de una corrida y dejaron datos), así que la E5 completa y la regresión se repitieron en una base nueva `q360_def05` con sus esquemas, migraciones y semillas, y el PgBouncer apuntando a ella. Consecuencias: `auth.users` y `storage` no existen allí (hay un `auth.users` de apoyo), y 4 pruebas con URL fija a `postgres` o que consultan esos esquemas se evaluaron aparte o quedaron sin evidencia: B05 T35 (verde en la corrida previa en `postgres`) y los 3 de `modelo-datos-aislamiento` (`svc_*` alcanzando `storage`, no re-ejecutados en la base `postgres` con el código de este cambio; el cambio no toca permisos).
+- `supabase stop --no-backup` (vaciar la base) no se pudo usar; se reutilizó la base existente.
+- La primera corrida completa de E5 sobre `postgres` (52 fallos de sesión y datos por esa interferencia) quedó invalidada y no se cuenta.
+- E5-B01 T11 requiere `tests/logs-e5/local-up.log`; se armó concatenando las salidas de los procesos.
+
 ## Entorno
 
 - Stack real local: Supabase local (Docker, base vaciada con `supabase stop --no-backup`), `npm run local -- --build` (organización, certificaciones, impedimentos, integraciones, gateway :3000, portal :5173) y semillas `seed` (MVP) + `seed:e7` + `seed:e4` + `seed:e5`. Jira simulado en `tests/support/jira-falso/` (:4010) con el proyecto nuevo `ENORME` (520 historias) y, por `PUT /__issues/`, QTY-13 (ADF), QTY-14 y QTY-15 (título de 200 caracteres sin espacios, descripción de 1.000 y sprint de 80).

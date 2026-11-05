@@ -129,7 +129,7 @@ export class CelulaLiderPrismaRepositorio implements CelulaLiderRepositorio {
 
   async reemplazar(input: { usuarioId: string; celulaIds: readonly string[]; actor: Actor }): Promise<ResultadoReemplazoCelulas> {
     return this.prisma.$transaction(async (tx) => {
-      await tx.$queryRaw`SELECT "id_usuario" FROM "usuario" WHERE "id_usuario" = ${input.usuarioId}::uuid FOR UPDATE`;
+      await tx.$queryRaw`SELECT "id_usuario" FROM "organizacion"."usuario" WHERE "id_usuario" = ${input.usuarioId}::uuid FOR UPDATE`;
       const usuario = await tx.usuario.findUniqueOrThrow({ where: { id: input.usuarioId }, include: { rol: { select: { nombre: true } } } });
       if (usuario.rol.nombre !== 'LIDER_QA') return { tipo: 'ROL_INCOMPATIBLE' } as const;
       const resultado = await reemplazarCelulasEnTransaccion(tx, input.usuarioId, input.celulaIds, input.actor);
