@@ -129,6 +129,12 @@ export interface Hdu {
   readonly urlExterna: string | null;
 }
 
+/**
+ * Una HU tal como está registrada, aunque le falte el sprint vigente (dato inconsistente). Solo la devuelven las
+ * búsquedas por código: el código sigue ocupado (unicidad, semilla, E5), pero esa HU no se lista ni se lee por id.
+ */
+export type HduRegistrada = Omit<Hdu, 'sprintId'> & { readonly sprintId: string | null };
+
 export interface ConteoPorEstado {
   PENDIENTE: number;
   DISENO_PRUEBAS: number;

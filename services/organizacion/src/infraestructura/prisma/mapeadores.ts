@@ -1,7 +1,7 @@
 /** Traduce filas de Prisma a los tipos del dominio. Vive solo en infraestructura. */
 import type { Hdu as HduPrisma, Usuario as UsuarioPrisma } from '#prisma';
 
-import { ROLES, type Actor, type Hdu, type OrigenHdu, type Rol, type Usuario } from '../../dominio/tipos.js';
+import { ROLES, type Actor, type Hdu, type HduRegistrada, type OrigenHdu, type Rol, type Usuario } from '../../dominio/tipos.js';
 
 /** El rol vive en la tabla `rol` (modelo de datos); toda lectura de usuario lo incluye. */
 export const INCLUYE_ROL = { rol: { select: { nombre: true } } } as const;
@@ -44,8 +44,8 @@ export function tieneSprintVigente(fila: HduConSprint): boolean {
 }
 
 /**
- * Mapea una lista de HU y descarta las que no tienen sprint vigente, avisando sus códigos. Las lecturas de una sola
- * HU (detalle, escrituras) siguen con `aHduDominio`, que falla: ahí no hay una respuesta válida que devolver.
+ * Mapea una lista de HU y descarta las que no tienen sprint vigente, avisando sus códigos. Red de seguridad: las
+ * consultas ya filtran con `CON_SPRINT_VIGENTE`, pero una carrera (sprint retirado entre lecturas) no debe dar 500.
  */
 export function aHdusDominio(filas: readonly HduConSprint[], avisar: (mensaje: string) => void): Hdu[] {
   const validas: Hdu[] = [];
@@ -58,16 +58,23 @@ export function aHdusDominio(filas: readonly HduConSprint[], avisar: (mensaje: s
   return validas;
 }
 
+/** Lanza si la HU no tiene sprint vigente: quien llama debe haberla filtrado antes (`CON_SPRINT_VIGENTE`). */
 export function aHduDominio(fila: HduConSprint): Hdu {
-  const sprintId = fila.historiaSprints[0]?.sprintId;
-  if (sprintId === undefined || sprintId === null) throw new Error(`La HU ${fila.id} no tiene sprint vigente`);
+  const registrada = aHduRegistrada(fila);
+  const { sprintId } = registrada;
+  if (sprintId === null) throw new Error(`La HU ${fila.id} no tiene sprint vigente`);
+  return { ...registrada, sprintId };
+}
+
+/** No lanza: para las búsquedas por código, donde importa que el código existe aunque falte el sprint. */
+export function aHduRegistrada(fila: HduConSprint): HduRegistrada {
   const creadoPor: Actor = { tipo: fila.creadoPorTipo, id: fila.creadoPorId, nombre: fila.creadoPorNombre };
   return {
     id: fila.id,
     codigo: fila.codigo,
     titulo: fila.titulo,
     celulaId: fila.celulaId,
-    sprintId,
+    sprintId: fila.historiaSprints[0]?.sprintId ?? null,
     prioridad: fila.prioridad,
     qeResponsableId: fila.qeResponsableId,
     analistaId: fila.analistaId,

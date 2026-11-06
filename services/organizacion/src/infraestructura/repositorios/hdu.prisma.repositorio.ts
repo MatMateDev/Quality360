@@ -23,12 +23,13 @@ import {
   type EventoHistorialHdu,
   type EventoResponsableHdu,
   type Hdu,
+  type HduRegistrada,
   type OpcionesPaginacion,
   type Pagina,
   type UsuarioResumen,
 } from '../../dominio/tipos.js';
 import { esErrorUnicidad } from '../prisma/errores-prisma.js';
-import { CON_SPRINT_VIGENTE, INCLUYE_SPRINT_VIGENTE, aHduDominio, aHdusDominio } from '../prisma/mapeadores.js';
+import { CON_SPRINT_VIGENTE, INCLUYE_SPRINT_VIGENTE, aHduDominio, aHduRegistrada, aHdusDominio, tieneSprintVigente } from '../prisma/mapeadores.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 
 function whereDeAmbito(ambito: FiltroAmbitoHdu): Prisma.HduWhereInput {
@@ -46,7 +47,9 @@ function whereDeFiltro(filtro: FiltroHdu): Prisma.HduWhereInput {
   return where;
 }
 
-async function contarPorEstado(prisma: PrismaService, where: Prisma.HduWhereInput): Promise<ResumenHduAmbito> {
+async function contarPorEstado(prisma: PrismaService, delAmbito: Prisma.HduWhereInput): Promise<ResumenHduAmbito> {
+  // Los contadores del inicio cuadran con la lista a la que llevan, que excluye las HU sin sprint vigente.
+  const where: Prisma.HduWhereInput = { AND: [delAmbito, CON_SPRINT_VIGENTE] };
   const [total, agrupado] = await Promise.all([
     prisma.hdu.count({ where }),
     prisma.hdu.groupBy({ by: ['estado'], where, _count: { _all: true } }),
@@ -146,20 +149,36 @@ export class HduPrismaRepositorio implements HduRepositorio {
     }
   }
 
+  /**
+   * Una HU sin sprint vigente no se puede representar (`HduResumen.sprint` es obligatorio) y los listados la excluyen:
+   * por id se trata como inexistente (404, o `permitido:false` en `/acceso`) en vez de responder 500.
+   */
   async buscarPorId(id: string): Promise<Hdu | null> {
     const fila = await this.prisma.hdu.findUnique({ where: { id }, include: INCLUYE_SPRINT_VIGENTE });
-    return fila === null ? null : aHduDominio(fila);
+    if (fila === null) return null;
+    if (!tieneSprintVigente(fila)) {
+      this.avisar(`HU sin sprint vigente tratada como inexistente: ${fila.codigo} (${fila.id})`);
+      return null;
+    }
+    return aHduDominio(fila);
   }
 
-  async buscarPorCodigoNormalizado(codigoNormalizado: string): Promise<Hdu | null> {
+  /** Como `buscarPorId`, pero incluye la HU sin sprint vigente: para repararla (`cargarSprintHdu`). */
+  async buscarRegistradaPorId(id: string): Promise<HduRegistrada | null> {
+    const fila = await this.prisma.hdu.findUnique({ where: { id }, include: INCLUYE_SPRINT_VIGENTE });
+    return fila === null ? null : aHduRegistrada(fila);
+  }
+
+  /** Por código sí aparece aunque le falte el sprint: el código está ocupado (unicidad, semilla y E5). */
+  async buscarPorCodigoNormalizado(codigoNormalizado: string): Promise<HduRegistrada | null> {
     const fila = await this.prisma.hdu.findUnique({ where: { codigoNormalizado }, include: INCLUYE_SPRINT_VIGENTE });
-    return fila === null ? null : aHduDominio(fila);
+    return fila === null ? null : aHduRegistrada(fila);
   }
 
-  async buscarPorCodigosNormalizados(codigosNormalizados: readonly string[]): Promise<Hdu[]> {
+  async buscarPorCodigosNormalizados(codigosNormalizados: readonly string[]): Promise<HduRegistrada[]> {
     if (codigosNormalizados.length === 0) return [];
     const filas = await this.prisma.hdu.findMany({ where: { codigoNormalizado: { in: [...codigosNormalizados] } }, include: INCLUYE_SPRINT_VIGENTE });
-    return aHdusDominio(filas, this.avisar);
+    return filas.map(aHduRegistrada);
   }
 
   async buscarPorIds(ids: readonly string[]): Promise<Hdu[]> {
@@ -169,17 +188,17 @@ export class HduPrismaRepositorio implements HduRepositorio {
   }
 
   async listarTodasPorAmbito(ambito: FiltroAmbitoHdu): Promise<Hdu[]> {
-    const filas = await this.prisma.hdu.findMany({ where: whereDeAmbito(ambito), include: INCLUYE_SPRINT_VIGENTE, orderBy: { codigo: 'asc' } });
+    const filas = await this.prisma.hdu.findMany({ where: { AND: [whereDeAmbito(ambito), CON_SPRINT_VIGENTE] }, include: INCLUYE_SPRINT_VIGENTE, orderBy: { codigo: 'asc' } });
     return aHdusDominio(filas, this.avisar);
   }
 
   async listarIdsPorAmbito(ambito: FiltroAmbitoHdu): Promise<string[]> {
-    const filas = await this.prisma.hdu.findMany({ where: whereDeAmbito(ambito), select: { id: true }, orderBy: { codigo: 'asc' } });
+    const filas = await this.prisma.hdu.findMany({ where: { AND: [whereDeAmbito(ambito), CON_SPRINT_VIGENTE] }, select: { id: true }, orderBy: { codigo: 'asc' } });
     return filas.map((fila) => fila.id);
   }
 
   async contarTodas(): Promise<number> {
-    return this.prisma.hdu.count();
+    return this.prisma.hdu.count({ where: CON_SPRINT_VIGENTE });
   }
 
   async fijarSprintVigente(hduId: string, sprintId: string): Promise<{ cambio: boolean }> {

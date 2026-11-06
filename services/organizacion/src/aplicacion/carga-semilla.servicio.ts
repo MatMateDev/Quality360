@@ -114,7 +114,8 @@ export class CargaSemillaAplicacion {
    * inexistente o de otra célula: 422 CATALOGO_INVALIDO. No audita ni toca el historial de la HDU.
    */
   async cargarSprintHdu(hduId: string, sprintId: string): Promise<{ cambio: boolean; hduId: string; sprintId: string }> {
-    const hdu = await this.hdus.buscarPorId(hduId);
+    // Por id «registrada»: así repara también la HU que quedó sin sprint vigente (que buscarPorId trata como inexistente).
+    const hdu = await this.hdus.buscarRegistradaPorId(hduId);
     if (hdu === null) throw noEncontrado('HDU inexistente');
     const celulaDelSprint = await this.catalogos.celulaDeSprint(sprintId);
     if (celulaDelSprint === null || celulaDelSprint !== hdu.celulaId) throw catalogoInvalido();
