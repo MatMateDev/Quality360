@@ -88,7 +88,7 @@ Cada sección es un `h3`; en móvil las secciones Descripción y Criterios son d
 
 ### 2.5 Enlace a Jira
 
-`enlace-abrir-jira`: botón secundario «Abrir en Jira ↗», `target="_blank"`, `rel="noopener noreferrer"`, nombre accesible «Abrir QTY-1 en Jira (se abre en otra pestaña)». Si no hay `urlJira`, se oculta y no se deja un enlace roto. No llama a Jira desde Quality360.
+`enlace-abrir-jira`: botón secundario «Abrir en Jira ↗», `target="_blank"`, `rel="noopener noreferrer"`, nombre accesible «Abrir en Jira: QTY-1 (se abre en otra pestaña)». El nombre empieza con el texto visible, como pide WCAG 2.5.3; la flecha «↗» es decorativa (`aria-hidden`). Si no hay `urlJira`, se oculta y no se deja un enlace roto. No llama a Jira desde Quality360.
 
 ### 2.6 Móvil (375 px)
 
@@ -192,7 +192,7 @@ Cambios sobre la tarjeta certificada (orden de DOM y de foco): Seleccionar → [
 | `HDU_YA_ASIGNADA` (409) | Pasa a la **alerta** de la sección 5 con nombres actuales | Ver 5 | Fila de solo lectura |
 | `FILA_MODIFICADA` (409) | `aviso-fila-modificada`, `role="alert"` | «Otra persona modificó esta HDU. Revisa los datos actuales y confirma de nuevo.» | Se refresca la fila con lo vigente; el botón queda habilitado si sigue lista |
 | `FILA_EN_CURSO` (409) | Bajo el botón, `role="alert"` | «Otra persona está confirmando esta HDU ahora. Espera unos segundos y revisa.» | Botón habilitado tras 5 s (reintento manual) |
-| Falla de red / 503 `ORGANIZACION_NO_DISPONIBLE` | Bajo el botón, `role="alert"` | «No se pudo confirmar. Revisa tu conexión e inténtalo de nuevo.» + botón «Reintentar» (`boton-reintentar-confirmacion-<codigo>`) | La fila queda intacta; reintentar es idempotente |
+| Falla de red / 503 `SERVICIO_NO_DISPONIBLE` | Bajo el botón, `role="alert"` | «No se pudo confirmar. Revisa tu conexión e inténtalo de nuevo.» + botón «Reintentar» (`boton-reintentar-confirmacion-<codigo>`) | La fila queda intacta; reintentar es idempotente |
 | `CONSULTA_VENCIDA` (410) / `CONSULTA_NO_ABIERTA` (409) | `aviso-consulta-vencida` de la consulta | Los textos certificados de E5-F05 #8 | No se crea nada; se ofrece «Consultar Jira»; lo ya creado se conserva |
 | 403 | Aviso de permiso global | «No tienes permiso para esta acción.» | — |
 

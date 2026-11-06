@@ -63,12 +63,12 @@ Consecuencia visible: la fila nueva tiene **«Confirmar asignación»** y, arrib
 
 | Código | HTTP | Cuándo |
 | --- | --- | --- |
-| `HDU_YA_ASIGNADA` | 409 al confirmar; 422 al editar | La HDU existe con QE o Analista (trae `qe`, `analista`, `idHistoria`, `asignadaPor` si se conoce) |
+| `HDU_YA_ASIGNADA` | 409 al confirmar; 422 al editar | Solo filas `NUEVA` cuya HDU ya existe con QE o Analista, porque otra persona la creó durante la revisión (trae `qe`, `analista`, `idHistoria`). Una fila `CAMBIO` o `SIN_CAMBIOS` con `yaAsignada` responde 422 `FILA_NO_ASIGNABLE`, tanto al editar como al confirmar (ronda 1, OBS-D4) |
 | `FILA_MODIFICADA` | 409 | Confirmar una fila con una `revision` que ya no es la actual (trae la fila actual) |
 | `FILA_EN_CURSO` | 409 | Otra persona está confirmando esa misma fila en este momento |
 | `DETALLE_NO_DISPONIBLE` | 200 con `detalle: null` | Fila de una consulta anterior a este cambio (no es error HTTP) |
 
-Se reutilizan: `ASIGNACIONES_INVALIDAS` (409, con una sola fila), `CONSULTA_VENCIDA` (410), `CONSULTA_NO_ABIERTA` (409), `ACCESO_DENEGADO` (403), `ORGANIZACION_NO_DISPONIBLE`, `FILA_NO_ASIGNABLE`, `FILA_NO_MARCABLE`.
+Se reutilizan: `ASIGNACIONES_INVALIDAS` (409, con una sola fila), `CONSULTA_VENCIDA` (410), `CONSULTA_NO_ABIERTA` (409), `ACCESO_DENEGADO` (403), `SERVICIO_NO_DISPONIBLE` (503, Organización no responde; `ORGANIZACION_NO_DISPONIBLE` es solo un código de ejecución del lote, no un código HTTP), `FILA_NO_ASIGNABLE`, `FILA_NO_MARCABLE`.
 
 ### 4.2 Campos nuevos de la fila
 
@@ -164,12 +164,12 @@ Quiero que el sistema asigne al Analista único del QE, cree una HDU a la vez co
 | 3 | Analista explícito | Se manda `analistaId`. | `PATCH`. | Se respeta y se valida como en D138 (`ANALISTA_FUERA_DE_EQUIPO`, `ANALISTA_INVALIDO`); `analistaAuto false`. |
 | 4 | Confirmar una HDU | La fila es `NUEVA`, completa y sin dueño. | `POST …/items/{itemId}/confirmaciones {revision}`. | 200: HDU creada con célula, QE, Analista y sprint; historial inicial de asignación; auditoría `CREAR_HDU` con `consultaId`; fila `aplicada`; `version` sube; sin llamar a Jira; la respuesta trae la HDU y la fila. |
 | 5 | Fila incompleta o no nueva | La fila está incompleta, o es `CAMBIO`/`SIN_CAMBIOS`/`CON_ERROR`. | Mismo `POST`. | 422 `ASIGNACION_INCOMPLETA` (con `faltantes`) o 422 `FILA_NO_ASIGNABLE`; nada se crea. |
-| 6 | Ya asignada al consultar | La HDU existe con QE o Analista. | `GET items` y `PATCH` sobre esa fila. | La fila trae `yaAsignada {qe, analista, idHistoria}`; el `PATCH` es 422 `HDU_YA_ASIGNADA`; el `POST` de confirmar es 409 `HDU_YA_ASIGNADA`. Un `PATCH` con `marcada` sobre `CAMBIO` sigue igual que hoy. |
+| 6 | Ya asignada al consultar | La HDU existe con QE o Analista. | `GET items`, y `PATCH` de asignación y `POST …/confirmaciones` sobre esa fila. | La fila trae `yaAsignada {qe, analista, idHistoria}`. Si la fila es `CAMBIO` o `SIN_CAMBIOS`, el `PATCH` de asignación y el `POST` de confirmar responden 422 `FILA_NO_ASIGNABLE`, igual que #5 (no es `NUEVA`). Si es una `NUEVA` que dejó de serlo (ver #7), el `PATCH` responde 422 `HDU_YA_ASIGNADA` y el `POST`, 409 `HDU_YA_ASIGNADA`. Un `PATCH` con `marcada` sobre `CAMBIO` sigue igual que hoy. |
 | 7 | Se asignó durante la revisión | La fila era `NUEVA` y alguien creó la HDU antes (QE a mano u otro Administrador). | `POST …/confirmaciones`. | 409 `HDU_YA_ASIGNADA` con los nombres **actuales** leídos de Organización; la fila pasa a `yaAsignada` y queda de solo lectura; la HDU existente no cambia. |
 | 8 | Dos Administradores confirman la misma HDU | ADM1 y ADM2 confirman la misma fila a la vez. | Ambos `POST`. | Exactamente uno recibe 200; el otro 409 `HDU_YA_ASIGNADA` (o `FILA_EN_CURSO` si aún se está escribiendo); una sola HDU, una sola auditoría `CREAR_HDU`, sin duplicados por la unicidad del código normalizado. |
 | 9 | Fila modificada por otra persona | ADM2 cambió el Analista después de que ADM1 vio la fila. | ADM1 `POST` con la `revision` vieja. | 409 `FILA_MODIFICADA` con la fila actual; nada se crea. |
 | 10 | Asignación que dejó de ser válida | El Analista se desactivó, cambió de equipo, o el QE se desactivó. | `POST …/confirmaciones`. | 409 `ASIGNACIONES_INVALIDAS` con una fila y el motivo; nada se escribe; la fila queda desmarcada y con el campo afectado limpio. |
-| 11 | Reintento y falla parcial | Organización creó la HDU pero Integraciones no alcanzó a marcarla, o Organización no responde. | Se repite el `POST`. | Caso 1: 200 `CREADA` (idempotente por `consultaId` + código), sin duplicar. Caso 2: 503 `ORGANIZACION_NO_DISPONIBLE`; la fila no queda `aplicando` más de 30 s. |
+| 11 | Reintento y falla parcial | Organización creó la HDU pero Integraciones no alcanzó a marcarla, o Organización no responde. | Se repite el `POST`. | Caso 1: 200 `CREADA` (idempotente por `consultaId` + código), sin duplicar. Caso 2: 503 `SERVICIO_NO_DISPONIBLE`; nada se crea, se libera la toma y la fila no queda `aplicando` más de 30 s. |
 | 12 | Coexistencia con el lote | Hay filas aplicadas una a una, marcadas y sin marcar. | `POST confirmaciones` (lote). | El lote omite lo `aplicada` y lo `aplicando`; no cuenta lo omitido; con cero pendientes, 422 `SIN_SELECCION`; el resto como D140. |
 | 13 | Vida de la consulta | Hay HDU creadas una a una. | Descartar, vencer o reemplazar. | Las HDU creadas permanecen; se purgan solo las filas; los contadores informan creadas y perdidas; el estado final sigue el modelo de D134. |
 | 14 | Permisos y orden de validación | No es Administrador, sin sesión, ids ajenos, campos extra. | Cualquiera de las rutas nuevas. | 401 → 403 → 404 → 400/422 de estructura → 410 → 409 → ejecución; 403 a QE/Líder/Analista/Auditor; campos desconocidos, 400; sin secretos. Va en el cubo de límite de D152. |
