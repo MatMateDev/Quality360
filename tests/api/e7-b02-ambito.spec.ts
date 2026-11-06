@@ -106,7 +106,7 @@ test.describe("E7-B02 · Ámbito de lectura y solo lectura de Líder y Auditor",
     const h = await hduFixture(request);
     const r = await api.get<PaginaHdu>(request, "/v1/hdu?tamanoPagina=100", { token });
     expect(r.status).toBe(200);
-    const total = await conOrganizacion(async (c) => Number((await c.query(`SELECT count(*) n FROM organizacion.historia_usuario`)).rows[0].n));
+    const total = await conOrganizacion(async (c) => Number((await c.query(`SELECT count(*) n FROM organizacion.historia_usuario h WHERE EXISTS (SELECT 1 FROM organizacion.historia_sprint s WHERE s.id_historia = h.id_historia AND s.fecha_retiro IS NULL AND s.id_sprint IS NOT NULL)`)).rows[0].n));
     expect(r.body.total).toBe(total);
     const codigos = (await listarHduE7(request, token)).map((x) => x.codigo);
     for (const c of ["E7-H1", "E7-H2", "E7-H3", "E7-H4", "E7-H5", "E7-H6", "E7-H7", "E7-H8"]) expect(codigos).toContain(c);

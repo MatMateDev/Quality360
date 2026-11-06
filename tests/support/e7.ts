@@ -197,7 +197,10 @@ export async function contarOrganizacion() {
           )
         ).rows.map((f) => [f.nombre as string, Number(f.n)]),
       ) as Record<string, number>,
-      hduTotal: await q(`SELECT count(*) n FROM organizacion.historia_usuario`),
+      // Sin las HDU sin sprint vigente: no son representables y los listados y contadores las excluyen.
+      hduTotal: await q(
+        `SELECT count(*) n FROM organizacion.historia_usuario h WHERE EXISTS (SELECT 1 FROM organizacion.historia_sprint s WHERE s.id_historia = h.id_historia AND s.fecha_retiro IS NULL AND s.id_sprint IS NOT NULL)`,
+      ),
       analistasSinQe: await q(
         `SELECT count(*) n FROM organizacion.usuario u JOIN organizacion.rol r ON r.id_rol = u.id_rol
          WHERE u.activo AND r.nombre = 'ANALISTA_QA'

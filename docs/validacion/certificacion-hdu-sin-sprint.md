@@ -123,3 +123,50 @@ Observaciones (no defectos del cambio):
 - La interpretación de «sin sprint vigente» incluye tanto la HDU sin ninguna fila de `historia_sprint` como la que solo tiene filas retiradas o con `id_sprint` nulo (las tres las cubre la prueba del commit; en vivo solo se probó la de fila retirada).
 - Un primer `seed:e7` sin las variables del stack propio falló con 401 (apuntaba por defecto a 54321/3002, el stack de otra sesión); solo pudo haber hecho lecturas allí. No es un defecto del producto.
 - Las HDU de prueba (`SINSPRINT-*`, `SPR*`) se borraron al terminar y el stack propio se desmontó.
+
+# Ronda 2
+
+Código: `86e0c7c` (= `b53030a` + correcciones de `q360-backend` a DEF-SINSPRINT-01..04, todas en `services/organizacion/**`). No se tocó código de producción. Pruebas del 6-nov-2026 sobre un Supabase propio nuevo (Postgres 54422, `connection_limit=1`, semillas `seed` y `seed:e7`), servicios en 3150–3154 y portal en 5373, de modo que los puertos fijos del arnés de E7 (3100, 3101, 3202, 5180) quedaron libres.
+
+## Veredicto de la ronda 2
+
+**Los 4 defectos quedan CERRADOS. Defectos abiertos: ninguno.** El diseño elegido: por id, una HDU sin sprint vigente es inexistente (404 al Administrador y Auditor; 403 a QE, Analista y Líder, como cualquier id inexistente); por código sigue ocupada.
+
+## Verificación por defecto (dos HDU sin sprint: una con estado e impedimento)
+
+| Defecto | Prueba | Resultado real |
+| --- | --- | --- |
+| 01 | Los 5 roles: `GET /v1/hdu/{id}`, `/historial`, `/entregables`, `/impedimentos`, `/riesgo`, `/checklist`; `POST .../estado` (QE, Analista); `PUT .../analista`; `GET /v1/interno/hdu/{id}/acceso` | **0 respuestas 5xx en las dos HDU.** Detalle e historial: 404 (Administrador, Auditor) o 403 (resto). Entregables, impedimentos, riesgo y checklist: 403/404 (ya no 503). `estado` y `analista`: 403. `/acceso`: 200 con `permitido:false` para los 5 roles |
+| 02 | Contadores del inicio contra la lista | `/v1/inicio/qe` `hduEnAmbito` 6 = lista 6; `/v1/inicio/qa` `hduAsignadas` 3 = lista 3; `porEstado` igual al de la lista (antes 16 contra 14 y 6 contra 4) |
+| 03 | `hdu/ambito`, `hdu/consulta`, `estado-codigos`, `upsert` | `hdu/ambito` ya no incluye la HDU (QE, Analista, Líder); `consulta` la trata como inexistente (403 a roles acotados, Administrador y Auditor la omiten): coherente con el ámbito. `estado-codigos` ahora da `existe:true` con su id y `upsert` da `OMITIDA / HDU_MANUAL_EXISTENTE`: coherentes |
+| 04 | Residuo tras la suite de Organización | Tras el último archivo de la suite, `historia_usuario`, `usuario`, `celula` y `sprint` quedan en 0 filas (antes quedaban `ROTA-1`, `ROTA-2`, `SANA-1`) |
+
+Listados por rol (`GET /v1/hdu`, 200 en los 5): Administrador 22, QE 6, Analista 3, Líder 14, Auditor 22 (con 24, 8, 5, 16 y 24 antes de cerrar los dos sprints).
+
+Sondeo del resto de HDU con la rota presente: `bandeja/*`, `inicio/*`, `riesgo/hdu`, `qe/aprobaciones-pendientes`, `auditor/exportaciones/hdu` y los internos `hdu/ambito`, `ambito/detalle` y `responsable` dieron 200 (E3, E4 y E7).
+
+## Pruebas
+
+| Prueba | Resultado real |
+| --- | --- |
+| `typecheck` de Organización | Sin errores |
+| Suite de Organización (base propia) | 335 pruebas: **334 pasan, 1 falla** (`e5-pool-unico`, por su guarda fija a `127.0.0.1:54322`; no se ejecutó, no certifica), 0 omitidas |
+| `tests/e2e/hdu-sin-sprint-vigente.spec.ts` | **19 de 19** (9 de inicio de sesión y 10 pruebas). `[SIN-SPRINT#5]` ya sin `test.fail`: verde, ahora cubre los 5 roles y las rutas `/historial`, `/entregables`, `/impedimentos`, `estado` y `analista`. Nueva `[SIN-SPRINT#6]`: contadores del inicio = total de la lista |
+| E2 API | 12 de 12 |
+| E2 portal | 21 de 21 |
+| E7 API (primera corrida completa) | 67 pasan, 2 fallan, 5 omitidas (`ABS-*`) |
+| E7 portal (primera corrida completa) | 113 pasan, 4 fallan, 3 omitidas (`ABS-*`) |
+| Repetición de lo que falló (`e7-b03`, `e7-b02`, `e7-f04`, `e7-f05`, `e7-f06` completos) | API **37 de 37**, portal **43 de 43** |
+
+Sobre los fallos de la primera corrida de E7:
+- **Oráculos de `hduTotal` (4 fallos: E7-B03#1 T06 y T07 en API; E7-F05#1 T01 y E7-F06#1 T01 en portal):** la prueba comparaba el contador con `SELECT count(*) FROM historia_usuario`, que cuenta las HDU sin sprint; ahora el contador del sistema (DEF-02) las excluye. Se ajustó el oráculo común (`tests/support/e7.ts`, `hduTotal`) y el de `E7-B02#2 T06` (`tests/api/e7-b02-ambito.spec.ts`) para contar solo HDU con sprint vigente. Pasan tras el ajuste.
+- **E7-F04#1 T09 y E7-F04#2 T05 (portal):** en la corrida completa la lista del Líder llegó vacía; repetidas en el archivo completo pasaron (43 de 43). **No lo reproduje y no lo expliqué**: pudo ser una carrera de carga en la corrida larga. Queda como observación, no como defecto del cambio; si reaparece hay que reabrirlo.
+
+Las 8 pruebas omitidas (`ABS-*`) no certifican nada. Las de «Certificaciones detenida» pasaron con los puertos del arnés libres.
+
+## Límites de la ronda 2
+
+- Igual que la ronda 1: stack y base propios; nada medido en producción; E1, E3, E4 y E5 solo sondeados en sus endpoints de HDU.
+- `e5-pool-unico` sigue sin ejecutarse contra la base propia.
+- Las pruebas de la ronda 2 no cubren la reparación de una HDU sin sprint por la carga semilla (`cargarSprintHdu` por `buscarRegistradaPorId`) más allá de lo que ejecuta la suite de Organización.
+- La HDU sin sprint se obtuvo cerrando `historia_sprint.fecha_retiro` con el dueño de la tabla; el caso sin ninguna fila de `historia_sprint` solo lo cubre la suite de Organización.

@@ -123,12 +123,28 @@ test.describe("HDU sin sprint vigente · GET /v1/hdu", () => {
     }
   });
 
-  // DEFECTO ABIERTO (DEF-SINSPRINT-01): las lecturas y escrituras de una sola HDU siguen fallando con 500 si no tiene sprint vigente.
-  // `test.fail` deja la prueba en verde mientras el defecto exista y la pone en rojo cuando se corrija (entonces se quita el `.fail`).
-  test.fail("[SIN-SPRINT#5] DEF-SINSPRINT-01: GET /v1/hdu/{id} de una HDU sin sprint vigente no responde 500", async ({ request }) => {
-    for (const ruta of [`/v1/hdu/${rota.id}`, `/v1/hdu/${rota.id}/historial`]) {
-      const r = await api.get(request, ruta, { token: tokens.ADMINISTRADOR });
-      expect(r.status, `${ruta}: ${JSON.stringify(r.body)}`).toBeLessThan(500);
+  // DEF-SINSPRINT-01: por id, una HDU sin sprint vigente es inexistente (404/403 según el rol), nunca 500/503.
+  test("[SIN-SPRINT#5] DEF-SINSPRINT-01: lecturas y escrituras por id de una HDU sin sprint vigente no responden 500 ni 503, para los 5 roles", async ({ request }) => {
+    for (const rol of Object.keys(CORREOS) as Array<keyof typeof CORREOS>) {
+      for (const sufijo of ["", "/historial", "/entregables", "/impedimentos"]) {
+        const ruta = `/v1/hdu/${rota.id}${sufijo}`;
+        const r = await api.get(request, ruta, { token: tokens[rol] });
+        expect([403, 404], `${rol} ${ruta}: ${JSON.stringify(r.body)}`).toContain(r.status);
+      }
     }
+    for (const rol of ["QE", "ANALISTA_QA"] as const) {
+      const r = await api.post(request, `/v1/hdu/${rota.id}/estado`, { token: tokens[rol], body: { estado: "DISENO_PRUEBAS" } });
+      expect([403, 404], `${rol} estado: ${JSON.stringify(r.body)}`).toContain(r.status);
+    }
+    const a = await api.put(request, `/v1/hdu/${rota.id}/analista`, { token: tokens.QE, body: { analistaId: sana.id } });
+    expect([403, 404, 422], `analista: ${JSON.stringify(a.body)}`).toContain(a.status);
+  });
+
+  test("[SIN-SPRINT#6] DEF-SINSPRINT-02: los contadores del inicio coinciden con el total de la lista", async ({ request }) => {
+    const lista = async (rol: keyof typeof CORREOS) => (await api.get<{ total: number }>(request, "/v1/hdu?tamanoPagina=1", { token: tokens[rol] })).body.total;
+    const qe = await api.get<{ hdu: { datos: { hduEnAmbito: number } } }>(request, "/v1/inicio/qe", { token: tokens.QE });
+    expect(qe.body.hdu.datos.hduEnAmbito).toBe(await lista("QE"));
+    const qa = await api.get<{ hdu: { datos: { hduAsignadas: number } } }>(request, "/v1/inicio/qa", { token: tokens.ANALISTA_QA });
+    expect(qa.body.hdu.datos.hduAsignadas).toBe(await lista("ANALISTA_QA"));
   });
 });
