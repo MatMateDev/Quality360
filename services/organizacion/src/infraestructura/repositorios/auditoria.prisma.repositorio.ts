@@ -30,6 +30,24 @@ function aRegistro(fila: FilaAuditoria): RegistroAuditoria {
   };
 }
 
+/**
+ * Quién creó una HDU y desde qué consulta, según su primera auditoría `CREAR_HDU` (D202). Recibe el cliente de la
+ * transacción: dentro de ella no se puede pedir otra conexión.
+ */
+export async function leerCreacionDeHdu(
+  cliente: Prisma.TransactionClient | PrismaService,
+  hduId: string,
+): Promise<{ actorId: string; consultaId: string | null } | null> {
+  const fila = await cliente.auditoria.findFirst({
+    where: { entidad: 'HDU', entidadId: hduId, accion: 'CREAR_HDU' },
+    orderBy: { fecha: 'asc' },
+    select: { actorId: true, despues: true },
+  });
+  if (fila === null) return null;
+  const despues = fila.despues as { consultaId?: unknown } | null;
+  return { actorId: fila.actorId, consultaId: typeof despues?.consultaId === 'string' ? despues.consultaId : null };
+}
+
 @Injectable()
 export class AuditoriaPrismaRepositorio implements AuditoriaRepositorio {
   constructor(private readonly prisma: PrismaService) {}

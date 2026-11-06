@@ -4,6 +4,7 @@
 - **Fecha:** 2026-11-02
 - **Decisiones base:** D132–D144 (`docs/backlog/e5-consulta-asignacion.md`) y D145–D152 (`decisiones-mvp.md`, sección «E5 · Consulta de Jira y asignación de HDU»)
 - **Modifica:** ADR 0015 (se retira la sincronización directa; se mantiene todo lo demás)
+- **Enmendada por:** ADR 0018 (detalle de la HDU en la consulta y confirmación una a una, D196–D207; aditiva)
 
 ## Contexto
 

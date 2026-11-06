@@ -2,7 +2,7 @@
  * Rutas de Integraciones (E5, D127): se reenvían tal cual a la misma ruta del
  * servicio (`INTEGRACIONES_URL`), sin composición.
  *
- * Declaradas una por una (las 16 rutas y 18 operaciones de
+ * Declaradas una por una (las 18 rutas y 20 operaciones de
  * `integraciones.v1.yaml`), sin comodín: lo que no está aquí responde 404 y
  * `/v1/interno/*` no se publica. `POST jira/sincronizaciones` se retiró con la
  * consulta y asignación (D132): responde 404 como cualquier ruta inexistente.
@@ -15,9 +15,13 @@
  * - El cuerpo de hasta 1,5 MB de `archivos/*` lo admite `crear-app.ts`.
  * - El gateway no autoriza (D4, D126): el rol y el ámbito los decide
  *   Integraciones, y su 403 o 404 llega tal cual. Las escrituras pasan por el
- *   límite de tasa estricto, salvo `PATCH jira/consultas/:id/items`, que usa
- *   su propio cubo (D152).
- * - Los 409, 410 y 422 de la consulta y sus cuerpos extendidos llegan tal cual.
+ *   límite de tasa estricto, salvo `PATCH jira/consultas/:id/items` y
+ *   `POST jira/consultas/:id/items/:itemId/confirmaciones`, que usan su propio
+ *   cubo (D152, D202 g).
+ * - Detalle y confirmación por HDU (ADR 0018): solo Administrador, pero eso lo
+ *   decide Integraciones; el gateway valida que `id` e `itemId` sean UUID.
+ * - Los 409, 410 y 422 de la consulta y sus cuerpos extendidos (también
+ *   `HDU_YA_ASIGNADA`, `FILA_MODIFICADA` y `FILA_EN_CURSO`) llegan tal cual.
  */
 import { Controller, Get, Param, Patch, Post, Put, Req, Res } from '@nestjs/common';
 import type { Response } from 'express';
@@ -92,6 +96,36 @@ export class IntegracionesController {
   @Patch('jira/consultas/:id/items')
   async editarItems(@Param('id') id: string, @Req() solicitud: SolicitudGateway, @Res() respuesta: Response): Promise<void> {
     await this.reenviar(solicitud, respuesta, `/v1/integraciones/jira/consultas/${uuidDeRuta(id)}/items`);
+  }
+
+  // Detalle y confirmación de una fila (ADR 0018). No chocan con `actual`
+  // (otra profundidad); `consultas/actual/items/…` cae aquí y da 400 VALIDACION.
+  @Get('jira/consultas/:id/items/:itemId')
+  async item(
+    @Param('id') id: string,
+    @Param('itemId') itemId: string,
+    @Req() solicitud: SolicitudGateway,
+    @Res() respuesta: Response,
+  ): Promise<void> {
+    await this.reenviar(
+      solicitud,
+      respuesta,
+      `/v1/integraciones/jira/consultas/${uuidDeRuta(id)}/items/${uuidDeRuta(itemId, 'path.itemId')}`,
+    );
+  }
+
+  @Post('jira/consultas/:id/items/:itemId/confirmaciones')
+  async confirmarItem(
+    @Param('id') id: string,
+    @Param('itemId') itemId: string,
+    @Req() solicitud: SolicitudGateway,
+    @Res() respuesta: Response,
+  ): Promise<void> {
+    await this.reenviar(
+      solicitud,
+      respuesta,
+      `/v1/integraciones/jira/consultas/${uuidDeRuta(id)}/items/${uuidDeRuta(itemId, 'path.itemId')}/confirmaciones`,
+    );
   }
 
   @Post('jira/consultas/:id/confirmaciones')

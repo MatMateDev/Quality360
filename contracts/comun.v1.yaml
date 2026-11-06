@@ -160,6 +160,9 @@ components:
         | `ASIGNACIONES_INVALIDAS` | 409 | Hay filas cuya asignación ya no es válida. (D140; `ErrorAsignacionesInvalidas`) |
         | `FILA_NO_MARCABLE` | 422 | Esta fila no se puede incluir en la confirmación. (D139) |
         | `FILA_NO_ASIGNABLE` | 422 | Esta fila no admite asignación. (D139) |
+        | `HDU_YA_ASIGNADA` | 409 / 422 | Esta HDU ya fue asignada a <QE> / <Analista>. (D204; 409 al confirmar una fila, 422 al editar una fila `NUEVA` que ya existe; `ErrorHduYaAsignada`) |
+        | `FILA_MODIFICADA` | 409 | Otra persona modificó esta HDU. Revisa los datos actuales y confirma de nuevo. (D202; `ErrorFilaModificada`, trae la fila actual) |
+        | `FILA_EN_CURSO` | 409 | Otra persona está confirmando esta HDU ahora. Espera unos segundos y revisa. (D202; la toma de la fila dura como máximo 30 s) |
         | `DEMASIADAS_SOLICITUDES` | 429 | Demasiadas solicitudes. Intenta más tarde. |
         | `ERROR_INTERNO` | 500 | Ocurrió un error inesperado. |
         | `SERVICIO_NO_DISPONIBLE` | 503 | El servicio no está disponible. Intenta nuevamente. |
@@ -221,6 +224,9 @@ components:
         - ASIGNACIONES_INVALIDAS
         - FILA_NO_MARCABLE
         - FILA_NO_ASIGNABLE
+        - HDU_YA_ASIGNADA
+        - FILA_MODIFICADA
+        - FILA_EN_CURSO
         - DEMASIADAS_SOLICITUDES
         - ERROR_INTERNO
         - SERVICIO_NO_DISPONIBLE
@@ -3715,6 +3721,10 @@ components:
         (escritura de las filas marcadas de una consulta). `CONSULTA` y
         `CONFIRMACION` siempre tienen `origen: JIRA`.
       enum: [DIRECTA, CONSULTA, CONFIRMACION]
+    AlcanceEjecucion:
+      type: string
+      description: 'Alcance de una ejecución `CONFIRMACION` (D206). `LOTE` «Confirmar marcadas (N)» (y, por defecto, toda ejecución `DIRECTA` o `CONSULTA`); `HDU` «Confirmar asignación» de una sola fila (chip «Una HDU», `leidas = 1`).'
+      enum: [LOTE, HDU]
     EstadoConsulta:
       type: string
       description: 'Estado de una consulta de Jira (D134). Etiquetas: «Abierta», «Confirmada», «Reemplazada», «Vencida», «Descartada». Solo `ABIERTA` es editable; las demás no tienen filas (se purgan, D133).'
@@ -3916,7 +3926,7 @@ components:
         (D149). Con
         `resultado: EN_CURSO`, `terminadaEn` y `duracionMs` son `null` y los
         contadores aún no son definitivos (el portal muestra «—»).
-      required: [id, origen, fase, consultaId, resultado, actor, iniciadaEn, terminadaEn, duracionMs, estricto, vincularExistentes, leidas, creadas, actualizadas, omitidas, conError, nuevas, cambiaron, sinCambios, conAdvertencias, reintentos429, eventos, codigoError, mensajeError, sugerencias, proyecto, sitioHost, archivo, hayMas, continuarDesde]
+      required: [id, origen, fase, alcance, consultaId, resultado, actor, iniciadaEn, terminadaEn, duracionMs, estricto, vincularExistentes, leidas, creadas, actualizadas, omitidas, conError, nuevas, cambiaron, sinCambios, conAdvertencias, reintentos429, eventos, codigoError, mensajeError, sugerencias, proyecto, sitioHost, archivo, hayMas, continuarDesde]
       additionalProperties: false
       properties:
         id:
@@ -3925,6 +3935,8 @@ components:
           $ref: '#/components/schemas/OrigenEjecucion'
         fase:
           $ref: '#/components/schemas/FaseEjecucion'
+        alcance:
+          $ref: '#/components/schemas/AlcanceEjecucion'
         consultaId:
           description: 'Consulta a la que pertenece (`CONSULTA` y `CONFIRMACION`). `null` en `DIRECTA` y en una `CONSULTA` `FALLIDA` que no llegó a guardar consulta (D136).'
           oneOf:
@@ -4591,7 +4603,7 @@ components:
         Contadores **acumulados** de todas las tandas (D149): son los que el
         portal muestra en `res-*`. Una consulta cerrada conserva cabecera y
         contadores; sus filas se purgaron.
-      required: [id, estado, version, creadaPor, creadaEn, venceEn, cerradaEn, cerradaPor, proyecto, sitioHost, hayMas, continuarDesde, leidas, nuevas, cambiaron, sinCambios, conError, conAdvertencias, asignadas, completas, marcadasNuevas, marcadasCambio, aplicadas, pendientes, descartadas, sugerencia]
+      required: [id, estado, version, creadaPor, creadaEn, venceEn, cerradaEn, cerradaPor, proyecto, sitioHost, hayMas, continuarDesde, leidas, nuevas, cambiaron, sinCambios, conError, conAdvertencias, asignadas, completas, marcadasNuevas, marcadasCambio, aplicadas, pendientes, descartadas, creadas, yaAsignadas, sugerencia]
       additionalProperties: false
       properties:
         id:
@@ -4675,7 +4687,15 @@ components:
         descartadas:
           type: integer
           minimum: 0
-          description: Filas no marcadas descartadas al confirmar («6 filas sin marcar no se crearon»). 0 mientras está abierta.
+          description: Filas no marcadas descartadas al confirmar («6 filas sin marcar no se crearon»). 0 mientras está abierta. Al «Terminar revisión» (descartar) cuenta las filas sin confirmar que se pierden (D205).
+        creadas:
+          type: integer
+          minimum: 0
+          description: 'HDU creadas desde esta consulta, por fila (D202) o en lote (D140). Se conserva al cerrar: alimenta «N HDU ya creadas se conservan; M filas sin confirmar se perderán» (D205) y la línea «N HDU ya estaban creadas y no se repitieron» del resultado del lote.'
+        yaAsignadas:
+          type: integer
+          minimum: 0
+          description: 'Filas con `yaAsignada` (D204), de cualquier grupo. Informativo.'
         sugerencia:
           $ref: '#/components/schemas/SugerenciaAsignacion'
     ConsultaActual:
@@ -4780,7 +4800,7 @@ components:
         respuesta cruda de Jira. Los textos de Jira (`titulo`, `descripcion`,
         `sprintJira`, `referencia`, `cambios`) se devuelven tal cual: el portal
         los muestra como texto, nunca como HTML.
-      required: [id, posicion, grupo, codigo, titulo, descripcion, prioridad, sprintJira, urlExterna, referencia, advertencias, motivo, idHistoria, origenHdu, hdu, cambios, asignacion, completa, faltantes, marcada, marcable, aplicada, avisoSinLider, asignadoPor, asignadoEn]
+      required: [id, posicion, grupo, revision, codigo, titulo, descripcion, prioridad, sprintJira, urlExterna, referencia, advertencias, motivo, idHistoria, origenHdu, hdu, cambios, asignacion, analistaAuto, completa, faltantes, marcada, marcable, aplicada, aplicando, aplicacion, yaAsignada, avisoSinLider, asignadoPor, asignadoEn]
       additionalProperties: false
       properties:
         id:
@@ -4791,6 +4811,10 @@ components:
           description: Orden de lectura en Jira, acumulado entre tandas.
         grupo:
           $ref: '#/components/schemas/GrupoConsulta'
+        revision:
+          type: integer
+          minimum: 1
+          description: 'Versión de **esta fila** (D202). Nace en 1 y sube con cada cambio de la fila (asignación, marca, `analistaAuto`, `yaAsignada`, aplicación). «Confirmar asignación» exige la vista (409 `FILA_MODIFICADA`). Es independiente de la `version` de la consulta, que sube con cualquier fila.'
         codigo:
           type: [string, 'null']
           maxLength: 60
@@ -4828,7 +4852,7 @@ components:
             - $ref: '#/components/schemas/MotivoFila'
             - type: 'null'
         idHistoria:
-          description: HDU existente (`CAMBIO`, `SIN_CAMBIOS`). `null` en `NUEVA` y `CON_ERROR`.
+          description: 'HDU existente en Quality360: en `CAMBIO` y `SIN_CAMBIOS`; en `NUEVA` cuando se creó desde esta consulta (`aplicada`) o cuando otra persona la creó durante la revisión (`yaAsignada`, D204). Es el destino de «Ir a la HDU» (`/hdu/<idHistoria>` del portal). `null` en `CON_ERROR` y en `NUEVA` sin HDU.'
           oneOf:
             - $ref: '#/components/schemas/Uuid'
             - type: 'null'
@@ -4851,6 +4875,9 @@ components:
           oneOf:
             - $ref: '#/components/schemas/AsignacionFila'
             - type: 'null'
+        analistaAuto:
+          type: boolean
+          description: '`true` si el analista lo puso el servidor por ser el **único Analista activo del equipo vigente** del QE elegido (D201); vuelve a `false` en cuanto el Administrador elige o limpia el analista, o cambia el QE a uno con 0 o 2+ analistas. Alimenta `aviso-analista-automatico` y sobrevive a recargas. `false` fuera de `NUEVA`.'
         completa:
           type: boolean
           description: '`NUEVA` con los cuatro campos válidos (`data-completa`). `false` en los demás grupos.'
@@ -4867,7 +4894,20 @@ components:
           description: '`true` en `CAMBIO` no aplicada y en `NUEVA` completa no aplicada.'
         aplicada:
           type: boolean
-          description: Ya procesada por una confirmación `INCOMPLETA`; queda de solo lectura (D148).
+          description: 'Ya procesada por una confirmación (lote `INCOMPLETA`, D148, o «Confirmar asignación» de la fila, D202); queda de solo lectura. Una `NUEVA` aplicada es una HDU creada: el portal la muestra «Creada» con `idHistoria`.'
+        aplicando:
+          type: boolean
+          description: 'Otra petición está confirmando esta fila ahora (toma atómica vigente, menos de 30 s, D202). La fila no se edita (`FILA_EN_CURSO`) y el lote la omite.'
+        aplicacion:
+          description: Cómo y quién la aplicó. `null` si no está aplicada.
+          oneOf:
+            - $ref: '#/components/schemas/AplicacionFila'
+            - type: 'null'
+        yaAsignada:
+          description: 'La HDU existe en Quality360 con QE responsable (toda HDU lo tiene, D54) y quizá Analista (D204): instantánea de la clasificación o de la última respuesta de Organización al confirmar. Mientras no sea `null` la fila no admite asignación ni «Confirmar asignación» (alerta `alerta-hdu-ya-asignada`). `null` en `NUEVA` sin HDU, en `CON_ERROR` y en una `NUEVA` creada desde esta consulta (esa es `aplicada`).'
+          oneOf:
+            - $ref: '#/components/schemas/YaAsignada'
+            - type: 'null'
         avisoSinLider:
           type: boolean
           description: 'La célula elegida no tiene Líder activo (`aviso-sin-lider`, informativo, D138).'
@@ -4893,6 +4933,10 @@ components:
           type: integer
           minimum: 0
           description: Filas del grupo que cumplen `q`.
+        yaAsignadas:
+          type: integer
+          minimum: 0
+          description: 'Filas del grupo (con `q`) que tienen `yaAsignada` (`contador-ya-asignadas`, «3 ya asignadas»).'
         pagina:
           type: integer
           minimum: 1
@@ -4978,7 +5022,7 @@ components:
     MotivoRechazoFila:
       type: string
       description: 'Por qué una fila no cambió (D139). Con alcance de **una sola fila** el mismo código viaja como error 422 (D145).'
-      enum: [QE_INVALIDO, ANALISTA_INVALIDO, ANALISTA_FUERA_DE_EQUIPO, CATALOGO_INVALIDO, ASIGNACION_INCOMPLETA, FILA_NO_MARCABLE, FILA_NO_ASIGNABLE]
+      enum: [QE_INVALIDO, ANALISTA_INVALIDO, ANALISTA_FUERA_DE_EQUIPO, CATALOGO_INVALIDO, ASIGNACION_INCOMPLETA, FILA_NO_MARCABLE, FILA_NO_ASIGNABLE, FILA_EN_CURSO, HDU_YA_ASIGNADA]
     FilaRechazada:
       type: object
       required: [itemId, codigo, campo, motivo]
@@ -5108,6 +5152,256 @@ components:
               type: integer
               minimum: 1
 
+    # Detalle y confirmación por HDU (D196–D207, ADR 0018)
+    YaAsignada:
+      type: object
+      description: 'Quién tiene la HDU en Quality360 (D204). Nombres, no ids: es lo que pinta la alerta «Esta HDU ya fue asignada a <QE> / <Analista>» (`data-qe`, `data-analista`, `data-id-historia`). `analista: null` → «… / sin Analista».'
+      required: [idHistoria, qe, analista]
+      additionalProperties: false
+      properties:
+        idHistoria:
+          $ref: '#/components/schemas/Uuid'
+        qe:
+          type: string
+          maxLength: 150
+        analista:
+          type: [string, 'null']
+          maxLength: 150
+    AplicacionFila:
+      type: object
+      required: [alcance, por, en]
+      additionalProperties: false
+      properties:
+        alcance:
+          $ref: '#/components/schemas/AlcanceEjecucion'
+        por:
+          $ref: '#/components/schemas/Persona'
+        en:
+          $ref: '#/components/schemas/FechaHora'
+    TextoDetalle:
+      type: object
+      description: 'Texto plano saneado (D198): nunca HTML ni ADF. Listas con «• » o «1. », tablas como líneas «celda · celda», `media`, macros y extensiones como «[contenido no mostrable]», enlaces solo `http(s)` como «texto (url)», sin caracteres de control. El portal lo pinta como texto con `white-space: pre-wrap` y solo vuelve clicables los tokens `https?://…`.'
+      required: [texto, truncado]
+      additionalProperties: false
+      properties:
+        texto:
+          type: [string, 'null']
+          maxLength: 8000
+          description: '`null` si Jira no trae el campo o queda vacío al sanear (nunca cadena vacía).'
+        truncado:
+          type: boolean
+          description: 'Se recortó al límite (`aviso-texto-recortado`).'
+    CriteriosDetalle:
+      type: object
+      description: 'Criterios de aceptación (D199). `origen`: `CAMPO` (campo personalizado detectado), `DESCRIPCION` (sección bajo el encabezado «Criterios de aceptación» / «Acceptance criteria»; chip «Tomados de la descripción») o `null` («Sin criterios de aceptación en Jira»). Máximo 4.000 caracteres.'
+      required: [texto, origen, truncado]
+      additionalProperties: false
+      properties:
+        texto:
+          type: [string, 'null']
+          maxLength: 4000
+        origen:
+          oneOf:
+            - type: string
+              enum: [CAMPO, DESCRIPCION]
+            - type: 'null'
+        truncado:
+          type: boolean
+    SprintDetalle:
+      type: object
+      required: [nombre, estado, inicio, fin]
+      additionalProperties: false
+      properties:
+        nombre:
+          type: string
+          maxLength: 120
+        estado:
+          type: string
+          description: 'Estado del sprint en Jira. Etiquetas: «Activo», «Futuro», «Cerrado».'
+          enum: [ACTIVO, FUTURO, CERRADO]
+        inicio:
+          oneOf:
+            - $ref: '#/components/schemas/FechaHora'
+            - type: 'null'
+        fin:
+          oneOf:
+            - $ref: '#/components/schemas/FechaHora'
+            - type: 'null'
+    DetalleHdu:
+      type: object
+      description: |
+        Todo lo que Jira trae de la issue en la **misma** llamada de la
+        consulta (D196, D197), saneado (D198). Vive solo en
+        `consulta_item.detalle` mientras la consulta está abierta; nunca se
+        copia a la HDU, a la auditoría, al historial ni a los logs. Ausente =
+        `null` (nunca cadena vacía); las fechas inválidas llegan `null`
+        («—»). Fuera de alcance: comentarios, adjuntos, subtareas, enlaces,
+        historial y worklogs.
+      required: [resumen, descripcion, criterios, estadoJira, prioridadJira, prioridadQ360, tipo, responsableJira, etiquetas, etiquetasTotal, sprints, epica, fechas, urlJira]
+      additionalProperties: false
+      properties:
+        resumen:
+          type: [string, 'null']
+          maxLength: 255
+          description: 'Resumen de Jira completo (hasta 255, el máximo de Jira); el título de la HDU sigue siendo el recorte a 200 de `ItemConsulta.titulo`.'
+        descripcion:
+          $ref: '#/components/schemas/TextoDetalle'
+        criterios:
+          $ref: '#/components/schemas/CriteriosDetalle'
+        estadoJira:
+          type: [string, 'null']
+          maxLength: 100
+        prioridadJira:
+          type: [string, 'null']
+          maxLength: 60
+          description: Nombre de la prioridad en Jira, tal cual.
+        prioridadQ360:
+          description: Equivalente de Quality360 (mapeo de E5); `null` si Jira no trae prioridad.
+          oneOf:
+            - $ref: '#/components/schemas/PrioridadHdu'
+            - type: 'null'
+        tipo:
+          type: [string, 'null']
+          maxLength: 60
+        responsableJira:
+          type: [string, 'null']
+          maxLength: 150
+          description: Nombre visible del responsable en Jira (nunca su correo).
+        etiquetas:
+          type: array
+          maxItems: 20
+          items:
+            type: object
+            required: [valor]
+            additionalProperties: false
+            properties:
+              valor:
+                type: string
+                maxLength: 50
+        etiquetasTotal:
+          type: integer
+          minimum: 0
+          description: 'Cuántas trae Jira; si supera 20 el portal muestra «+N más en Jira».'
+        sprints:
+          type: array
+          maxItems: 10
+          items:
+            $ref: '#/components/schemas/SprintDetalle'
+        epica:
+          description: 'Desde `parent` solo si el padre es una épica (nivel 1 de la jerarquía de Jira); si no, `null` («Sin épica en Jira»).'
+          oneOf:
+            - type: object
+              required: [clave, titulo]
+              additionalProperties: false
+              properties:
+                clave:
+                  type: string
+                  maxLength: 60
+                titulo:
+                  type: [string, 'null']
+                  maxLength: 200
+            - type: 'null'
+        fechas:
+          type: object
+          required: [creada, actualizada, vencimiento, resolucion]
+          additionalProperties: false
+          properties:
+            creada:
+              oneOf:
+                - $ref: '#/components/schemas/FechaHora'
+                - type: 'null'
+            actualizada:
+              oneOf:
+                - $ref: '#/components/schemas/FechaHora'
+                - type: 'null'
+            vencimiento:
+              description: '`duedate` de Jira (fecha sin hora).'
+              oneOf:
+                - $ref: '#/components/schemas/Fecha'
+                - type: 'null'
+            resolucion:
+              oneOf:
+                - $ref: '#/components/schemas/FechaHora'
+                - type: 'null'
+        urlJira:
+          type: [string, 'null']
+          maxLength: 300
+          pattern: '^https://'
+          description: 'Igual que `ItemConsulta.urlExterna`. `null` → el portal oculta «Abrir en Jira».'
+    DetalleItemConsulta:
+      type: object
+      description: 'Respuesta de `GET …/consultas/{id}/items/{itemId}` (D200): la fila (con su `revision`, para confirmar desde el panel) y su detalle. `detalle: null` = fila de una consulta anterior a este cambio (`aviso-detalle-antiguo`); no es un error.'
+      required: [item, detalle, leidaEn, version]
+      additionalProperties: false
+      properties:
+        item:
+          $ref: '#/components/schemas/ItemConsulta'
+        detalle:
+          oneOf:
+            - $ref: '#/components/schemas/DetalleHdu'
+            - type: 'null'
+        leidaEn:
+          description: 'Hora de la tanda que leyó la issue («Datos de Jira del <fecha y hora>»).'
+          $ref: '#/components/schemas/FechaHora'
+        version:
+          type: integer
+          minimum: 1
+          description: '`version` de la consulta al leer.'
+    SolicitudConfirmacionFila:
+      type: object
+      required: [revision]
+      additionalProperties: false
+      properties:
+        revision:
+          type: integer
+          minimum: 1
+          description: 'La `revision` de la fila que vio el Administrador (D202). Distinta de la actual → 409 `FILA_MODIFICADA`. No se pide la `version` de la consulta: confirmar una fila no compite con ediciones de otras filas.'
+    ResultadoConfirmacionFila:
+      type: object
+      description: |
+        HDU creada con su asignación (D202). `repetida: true` cuando la
+        petición es un reintento del **mismo** Administrador sobre una fila
+        que ya quedó creada (idempotencia por `consultaId` + código + actor):
+        no se vuelve a crear ni a auditar y se devuelve lo mismo. La consulta
+        sigue `ABIERTA` (D205).
+      required: [resultado, repetida, hdu, item, ejecucion, consulta]
+      additionalProperties: false
+      properties:
+        resultado:
+          type: string
+          const: CREADA
+        repetida:
+          type: boolean
+        hdu:
+          $ref: '#/components/schemas/HduReferencia'
+        item:
+          $ref: '#/components/schemas/ItemConsulta'
+        ejecucion:
+          description: 'Ejecución `CONFIRMACION` con `alcance: HDU`, `leidas = creadas = 1` (D206). En un reintento `repetida`, la misma de la primera vez.'
+          $ref: '#/components/schemas/Ejecucion'
+        consulta:
+          $ref: '#/components/schemas/Consulta'
+    ErrorHduYaAsignada:
+      description: '`HDU_YA_ASIGNADA` (D204): 409 al confirmar una fila, 422 al editar una `NUEVA` que ya existe. Trae los nombres **actuales** según Organización y la fila ya actualizada (`yaAsignada`, solo lectura). No se creó ni se modificó nada.'
+      allOf:
+        - $ref: '#/components/schemas/Error'
+        - type: object
+          required: [yaAsignada, item]
+          properties:
+            yaAsignada:
+              $ref: '#/components/schemas/YaAsignada'
+            item:
+              $ref: '#/components/schemas/ItemConsulta'
+    ErrorFilaModificada:
+      description: '409 `FILA_MODIFICADA` (D202): la `revision` enviada no es la actual. Trae la fila vigente para repintarla. Nada se creó.'
+      allOf:
+        - $ref: '#/components/schemas/Error'
+        - type: object
+          required: [item]
+          properties:
+            item:
+              $ref: '#/components/schemas/ItemConsulta'
+
     # Lecturas y validación internas de Organización para la consulta (D136, D138, D151)
     SolicitudEstadoCodigos:
       type: object
@@ -5155,6 +5449,9 @@ components:
         qeResponsable:
           type: [string, 'null']
           description: Nombre del QE responsable.
+        analista:
+          type: [string, 'null']
+          description: 'Nombre del Analista asignado o `null` si no tiene (D204). Opcional en el esquema para tolerar el orden de despliegue: Integraciones trata su ausencia como «sin Analista».'
     ResultadoEstadoCodigos:
       type: object
       required: [items]
@@ -5183,6 +5480,10 @@ components:
           $ref: '#/components/schemas/Uuid'
         sprintId:
           $ref: '#/components/schemas/Uuid'
+        proponerAnalista:
+          type: boolean
+          default: false
+          description: 'D201. Con `qeResponsableId` y sin `analistaId`: Organización cuenta los Analistas QA **activos** con supervisión **vigente** (`fecha_hasta IS NULL`) de ese QE y devuelve `analistaPropuesto` solo si hay exactamente uno.'
         proponerSprint:
           type: object
           additionalProperties: false
@@ -5273,6 +5574,15 @@ components:
         celulaSinLiderActivo:
           type: boolean
           description: La célula no tiene Líder QA activo vigente (aviso, no error).
+        analistasActivos:
+          type: [integer, 'null']
+          minimum: 0
+          description: 'Solo con `proponerAnalista` y QE válido: Analistas activos del equipo vigente del QE (0 → «Este QE no supervisa analistas activos»). `null` si no se pidió o el QE no es válido.'
+        analistaPropuesto:
+          description: 'Solo con `proponerAnalista`: el único Analista activo del equipo vigente del QE (D201), o `null` con 0 o 2+.'
+          oneOf:
+            - $ref: '#/components/schemas/Persona'
+            - type: 'null'
     ResultadoValidarAsignaciones:
       type: object
       required: [resultados]
@@ -5463,6 +5773,28 @@ components:
         errorAsignacion:
           description: Solo con `motivo` `ASIGNACION_INVALIDA` (D140).
           $ref: '#/components/schemas/ErrorCampoAsignacion'
+        existente:
+          description: 'Solo modo confirmación, `CREAR` y `OMITIDA` `HDU_CREADA_DESPUES` (D202, D204): quién tiene hoy la HDU y si la creó esta misma consulta y este mismo actor (reintento idempotente).'
+          $ref: '#/components/schemas/HduExistenteUpsert'
+    HduExistenteUpsert:
+      type: object
+      required: [idHistoria, qe, analista, creadaPorEstaConsulta, creadaPorActor]
+      additionalProperties: false
+      properties:
+        idHistoria:
+          $ref: '#/components/schemas/Uuid'
+        qe:
+          type: string
+          maxLength: 150
+        analista:
+          type: [string, 'null']
+          maxLength: 150
+        creadaPorEstaConsulta:
+          type: boolean
+          description: 'La auditoría `CREAR_HDU` de la HDU lleva el mismo `consultaId` de la solicitud.'
+        creadaPorActor:
+          type: boolean
+          description: 'Y la creó el mismo usuario del token. Con ambos `true`, Integraciones responde 200 `repetida` en vez de 409 `HDU_YA_ASIGNADA`.'
     ResultadoUpsertHdu:
       type: object
       required: [simulado, filas]

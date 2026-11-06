@@ -4,6 +4,8 @@ import { ErrorApi, http } from "@/lib/httpClient";
 import type {
   Consulta,
   ConsultaActual,
+  DetalleItemConsulta,
+  ResultadoConfirmacionFila,
   Ejecucion,
   EstadoIntegracion,
   GrupoConsulta,
@@ -144,6 +146,10 @@ export const llamadasConsulta = {
   },
   editar: (id: string, cuerpo: SolicitudEdicionItems) => http.patch<ResultadoEdicionItems>(`${CONSULTAS}/${id}/items`, cuerpo),
   confirmar: (id: string, version: number) => http.post<ResultadoConfirmacion>(`${CONSULTAS}/${id}/confirmaciones`, { version }),
+  /** Detalle completo de una fila (D200): lee la base propia, no llama a Jira. */
+  detalle: (id: string, itemId: string) => http.get<DetalleItemConsulta>(`${CONSULTAS}/${id}/items/${itemId}`),
+  /** «Confirmar asignación» de una sola HDU (D202): crea esa HDU con la `revision` que vio la persona. */
+  confirmarFila: (id: string, itemId: string, revision: number) => http.post<ResultadoConfirmacionFila>(`${CONSULTAS}/${id}/items/${itemId}/confirmaciones`, { revision }),
   descartar: (id: string) => http.post<Consulta>(`${CONSULTAS}/${id}/descartes`, {}),
 };
 
@@ -174,6 +180,17 @@ export function useItemsConsulta(id: string | null, opciones: { grupo: GrupoCons
     placeholderData: keepPreviousData,
     enabled: Boolean(id),
     retry: false,
+  });
+}
+
+/** Detalle de una fila para el panel «Ver detalle». Se pide solo con el panel abierto y no se reintenta solo. */
+export function useDetalleItem(consultaId: string | null, itemId: string | null) {
+  return useQuery({
+    queryKey: ["integraciones", "consulta", "detalle", consultaId, itemId],
+    queryFn: () => llamadasConsulta.detalle(consultaId as string, itemId as string),
+    enabled: Boolean(consultaId && itemId),
+    retry: false,
+    staleTime: 0,
   });
 }
 
@@ -256,13 +273,14 @@ export function useImportarArchivo() {
 
 // ------------------------------------------------------------------ historial
 
-const CLAVES_HISTORIAL = ["fase", "origen", "resultado", "desde", "hasta"] as const;
+const CLAVES_HISTORIAL = ["fase", "alcance", "origen", "resultado", "desde", "hasta"] as const;
 
 /** Parámetros del API desde la URL del portal (origen, resultado, desde, hasta, orden, página). Lo inválido se ignora. */
 export function queryHistorial(filtros: FiltrosUrl): string {
   const params = new URLSearchParams();
   const validos: Record<string, (v: string) => boolean> = {
     fase: (v) => ["CONSULTA", "CONFIRMACION", "DIRECTA"].includes(v),
+    alcance: (v) => ["LOTE", "HDU"].includes(v),
     origen: (v) => ["JIRA", "CSV", "JSON"].includes(v),
     resultado: (v) => ["EN_CURSO", "EXITOSA", "CON_ERRORES", "INCOMPLETA", "FALLIDA", "INTERRUMPIDA"].includes(v),
     desde: (v) => /^\d{4}-\d{2}-\d{2}$/.test(v),

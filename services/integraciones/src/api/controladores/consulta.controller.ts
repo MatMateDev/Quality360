@@ -8,11 +8,12 @@ import type { Request } from 'express';
 
 import { ConsultaAplicacion } from '../../aplicacion/consulta.servicio.js';
 import { ConfirmacionAplicacion } from '../../aplicacion/confirmacion.servicio.js';
+import { ConfirmacionFilaAplicacion } from '../../aplicacion/confirmacion-fila.servicio.js';
 import { EdicionConsultaAplicacion } from '../../aplicacion/edicion-consulta.servicio.js';
 import { FiltroErroresIntegraciones } from '../filtros/filtro-integraciones.js';
 import { solicitanteDe } from '../solicitante.js';
 import { uuidDeRuta } from '../validacion/comunes.js';
-import { leerConfirmacion, leerConsultar, leerEdicion, leerItems } from '../validacion/consulta.js';
+import { leerConfirmacion, leerConfirmacionFila, leerConsultar, leerEdicion, leerItems } from '../validacion/consulta.js';
 
 @UseFilters(FiltroErroresIntegraciones)
 @Roles('ADMINISTRADOR')
@@ -22,6 +23,7 @@ export class ConsultaController {
     private readonly consulta: ConsultaAplicacion,
     private readonly edicion: EdicionConsultaAplicacion,
     private readonly confirmacion: ConfirmacionAplicacion,
+    private readonly confirmacionFila: ConfirmacionFilaAplicacion,
   ) {}
 
   @Post()
@@ -51,6 +53,33 @@ export class ConsultaController {
   async items(@Param('id') id: string, @Query() consulta: Record<string, unknown>) {
     const idConsulta = uuidDeRuta(id, 'id');
     return this.consulta.listarItems(idConsulta, leerItems(consulta));
+  }
+
+  /** D200. Orden de errores: 404 (consulta o fila) → 410 → 409. Lee la base propia: no llama a Jira ni a Organización. */
+  @Get(':id/items/:itemId')
+  async item(@Param('id') id: string, @Param('itemId') itemId: string) {
+    return this.consulta.obtenerItem(uuidDeRuta(id, 'id'), uuidDeRuta(itemId, 'itemId'));
+  }
+
+  /**
+   * D202. Orden de errores: 404 (consulta o fila) → 400 (cuerpo, campos desconocidos) → 410 → 409 → 422 → toma y escritura.
+   * Con la consulta cerrada ya no hay filas: su estado (410/409) se informa después del 400, como en el resto de las rutas.
+   */
+  @Post(':id/items/:itemId/confirmaciones')
+  @HttpCode(200)
+  async confirmarFila(
+    @Param('id') id: string,
+    @Param('itemId') itemId: string,
+    @Body() cuerpo: unknown,
+    @IdentidadActual() identidad: Identidad | undefined,
+    @AccesoActual() acceso: ResolucionAcceso | undefined,
+    @Req() solicitud: Request,
+  ) {
+    const idConsulta = uuidDeRuta(id, 'id');
+    const idItem = uuidDeRuta(itemId, 'itemId');
+    await this.confirmacionFila.verificarFila(idConsulta, idItem);
+    const entrada = leerConfirmacionFila(cuerpo);
+    return this.confirmacionFila.confirmar(solicitanteDe(identidad, acceso, solicitud), idConsulta, idItem, entrada);
   }
 
   /** Orden de errores: 404 (la consulta) → 400 (el cuerpo) → 410/409 (estado) → 422 (una sola fila). */

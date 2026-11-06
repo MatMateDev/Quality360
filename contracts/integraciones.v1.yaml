@@ -10,8 +10,19 @@ info:
     revisión, asignación y confirmación, importación de archivos CSV/JSON e
     historial de ejecuciones (E5: D93–D112 del backlog E5, D113–D128 de
     `docs/arquitectura/decisiones-mvp.md`; consulta y asignación: D132–D144
-    de `docs/backlog/e5-consulta-asignacion.md` y D145–D151). Lo consume el gateway, que publica
+    de `docs/backlog/e5-consulta-asignacion.md` y D145–D151; detalle y
+    confirmación por HDU: D196–D207 y ADR 0018). Lo consume el gateway, que publica
     estas mismas rutas (`INTEGRACIONES_URL`, D127).
+
+    - **Detalle y confirmación por HDU (D196–D207).** El detalle de cada
+      issue viaja en la **misma** `search/jql` de «Consultar Jira» (más
+      campos en `fields`, sin `GET /issue/{clave}` ni `expand`), se sanea a
+      texto plano y vive en `consulta_item.detalle` solo mientras la
+      consulta está abierta. «Confirmar asignación» crea **una** HDU por el
+      mismo upsert de Organización que el lote, con `revision` de la fila,
+      toma atómica de 30 s e idempotencia; no toma el candado global de
+      D104. El analista único del QE y el bloqueo `HDU_YA_ASIGNADA` los
+      decide Organización.
 
     - **Acceso (D93, D126).** No lee el esquema `organizacion`. Cada operación
       resuelve rol, estado activo y ámbito con `GET /v1/interno/acceso` de
@@ -141,7 +152,7 @@ paths:
         cifra con AES-256-GCM e IV nuevo (D94); sin `token` conserva el
         guardado. Registra un `EventoConfiguracionJira` (D111) solo si guarda.
       x-roles: [ADMINISTRADOR]
-      x-hdu: [E5-F01#1, E5-F01#2, E5-F01#3, E5-B01#1, E5-B01#2, E5-B01#3]
+      x-hdu: [E5-F01#1, E5-F01#2, E5-F01#3, E5-B01#1, E5-B01#2, E5-B01#3, E5-B06#3]
       requestBody:
         required: true
         content:
@@ -177,7 +188,9 @@ paths:
       summary: Probar la conexión sin guardar
       description: |
         Con los campos del cuerpo y, para los que falten, los guardados. Hace
-        exactamente `GET myself` y `GET project/{clave}` (E5-B01-T05). No
+        exactamente `GET myself` y `GET project/{clave}` (E5-B01-T05). La detección
+        de campos (`/rest/api/3/field`: Sprint y, desde D199, Criterios de
+        aceptación) ocurre al **guardar**, no al probar. No
         cambia la configuración ni registra eventos. Errores de Jira: 200 con
         `ok: false` y `error`. Sin token en el cuerpo y token guardado no
         descifrable: 409 `TOKEN_NO_DESCIFRABLE` sin llamar a Jira.
@@ -264,8 +277,19 @@ paths:
         `consulta: null`, y la consulta abierta anterior sigue intacta
         (E5-B02-T14, E5-B05-T34). Con 0 issues: consulta `ABIERTA` sin filas
         (`EXITOSA`).
+
+        **Detalle (D196–D199).** `fields` = `summary, description, priority,
+        issuetype, status, assignee, labels, created, updated, duedate,
+        resolutiondate, parent` + el campo Sprint + el de criterios si está
+        detectado (`campo_criterios`). Mismo número de peticiones, misma
+        página de 50 (`INTEGRACIONES_JIRA_TAMANO_PAGINA`, se puede bajar a 25
+        sin cambiar la lógica), mismos 3 s por petición, 8 s por tanda y
+        política de 429. Cada fila guarda `DetalleHdu` saneado (≤ 40 KB); un
+        campo raro queda `null` y nunca pasa la fila a `CON_ERROR`. La
+        clasificación guarda `yaAsignada` (QE y Analista actuales, D204) e
+        `idHistoria` para toda fila cuya HDU exista.
       x-roles: [ADMINISTRADOR]
-      x-hdu: [E5-F02#1, E5-F02#2, E5-F02#3, E5-F02#4, E5-B02#1, E5-B02#2, E5-B02#3, E5-B02#4, E5-B05#2, E5-B05#10, E5-B05#14, E5-B04#1, E5-B04#3]
+      x-hdu: [E5-F02#1, E5-F02#2, E5-F02#3, E5-F02#4, E5-B02#1, E5-B02#2, E5-B02#3, E5-B02#4, E5-B02#5, E5-B02#6, E5-B05#2, E5-B05#10, E5-B05#14, E5-B04#1, E5-B04#3, E5-B06#1, E5-B06#2, E5-B06#3, E5-B06#4, E5-B06#5, E5-B06#8, E5-F07#5, E5-F05#14]
       requestBody:
         required: false
         content:
@@ -377,7 +401,7 @@ paths:
         credencial de la configuración vigente y el proyecto guardado en la
         consulta; sin configuración → 409 `JIRA_NO_CONFIGURADO`.
       x-roles: [ADMINISTRADOR]
-      x-hdu: [E5-F02#5, E5-B02#2, E5-B02#3, E5-B05#12]
+      x-hdu: [E5-F02#5, E5-B02#2, E5-B02#3, E5-B02#5, E5-B05#12, E5-B06#8]
       responses:
         '200':
           description: Tanda cerrada y la consulta con los acumulados. Si la tanda es `FALLIDA`, `consulta` es la misma, sin cambios.
@@ -413,9 +437,11 @@ paths:
         máximo 100, un valor mayor se recorta). No llama a Jira ni a
         Organización. Una consulta cerrada no tiene filas: 409
         `CONSULTA_NO_ABIERTA` (o 410 si venció), nunca una lista vacía que
-        parezca real (D148).
+        parezca real (D148). Cada fila trae `revision`, `analistaAuto`,
+        `aplicando`, `aplicacion` y `yaAsignada`, y **no** trae el detalle
+        (D200); la página suma `yaAsignadas` del grupo.
       x-roles: [ADMINISTRADOR]
-      x-hdu: [E5-F05#1, E5-F05#2, E5-B05#1, E5-B05#2, E5-B05#3, E5-B05#13]
+      x-hdu: [E5-F05#1, E5-F05#2, E5-F05#14, E5-B05#1, E5-B05#2, E5-B05#3, E5-B05#13, E5-B05#15, E5-F07#5, E5-F07#14, E5-B07#6]
       parameters:
         - name: grupo
           in: query
@@ -479,8 +505,22 @@ paths:
         no audita fila por fila (borrador, D141). Si Organización no responde:
         503 `SERVICIO_NO_DISPONIBLE` y nada cambia. Orden: 401 → 403 → 404 →
         400 → 410 → 409 → 422.
+
+        **Analista único (D201).** Si el resultado deja `qeId` fijado y
+        `analistaId` vacío (porque el cuerpo cambió el QE sin mandar
+        analista), Integraciones pide `proponerAnalista` en la misma llamada
+        a `asignaciones/validar`; con exactamente un Analista activo en el
+        equipo vigente del QE, la fila queda con él y `analistaAuto: true`.
+        Con 0 o 2+, `analistaId: null` sin error. Un `analistaId` explícito
+        se respeta y se valida (D138) y deja `analistaAuto: false`. Rige
+        igual con alcance de grupo. **Bloqueos nuevos:** una `NUEVA` con
+        `yaAsignada` rechaza toda asignación con `HDU_YA_ASIGNADA` (422 con
+        una fila; en `rechazadas` con varias); `CAMBIO` y `SIN_CAMBIOS`
+        siguen respondiendo `FILA_NO_ASIGNABLE` como hoy (E5-B05-T11), y su
+        `marcada` se edita como hoy. Una fila con `aplicando` vigente →
+        `FILA_EN_CURSO`. Toda fila que cambia sube su `revision`.
       x-roles: [ADMINISTRADOR]
-      x-hdu: [E5-F05#2, E5-F05#3, E5-F05#4, E5-F05#7, E5-B05#3, E5-B05#4, E5-B05#5, E5-B05#12, E5-B05#13]
+      x-hdu: [E5-F05#2, E5-F05#3, E5-F05#4, E5-F05#7, E5-B05#3, E5-B05#4, E5-B05#5, E5-B05#12, E5-B05#13, E5-F07#1, E5-F07#2, E5-F07#3, E5-B07#1, E5-B07#2, E5-B07#3, E5-B07#6]
       requestBody:
         required: true
         content:
@@ -508,6 +548,189 @@ paths:
           $ref: '#/components/responses/ConsultaVencida'
         '422':
           $ref: '#/components/responses/FilaRechazada'
+        '500':
+          $ref: './comun.v1.yaml#/components/responses/ErrorInterno'
+        '503':
+          $ref: './comun.v1.yaml#/components/responses/ServicioNoDisponible'
+
+  /v1/integraciones/jira/consultas/{id}/items/{itemId}:
+    parameters:
+      - $ref: '#/components/parameters/ConsultaId'
+      - $ref: '#/components/parameters/ItemId'
+    get:
+      operationId: obtenerItemConsulta
+      tags: [Consulta]
+      summary: Detalle completo de una fila (panel «Ver detalle»)
+      description: |
+        D200. Lee la fila y su `detalle` de la base propia: **no llama a Jira
+        ni a Organización**. Aplica el vencimiento perezoso. Orden: 401 → 403
+        → 404 `CONSULTA_NO_ENCONTRADA` (consulta inexistente, o `itemId`
+        inexistente o de otra consulta) → 410 `CONSULTA_VENCIDA` → 409
+        `CONSULTA_NO_ABIERTA` → 200. Una fila guardada antes de este cambio
+        responde 200 con `detalle: null` (no es error). Nada de esta
+        respuesta se registra en logs.
+      x-roles: [ADMINISTRADOR]
+      x-hdu: [E5-F06#1, E5-F06#2, E5-F06#3, E5-F06#4, E5-F06#5, E5-F06#6, E5-F06#7, E5-F06#8, E5-F06#9, E5-F06#10, E5-F05#15, E5-F07#5, E5-B06#6, E5-B06#7, E5-B06#9, E5-B05#13]
+      responses:
+        '200':
+          description: Fila y detalle.
+          content:
+            application/json:
+              schema:
+                $ref: './comun.v1.yaml#/components/schemas/DetalleItemConsulta'
+              examples:
+                completo:
+                  summary: Fila nueva con detalle (QTY-17)
+                  value:
+                    item:
+                      id: 7a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d
+                      posicion: 17
+                      grupo: NUEVA
+                      revision: 3
+                      codigo: QTY-17
+                      titulo: Login con doble factor
+                      descripcion: 'Como usuario quiero un segundo factor…'
+                      prioridad: ALTA
+                      sprintJira: E5 Sprint 2
+                      urlExterna: https://equipo.atlassian.net/browse/QTY-17
+                      referencia:
+                        estado: Por hacer
+                        responsable: Rosa Pérez
+                      advertencias: []
+                      motivo: null
+                      idHistoria: null
+                      origenHdu: null
+                      hdu: null
+                      cambios: null
+                      asignacion:
+                        celula: { id: 3c1d2e3f-4a5b-4c6d-8e7f-901234567891, nombre: CEL-C }
+                        qeResponsable: { id: 4d2e3f4a-5b6c-4d7e-8f90-123456789012, nombre: Marta Díaz }
+                        analista: { id: 5e3f4a5b-6c7d-4e8f-9012-345678901234, nombre: Ana Rojas }
+                        sprint: { id: 6f4a5b6c-7d8e-4f90-1234-567890123456, nombre: E5 Sprint 2 }
+                        sprintOrigen: JIRA
+                      analistaAuto: true
+                      completa: true
+                      faltantes: []
+                      marcada: false
+                      marcable: true
+                      aplicada: false
+                      aplicando: false
+                      aplicacion: null
+                      yaAsignada: null
+                      avisoSinLider: false
+                      asignadoPor: { id: 0b9a6a2e-7c6f-4d4b-9a3e-1f2d3c4b5a69, nombre: Admin Uno }
+                      asignadoEn: '2026-11-05T13:20:00Z'
+                    detalle:
+                      resumen: Login con doble factor
+                      descripcion:
+                        texto: "Como usuario quiero un segundo factor.\n• Código por correo\n• Código por app\n[contenido no mostrable]"
+                        truncado: false
+                      criterios:
+                        texto: "1. Pide el código tras la contraseña\n2. Bloquea tras 5 intentos"
+                        origen: CAMPO
+                        truncado: false
+                      estadoJira: Por hacer
+                      prioridadJira: High
+                      prioridadQ360: ALTA
+                      tipo: Historia
+                      responsableJira: Rosa Pérez
+                      etiquetas: [{ valor: seguridad }, { valor: login }]
+                      etiquetasTotal: 25
+                      sprints:
+                        - { nombre: E5 Sprint 2, estado: ACTIVO, inicio: '2026-11-02T12:00:00Z', fin: '2026-11-16T12:00:00Z' }
+                      epica: { clave: QTY-100, titulo: Seguridad de acceso }
+                      fechas: { creada: '2026-10-20T14:00:00Z', actualizada: '2026-11-04T18:30:00Z', vencimiento: '2026-11-20', resolucion: null }
+                      urlJira: https://equipo.atlassian.net/browse/QTY-17
+                    leidaEn: '2026-11-05T13:10:00Z'
+                    version: 12
+        '401':
+          $ref: './comun.v1.yaml#/components/responses/NoAutenticado'
+        '403':
+          $ref: './comun.v1.yaml#/components/responses/AccesoDenegado'
+        '404':
+          $ref: '#/components/responses/ConsultaNoEncontrada'
+        '409':
+          $ref: '#/components/responses/ConsultaNoAbierta'
+        '410':
+          $ref: '#/components/responses/ConsultaVencida'
+        '500':
+          $ref: './comun.v1.yaml#/components/responses/ErrorInterno'
+        '503':
+          $ref: './comun.v1.yaml#/components/responses/ServicioNoDisponible'
+
+  /v1/integraciones/jira/consultas/{id}/items/{itemId}/confirmaciones:
+    parameters:
+      - $ref: '#/components/parameters/ConsultaId'
+      - $ref: '#/components/parameters/ItemId'
+    post:
+      operationId: confirmarItemConsulta
+      tags: [Consulta]
+      summary: Confirmar la asignación de una HDU (crea esa HDU)
+      description: |
+        D202, ADR 0018. **No llama a Jira ni lee la configuración.** Solo
+        filas `NUEVA` completas; no exige `marcada` (el clic es la
+        intención). Orden de validación: 401 → 403 → 404 (consulta o fila) →
+        400 (cuerpo; campos desconocidos) → 410 `CONSULTA_VENCIDA` → 409
+        `CONSULTA_NO_ABIERTA` → 422 `FILA_NO_ASIGNABLE` (no es `NUEVA`) →
+        409 `HDU_YA_ASIGNADA` (la fila ya tiene `yaAsignada`) → reintento
+        idempotente (fila ya `aplicada` por **este** Administrador: 200 con
+        `repetida: true`; por otro: 409 `HDU_YA_ASIGNADA`) → 409
+        `FILA_MODIFICADA` (`revision` distinta, trae la fila) → 422
+        `ASIGNACION_INCOMPLETA` (con `detalles[]` por campo) → **toma
+        atómica** (`UPDATE … SET aplicando_desde = now() WHERE id_item = $1
+        AND revision = $2 AND NOT aplicada AND (aplicando_desde IS NULL OR
+        aplicando_desde < now() - 30 s)`; 0 filas → 409 `FILA_EN_CURSO`) →
+        `asignaciones/validar` (inválida → 409 `ASIGNACIONES_INVALIDAS` con
+        una fila: se limpia el campo afectado, se desmarca y se libera la
+        toma) → `hdu/upsert` en modo confirmación con **una** fila `CREAR`
+        y su asignación → en una transacción: fila `aplicada` y `marcada`
+        (CHECK `aplicada_marcada`), `id_historia`, `aplicacion` con
+        `alcance: HDU`, `revision` y `version` suben, `consulta.creadas`
+        suma 1, y se inserta la ejecución `CONFIRMACION` **ya cerrada**
+        (`alcance: HDU`, `leidas = creadas = 1`, una fila de detalle con
+        `asignacion`), de modo que nunca ocupa el índice
+        `ejecucion_en_curso_key` de D104. Si el upsert devuelve `OMITIDA`
+        `HDU_CREADA_DESPUES` con `existente`: si la creó esta consulta y
+        este actor → 200 `repetida: true` (se marca la fila y se registra la
+        ejecución si faltaba); si no → se guarda `yaAsignada` con los
+        nombres **actuales**, se desmarca la fila y responde 409
+        `HDU_YA_ASIGNADA`. Si Organización no responde → se libera la toma y
+        503 `SERVICIO_NO_DISPONIBLE` (el reintento es idempotente). La
+        consulta sigue `ABIERTA` y su `venceEn` no cambia (D205). Usa el
+        cubo de tasa de la edición (`LIMITE_TASA_CONSULTA_MAX`, D152).
+      x-roles: [ADMINISTRADOR]
+      x-hdu: [E5-F07#4, E5-F07#6, E5-F07#7, E5-F07#8, E5-F07#9, E5-F07#11, E5-F07#13, E5-F07#14, E5-B07#4, E5-B07#5, E5-B07#6, E5-B07#7, E5-B07#8, E5-B07#9, E5-B07#10, E5-B07#11, E5-B07#14, E5-B07#15, E5-B05#13]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: './comun.v1.yaml#/components/schemas/SolicitudConfirmacionFila'
+            example:
+              revision: 3
+      responses:
+        '200':
+          description: HDU creada (o reintento idempotente del mismo Administrador).
+          content:
+            application/json:
+              schema:
+                $ref: './comun.v1.yaml#/components/schemas/ResultadoConfirmacionFila'
+        '400':
+          $ref: './comun.v1.yaml#/components/responses/Validacion'
+        '401':
+          $ref: './comun.v1.yaml#/components/responses/NoAutenticado'
+        '403':
+          $ref: './comun.v1.yaml#/components/responses/AccesoDenegado'
+        '404':
+          $ref: '#/components/responses/ConsultaNoEncontrada'
+        '409':
+          $ref: '#/components/responses/ConflictoConfirmarFila'
+        '410':
+          $ref: '#/components/responses/ConsultaVencida'
+        '422':
+          $ref: '#/components/responses/FilaNoConfirmable'
+        '429':
+          $ref: './comun.v1.yaml#/components/responses/DemasiadasSolicitudes'
         '500':
           $ref: './comun.v1.yaml#/components/responses/ErrorInterno'
         '503':
@@ -544,8 +767,17 @@ paths:
         `CONFIRMADA`, purga todas las filas y cuenta las no marcadas en
         `descartadas`. Dos confirmaciones simultáneas: una sola ejecución (la
         otra, 409 `INTEGRACION_EN_CURSO` o `CONSULTA_NO_ABIERTA`).
+
+        **Con confirmaciones por fila (D203).** «Confirmar marcadas (N)»
+        omite las filas ya `aplicadas` y las que tienen `aplicando` vigente:
+        no son error ni cuentan en N ni en la ejecución. Cada lote de 25
+        toma sus filas con la misma toma atómica de la confirmación por fila
+        (una fila tomada por otra petición se omite). Sin filas marcadas
+        pendientes → 422 `SIN_SELECCION`. Su ejecución tiene `alcance:
+        LOTE`. Al cerrar `CONFIRMADA`, `consulta.creadas` cuenta todas las
+        HDU creadas desde la consulta (por fila y por lote).
       x-roles: [ADMINISTRADOR]
-      x-hdu: [E5-F05#5, E5-F05#6, E5-F05#9, E5-F05#10, E5-F05#11, E5-F05#12, E5-B05#3, E5-B05#6, E5-B05#7, E5-B05#8, E5-B05#9, E5-B05#11, E5-B05#12, E5-B05#14, E5-B04#4]
+      x-hdu: [E5-F05#5, E5-F05#6, E5-F05#9, E5-F05#10, E5-F05#11, E5-F05#12, E5-B05#3, E5-B05#6, E5-B05#7, E5-B05#8, E5-B05#9, E5-B05#11, E5-B05#12, E5-B05#14, E5-B04#4, E5-F07#10, E5-B07#12]
       requestBody:
         required: true
         content:
@@ -589,8 +821,14 @@ paths:
         Pasa la consulta a `DESCARTADA`, purga sus filas, sube `version` y
         guarda quién la cerró. No crea HDU ni registra ejecución. Otra vez, o
         sobre una cerrada: 409 `CONSULTA_NO_ABIERTA`; vencida: 410.
+        Es también «Terminar revisión» (D205): las HDU ya creadas por fila
+        se conservan siempre; `descartadas` cuenta las filas sin confirmar
+        que se pierden y `creadas` se mantiene. Una fila con `aplicando`
+        vigente no impide descartar: si su confirmación termina después,
+        la HDU queda creada y la marca de la fila ya no se escribe (la fila
+        se purgó); la ejecución `HDU` se registra igual.
       x-roles: [ADMINISTRADOR]
-      x-hdu: [E5-F05#8, E5-B05#10, E5-B05#11]
+      x-hdu: [E5-F05#8, E5-B05#10, E5-B05#11, E5-F07#12, E5-B07#13]
       responses:
         '200':
           description: Consulta descartada.
@@ -718,8 +956,14 @@ paths:
         descendente. `desde` y `hasta` son fechas de Chile
         (`America/Santiago`), inclusivas.
       x-roles: [ADMINISTRADOR, QE, AUDITOR]
-      x-hdu: [E5-F04#2, E5-F04#4, E5-B04#2, E5-B04#4, E5-B05#14]
+      x-hdu: [E5-F04#2, E5-F04#4, E5-F04#5, E5-B04#2, E5-B04#4, E5-B04#5, E5-B05#14, E5-B07#15]
       parameters:
+        - name: alcance
+          in: query
+          required: false
+          description: 'D206. `HDU` = confirmaciones de una sola fila (chip «Una HDU»); `LOTE` = el resto.'
+          schema:
+            $ref: './comun.v1.yaml#/components/schemas/AlcanceEjecucion'
         - name: origen
           in: query
           required: false
@@ -782,7 +1026,7 @@ paths:
       summary: Una ejecución con contadores, eventos y error
       description: Inexistente → 404 para Administrador y Auditor; 403 para el QE (D106).
       x-roles: [ADMINISTRADOR, QE, AUDITOR]
-      x-hdu: [E5-F04#1, E5-F04#3, E5-F04#4, E5-B04#1, E5-B04#3]
+      x-hdu: [E5-F04#1, E5-F04#3, E5-F04#4, E5-F04#5, E5-B04#1, E5-B04#3, E5-B04#5]
       responses:
         '200':
           description: Ejecución.
@@ -818,7 +1062,7 @@ paths:
         filas (el detalle es la consulta mientras vive, D141). Fase
         `CONFIRMACION`: cada fila trae `asignacion` en nombres.
       x-roles: [ADMINISTRADOR, QE, AUDITOR]
-      x-hdu: [E5-F03#3, E5-F04#3, E5-F04#4, E5-F05#5, E5-B04#2, E5-B04#4, E5-B05#14]
+      x-hdu: [E5-F03#3, E5-F04#3, E5-F04#4, E5-F05#5, E5-B04#2, E5-B04#4, E5-B05#14, E5-B07#15]
       parameters:
         - name: resultado
           in: query
@@ -904,6 +1148,13 @@ components:
       in: path
       required: true
       description: UUID de la consulta.
+      schema:
+        $ref: './comun.v1.yaml#/components/schemas/Uuid'
+    ItemId:
+      name: itemId
+      in: path
+      required: true
+      description: UUID de la fila (`ItemConsulta.id`). De otra consulta → 404 `CONSULTA_NO_ENCONTRADA`.
       schema:
         $ref: './comun.v1.yaml#/components/schemas/Uuid'
 
@@ -1043,15 +1294,17 @@ components:
           schema:
             $ref: './comun.v1.yaml#/components/schemas/Error'
     FilaRechazada:
-      description: 'Alcance de una sola fila rechazado (D145). `detalles[0].campo` es el campo de la asignación (`qeId`, `analistaId`, `sprintId`, `celulaId`) o `itemId`; con `ASIGNACION_INCOMPLETA`, un detalle por campo faltante. Nada cambia y `version` no sube.'
-      x-codigos: [QE_INVALIDO, ANALISTA_INVALIDO, ANALISTA_FUERA_DE_EQUIPO, CATALOGO_INVALIDO, ASIGNACION_INCOMPLETA, FILA_NO_MARCABLE, FILA_NO_ASIGNABLE]
+      description: 'Alcance de una sola fila rechazado (D145). `detalles[0].campo` es el campo de la asignación (`qeId`, `analistaId`, `sprintId`, `celulaId`) o `itemId`; con `ASIGNACION_INCOMPLETA`, un detalle por campo faltante. `HDU_YA_ASIGNADA` (D204, solo `NUEVA` con `yaAsignada`) trae `ErrorHduYaAsignada`; `FILA_EN_CURSO` (D202) es otra petición confirmando esa fila. Nada cambia y `version` no sube.'
+      x-codigos: [QE_INVALIDO, ANALISTA_INVALIDO, ANALISTA_FUERA_DE_EQUIPO, CATALOGO_INVALIDO, ASIGNACION_INCOMPLETA, FILA_NO_MARCABLE, FILA_NO_ASIGNABLE, FILA_EN_CURSO, HDU_YA_ASIGNADA]
       headers:
         x-trace-id:
           $ref: './comun.v1.yaml#/components/headers/XTraceId'
       content:
         application/json:
           schema:
-            $ref: './comun.v1.yaml#/components/schemas/Error'
+            anyOf:
+              - $ref: './comun.v1.yaml#/components/schemas/ErrorHduYaAsignada'
+              - $ref: './comun.v1.yaml#/components/schemas/Error'
           example:
             codigo: ANALISTA_FUERA_DE_EQUIPO
             mensaje: El analista no pertenece al equipo vigente del QE responsable.
@@ -1060,6 +1313,140 @@ components:
               - campo: analistaId
                 codigo: NO_PERMITIDO
                 mensaje: ANA1 no pertenece al equipo de QE2.
+    ConflictoConfirmarFila:
+      description: 'Confirmar una fila (D202, D204). `CONSULTA_NO_ABIERTA` (`ErrorConsulta`); `HDU_YA_ASIGNADA` (`ErrorHduYaAsignada`, nombres actuales y la fila en solo lectura); `FILA_MODIFICADA` (`ErrorFilaModificada`, la fila actual); `FILA_EN_CURSO` (otra petición tiene la toma, máx. 30 s); `ASIGNACIONES_INVALIDAS` (`ErrorAsignacionesInvalidas` con una fila; el campo afectado queda limpio). Ninguno crea HDU ni registra ejecución.'
+      x-codigos: [CONSULTA_NO_ABIERTA, HDU_YA_ASIGNADA, FILA_MODIFICADA, FILA_EN_CURSO, ASIGNACIONES_INVALIDAS]
+      headers:
+        x-trace-id:
+          $ref: './comun.v1.yaml#/components/headers/XTraceId'
+      content:
+        application/json:
+          schema:
+            anyOf:
+              - $ref: './comun.v1.yaml#/components/schemas/ErrorHduYaAsignada'
+              - $ref: './comun.v1.yaml#/components/schemas/ErrorFilaModificada'
+              - $ref: './comun.v1.yaml#/components/schemas/ErrorAsignacionesInvalidas'
+              - $ref: './comun.v1.yaml#/components/schemas/ErrorConsulta'
+              - $ref: './comun.v1.yaml#/components/schemas/Error'
+          examples:
+            yaAsignada:
+              summary: Otra persona creó la HDU durante la revisión (E5-B07#7)
+              value:
+                codigo: HDU_YA_ASIGNADA
+                mensaje: Esta HDU ya fue asignada a Marta Díaz / sin Analista
+                traceId: 4bf92f3577b34da6a3ce929d0e0e4736
+                detalles: []
+                yaAsignada:
+                  idHistoria: 8a7b6c5d-4e3f-4a2b-9c1d-0e9f8a7b6c5d
+                  qe: Marta Díaz
+                  analista: null
+                item:
+                  id: 7a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d
+                  posicion: 5
+                  grupo: NUEVA
+                  revision: 4
+                  codigo: QTY-5
+                  titulo: Notificaciones push
+                  descripcion: null
+                  prioridad: MEDIA
+                  sprintJira: null
+                  urlExterna: https://equipo.atlassian.net/browse/QTY-5
+                  referencia: null
+                  advertencias: []
+                  motivo: null
+                  idHistoria: 8a7b6c5d-4e3f-4a2b-9c1d-0e9f8a7b6c5d
+                  origenHdu: null
+                  hdu: null
+                  cambios: null
+                  asignacion:
+                    celula: null
+                    qeResponsable: null
+                    analista: null
+                    sprint: null
+                    sprintOrigen: null
+                  analistaAuto: false
+                  completa: false
+                  faltantes: [celulaId, qeId, analistaId, sprintId]
+                  marcada: false
+                  marcable: false
+                  aplicada: false
+                  aplicando: false
+                  aplicacion: null
+                  yaAsignada:
+                    idHistoria: 8a7b6c5d-4e3f-4a2b-9c1d-0e9f8a7b6c5d
+                    qe: Marta Díaz
+                    analista: null
+                  avisoSinLider: false
+                  asignadoPor: null
+                  asignadoEn: null
+            filaModificada:
+              summary: La revision enviada ya no es la actual (E5-B07#9)
+              value:
+                codigo: FILA_MODIFICADA
+                mensaje: Otra persona modificó esta HDU. Revisa los datos actuales y confirma de nuevo.
+                traceId: 4bf92f3577b34da6a3ce929d0e0e4736
+                detalles: []
+                item:
+                  id: 7a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d
+                  posicion: 1
+                  grupo: NUEVA
+                  revision: 5
+                  codigo: QTY-1
+                  titulo: Login con doble factor
+                  descripcion: null
+                  prioridad: ALTA
+                  sprintJira: E5 Sprint 2
+                  urlExterna: https://equipo.atlassian.net/browse/QTY-1
+                  referencia: null
+                  advertencias: []
+                  motivo: null
+                  idHistoria: null
+                  origenHdu: null
+                  hdu: null
+                  cambios: null
+                  asignacion:
+                    celula: { id: 3c1d2e3f-4a5b-4c6d-8e7f-901234567891, nombre: CEL-C }
+                    qeResponsable: { id: 4d2e3f4a-5b6c-4d7e-8f90-123456789012, nombre: Marta Díaz }
+                    analista: { id: 9f8e7d6c-5b4a-4c3d-8e2f-1a0b9c8d7e6f, nombre: Luis Soto }
+                    sprint: { id: 6f4a5b6c-7d8e-4f90-1234-567890123456, nombre: E5 Sprint 2 }
+                    sprintOrigen: JIRA
+                  analistaAuto: false
+                  completa: true
+                  faltantes: []
+                  marcada: false
+                  marcable: true
+                  aplicada: false
+                  aplicando: false
+                  aplicacion: null
+                  yaAsignada: null
+                  avisoSinLider: false
+                  asignadoPor: { id: 1a2b3c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d, nombre: Admin Dos }
+                  asignadoEn: '2026-11-05T13:25:00Z'
+            filaEnCurso:
+              summary: Otra petición está confirmando la fila (E5-B07#8)
+              value:
+                codigo: FILA_EN_CURSO
+                mensaje: Otra persona está confirmando esta HDU ahora. Espera unos segundos y revisa.
+                traceId: 4bf92f3577b34da6a3ce929d0e0e4736
+                detalles: []
+    FilaNoConfirmable:
+      description: 'La fila no es `NUEVA` (`FILA_NO_ASIGNABLE`) o le faltan campos (`ASIGNACION_INCOMPLETA`, un `detalles[]` por campo faltante). Nada se crea.'
+      x-codigos: [FILA_NO_ASIGNABLE, ASIGNACION_INCOMPLETA]
+      headers:
+        x-trace-id:
+          $ref: './comun.v1.yaml#/components/headers/XTraceId'
+      content:
+        application/json:
+          schema:
+            $ref: './comun.v1.yaml#/components/schemas/Error'
+          example:
+            codigo: ASIGNACION_INCOMPLETA
+            mensaje: Falta completar la asignación.
+            traceId: 4bf92f3577b34da6a3ce929d0e0e4736
+            detalles:
+              - campo: analistaId
+                codigo: REQUERIDO
+                mensaje: 'Falta: analista'
     SinSeleccion:
       description: No hay filas marcadas sin aplicar (D140).
       x-codigos: [SIN_SELECCION]

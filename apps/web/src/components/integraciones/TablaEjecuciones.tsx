@@ -7,13 +7,14 @@ import { Paginacion } from "@/components/bandeja/Paginacion";
 import { TablaBandeja, type Columna } from "@/components/bandeja/TablaBandeja";
 import { hayFiltrosActivos, type FiltrosUrl } from "@/lib/filtrosUrl";
 import { formatearFecha } from "@/lib/formato";
-import { ETIQUETAS_FASE, ETIQUETAS_ORIGEN_EJECUCION, FASES, INFO_RESULTADO_EJECUCION, RESULTADOS_EJECUCION } from "@/lib/mensajesIntegracion";
+import { ETIQUETAS_ALCANCE, ETIQUETAS_FASE, ETIQUETAS_ORIGEN_EJECUCION, FASES, INFO_RESULTADO_EJECUCION, RESULTADOS_EJECUCION } from "@/lib/mensajesIntegracion";
 import { origenDe, textoContadoresConsulta } from "@/lib/textosEjecucion";
 import { ETIQUETAS_ROL, type Ejecucion } from "@/types/dominio";
 import { InsigniaResultado } from "./Insignias";
 
 const CAMPOS: CampoFiltro[] = [
   { clave: "fase", id: "filtro-fase", etiqueta: "Fase", tipo: "select", opciones: FASES.map((f) => ({ valor: f, etiqueta: ETIQUETAS_FASE[f] })) },
+  { clave: "alcance", id: "filtro-alcance", etiqueta: "Alcance", tipo: "select", opciones: Object.entries(ETIQUETAS_ALCANCE).map(([valor, etiqueta]) => ({ valor, etiqueta })) },
   { clave: "origen", id: "filtro-origen", etiqueta: "Origen", tipo: "select", opciones: Object.entries(ETIQUETAS_ORIGEN_EJECUCION).map(([valor, etiqueta]) => ({ valor, etiqueta })) },
   { clave: "resultado", id: "filtro-resultado", etiqueta: "Resultado", tipo: "select", opciones: RESULTADOS_EJECUCION.map((r) => ({ valor: r, etiqueta: INFO_RESULTADO_EJECUCION[r].etiqueta })) },
   { clave: "desde", id: "filtro-desde", etiqueta: "Desde", tipo: "fecha" },
@@ -75,7 +76,23 @@ export function TablaEjecuciones({ filtros }: { filtros: FiltrosUrl }) {
       ),
     },
     { id: "fecha", titulo: "Fecha", ordenable: true, prioritaria: true, render: (e) => <time dateTime={e.iniciadaEn}>{formatearFecha(e.iniciadaEn)}</time> },
-    { id: "fase", titulo: "Fase", render: (e) => <span data-testid={`celda-fase-${e.id}`}>{ETIQUETAS_FASE[e.fase]}</span> },
+    {
+      id: "fase",
+      titulo: "Fase",
+      render: (e) => (
+        <>
+          <span data-testid={`celda-fase-${e.id}`}>{ETIQUETAS_FASE[e.fase]}</span>
+          {e.fase === "CONFIRMACION" && e.alcance === "HDU" ? (
+            <>
+              {" "}
+              <span className="chip-grupo" data-testid={`chip-una-hdu-${e.id}`}>
+                {ETIQUETAS_ALCANCE.HDU}
+              </span>
+            </>
+          ) : null}
+        </>
+      ),
+    },
     {
       id: "origen",
       titulo: "Origen",

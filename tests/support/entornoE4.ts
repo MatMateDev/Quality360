@@ -100,12 +100,12 @@ export async function impedimentosCaidoEnOrganizacion(conPortal = false): Promis
 
 /** Certificaciones no responde para Impedimentos (E4-F02-T08, E4-F04-T10, E4-B03-T12). */
 export async function certificacionesCaidaEnImpedimentos(conPortal = false): Promise<PilaE4> {
-  const imp = await levantarServicio("impedimentos", 3203, { CERTIFICACIONES_URL: MUERTO() });
+  const imp = await levantarServicio("impedimentos", Number(process.env.PUERTO_ALT_IMPEDIMENTOS ?? 3203), { CERTIFICACIONES_URL: MUERTO() });
   return componer([imp], { IMPEDIMENTOS_URL: imp.url }, conPortal);
 }
 
 /** Impedimentos con «hoy» fijo (`Q360_FECHA_REFERENCIA`, D68) para E4-B03-T11. */
 export async function impedimentosConFecha(fechaReferencia: string): Promise<PilaE4> {
-  const imp = await levantarServicio("impedimentos", 3203, { Q360_FECHA_REFERENCIA: fechaReferencia });
+  const imp = await levantarServicio("impedimentos", Number(process.env.PUERTO_ALT_IMPEDIMENTOS ?? 3203), { Q360_FECHA_REFERENCIA: fechaReferencia });
   return componer([imp], { IMPEDIMENTOS_URL: imp.url }, false);
 }

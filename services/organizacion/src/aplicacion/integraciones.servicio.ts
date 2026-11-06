@@ -19,6 +19,7 @@ import {
   type ResultadoFilaUpsert,
 } from '../dominio/reglas/upsert-hdu.js';
 import {
+  proponerAnalistaUnico,
   proponerSprint,
   validarAsignacion,
   type ErrorAsignacion,
@@ -30,6 +31,7 @@ import { SUPERVISION_REPOSITORIO, type SupervisionRepositorio } from '../dominio
 import { CATALOGO_REPOSITORIO, type CatalogoRepositorio } from '../dominio/repositorios/catalogo.repositorio.js';
 import {
   INTEGRACION_HDU_REPOSITORIO,
+  type HduExistenteUpsert,
   type IntegracionHduRepositorio,
   type UnidadTrabajoUpsert,
 } from '../dominio/repositorios/integracion-hdu.repositorio.js';
@@ -46,6 +48,8 @@ export interface EstadoCodigoHdu {
   descripcion: string | null;
   prioridad: PrioridadHdu | null;
   qeResponsable: string | null;
+  /** Nombre del Analista asignado o `null` (D204). */
+  analista: string | null;
 }
 
 export interface AsignacionAValidar {
@@ -54,6 +58,7 @@ export interface AsignacionAValidar {
   readonly qeResponsableId?: string;
   readonly analistaId?: string;
   readonly sprintId?: string;
+  readonly proponerAnalista?: boolean;
   readonly proponerSprint?: { readonly nombreJira: string | null; readonly respaldoId: string | null };
 }
 
@@ -73,6 +78,9 @@ export interface AsignacionValidada {
   sprint: { id: string; nombre: string } | null;
   sprintPropuesto: SprintPropuestoRespuesta | null;
   celulaSinLiderActivo: boolean;
+  /** Solo con `proponerAnalista` y QE válido (D201); `null` en otro caso. */
+  analistasActivos: number | null;
+  analistaPropuesto: { id: string; nombre: string } | null;
 }
 
 export interface DestinoHdu {
@@ -122,6 +130,8 @@ export interface ResultadoFila {
   cambios: CambiosHdu | null;
   /** Solo con `ASIGNACION_INVALIDA` (D140). */
   errorAsignacion?: ErrorAsignacion;
+  /** Solo modo confirmación, `CREAR` y `HDU_CREADA_DESPUES` (D202, D204). */
+  existente?: HduExistenteUpsert;
 }
 
 export interface ResultadoUpsert {
@@ -169,12 +179,12 @@ export class IntegracionesAplicacion {
     const normalizados = codigos.map((codigo) => normalizarCodigoHdu(codigo));
     const encontradas = await this.hdus.buscarPorCodigosNormalizados([...new Set(normalizados)]);
     const porCodigo = new Map(encontradas.map((hdu) => [normalizarCodigoHdu(hdu.codigo), hdu]));
-    const nombres = new Map((await this.usuarios.listarResumenPorIds([...new Set(encontradas.map((hdu) => hdu.qeResponsableId))])).map((u) => [u.id, u.nombre]));
+    const nombres = new Map((await this.usuarios.listarResumenPorIds([...new Set(encontradas.flatMap((hdu) => (hdu.analistaId === null ? [hdu.qeResponsableId] : [hdu.qeResponsableId, hdu.analistaId])))])).map((u) => [u.id, u.nombre]));
     return {
       items: codigos.map((codigo, indice) => {
         const hdu = porCodigo.get(normalizados[indice] as string);
         if (hdu === undefined) {
-          return { codigo, existe: false, idHistoria: null, estado: null, origen: null, titulo: null, descripcion: null, prioridad: null, qeResponsable: null };
+          return { codigo, existe: false, idHistoria: null, estado: null, origen: null, titulo: null, descripcion: null, prioridad: null, qeResponsable: null, analista: null };
         }
         return {
           codigo,
@@ -186,6 +196,7 @@ export class IntegracionesAplicacion {
           descripcion: hdu.descripcion,
           prioridad: hdu.prioridad,
           qeResponsable: nombres.get(hdu.qeResponsableId) ?? null,
+          analista: hdu.analistaId === null ? null : (nombres.get(hdu.analistaId) ?? null),
         };
       }),
     };
@@ -209,6 +220,7 @@ export class IntegracionesAplicacion {
     const usuarios = new Map<string, Promise<Usuario | null>>();
     const equipos = new Map<string, Promise<string[]>>();
     const lideres = new Map<string, Promise<boolean>>();
+    const activos = new Map<string, Promise<Array<{ id: string; nombre: string; correo: string }>>>();
     const porNombre = new Map<string, Promise<Sprint | null>>();
     const celula = (id: string) => memo(celulas, id, () => this.catalogos.buscarCelula(id));
     const sprint = (id: string) => memo(sprints, id, () => this.catalogos.buscarSprint(id));
@@ -247,6 +259,15 @@ export class IntegracionesAplicacion {
         };
       }
 
+      let analistasActivos: number | null = null;
+      let analistaPropuesto: { id: string; nombre: string } | null = null;
+      if (a.proponerAnalista === true && qeValido) {
+        const equipoActivo = await memo(activos, qe.id, () => this.supervision.listarAnalistasActivosDelEquipo(qe.id));
+        analistasActivos = equipoActivo.length;
+        const unico = a.analistaId === undefined ? proponerAnalistaUnico(equipoActivo) : null;
+        analistaPropuesto = unico === null ? null : { id: unico.id, nombre: unico.nombre };
+      }
+
       const celulaValida = celulaEnc !== null && !fallo('celulaId') ? celulaEnc : null;
       const sinLider = celulaValida === null ? false : !(await memo(lideres, celulaValida.id, async () => (await this.lideres.lideresActivosDeCelula(celulaValida.id)).length > 0));
       resultados.push({
@@ -259,6 +280,8 @@ export class IntegracionesAplicacion {
         sprint: sprintEnc !== null && !fallo('sprintId') ? { id: sprintEnc.id, nombre: sprintEnc.nombre } : null,
         sprintPropuesto: propuesto,
         celulaSinLiderActivo: sinLider,
+        analistasActivos,
+        analistaPropuesto,
       });
     }
     return { resultados };
@@ -343,7 +366,8 @@ export class IntegracionesAplicacion {
     } catch (error) {
       if (error instanceof ConflictoUnicidad) {
         const existente = await this.repositorio.soloLectura().buscarPorCodigoNormalizado(normalizarCodigoHdu(fila.codigo.trim()));
-        return { fila: fila.fila, codigo: fila.codigo.trim(), resultado: 'OMITIDA', motivo: 'HDU_CREADA_DESPUES', idHistoria: existente?.id ?? null, advertencias: [], cambios: null };
+        const detalle = existente === null || solicitud.consultaId === undefined ? null : await this.repositorio.soloLectura().describirExistente(existente.id, solicitud.consultaId, actor.id);
+        return { fila: fila.fila, codigo: fila.codigo.trim(), resultado: 'OMITIDA', motivo: 'HDU_CREADA_DESPUES', idHistoria: existente?.id ?? null, advertencias: [], cambios: null, ...(detalle === null ? {} : { existente: detalle }) };
       }
       this.registro.error(`Fila ${fila.fila} (${fila.codigo}) de la confirmación falló: ${error instanceof Error ? error.message : 'desconocido'}`);
       return this.errorDeFila(fila, 'ERROR_INTERNO');
@@ -372,7 +396,10 @@ export class IntegracionesAplicacion {
     }
 
     // CREAR: nunca actualiza una HDU que apareció mientras se revisaba la consulta.
-    if (existente !== null) return { fila: fila.fila, codigo, resultado: 'OMITIDA', motivo: 'HDU_CREADA_DESPUES', idHistoria: existente.id, advertencias: [], cambios: null };
+    if (existente !== null) {
+      const detalle = solicitud.consultaId === undefined ? null : await unidad.describirExistente(existente.id, solicitud.consultaId, actor.id);
+      return { fila: fila.fila, codigo, resultado: 'OMITIDA', motivo: 'HDU_CREADA_DESPUES', idHistoria: existente.id, advertencias: [], cambios: null, ...(detalle === null ? {} : { existente: detalle }) };
+    }
     const asignacion = fila.asignacion;
     if (asignacion === undefined) return this.errorDeFila(fila, 'ERROR_INTERNO');
     if (errorAsignacion !== null) return { ...this.errorDeFila(fila, 'ASIGNACION_INVALIDA'), codigo, errorAsignacion };

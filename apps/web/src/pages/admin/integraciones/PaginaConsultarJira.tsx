@@ -69,9 +69,11 @@ export function PaginaConsultarJira() {
   const continuar = useContinuarConsulta();
 
   const [tanda, setTanda] = useState<Tanda | null>(null);
-  const [resultadoConfirmacion, setResultadoConfirmacion] = useState<{ ejecucion: Ejecucion; descartadas: number; tipo: { nuevas: number; cambios: number } } | null>(null);
+  const [resultadoConfirmacion, setResultadoConfirmacion] = useState<{ ejecucion: Ejecucion; descartadas: number; tipo: { nuevas: number; cambios: number; yaCreadas?: number } } | null>(null);
   const [fallo, setFallo] = useState<Fallo | null>(null);
   const [reemplazo, setReemplazo] = useState<ErrorConsultaAbierta | null>(null);
+  // `ErrorConsultaAbierta` no trae `creadas` (D205): se lee de `GET /consultas/actual` para decir cuántas HDU se conservan.
+  const [creadasReemplazo, setCreadasReemplazo] = useState(0);
   const [llaveAusente, setLlaveAusente] = useState(false);
   const [enCursoLocal, setEnCursoLocal] = useState(false);
   const [esperaAgotada, setEsperaAgotada] = useState(false);
@@ -119,7 +121,7 @@ export function PaginaConsultarJira() {
     void actual.refetch();
   }
 
-  function alConfirmar(respuesta: ResultadoConfirmacionJira, tipo: { nuevas: number; cambios: number }) {
+  function alConfirmar(respuesta: ResultadoConfirmacionJira, tipo: { nuevas: number; cambios: number; yaCreadas?: number }) {
     setTanda(null);
     setFallo(null);
     setResultadoConfirmacion({ ejecucion: respuesta.ejecucion, descartadas: respuesta.consulta.descartadas, tipo });
@@ -131,7 +133,13 @@ export function PaginaConsultarJira() {
   function manejarError(error: unknown) {
     const codigo = codigoDeEscritura(error);
     if (error instanceof ErrorApi && error.status === 409 && codigo === "CONSULTA_ABIERTA") {
-      setReemplazo(error.cuerpo as ErrorConsultaAbierta);
+      const cuerpo = error.cuerpo as ErrorConsultaAbierta;
+      setCreadasReemplazo(0);
+      void llamadasConsulta
+        .actual()
+        .then((r) => setCreadasReemplazo(r.consulta?.id === cuerpo.consultaId ? (r.consulta.creadas ?? 0) : 0))
+        .catch(() => undefined);
+      setReemplazo(cuerpo);
     } else if (error instanceof ErrorApi && error.status === 409 && codigo === "INTEGRACION_EN_CURSO") {
       setEnCursoLocal(true);
       setSondeo(true);
@@ -362,7 +370,7 @@ export function PaginaConsultarJira() {
                 void consultarJira(true);
               }}
             >
-              {reemplazo ? <p data-testid="texto-reemplazo">{textoReemplazo(reemplazo.creadaPor, reemplazo.creadaEn, reemplazo.asignadas)}</p> : null}
+              {reemplazo ? <p data-testid="texto-reemplazo">{textoReemplazo(reemplazo.creadaPor, reemplazo.creadaEn, reemplazo.asignadas, creadasReemplazo)}</p> : null}
             </DialogoConfirmacion>
           </>
         ) : null}

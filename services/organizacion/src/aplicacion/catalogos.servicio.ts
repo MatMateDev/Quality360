@@ -52,11 +52,7 @@ export class CatalogosAplicacion {
     }
     const qe = await this.usuarios.buscarPorId(qeId);
     if (!esQeResponsableValido(qe)) throw new ExcepcionQ360(422, 'QE_INVALIDO', { mensaje: MENSAJES.QE_INVALIDO });
-    const equipo = await this.supervision.listarEquipoVigente(qeId);
-    const items = equipo
-      .filter((miembro) => miembro.analista.activo)
-      .map((miembro) => ({ id: miembro.analista.id, nombre: miembro.analista.nombre, correo: miembro.analista.correo, rol: 'ANALISTA_QA' as Rol }))
-      .sort((a, b) => a.nombre.localeCompare(b.nombre, 'es'));
-    return { items };
+    const equipo = await this.supervision.listarAnalistasActivosDelEquipo(qeId);
+    return { items: equipo.map((a) => ({ id: a.id, nombre: a.nombre, correo: a.correo, rol: 'ANALISTA_QA' as Rol })) };
   }
 }

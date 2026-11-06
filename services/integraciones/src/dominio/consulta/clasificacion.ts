@@ -4,7 +4,7 @@
  */
 import type { FilaMapeada } from '../mapeo/tipos.js';
 import type { MotivoFila, PrioridadHdu } from '../tipos.js';
-import type { CambiosConsulta, GrupoConsulta, OrigenHduConsulta } from './tipos.js';
+import type { CambiosConsulta, GrupoConsulta, OrigenHduConsulta, YaAsignada } from './tipos.js';
 
 /** Lo que `hdu/estado-codigos` responde por un código que existe. */
 export interface HduExistente {
@@ -15,6 +15,18 @@ export interface HduExistente {
   readonly descripcion: string | null;
   readonly prioridad: PrioridadHdu;
   readonly qeResponsable: string | null;
+  /** Nombre del Analista asignado, o `null` (D204). Una Organización anterior no lo envía: se trata como `null`. */
+  readonly analista?: string | null;
+}
+
+/**
+ * Toda HDU existente tiene QE responsable (D54): la instantánea `yaAsignada` de la fila (D204). Si Organización no
+ * informara el QE se guarda un texto neutro, nunca se descarta la alerta.
+ */
+export function yaAsignadaDe(existente: HduExistente): YaAsignada {
+  const qe = existente.qeResponsable?.trim() ?? '';
+  const analista = existente.analista?.trim() ?? '';
+  return { idHistoria: existente.idHistoria, qe: (qe === '' ? 'Sin QE asignado' : qe).slice(0, 150), analista: analista === '' ? null : analista.slice(0, 150) };
 }
 
 export interface Clasificacion {

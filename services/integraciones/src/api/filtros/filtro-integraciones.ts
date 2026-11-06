@@ -12,7 +12,10 @@ import {
   ConsultaAbiertaDuplicada,
   ConsultaNoEncontrada,
   ErrorDeConsulta,
+  FilaEnCurso,
+  FilaModificada,
   FilaRechazadaUnica,
+  HduYaAsignada,
   SinSeleccion,
   type FilaRechazadaDto,
 } from '../../dominio/consulta/errores.js';
@@ -43,6 +46,9 @@ import {
   SinSeleccion,
   AsignacionesInvalidas,
   FilaRechazadaUnica,
+  HduYaAsignada,
+  FilaModificada,
+  FilaEnCurso,
 )
 export class FiltroErroresIntegraciones implements ExceptionFilter {
   private readonly registro = new Logger('ErroresQ360');
@@ -54,10 +60,13 @@ export class FiltroErroresIntegraciones implements ExceptionFilter {
     const traceId = obtenerTraceId(solicitud);
 
     let estado = 500;
-    let codigo: CodigoError = 'ERROR_INTERNO';
+    // `string` y no `CodigoError`: HDU_YA_ASIGNADA, FILA_MODIFICADA y FILA_EN_CURSO (comun.v1.yaml) aún no están en el
+    // catálogo de `@quality360/auth-nest`; sus mensajes viven aquí (MENSAJES_DETALLE) hasta que el catálogo común los sume.
+    let codigo: string = 'ERROR_INTERNO';
     let mensaje: string = MENSAJES.ERROR_INTERNO;
     let detalles: Array<{ campo: string; codigo: string; mensaje: string }> = [];
     let extra: Record<string, unknown> = {};
+    let mensajeDirecto: string | null = null;
 
     if (error instanceof LlaveCifradoNoDisponible) {
       [estado, codigo] = [503, 'LLAVE_CIFRADO_NO_DISPONIBLE'];
@@ -92,18 +101,47 @@ export class FiltroErroresIntegraciones implements ExceptionFilter {
     } else if (error instanceof FilaRechazadaUnica) {
       [estado, codigo] = [422, error.fila.motivo];
       detalles = detallesDeRechazo(error.fila);
+      if (error.yaAsignada !== undefined) {
+        mensajeDirecto = mensajeYaAsignada(error.yaAsignada.datos);
+        extra = { yaAsignada: error.yaAsignada.datos, item: error.yaAsignada.item };
+      }
+    } else if (error instanceof HduYaAsignada) {
+      [estado, codigo] = [409, 'HDU_YA_ASIGNADA'];
+      mensajeDirecto = mensajeYaAsignada(error.yaAsignada);
+      extra = { yaAsignada: error.yaAsignada, item: error.item };
+    } else if (error instanceof FilaModificada) {
+      [estado, codigo] = [409, 'FILA_MODIFICADA'];
+      extra = { item: error.item };
+    } else if (error instanceof FilaEnCurso) {
+      [estado, codigo] = [409, 'FILA_EN_CURSO'];
     } else if (error instanceof OrganizacionNoDisponible || error instanceof OrganizacionDenego) {
       // Organización cayó o negó el recurso antes de empezar: 503 sin ejecución (D126). El detalle va solo al registro.
       [estado, codigo] = [503, 'SERVICIO_NO_DISPONIBLE'];
       this.registro.error(`SERVICIO_NO_DISPONIBLE · ${error.motivo} · traceId=${traceId}`);
     }
-    if (!(error instanceof ErrorEstructuraArchivo && error.codigo === 'COLUMNAS_FALTANTES')) mensaje = MENSAJES[codigo];
+    if (mensajeDirecto !== null) mensaje = mensajeDirecto;
+    else if (!(error instanceof ErrorEstructuraArchivo && error.codigo === 'COLUMNAS_FALTANTES')) mensaje = mensajeDe(codigo);
 
     this.registro.warn(`${codigo} ${estado} · traceId=${traceId}`);
     if (respuesta.headersSent === true) return;
     respuesta.setHeader?.(CABECERA_TRAZA, traceId);
     respuesta.status(estado).json({ codigo, mensaje, traceId, detalles, ...extra });
   }
+}
+
+/** Mensajes de los códigos de D202 y D204 (`comun.v1.yaml`). `HDU_YA_ASIGNADA` se arma con los nombres actuales. */
+const MENSAJES_DETALLE: Record<string, string> = {
+  HDU_YA_ASIGNADA: 'Esta HDU ya fue asignada.',
+  FILA_MODIFICADA: 'Otra persona modificó esta HDU. Revisa los datos actuales y confirma de nuevo.',
+  FILA_EN_CURSO: 'Otra persona está confirmando esta HDU ahora. Espera unos segundos y revisa.',
+};
+
+function mensajeDe(codigo: string): string {
+  return MENSAJES_DETALLE[codigo] ?? MENSAJES[codigo as CodigoError] ?? MENSAJES.ERROR_INTERNO;
+}
+
+function mensajeYaAsignada(ya: { qe: string; analista: string | null }): string {
+  return `Esta HDU ya fue asignada a ${ya.qe} / ${ya.analista ?? 'sin Analista'}`;
 }
 
 /** `FilaRechazada` del contrato: sin `faltantes` si el motivo no es `ASIGNACION_INCOMPLETA`. */
@@ -116,5 +154,5 @@ function detallesDeRechazo(fila: FilaRechazadaDto): Array<{ campo: string; codig
   if (fila.motivo === 'ASIGNACION_INCOMPLETA') {
     return (fila.faltantes ?? []).map((campo) => ({ campo, codigo: 'REQUERIDO', mensaje: 'Es obligatorio.' }));
   }
-  return [{ campo: fila.campo ?? 'itemId', codigo: 'NO_PERMITIDO', mensaje: MENSAJES[fila.motivo] }];
+  return [{ campo: fila.campo ?? 'itemId', codigo: 'NO_PERMITIDO', mensaje: mensajeDe(fila.motivo) }];
 }

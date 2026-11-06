@@ -105,7 +105,11 @@ export class EdicionConsultaAplicacion {
           motivo: d.rechazo.motivo,
           ...(d.rechazo.faltantes === undefined ? {} : { faltantes: d.rechazo.faltantes }),
         };
-        if (unica) throw new FilaRechazadaUnica(dto);
+        if (unica) {
+          // `HDU_YA_ASIGNADA` (D204) lleva la alerta y la fila ya vista (`ErrorHduYaAsignada`).
+          const conAlerta = d.rechazo.motivo === 'HDU_YA_ASIGNADA' && fila.yaAsignada !== null;
+          throw new FilaRechazadaUnica(dto, conAlerta && fila.yaAsignada !== null ? { datos: fila.yaAsignada, item: vistaItem(fila, c.sitioHost) } : undefined);
+        }
         rechazadas.push(dto);
         continue;
       }
@@ -115,17 +119,21 @@ export class EdicionConsultaAplicacion {
 
       const advertencias = ajustarAdvertencias(fila.advertencias, d.sprintJiraNoEncontrado);
       const avisoSinLider = comb === null ? fila.avisoSinLider : avisoDe(comb, validacion, fila.avisoSinLider);
+      const analistaAutoCambio = d.analistaAuto !== fila.analistaAuto;
       const cambio =
         d.cambioAsignacion ||
+        analistaAutoCambio ||
         d.marcada !== fila.marcada ||
         avisoSinLider !== fila.avisoSinLider ||
         advertencias.length !== fila.advertencias.length;
       if (!cambio) continue;
-      if (d.cambioAsignacion && actor === null) actor = await this.organizacion.perfil(solicitante.contexto, limite());
-      const asignadoPor = d.cambioAsignacion ? actor : fila.asignadoPor;
-      const asignadoEn = d.cambioAsignacion ? ahora : fila.asignadoEn;
-      ediciones.push({ itemId: fila.id, asignacion: d.asignacion, avisoSinLider, marcada: d.marcada, advertencias, asignadoPor, asignadoEn });
-      cambiadas.push({ ...fila, asignacion: d.asignacion, avisoSinLider, marcada: d.marcada, advertencias, asignadoPor, asignadoEn });
+      // Elegir el mismo analista que puso el servidor también cambia la fila (deja de ser automático) y queda a nombre de quien lo eligió.
+      const reasigna = d.cambioAsignacion || analistaAutoCambio;
+      if (reasigna && actor === null) actor = await this.organizacion.perfil(solicitante.contexto, limite());
+      const asignadoPor = reasigna ? actor : fila.asignadoPor;
+      const asignadoEn = reasigna ? ahora : fila.asignadoEn;
+      ediciones.push({ itemId: fila.id, asignacion: d.asignacion, analistaAuto: d.analistaAuto, avisoSinLider, marcada: d.marcada, advertencias, asignadoPor, asignadoEn });
+      cambiadas.push({ ...fila, asignacion: d.asignacion, analistaAuto: d.analistaAuto, avisoSinLider, marcada: d.marcada, advertencias, asignadoPor, asignadoEn, revision: fila.revision + 1 });
     }
 
     // 4) Guardar todo junto; si nada cambió, la versión no sube.
@@ -160,7 +168,7 @@ export class EdicionConsultaAplicacion {
 /** Lo que se le pide a Organización por una combinación; `null` si no hay nada que validar ni proponer. */
 function pedidoDeValidacion(comb: CombinacionFinal, fila: ItemConsulta, sprintRespaldoId: string | null): AsignacionAValidar | null {
   const proponer = comb.modoSprint === 'PROPONER';
-  if (comb.aValidar.size === 0 && !proponer) return null;
+  if (comb.aValidar.size === 0 && !proponer && !comb.proponerAnalista) return null;
   const { ids } = comb;
   return {
     ref: '',
@@ -168,6 +176,8 @@ function pedidoDeValidacion(comb: CombinacionFinal, fila: ItemConsulta, sprintRe
     ...(comb.aValidar.has('qeId') && ids.qeId !== null ? { qeResponsableId: ids.qeId } : {}),
     ...(comb.aValidar.has('analistaId') && ids.analistaId !== null ? { analistaId: ids.analistaId } : {}),
     ...(comb.aValidar.has('sprintId') && ids.sprintId !== null ? { sprintId: ids.sprintId } : {}),
+    // D201: el QE cambió sin analista; Organización cuenta el equipo vigente y propone el único activo.
+    ...(comb.proponerAnalista ? { proponerAnalista: true as const } : {}),
     ...(proponer ? { proponerSprint: { nombreJira: fila.sprintJira, respaldoId: sprintRespaldoId } } : {}),
   };
 }

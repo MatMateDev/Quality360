@@ -24,7 +24,7 @@ export function leerEstadoCodigos(cuerpo: unknown): string[] {
   return codigos;
 }
 
-const CAMPOS_ASIGNACION = ['ref', 'celulaId', 'qeResponsableId', 'analistaId', 'sprintId', 'proponerSprint'];
+const CAMPOS_ASIGNACION = ['ref', 'celulaId', 'qeResponsableId', 'analistaId', 'sprintId', 'proponerSprint', 'proponerAnalista'];
 
 function leerProponerSprint(valor: unknown, prefijo: string, a: Acumulador): AsignacionAValidar['proponerSprint'] {
   if (typeof valor !== 'object' || valor === null || Array.isArray(valor)) {
@@ -70,6 +70,11 @@ export function leerValidarAsignaciones(cuerpo: unknown): AsignacionAValidar[] {
       const qeResponsableId = opcional('qeResponsableId');
       const analistaId = opcional('analistaId');
       const sprintId = opcional('sprintId');
+      let proponerAnalista: boolean | undefined;
+      if (d.proponerAnalista !== undefined) {
+        if (typeof d.proponerAnalista !== 'boolean') a.falla(`${prefijo}proponerAnalista`, 'FORMATO_INVALIDO', 'Debe ser verdadero o falso.');
+        else proponerAnalista = d.proponerAnalista;
+      }
       const proponerSprint = d.proponerSprint === undefined ? undefined : leerProponerSprint(d.proponerSprint, prefijo, a);
       if (a.detalles.length === antes) {
         asignaciones.push({
@@ -79,6 +84,7 @@ export function leerValidarAsignaciones(cuerpo: unknown): AsignacionAValidar[] {
           ...(analistaId === undefined ? {} : { analistaId }),
           ...(sprintId === undefined ? {} : { sprintId }),
           ...(proponerSprint === undefined ? {} : { proponerSprint }),
+          ...(proponerAnalista === undefined ? {} : { proponerAnalista }),
         });
       }
     });

@@ -11,7 +11,7 @@ function instante(fin: string | null): number | null {
 }
 
 function nombreValido(s: SprintJira): string | null {
-  const n = typeof s.nombre === 'string' ? s.nombre.trim() : '';
+  const n = typeof s?.nombre === 'string' ? s.nombre.trim() : '';
   return n === '' ? null : n;
 }
 

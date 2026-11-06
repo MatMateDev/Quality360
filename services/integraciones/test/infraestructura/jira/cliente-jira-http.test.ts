@@ -142,6 +142,82 @@ describe('detectarCampoSprint', () => {
   });
 });
 
+describe('detectarCampos (D199)', () => {
+  const sprint = { id: 'customfield_10020', name: 'Sprint', schema: { type: 'array', custom: 'com.pyxis.greenhopper.jira:gh-sprint' } };
+  const texto = { type: 'string', custom: 'com.atlassian.jira.plugin.system.customfieldtypes:textarea' };
+
+  it('con UNA sola llamada a /field devuelve el campo Sprint y el de criterios', async () => {
+    const { cliente, llamadas } = falso([json([sprint, { id: 'customfield_10300', name: 'Acceptance Criteria', schema: texto }])]);
+    const r = await cliente.detectarCampos(CRED, opciones());
+    assert.deepEqual(r, { ok: true, valor: { sprint: 'customfield_10020', criterios: 'customfield_10300' }, eventos: [] });
+    assert.deepEqual(llamadas.map((l) => l.url.pathname), ['/rest/api/3/field']);
+  });
+  it('reconoce «Criterios de aceptación» (con tilde y en otra capitalización) y prefiere «Acceptance Criteria»', async () => {
+    const solo = await falso([json([{ id: 'customfield_10301', name: 'CRITERIOS DE ACEPTACIÓN', schema: texto }])]).cliente.detectarCampos(CRED, opciones());
+    assert.equal(solo.ok && solo.valor.criterios, 'customfield_10301');
+    const ambos = await falso([json([{ id: 'customfield_10301', name: 'Criterios de aceptación', schema: texto }, { id: 'customfield_10300', name: 'Acceptance Criteria', schema: texto }])]).cliente.detectarCampos(CRED, opciones());
+    assert.equal(ambos.ok && ambos.valor.criterios, 'customfield_10300');
+  });
+  it('sin campo de criterios (o con un id de forma inesperada) devuelve null y Sprint sigue igual', async () => {
+    const r = await falso([json([sprint, { id: 'customfield_9,summary', name: 'Acceptance Criteria', schema: texto }])]).cliente.detectarCampos(CRED, opciones());
+    assert.deepEqual(r, { ok: true, valor: { sprint: 'customfield_10020', criterios: null }, eventos: [] });
+  });
+  it('detectarCampoSprint conserva su firma y delega: la misma llamada y el mismo resultado', async () => {
+    const { cliente, llamadas } = falso([json([sprint, { id: 'customfield_10300', name: 'Acceptance Criteria', schema: texto }])]);
+    assert.deepEqual(await cliente.detectarCampoSprint(CRED, opciones()), { ok: true, valor: 'customfield_10020', eventos: [] });
+    assert.equal(llamadas.length, 1);
+  });
+  it('propaga los errores de Jira como códigos fijos', async () => {
+    assert.deepEqual(await falso([vacio(401)]).cliente.detectarCampos(CRED, opciones()), { ok: false, codigo: 'JIRA_CREDENCIAL_INVALIDA', eventos: [] });
+    assert.deepEqual(await falso([json({ a: 1 })]).cliente.detectarCampos(CRED, opciones()), { ok: false, codigo: 'JIRA_RESPUESTA_INVALIDA', eventos: [] });
+  });
+});
+
+describe('detalle en la misma llamada (D196, E5-B06 #1, #5)', () => {
+  it('lee fechas, padre (épica solo si Jira lo dice), inicio del sprint y el campo de criterios', async () => {
+    const { cliente } = falso([
+      json({
+        issues: [
+          issue('QTY-17', {
+            created: '2026-10-20T11:00:00.000-0300', updated: '2026-11-04T15:30:00.000-0300', duedate: '2026-11-20', resolutiondate: null,
+            parent: { key: 'QTY-100', fields: { summary: 'Seguridad de acceso', issuetype: { name: 'Epic', hierarchyLevel: 1 } } },
+            customfield_10300: { type: 'doc', version: 1, content: [] },
+            customfield_10020: [{ id: 1, name: 'E5 Sprint 2', state: 'active', startDate: '2026-11-02T12:00:00.000Z', endDate: '2026-11-16T12:00:00.000Z' }],
+          }),
+          issue('QTY-18', { parent: { key: 'QTY-19', fields: { summary: 'Otra historia', issuetype: { name: 'Story', hierarchyLevel: 0 } } } }),
+          issue('QTY-19', { parent: 'texto', labels: 'no-es-lista', created: 12 }),
+        ],
+        isLast: true,
+      }),
+    ]);
+    const r = await cliente.buscarPagina(CRED, { ...consulta, campoCriterios: 'customfield_10300' }, opciones());
+    assert.ok(r.ok);
+    const [a, b, c] = r.valor.issues;
+    assert.equal(a?.creada, '2026-10-20T11:00:00.000-0300');
+    assert.equal(a?.vencimiento, '2026-11-20');
+    assert.equal(a?.resolucion, undefined);
+    assert.deepEqual(a?.padre, { clave: 'QTY-100', titulo: 'Seguridad de acceso', esEpica: true });
+    assert.deepEqual(a?.criteriosAdf, { type: 'doc', version: 1, content: [] });
+    assert.deepEqual(a?.sprints, [{ nombre: 'E5 Sprint 2', estado: 'active', fin: '2026-11-16T12:00:00.000Z', inicio: '2026-11-02T12:00:00.000Z' }]);
+    assert.deepEqual(b?.padre, { clave: 'QTY-19', titulo: 'Otra historia', esEpica: false });
+    // Lo raro no rompe la lectura: queda ausente o vacío.
+    assert.equal(c?.padre, undefined);
+    assert.equal(c?.creada, undefined);
+    assert.deepEqual(c?.labels, []);
+  });
+  it('el tamaño de página sale del constructor: 25 vale; fuera de 10-100 o no entero vuelve a 50', async () => {
+    for (const [pedido, esperado] of [[25, '25'], [100, '100'], [10, '10'], [9, '50'], [101, '50'], [0, '50'], [12.5, '50'], [undefined, '50']] as const) {
+      const llamadas: Llamada[] = [];
+      const fetchFalso = (async (entrada: string | URL | Request, init?: RequestInit) => {
+        llamadas.push({ url: new URL(String(entrada)), init: init ?? {} });
+        return json({ issues: [], isLast: true });
+      }) as typeof fetch;
+      await new ClienteJiraHttp({ fetch: fetchFalso, tamanoPagina: pedido }).buscarPagina(CRED, consulta, opciones());
+      assert.equal(llamadas[0]?.url.searchParams.get('maxResults'), esperado, String(pedido));
+    }
+  });
+});
+
 describe('buscarPagina', () => {
   it('pide search/jql con la consulta fija, maxResults 50 y los campos acotados', async () => {
     const { cliente, llamadas } = falso([json({ issues: [], isLast: true })]);
@@ -150,8 +226,17 @@ describe('buscarPagina', () => {
     assert.equal(u.pathname, '/rest/api/3/search/jql');
     assert.equal(u.searchParams.get('jql'), 'project = QTY AND issuetype in ("Story", "Historia") ORDER BY key ASC');
     assert.equal(u.searchParams.get('maxResults'), '50');
-    assert.equal(u.searchParams.get('fields'), 'summary,description,priority,issuetype,status,assignee,labels,customfield_10020');
+    // D196: el detalle viaja en la misma llamada; nada de `expand` ni de `GET /issue/{clave}` (E5-B06 #1).
+    assert.equal(u.searchParams.get('fields'), 'summary,description,priority,issuetype,status,assignee,labels,created,updated,duedate,resolutiondate,parent,customfield_10020');
+    assert.equal(u.searchParams.has('expand'), false);
     assert.equal(u.searchParams.has('nextPageToken'), false);
+  });
+
+  it('con campo de criterios detectado lo suma a fields una sola vez; con un valor inválido lanza ParametroJiraInvalido', async () => {
+    const { cliente, llamadas } = falso([json({ issues: [], isLast: true })]);
+    await cliente.buscarPagina(CRED, { ...consulta, campoCriterios: 'customfield_10300' }, opciones());
+    assert.equal(llamadas[0]?.url.searchParams.get('fields'), 'summary,description,priority,issuetype,status,assignee,labels,created,updated,duedate,resolutiondate,parent,customfield_10020,customfield_10300');
+    await assert.rejects(falso([json({ issues: [], isLast: true })]).cliente.buscarPagina(CRED, { ...consulta, campoCriterios: 'summary,reporter' }, opciones()), ParametroJiraInvalido);
   });
 
   it('continuar: despuesDe agrega key > "X" y nextPageToken va como parámetro', async () => {
@@ -165,7 +250,7 @@ describe('buscarPagina', () => {
   it('sin campo Sprint no lo pide ni lo lee', async () => {
     const { cliente, llamadas } = falso([json({ issues: [issue('QTY-1', { customfield_10020: [{ name: 'S', state: 'active' }] })], isLast: true })]);
     const r = await cliente.buscarPagina(CRED, { ...consulta, campoSprint: null }, opciones());
-    assert.equal(llamadas[0]?.url.searchParams.get('fields'), 'summary,description,priority,issuetype,status,assignee,labels');
+    assert.equal(llamadas[0]?.url.searchParams.get('fields'), 'summary,description,priority,issuetype,status,assignee,labels,created,updated,duedate,resolutiondate,parent');
     assert.deepEqual(r.ok && r.valor.issues[0]?.sprints, []);
   });
 

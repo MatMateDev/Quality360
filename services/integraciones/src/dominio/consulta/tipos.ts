@@ -46,9 +46,26 @@ export interface Persona {
   readonly nombre: string;
 }
 
+/** La HDU que ya existe en Quality360, con nombres (D204): lo que pinta «Esta HDU ya fue asignada a <QE> / <Analista>». */
+export interface YaAsignada {
+  readonly idHistoria: string;
+  readonly qe: string;
+  readonly analista: string | null;
+}
+
+/** Cómo y quién aplicó una fila (`ItemConsulta.aplicacion`). */
+export type AlcanceAplicacion = 'LOTE' | 'HDU';
+export interface AplicacionFila {
+  readonly alcance: AlcanceAplicacion;
+  readonly por: Persona;
+  readonly en: Date;
+}
+
 export interface ItemConsulta {
   readonly id: string;
   readonly posicion: number;
+  /** Versión de esta fila: sube con cada cambio (D202). */
+  readonly revision: number;
   readonly grupo: GrupoConsulta;
   readonly codigo: string | null;
   readonly titulo: string | null;
@@ -64,9 +81,15 @@ export interface ItemConsulta {
   readonly qeHduNombre: string | null;
   readonly cambios: CambiosConsulta | null;
   readonly asignacion: AsignacionFila;
+  /** El analista lo puso el servidor por ser el único del equipo del QE (D201). */
+  readonly analistaAuto: boolean;
   readonly avisoSinLider: boolean;
   readonly marcada: boolean;
   readonly aplicada: boolean;
+  /** Hay una toma vigente (menos de `INTEGRACIONES_TOMA_FILA_MS`): otra petición la está confirmando (D202). */
+  readonly aplicando: boolean;
+  readonly aplicacion: AplicacionFila | null;
+  readonly yaAsignada: YaAsignada | null;
   readonly asignadoPor: Persona | null;
   readonly asignadoEn: Date | null;
 }
@@ -94,6 +117,8 @@ export interface Consulta {
   readonly conError: number;
   readonly conAdvertencias: number;
   readonly descartadas: number;
+  /** HDU creadas desde la consulta, por fila o en lote. Se conserva al purgar (D205). */
+  readonly creadas: number;
 }
 
 /** Conteos que salen de las filas mientras la consulta está abierta (cero cuando se purgaron). */
@@ -104,6 +129,8 @@ export interface ConteosFilas {
   readonly marcadasCambio: number;
   readonly aplicadas: number;
   readonly pendientes: number;
+  /** Filas con `yaAsignada`, de cualquier grupo. */
+  readonly yaAsignadas: number;
 }
 
-export const SIN_CONTEOS: ConteosFilas = { asignadas: 0, completas: 0, marcadasNuevas: 0, marcadasCambio: 0, aplicadas: 0, pendientes: 0 };
+export const SIN_CONTEOS: ConteosFilas = { asignadas: 0, completas: 0, marcadasNuevas: 0, marcadasCambio: 0, aplicadas: 0, pendientes: 0, yaAsignadas: 0 };

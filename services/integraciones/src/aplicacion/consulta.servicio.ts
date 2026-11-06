@@ -94,8 +94,22 @@ export class ConsultaAplicacion {
   /** `GET /consultas/{id}/items`: una consulta cerrada es 409 (410 si venció), nunca una lista vacía (D148). */
   async listarItems(id: string, entrada: EntradaListadoItems) {
     const c = await this.abierta(id);
-    const { items, total } = await this.consultas.listarItems(c.id, { grupo: entrada.grupo, q: entrada.q }, entrada.pagina, entrada.tamanoPagina);
-    return { items: items.map((i) => vistaItem(i, c.sitioHost)), total, pagina: entrada.pagina, tamanoPagina: entrada.tamanoPagina, version: c.version };
+    const { items, total, yaAsignadas } = await this.consultas.listarItems(c.id, { grupo: entrada.grupo, q: entrada.q }, entrada.pagina, entrada.tamanoPagina);
+    return { items: items.map((i) => vistaItem(i, c.sitioHost)), total, pagina: entrada.pagina, tamanoPagina: entrada.tamanoPagina, version: c.version, yaAsignadas };
+  }
+
+  /**
+   * `GET /consultas/{id}/items/{itemId}` (D200): la fila y su detalle de la base propia, sin llamar a Jira ni a Organización.
+   * Orden: 404 (consulta o fila) → 410 → 409. Una consulta cerrada ya no tiene filas, así que su estado manda sobre el 404 de la fila.
+   * Una fila anterior al cambio responde 200 con `detalle: null` (E5-B06 #9). Nada de esto se registra en logs.
+   */
+  async obtenerItem(id: string, itemId: string) {
+    const existente = await this.existente(id);
+    if (existente.estado === 'ABIERTA' && (await this.consultas.obtenerItems(existente.id, [itemId])).length === 0) throw new ConsultaNoEncontrada();
+    const c = await this.abierta(id);
+    const leido = await this.consultas.obtenerItemConDetalle(c.id, itemId);
+    if (leido === null) throw new ConsultaNoEncontrada();
+    return { item: vistaItem(leido.item, c.sitioHost), detalle: leido.detalle, leidaEn: leido.leidaEn ?? c.creadaEn, version: c.version };
   }
 
   /** `POST /consultas/{id}/descartes`: pasa a `DESCARTADA`, purga las filas y sube la versión. No crea HDU ni registra ejecución. */
@@ -239,7 +253,7 @@ export class ConsultaAplicacion {
       }
       const pagina = await this.jira.buscarPagina(
         credencial,
-        { proyecto: contexto.proyecto, tipos: guardada.tiposIssue, despuesDe: contexto.desde, nextPageToken, campoSprint: guardada.campoSprint },
+        { proyecto: contexto.proyecto, tipos: guardada.tiposIssue, despuesDe: contexto.desde, nextPageToken, campoSprint: guardada.campoSprint, campoCriterios: guardada.campoCriterios },
         opciones,
       );
       eventos.push(...pagina.eventos);
@@ -291,6 +305,7 @@ export class ConsultaAplicacion {
           motivo: clasificacion.motivo,
           existente: porCodigo.get(m) ?? null,
           cambios: clasificacion.cambios,
+          detalle: m.fila.detalle === undefined || m.fila.detalle === null ? null : { valor: m.fila.detalle, leidaEn: this.reloj.ahora() },
         });
         if (codigo !== '') guardados.add(codigo.toUpperCase());
       }

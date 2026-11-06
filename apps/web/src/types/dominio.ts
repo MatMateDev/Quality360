@@ -351,6 +351,16 @@ export type ConsultaActual = components["schemas"]["ConsultaActual"];
 export type ResultadoConsultaJira = components["schemas"]["ResultadoConsultaJira"];
 export type ItemConsulta = components["schemas"]["ItemConsulta"];
 export type PaginaItemsConsulta = components["schemas"]["PaginaItemsConsulta"];
+// E5 · detalle de la HDU y confirmación una a una (D196–D207, ADR 0018)
+export type AlcanceEjecucion = components["schemas"]["AlcanceEjecucion"];
+export type YaAsignada = components["schemas"]["YaAsignada"];
+export type AplicacionFila = components["schemas"]["AplicacionFila"];
+export type DetalleHdu = components["schemas"]["DetalleHdu"];
+export type DetalleItemConsulta = components["schemas"]["DetalleItemConsulta"];
+export type SolicitudConfirmacionFila = components["schemas"]["SolicitudConfirmacionFila"];
+export type ResultadoConfirmacionFila = components["schemas"]["ResultadoConfirmacionFila"];
+export type ErrorHduYaAsignada = components["schemas"]["ErrorHduYaAsignada"];
+export type ErrorFilaModificada = components["schemas"]["ErrorFilaModificada"];
 export type AsignacionFila = components["schemas"]["AsignacionFila"];
 export type AsignacionNombres = components["schemas"]["AsignacionNombres"];
 export type CampoAsignacion = components["schemas"]["CampoAsignacion"];

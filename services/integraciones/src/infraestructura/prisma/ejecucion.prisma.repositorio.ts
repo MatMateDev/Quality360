@@ -163,6 +163,7 @@ export class EjecucionPrismaRepositorio extends EjecucionRepositorio {
     const where: Prisma.EjecucionIntegracionWhereInput = {
       ...(filtro.origen === undefined ? {} : { origen: filtro.origen }),
       ...(filtro.fase === undefined ? {} : { fase: filtro.fase }),
+      ...(filtro.alcance === undefined ? {} : { alcance: filtro.alcance }),
       ...(filtro.resultado === undefined ? {} : { resultado: filtro.resultado }),
       ...(Object.keys(iniciadaEn).length === 0 ? {} : { iniciadaEn }),
     };
@@ -194,7 +195,8 @@ export class EjecucionPrismaRepositorio extends EjecucionRepositorio {
   async estado(): Promise<{ ultima: Ejecucion | null; ultimaCompletada: Ejecucion | null; enCurso: Ejecucion | null }> {
     const [ultima, completada, enCurso] = await this.prisma.$transaction([
       this.prisma.ejecucionIntegracion.findFirst({ orderBy: [{ iniciadaEn: 'desc' }, { id: 'desc' }] }),
-      this.prisma.ejecucionIntegracion.findFirst({ where: { resultado: { in: ['EXITOSA', 'CON_ERRORES'] } }, orderBy: [{ iniciadaEn: 'desc' }, { id: 'desc' }] }),
+      // «Última completada» es la última sincronización o confirmación en lote (D121): una HDU confirmada una a una no la reemplaza.
+      this.prisma.ejecucionIntegracion.findFirst({ where: { resultado: { in: ['EXITOSA', 'CON_ERRORES'] }, alcance: 'LOTE' }, orderBy: [{ iniciadaEn: 'desc' }, { id: 'desc' }] }),
       this.prisma.ejecucionIntegracion.findFirst({ where: { terminadaEn: null }, orderBy: { iniciadaEn: 'desc' } }),
     ]);
     return {

@@ -40,6 +40,19 @@ export function leerConfirmacion(cuerpo: unknown): { version: number } {
   return { version };
 }
 
+/** `POST …/items/{itemId}/confirmaciones`: `{revision}` entero >= 1 (D202); cualquier otro campo es 400. */
+export function leerConfirmacionFila(cuerpo: unknown): { revision: number } {
+  const datos = objeto(cuerpo);
+  const a = new Acumulador();
+  a.sinCamposExtra(datos, ['revision']);
+  let revision = 1;
+  if (datos.revision === undefined) a.falla('revision', 'REQUERIDO', 'Es obligatoria.');
+  else if (typeof datos.revision !== 'number' || !Number.isInteger(datos.revision) || datos.revision < 1 || datos.revision > 2_147_483_647) a.falla('revision', 'FORMATO_INVALIDO', 'Debe ser un entero mayor o igual a 1.');
+  else revision = datos.revision;
+  a.lanzarSiHay();
+  return { revision };
+}
+
 export type AlcanceEdicion = { readonly tipo: 'IDS'; readonly itemIds: string[] } | { readonly tipo: 'GRUPO'; readonly grupo: 'NUEVA' | 'CAMBIO'; readonly q: string | undefined };
 
 export interface EntradaEdicion {

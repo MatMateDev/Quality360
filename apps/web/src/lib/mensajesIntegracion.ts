@@ -2,6 +2,7 @@
 // servidor ni de Jira: todo se indexa por código o enum, y un código desconocido cae al mensaje genérico.
 import type {
   AdvertenciaFila,
+  AlcanceEjecucion,
   CampoConfiguracionJira,
   FaseEjecucion,
   MotivoFila,
@@ -18,6 +19,9 @@ export const ETIQUETAS_ORIGEN_EJECUCION: Record<OrigenEjecucion, string> = { JIR
 export const ETIQUETAS_FASE: Record<FaseEjecucion, string> = { DIRECTA: "Directa", CONSULTA: "Consulta", CONFIRMACION: "Confirmación" };
 
 export const FASES: FaseEjecucion[] = ["CONSULTA", "CONFIRMACION", "DIRECTA"];
+
+/** Alcance de una ejecución (D206): «Una HDU» es la confirmación de una sola fila; «Lote» es todo lo demás. */
+export const ETIQUETAS_ALCANCE: Record<AlcanceEjecucion, string> = { LOTE: "Lote", HDU: "Una HDU" };
 
 export const ETIQUETAS_ORIGEN_HDU: Record<OrigenHdu, string> = { MANUAL: "Manual", JIRA: "Jira", CSV: "CSV", JSON: "JSON" };
 

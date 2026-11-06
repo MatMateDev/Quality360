@@ -131,8 +131,41 @@ describe('upsert en modo confirmación · CREAR [E5-B05-T13]', () => {
     const r = await enviar([crear(1, 'qty-3', { titulo: 'No debe pisar' }), crear(2, 'QTY-4')]);
     assert.deepEqual(r.body.filas.map((f: { resultado: string; motivo: string | null }) => [f.resultado, f.motivo]), [['OMITIDA', 'HDU_CREADA_DESPUES'], ['CREADA', null]]);
     assert.equal(r.body.filas[0].idHistoria, manual.id);
+    assert.deepEqual(r.body.filas[0].existente, { idHistoria: manual.id, qe: 'QE Uno', analista: null, creadaPorEstaConsulta: false, creadaPorActor: false });
+    assert.equal(r.body.filas[1].existente, undefined);
     const igual = await hdu('QTY-3');
     assert.deepEqual([igual?.titulo, igual?.origen, igual?.qeResponsableId], ['Título viejo', 'MANUAL', qe1.id]);
+  });
+
+  it('existente: quién tiene la HDU y si la creó esta consulta y este actor; sin 409 [E5-B07-T04, T07, T08]', async () => {
+    const otroAdmin = await crearUsuarioDePrueba('ADMINISTRADOR', { nombre: 'Admin Otro' });
+    const primera = await enviar([crear(1, 'QTY-REP')]);
+    assert.equal(primera.status, 200);
+    assert.equal(primera.body.filas[0].resultado, 'CREADA');
+    assert.equal(primera.body.filas[0].existente, undefined);
+    const id = primera.body.filas[0].idHistoria;
+
+    const mismo = await enviar([crear(1, 'QTY-REP')]);
+    assert.equal(mismo.status, 200);
+    assert.deepEqual(mismo.body.filas[0].existente, { idHistoria: id, qe: 'QE Dos', analista: 'ANA3', creadaPorEstaConsulta: true, creadaPorActor: true });
+
+    const otroActor = await enviar([crear(1, 'QTY-REP')], {}, otroAdmin);
+    assert.equal(otroActor.status, 200);
+    assert.deepEqual([otroActor.body.filas[0].existente.creadaPorEstaConsulta, otroActor.body.filas[0].existente.creadaPorActor], [true, false]);
+
+    const otraConsulta = await enviar([crear(1, 'QTY-REP')], { consultaId: randomUUID() });
+    assert.deepEqual([otraConsulta.body.filas[0].existente.creadaPorEstaConsulta, otraConsulta.body.filas[0].existente.creadaPorActor], [false, true]);
+    assert.equal(await prisma.hdu.count({ where: { codigoNormalizado: 'qty-rep' } }), 1);
+  });
+
+  it('dos solicitudes simultáneas con el mismo código: una crea y la otra responde OMITIDA con existente [E5-B07-T11]', async () => {
+    const [a, b] = await Promise.all([enviar([crear(1, 'QTY-CARRERA')]), enviar([crear(1, 'QTY-CARRERA')])]);
+    const filas = [a.body.filas[0], b.body.filas[0]];
+    assert.deepEqual(filas.map((f: { resultado: string }) => f.resultado).sort(), ['CREADA', 'OMITIDA']);
+    const omitida = filas.find((f: { resultado: string }) => f.resultado === 'OMITIDA');
+    assert.equal(omitida.motivo, 'HDU_CREADA_DESPUES');
+    assert.deepEqual([omitida.existente.qe, omitida.existente.analista, omitida.existente.creadaPorEstaConsulta, omitida.existente.creadaPorActor], ['QE Dos', 'ANA3', true, true]);
+    assert.equal(await prisma.hdu.count({ where: { codigoNormalizado: 'qty-carrera' } }), 1);
   });
 
   it('una asignación que dejó de ser válida es ERROR ASIGNACION_INVALIDA con el campo y no crea nada; las demás sí', async () => {

@@ -210,7 +210,7 @@ test.describe("E5-F05 · Revisar, asignar y confirmar", () => {
       for (const r of roles) expect(r.rol).toMatch(/QE/);
     });
 
-    test("[E5-F05#4] T09 (negativo): con QE5 (sin analistas) el selector de analista queda vacío con «Este QE no tiene analistas en su equipo» y la casilla de marcar deshabilitada", async ({ page, request }) => {
+    test("[E5-F05#4] T09 (negativo): con QE5 (sin analistas) el selector de analista queda vacío con «Este QE no supervisa analistas activos. Elige otro QE.» y la casilla de marcar deshabilitada", async ({ page, request }) => {
       await estadoConfigBase(request);
       arnes ??= await crearArnes(request);
       const p = await pares(request);
@@ -218,7 +218,7 @@ test.describe("E5-F05 · Revisar, asignar y confirmar", () => {
       await ir(page);
       const fl = f(page, "QTY-1");
       await asignar(page, "QTY-1", { cel: p.celC, qe: arnes.qe5.id });
-      await expect(fl.getByTestId("ayuda-sin-analistas")).toContainText("Este QE no tiene analistas en su equipo", { timeout: 15_000 });
+      await expect(fl.getByTestId("ayuda-sin-analistas")).toContainText("Este QE no supervisa analistas activos. Elige otro QE.", { timeout: 15_000 });
       expect((await fl.getByTestId("selector-analista").locator("option").evaluateAll((os) => os.map((o) => (o as HTMLOptionElement).value))).filter(Boolean)).toEqual([]);
       await expect(fl.getByTestId("casilla-marcar")).toBeDisabled();
     });
@@ -235,7 +235,7 @@ test.describe("E5-F05 · Revisar, asignar y confirmar", () => {
         const sin0 = await qe.page.getByTestId("contador-sin-analista").innerText();
         await jiraFalso.limpiarSolicitudes();
         await ir(page);
-        await expect(page.getByTestId("boton-confirmar")).toContainText("Confirmar (4)");
+        await expect(page.getByTestId("boton-confirmar")).toContainText("Confirmar marcadas (4)");
         await confirmarEnPantalla(page);
         const res = page.getByTestId("resultado-confirmacion");
         await expect(res).toBeVisible({ timeout: 60_000 });
@@ -283,7 +283,7 @@ test.describe("E5-F05 · Revisar, asignar y confirmar", () => {
       await ir(page);
       await abrir(page, "cambiaron");
       await marcar(f(page, "QTY-2").getByTestId("casilla-marcar"));
-      await expect(page.getByTestId("boton-confirmar")).toContainText("Confirmar (1)");
+      await expect(page.getByTestId("boton-confirmar")).toContainText("Confirmar marcadas (1)");
       await confirmarEnPantalla(page);
       await expect(page.getByTestId("resultado-confirmacion")).toBeVisible({ timeout: 60_000 });
       await expect(page.getByTestId("resultado-confirmacion").getByTestId("res-actualizadas")).toContainText("1");
@@ -312,19 +312,19 @@ test.describe("E5-F05 · Revisar, asignar y confirmar", () => {
       await estadoConfigBase(request);
       const p = await pares(request);
       const c = (await consultarOk(request)).consulta;
-      // QTY-1..4 completas (sin marcar) y 6 incompletas.
+      // QTY-1..4 completas (sin marcar) y 6 incompletas. QTY-6 va con QE1 (dos analistas): con QE2, que solo supervisa a ANA3, el analista queda asignado solo (D201).
       const ids: string[] = [];
       for (const k of ["QTY-1", "QTY-2", "QTY-3", "QTY-4"]) ids.push((await fila(request, c.id, k)).id);
       expect((await editar(request, c.id, { itemIds: ids, asignacion: { celulaId: p.celC, qeId: p.qe2, analistaId: p.ana3 } })).status).toBe(200);
       const q6 = await fila(request, c.id, "QTY-6");
-      expect((await editar(request, c.id, { itemIds: [q6.id], asignacion: { celulaId: p.celC, qeId: p.qe2 } })).status).toBe(200);
+      expect((await editar(request, c.id, { itemIds: [q6.id], asignacion: { celulaId: p.celC, qeId: p.qe1 } })).status).toBe(200);
       await ir(page);
       await expect(page.getByTestId("boton-confirmar")).toHaveAttribute("aria-disabled", "true");
       await expect(page.getByTestId("ayuda-confirmar")).toContainText("Marca al menos una fila");
       await expect(f(page, "QTY-6").getByTestId("casilla-marcar")).toBeDisabled();
       await expect(f(page, "QTY-6")).toContainText("Falta: analista");
       await page.getByTestId("boton-marcar-todas").click();
-      await expect(page.getByTestId("boton-confirmar")).toContainText("Confirmar (4)", { timeout: 15_000 });
+      await expect(page.getByTestId("boton-confirmar")).toContainText("Confirmar marcadas (4)", { timeout: 15_000 });
       await expect(page.getByTestId("anuncios-consulta")).toContainText(/6 siguen incompletas/);
     });
 
@@ -629,21 +629,22 @@ test.describe("E5-F05 · Revisar, asignar y confirmar", () => {
       await expect(fl).toBeVisible();
       const respuestas: string[] = [];
       page.on("response", (r) => { if (r.url().includes("/items")) respuestas.push(`${r.request().method()} ${r.status()}`); });
+      // D201: con QE2 (un solo analista) el analista queda asignado solo; el caso de la carrera usa QE1 (dos analistas) para seguir viendo «falta: analista».
       const parQe = fl.getByTestId("selector-qe");
       const t0 = Date.now();
       await fl.getByTestId("selector-celula").selectOption(p.celC);
-      await parQe.selectOption(p.qe2);
+      await parQe.selectOption(p.qe1);
       const ms = Date.now() - t0;
       expect(ms, "los dos cambios deben ocurrir en menos de 300 ms").toBeLessThan(300);
       await expect(fl.getByTestId("selector-celula")).toHaveValue(p.celC, { timeout: 20_000 });
-      await expect(parQe, `respuestas del portal: ${respuestas.join(", ")}`).toHaveValue(p.qe2, { timeout: 20_000 });
+      await expect(parQe, `respuestas del portal: ${respuestas.join(", ")}`).toHaveValue(p.qe1, { timeout: 20_000 });
       await expect(fl.getByTestId("selector-sprint")).toHaveValue(/.+/, { timeout: 20_000 });
       await expect(fl.getByTestId("estado-fila")).toContainText(/Incompleta \(falta: analista\)|falta: analista/, { timeout: 20_000 });
       await page.reload();
       await expect(f(page, "QTY-1").getByTestId("selector-celula")).toHaveValue(p.celC, { timeout: 30_000 });
       const f1 = await fila(request, c.id, "QTY-1");
       expect(f1.asignacion.celula?.id).toBe(p.celC);
-      expect(f1.asignacion.qeResponsable?.id).toBe(p.qe2);
+      expect(f1.asignacion.qeResponsable?.id).toBe(p.qe1);
       expect(f1.asignacion.sprint?.nombre).toBe("E5 Sprint 2");
     });
   });

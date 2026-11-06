@@ -201,7 +201,10 @@ describe('mapearIssue', () => {
   });
 
   it('caso base (QTY-1): campos mapeados, enlace y referencia', () => {
-    assert.deepEqual(mapearIssue(base(), 1, SITIO), {
+    // El detalle (D198) viaja en la misma fila; sus campos se prueban en detalle.test.ts.
+    const { detalle, ...fila } = mapearIssue(base(), 1, SITIO);
+    assert.equal(detalle?.urlJira, 'https://equipo.atlassian.net/browse/QTY-1');
+    assert.deepEqual(fila, {
       fila: 1, codigo: 'QTY-1', titulo: 'Login con doble factor', descripcion: 'Como usuario quiero activar 2FA', prioridad: 'ALTA',
       sprint: 'E5 Sprint 2', celula: null, claveExterna: 'QTY-1', urlExterna: 'https://equipo.atlassian.net/browse/QTY-1',
       advertencias: [], referencia: { estado: 'In Progress', responsable: 'Ana Torres' }, error: null,

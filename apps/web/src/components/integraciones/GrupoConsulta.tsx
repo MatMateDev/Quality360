@@ -3,14 +3,16 @@ import { esIndisponible, useEditarItemsConsulta, useItemsConsulta } from "@/api/
 import { BloqueDatos, type EstadoDatos } from "@/components/bandeja/Estructura";
 import { Paginacion } from "@/components/bandeja/Paginacion";
 import { TablaBandeja, type Columna } from "@/components/bandeja/TablaBandeja";
-import { TEXTO_NOTA_CAMBIARON, TEXTO_NOTA_CON_ERROR, TEXTO_NOTA_CREADA_A_MANO, textoRechazadasTitulo, textoRechazoFila, textoSeIncluyeron } from "@/lib/mensajesAsignacion";
+import { TEXTO_NOTA_CAMBIARON, TEXTO_NOTA_CON_ERROR, TEXTO_NOTA_CREADA_A_MANO, textoRechazadasTitulo, textoRechazoFila, textoSeIncluyeron, textoYaAsignadas } from "@/lib/mensajesAsignacion";
 import { textoFilas } from "@/lib/mensajesConsulta";
 import { textoMotivo } from "@/lib/mensajesIntegracion";
 import { ETIQUETAS_ESTADO_HDU, type Consulta, type FilaRechazada, type ItemConsulta } from "@/types/dominio";
 import type { DefinicionGrupo } from "./gruposConsulta";
+import { AlertaHduYaAsignada } from "./AlertaHduYaAsignada";
 import { CeldaCambios } from "./CeldaCambios";
 import { ChipsAdvertencias } from "./Insignias";
 import { PanelAsignarGrupo } from "./PanelAsignarGrupo";
+import { PanelDetalleHdu } from "./PanelDetalleHdu";
 import { TarjetaFilaNueva } from "./TarjetaFilaNueva";
 
 const TAMANO = 25;
@@ -64,6 +66,8 @@ export function GrupoConsulta({ definicion, consulta, total, soloLectura, onAnun
   const [todoElGrupo, setTodoElGrupo] = useState(false);
   const [rechazadas, setRechazadas] = useState<FilaRechazada[]>([]);
   const [errorMarca, setErrorMarca] = useState(false);
+  const [detalleId, setDetalleId] = useState<string | null>(null);
+  const [codigoDetalle, setCodigoDetalle] = useState<string | null>(null);
   const alerta = useRef<HTMLDivElement>(null);
   const editar = useEditarItemsConsulta(consulta.id);
   const consultaItems = useItemsConsulta(consulta.id, { grupo, q, pagina, tamanoPagina: TAMANO });
@@ -135,6 +139,47 @@ export function GrupoConsulta({ definicion, consulta, total, soloLectura, onAnun
 
   const items = datos?.items ?? [];
   const conFiltro = q !== "";
+
+  const botonVerDetalle = (codigo: string | null) => document.querySelector<HTMLElement>(`[data-testid="fila-${codigo}"] [data-testid="boton-ver-detalle"]`);
+
+  function abrirDetalle(item: ItemConsulta) {
+    setDetalleId(item.id);
+    setCodigoDetalle(item.codigo);
+  }
+
+  /** Al cerrar el panel el foco vuelve a «Ver detalle» de la fila, o al encabezado del grupo si la fila ya no está (diseño §7). */
+  function cerrarDetalle() {
+    const codigo = codigoDetalle;
+    setDetalleId(null);
+    setCodigoDetalle(null);
+    setTimeout(() => (botonVerDetalle(codigo) ?? encabezado.current)?.focus(), 0);
+  }
+
+  /** Tras «Confirmar asignación» en la lista el foco pasa a «Ver detalle» de la siguiente Nueva sin asignar, o al `h3` (diseño §4.2). */
+  function alCrearFila(creada: ItemConsulta) {
+    if (detalleId) return; // el panel abierto mueve el foco por su cuenta
+    const resto = items.filter((i) => i.id !== creada.id);
+    const posicion = items.findIndex((i) => i.id === creada.id);
+    const sinAsignar = (i: ItemConsulta) => i.grupo === "NUEVA" && !i.aplicada && !i.yaAsignada;
+    const siguiente = items.slice(posicion + 1).find((i) => i.id !== creada.id && sinAsignar(i)) ?? resto.find(sinAsignar);
+    setTimeout(() => {
+      const destino = siguiente ? botonVerDetalle(siguiente.codigo) : null;
+      if (destino) destino.focus();
+      else encabezado.current?.focus();
+    }, 0);
+  }
+
+  const columnaDetalle: Columna<ItemConsulta> = {
+    id: "detalle",
+    titulo: "Detalle",
+    prioritaria: true,
+    render: (i) => (
+      <button type="button" className="boton boton--secundario" data-testid="boton-ver-detalle" aria-label={`Ver detalle de ${i.codigo ?? "la fila"}`} onClick={() => abrirDetalle(i)}>
+        Ver detalle
+      </button>
+    ),
+  };
+  const alertaCompacta = (i: ItemConsulta) => (i.yaAsignada ? <AlertaHduYaAsignada codigo={i.codigo ?? ""} yaAsignada={i.yaAsignada} variante="compacta" enSesion={false} /> : null);
   const marcablesPagina = items.filter((i) => i.marcable && !i.aplicada);
   const nombreRechazo = (f: FilaRechazada) => textoRechazoFila(f.motivo, f.campo, f.faltantes);
 
@@ -157,7 +202,16 @@ export function GrupoConsulta({ definicion, consulta, total, soloLectura, onAnun
       ),
     },
     { id: "codigo", titulo: "Código", prioritaria: true, render: (i) => <strong className="codigo">{i.codigo}</strong> },
-    { id: "titulo", titulo: "Título actual", render: (i) => <span className="texto-largo">{i.cambios?.titulo?.antes ?? i.titulo ?? "—"}</span> },
+    {
+      id: "titulo",
+      titulo: "Título actual",
+      render: (i) => (
+        <div className="celda-con-alerta">
+          <span className="texto-largo">{i.cambios?.titulo?.antes ?? i.titulo ?? "—"}</span>
+          {alertaCompacta(i)}
+        </div>
+      ),
+    },
     {
       id: "cambios",
       titulo: "Cambios",
@@ -179,11 +233,21 @@ export function GrupoConsulta({ definicion, consulta, total, soloLectura, onAnun
       ),
     },
     { id: "hdu", titulo: "HDU en Quality360", render: (i) => (i.hdu ? `${ETIQUETAS_ESTADO_HDU[i.hdu.estado]} · ${i.hdu.qeResponsable ?? "Sin QE"}` : "—") },
+    columnaDetalle,
   ];
 
   const columnasLectura: Columna<ItemConsulta>[] = [
     { id: "codigo", titulo: "Código", prioritaria: true, render: (i) => <strong className="codigo">{i.codigo ?? "—"}</strong> },
-    { id: "titulo", titulo: "Título", render: (i) => <span className="texto-largo">{i.titulo ?? "—"}</span> },
+    {
+      id: "titulo",
+      titulo: "Título",
+      render: (i) => (
+        <div className="celda-con-alerta">
+          <span className="texto-largo">{i.titulo ?? "—"}</span>
+          {alertaCompacta(i)}
+        </div>
+      ),
+    },
     {
       id: "motivo",
       titulo: "Motivo",
@@ -201,6 +265,7 @@ export function GrupoConsulta({ definicion, consulta, total, soloLectura, onAnun
         </>
       ),
     },
+    columnaDetalle,
   ];
 
   return (
@@ -215,7 +280,29 @@ export function GrupoConsulta({ definicion, consulta, total, soloLectura, onAnun
             {titulo} <span data-testid={`total-grupo-${clave}`}>({total})</span>
           </span>
         )}
+        {(datos?.yaAsignadas ?? 0) > 0 ? (
+          <span className="chip-grupo chip-grupo--ya-asignadas" data-testid="contador-ya-asignadas">
+            <span aria-hidden="true">! </span>
+            {textoYaAsignadas(datos?.yaAsignadas ?? 0)}
+          </span>
+        ) : null}
       </h3>
+      {detalleId ? (
+        <PanelDetalleHdu
+          consultaId={consulta.id}
+          items={items}
+          itemId={detalleId}
+          onCambiar={(id) => {
+            setDetalleId(id);
+            setCodigoDetalle(items.find((i) => i.id === id)?.codigo ?? null);
+          }}
+          onCerrar={cerrarDetalle}
+          onAnunciar={onAnunciar}
+          onErrorDeConsulta={onErrorDeConsulta}
+          onVersion={onVersion}
+          alCrear={alCrearFila}
+        />
+      ) : null}
       {total > 0 && abierto ? (
         <div id={idPanel}>
           <div className="campo">
@@ -331,6 +418,8 @@ export function GrupoConsulta({ definicion, consulta, total, soloLectura, onAnun
                         onErrorDeConsulta={onErrorDeConsulta}
                         onVersion={onVersion}
                         soloLectura={soloLectura}
+                        onVerDetalle={abrirDetalle}
+                        alCrear={alCrearFila}
                       />
                     ))}
                   </ul>

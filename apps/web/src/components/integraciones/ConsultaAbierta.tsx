@@ -12,6 +12,8 @@ import {
   textoCuerpoConfirmar,
   textoBotonConfirmar,
   textoFilasInvalidas,
+  textoCreadas,
+  textoCuerpoTerminarRevision,
   textoRechazoFila,
   textoVenceEn,
 } from "@/lib/mensajesAsignacion";
@@ -19,6 +21,8 @@ import { TEXTO_EN_CURSO, TEXTO_NO_ENCONTRADA, TEXTO_VENCIDA, textoNoAbierta } fr
 import { mensajeDeError } from "@/lib/mensajesIntegracion";
 import { RUTAS_INTEGRACIONES } from "@/lib/rutasIntegraciones";
 import type { Consulta, FilaRechazada, ResultadoConfirmacion as RespuestaConfirmacion } from "@/types/dominio";
+import { conteoParaLote } from "@/lib/conteosConsulta";
+import { ContextoConsultaAbierta } from "./contextoConsulta";
 import { GrupoConsulta } from "./GrupoConsulta";
 import { GRUPOS } from "./gruposConsulta";
 import { ResumenConfirmacion } from "./ResumenConfirmacion";
@@ -33,7 +37,7 @@ interface Props {
   /** La consulta venció al actuar: el anfitrión muestra el aviso y relee. */
   onVencida: () => void;
   /** Confirmación aplicada (total o parcial): el anfitrión muestra el resultado. */
-  onConfirmada: (resultado: RespuestaConfirmacion, tipoDescartadas: { nuevas: number; cambios: number }) => void;
+  onConfirmada: (resultado: RespuestaConfirmacion, tipoDescartadas: { nuevas: number; cambios: number; yaCreadas?: number }) => void;
 }
 
 type Alerta = { tipo: "modificada-info" } | { tipo: "modificada" } | { tipo: "confirmada" } | { tipo: "en-curso" } | { tipo: "no-encontrada" } | { tipo: "permiso" } | { tipo: "error"; codigo: string } | null;
@@ -55,6 +59,8 @@ export function ConsultaAbierta({ consulta, onActualizar, actualizando, onVencid
   const refAlerta = useRef<HTMLDivElement>(null);
   const refInvalidas = useRef<HTMLDivElement>(null);
   const recargaPendiente = useRef(false);
+  // «Continuar confirmación» solo corresponde a un lote que quedó INCOMPLETA; las filas creadas una a una también son `aplicadas`.
+  const loteIncompleto = useRef(false);
   const [reemplazada, setReemplazada] = useState<Consulta | null>(null);
   const reemplazadaRef = useRef(false);
   const consultaVigente = useRef(consulta);
@@ -180,9 +186,10 @@ export function ConsultaAbierta({ consulta, onActualizar, actualizando, onVencid
     setConfirmando(true);
     setAlerta(null);
     setInvalidas(null);
-    const tipo = { nuevas: consulta.nuevas - consulta.marcadasNuevas, cambios: consulta.cambiaron - consulta.marcadasCambio };
+    const tipo = { nuevas: consulta.nuevas - consulta.marcadasNuevas, cambios: consulta.cambiaron - consulta.marcadasCambio, yaCreadas: consulta.creadas ?? 0 };
     try {
       const resultado = await llamadasConsulta.confirmar(consulta.id, version);
+      loteIncompleto.current = resultado.ejecucion.resultado === "INCOMPLETA";
       recargarTodo();
       void cliente.invalidateQueries({ queryKey: ["bandeja"] });
       onConfirmada(resultado, tipo);
@@ -242,9 +249,14 @@ export function ConsultaAbierta({ consulta, onActualizar, actualizando, onVencid
     );
   }
 
-  const hayPendientes = consulta.pendientes > 0 && consulta.aplicadas > 0;
+  const creadasUnaAUna = consulta.creadas ?? 0;
+  // Sin HDU creadas una a una, toda fila aplicada viene de un lote: la regla certificada de D140 sigue igual.
+  const hayPendientes = consulta.pendientes > 0 && consulta.aplicadas > 0 && (loteIncompleto.current || creadasUnaAUna === 0);
   const aplicadasTotal = consulta.aplicadas + consulta.pendientes;
-  const incluidas = consulta.marcadasNuevas + consulta.marcadasCambio;
+  const lote = conteoParaLote(consulta);
+  const incluidas = lote.total;
+  const hayCreadas = creadasUnaAUna > 0;
+  const sinConfirmar = Math.max(0, consulta.leidas - consulta.aplicadas);
   const minutos = Math.ceil((Date.parse(consulta.venceEn) - Date.now()) / 60_000);
   const items = [
     { clave: "nuevas", titulo: "Nuevas", valor: consulta.nuevas },
@@ -300,6 +312,12 @@ export function ConsultaAbierta({ consulta, onActualizar, actualizando, onVencid
       </dl>
       <p className="campo-ayuda">
         Nuevas: {consulta.nuevas} · asignadas <span data-testid="contador-asignadas">{consulta.asignadas}</span> · incluidas <span data-testid="contador-incluidas">{incluidas}</span>
+        {hayCreadas ? (
+          <>
+            {" "}
+            · <span data-testid="contador-creadas">{textoCreadas(creadasUnaAUna)}</span>
+          </>
+        ) : null}
       </p>
       <div className="acciones-formulario acciones-formulario--integracion">
         <button type="button" className="boton boton--secundario" data-testid="boton-actualizar-consulta" disabled={actualizando || confirmando} onClick={() => void actualizarYComparar()}>
@@ -316,8 +334,14 @@ export function ConsultaAbierta({ consulta, onActualizar, actualizando, onVencid
         >
           Ir al resumen
         </a>
-        <button type="button" className="boton boton--terciario boton--peligro-texto" data-testid="boton-descartar-consulta" disabled={confirmando || descartando} onClick={() => setDialogoDescartar(true)}>
-          Descartar consulta
+        <button
+          type="button"
+          className="boton boton--terciario boton--peligro-texto"
+          data-testid={hayCreadas ? "boton-terminar-revision" : "boton-descartar-consulta"}
+          disabled={confirmando || descartando}
+          onClick={() => setDialogoDescartar(true)}
+        >
+          {hayCreadas ? "Terminar revisión" : "Descartar consulta"}
         </button>
       </div>
 
@@ -378,6 +402,7 @@ export function ConsultaAbierta({ consulta, onActualizar, actualizando, onVencid
       ) : null}
 
       <div inert={confirmando || undefined}>
+        <ContextoConsultaAbierta.Provider value={{ loteEnCurso: confirmando }}>
         {GRUPOS.map((definicion) => (
           <GrupoConsulta
             key={definicion.clave}
@@ -390,6 +415,7 @@ export function ConsultaAbierta({ consulta, onActualizar, actualizando, onVencid
             onVersion={onVersion}
           />
         ))}
+        </ContextoConsultaAbierta.Provider>
 
         {hayPendientes ? (
           <div className="panel-resultado panel-resultado--incompleta" role="status" data-testid="aviso-incompleta" id="aviso-incompleta">
@@ -422,21 +448,38 @@ export function ConsultaAbierta({ consulta, onActualizar, actualizando, onVencid
         onCancelar={() => setDialogoConfirmar(false)}
         onConfirmar={() => void confirmar(Math.max(versionVista.current, consulta.version))}
       >
-        <p>{textoCuerpoConfirmar(consulta.marcadasNuevas, consulta.marcadasCambio, consulta.nuevas - consulta.marcadasNuevas, consulta.cambiaron - consulta.marcadasCambio)}</p>
+        <p>{textoCuerpoConfirmar(lote.crear, lote.actualizar, consulta.nuevas - consulta.marcadasNuevas, consulta.cambiaron - consulta.marcadasCambio)}</p>
       </DialogoConfirmacion>
-      <DialogoConfirmacion
-        abierto={dialogoDescartar}
-        titulo="¿Descartar la consulta?"
-        etiquetaConfirmar="Descartar consulta"
-        peligro
-        testId="dialogo-descartar"
-        testIdConfirmar="boton-descartar-confirmar"
-        testIdCancelar="boton-cancelar-dialogo"
-        onCancelar={() => setDialogoDescartar(false)}
-        onConfirmar={() => void descartar()}
-      >
-        <p>Se perderán las asignaciones y las filas marcadas. No se creará ni se modificará ninguna HDU.</p>
-      </DialogoConfirmacion>
+      {hayCreadas ? (
+        <DialogoConfirmacion
+          abierto={dialogoDescartar}
+          titulo="¿Terminar la revisión?"
+          etiquetaConfirmar="Terminar revisión"
+          etiquetaCancelar="Seguir revisando"
+          peligro
+          testId="dialogo-terminar-revision"
+          testIdConfirmar="boton-terminar-confirmar"
+          testIdCancelar="boton-seguir-revisando-terminar"
+          onCancelar={() => setDialogoDescartar(false)}
+          onConfirmar={() => void descartar()}
+        >
+          <p>{textoCuerpoTerminarRevision(creadasUnaAUna, sinConfirmar)}</p>
+        </DialogoConfirmacion>
+      ) : (
+        <DialogoConfirmacion
+          abierto={dialogoDescartar}
+          titulo="¿Descartar la consulta?"
+          etiquetaConfirmar="Descartar consulta"
+          peligro
+          testId="dialogo-descartar"
+          testIdConfirmar="boton-descartar-confirmar"
+          testIdCancelar="boton-cancelar-dialogo"
+          onCancelar={() => setDialogoDescartar(false)}
+          onConfirmar={() => void descartar()}
+        >
+          <p>Se perderán las asignaciones y las filas marcadas. No se creará ni se modificará ninguna HDU.</p>
+        </DialogoConfirmacion>
+      )}
     </section>
   );
 }

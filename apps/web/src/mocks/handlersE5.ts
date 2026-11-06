@@ -423,6 +423,8 @@ export const handlersE5 = [
     const origen = p.get("origen");
     const fase = p.get("fase");
     if (fase) items = items.filter((e) => e.fase === fase);
+    const alcance = p.get("alcance");
+    if (alcance) items = items.filter((e) => e.alcance === alcance);
     const resultado = p.get("resultado");
     const desde = p.get("desde");
     const hasta = p.get("hasta");

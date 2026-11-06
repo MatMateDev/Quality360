@@ -50,8 +50,11 @@ export function celulaDe(id: string) {
   return celulas.find((celula) => celula.id === id)!;
 }
 
+/** Sprints del catálogo de E5 (otras células) que una HDU creada desde la consulta de Jira puede traer: solo para resolver su detalle. */
+export const sprintsAdicionales: SprintMock[] = [];
+
 export function sprintDe(id: string) {
-  return sprints.find((sprint) => sprint.id === id)!;
+  return (sprints.find((sprint) => sprint.id === id) ?? sprintsAdicionales.find((sprint) => sprint.id === id))!;
 }
 
 export function aHduResumen(hdu: HduMock): HduResumen {

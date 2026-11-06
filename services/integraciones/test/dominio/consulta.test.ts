@@ -186,6 +186,88 @@ describe('decidirEdicion (D139, D145)', () => {
   });
 });
 
+describe('analista único, HDU ya asignada y fila en toma (D201, D202, D204)', () => {
+  const conQe: EstadoFila = { grupo: 'NUEVA', asignacion: { ...ASIGNACION_VACIA, celula: ref('c', 'CEL-C') }, marcada: false, aplicada: false };
+  const validar = (extra: Partial<ValidacionAsignacion> = {}): ValidacionAsignacion => ({
+    errores: [], celula: null, qe: ref('q', 'QE2'), analista: null, sprint: null, sprintPropuesto: null, celulaSinLiderActivo: false,
+    analistasActivos: 1, analistaPropuesto: ref('a', 'ANA3'), ...extra,
+  });
+  const editar = (fila: EstadoFila, pedido: Parameters<typeof decidirEdicion>[1], validacion: ValidacionAsignacion | null) =>
+    decidirEdicion(fila, pedido, pedido.cambio === undefined ? null : combinarAsignacion(fila.asignacion, pedido.cambio), validacion);
+
+  it('proponerAnalista solo cuando el QE cambia y no viene analistaId', () => {
+    assert.equal(combinarAsignacion(conQe.asignacion, { qeId: 'q' }).proponerAnalista, true);
+    assert.equal(combinarAsignacion(conQe.asignacion, { qeId: 'q', analistaId: 'a' }).proponerAnalista, false);
+    assert.equal(combinarAsignacion(conQe.asignacion, { qeId: 'q', analistaId: null }).proponerAnalista, false);
+    assert.equal(combinarAsignacion(conQe.asignacion, { qeId: null }).proponerAnalista, false);
+    assert.equal(combinarAsignacion(COMPLETA, { qeId: 'q' }).proponerAnalista, false, 'el mismo QE no es un cambio');
+    assert.equal(combinarAsignacion(COMPLETA, { celulaId: 'c9' }).proponerAnalista, false);
+  });
+
+  it('con un único analista activo la fila queda con él y analistaAuto true (E5-B07 #1)', () => {
+    const d = editar(conQe, { cambio: { qeId: 'q' } }, validar());
+    assert.equal(d.tipo, 'OK');
+    if (d.tipo !== 'OK') return;
+    assert.deepEqual([d.asignacion.analista?.id, d.analistaAuto], ['a', true]);
+  });
+
+  it('con 0 o 2+ analistas (sin propuesta) queda vacío y sin error (E5-B07 #2)', () => {
+    // 0 activos, 3 activos y una Organización anterior (sin los campos nuevos).
+    const casos: Array<Partial<ValidacionAsignacion>> = [
+      { analistasActivos: 0, analistaPropuesto: null },
+      { analistasActivos: 3, analistaPropuesto: null },
+      { analistasActivos: undefined, analistaPropuesto: undefined },
+    ];
+    for (const extra of casos) {
+      const d = editar(conQe, { cambio: { qeId: 'q' } }, validar(extra));
+      assert.equal(d.tipo, 'OK');
+      if (d.tipo !== 'OK') continue;
+      assert.deepEqual([d.asignacion.analista, d.analistaAuto], [null, false]);
+    }
+  });
+
+  it('un analista explícito se respeta y deja analistaAuto false, aunque el servidor tuviera uno propuesto (E5-B07 #3)', () => {
+    const auto: EstadoFila = { grupo: 'NUEVA', asignacion: COMPLETA, marcada: false, aplicada: false, analistaAuto: true };
+    const mismo = editar(auto, { cambio: { analistaId: 'a' } }, null);
+    assert.equal(mismo.tipo === 'OK' && mismo.analistaAuto, false);
+    const limpia = editar(auto, { cambio: { analistaId: null } }, validar());
+    assert.deepEqual(limpia.tipo === 'OK' ? [limpia.asignacion.analista, limpia.analistaAuto] : null, [null, false]);
+    const otroQe = editar(auto, { cambio: { qeId: 'q9' } }, validar({ analistasActivos: 2, analistaPropuesto: null, qe: ref('q9') }));
+    assert.deepEqual(otroQe.tipo === 'OK' ? [otroQe.asignacion.analista, otroQe.analistaAuto] : null, [null, false]);
+  });
+
+  it('editar otra cosa no toca analistaAuto; marcar tampoco', () => {
+    const auto: EstadoFila = { grupo: 'NUEVA', asignacion: COMPLETA, marcada: false, aplicada: false, analistaAuto: true };
+    const celula = editar(auto, { cambio: { celulaId: 'c9' } }, validar({ celula: ref('c9'), sprintPropuesto: null }));
+    assert.equal(celula.tipo === 'OK' && celula.analistaAuto, true);
+    const marca = editar(auto, { marcada: true }, null);
+    assert.equal(marca.tipo === 'OK' && marca.analistaAuto, true);
+  });
+
+  it('NUEVA con yaAsignada: HDU_YA_ASIGNADA al asignar; no es marcable; CAMBIO y SIN_CAMBIOS siguen en FILA_NO_ASIGNABLE (E5-B07 #6, E5-B05-T11)', () => {
+    const ya = { idHistoria: 'h1', qe: 'QE1', analista: null };
+    const nueva: EstadoFila = { grupo: 'NUEVA', asignacion: COMPLETA, marcada: false, aplicada: false, yaAsignada: ya };
+    assert.deepEqual(editar(nueva, { cambio: { qeId: 'q' } }, null), { tipo: 'RECHAZADA', rechazo: { motivo: 'HDU_YA_ASIGNADA', campo: null } });
+    assert.deepEqual([puedeAsignarse(nueva), esMarcable(nueva)], [false, false]);
+    assert.equal(motivoNoMarcable(nueva)?.motivo, 'FILA_NO_MARCABLE');
+    assert.deepEqual(editar(nueva, { marcada: true }, null), { tipo: 'RECHAZADA', rechazo: { motivo: 'FILA_NO_MARCABLE', campo: null } });
+    for (const grupo of ['CAMBIO', 'SIN_CAMBIOS'] as const) {
+      assert.deepEqual(decidirEdicion({ ...nueva, grupo }, { cambio: { qeId: 'q' } }, null, null), { tipo: 'RECHAZADA', rechazo: { motivo: 'FILA_NO_ASIGNABLE', campo: null } });
+    }
+    // Una CAMBIO con yaAsignada sigue marcándose como hoy.
+    const cambio = decidirEdicion({ grupo: 'CAMBIO', asignacion: ASIGNACION_VACIA, marcada: false, aplicada: false, yaAsignada: ya }, { marcada: true }, null, null);
+    assert.equal(cambio.tipo === 'OK' && cambio.marcada, true);
+  });
+
+  it('una fila aplicando rechaza cambio y marca con FILA_EN_CURSO; marcarListas la salta sin error (D202 f)', () => {
+    const tomada: EstadoFila = { grupo: 'NUEVA', asignacion: COMPLETA, marcada: false, aplicada: false, aplicando: true };
+    assert.deepEqual(editar(tomada, { cambio: { analistaId: 'a9' } }, null), { tipo: 'RECHAZADA', rechazo: { motivo: 'FILA_EN_CURSO', campo: null } });
+    assert.deepEqual(editar(tomada, { marcada: true }, null), { tipo: 'RECHAZADA', rechazo: { motivo: 'FILA_EN_CURSO', campo: null } });
+    const listas = editar(tomada, { marcarListas: true }, null);
+    assert.deepEqual(listas.tipo === 'OK' ? [listas.marcada, listas.incompleta] : null, [false, false]);
+  });
+});
+
 describe('vida de la consulta (D134, D135, D148)', () => {
   const ahora = new Date('2026-11-02T12:00:00Z');
   const abierta = (venceEn: string) => ({ estado: 'ABIERTA' as const, venceEn: new Date(venceEn) });
@@ -230,6 +312,11 @@ describe('confirmación (D140, D141)', () => {
   const item = (posicion: number, parcial: Partial<ItemConsulta> = {}): ItemConsulta => ({
     id: `i${posicion}`,
     posicion,
+    revision: 1,
+    analistaAuto: false,
+    aplicando: false,
+    aplicacion: null,
+    yaAsignada: null,
     grupo: 'NUEVA',
     codigo: `QTY-${posicion}`,
     titulo: `T${posicion}`,

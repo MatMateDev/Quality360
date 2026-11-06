@@ -35,7 +35,11 @@ describe('upsert en modo confirmación · carrera de unicidad [E5-B05-T21]', () 
     } as unknown as UnidadTrabajoUpsert;
     const repositorio = {
       enTransaccion: <T>(trabajo: (u: UnidadTrabajoUpsert) => Promise<T>) => trabajo(unidad),
-      soloLectura: (): UnidadTrabajoUpsert => ({ ...unidad, buscarPorCodigoNormalizado: (c) => Promise.resolve((existentes.get(c) as never) ?? null) }),
+      soloLectura: (): UnidadTrabajoUpsert => ({
+        ...unidad,
+        buscarPorCodigoNormalizado: (c) => Promise.resolve((existentes.get(c) as never) ?? null),
+        describirExistente: (id: string) => Promise.resolve({ idHistoria: id, qe: 'QE Ajeno', analista: null, creadaPorEstaConsulta: false, creadaPorActor: false }),
+      }),
     };
     const celula = { id: IDS.celula, nombre: 'C' };
     const sprint = { id: IDS.sprint, nombre: 'S', celulaId: IDS.celula, inicio: new Date(), fin: new Date() };
@@ -56,6 +60,7 @@ describe('upsert en modo confirmación · carrera de unicidad [E5-B05-T21]', () 
       { tipo: 'USUARIO', id: 'u1', nombre: 'Admin' },
     );
     assert.deepEqual(r.filas.map((f) => [f.resultado, f.motivo, f.idHistoria]), [['CREADA', null, 'h-QTY-1'], ['OMITIDA', 'HDU_CREADA_DESPUES', 'h-ajena'], ['CREADA', null, 'h-QTY-3']]);
+    assert.deepEqual(r.filas[1]?.existente, { idHistoria: 'h-ajena', qe: 'QE Ajeno', analista: null, creadaPorEstaConsulta: false, creadaPorActor: false });
     assert.deepEqual(creadas, ['QTY-1', 'QTY-3']);
     assert.equal(busquedasPrevias, 3);
   });

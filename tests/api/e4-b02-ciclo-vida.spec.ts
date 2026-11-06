@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import { env } from "../support/env";
 import { api } from "../support/api";
 import { cumpleContrato } from "../support/contrato";
 import { cuerpoSinTrace, tokenE7, type ClaveE7 } from "../support/e7";
@@ -274,7 +275,7 @@ test.describe("E4-B02 · Ciclo de vida", () => {
     });
     expect(reg.status).toBe(201);
     const consulta = async () => {
-      const r = await fetch(`http://localhost:3003/v1/interno/hdu/${h.H8.id}/impedimentos/abiertos`, { headers: { Authorization: `Bearer ${token}`, "x-trace-id": "qa-e4" } });
+      const r = await fetch(`${env.impedimentosUrl}/v1/interno/hdu/${h.H8.id}/impedimentos/abiertos`, { headers: { Authorization: `Bearer ${token}`, "x-trace-id": "qa-e4" } });
       return (await r.json()) as { total: number };
     };
     expect((await consulta()).total).toBe(1);

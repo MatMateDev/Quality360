@@ -93,9 +93,24 @@ describe('POST /v1/interno/integraciones/hdu/estado-codigos [E5-B02-T04]', () =>
       descripcion: 'Descripcion vieja',
       prioridad: 'ALTA',
       qeResponsable: 'QE Uno',
+      analista: null,
     });
-    assert.deepEqual(r.body.items[1], { codigo: 'NUEVO-1', existe: false, idHistoria: null, estado: null, origen: null, titulo: null, descripcion: null, prioridad: null, qeResponsable: null });
+    assert.deepEqual(r.body.items[1], { codigo: 'NUEVO-1', existe: false, idHistoria: null, estado: null, origen: null, titulo: null, descripcion: null, prioridad: null, qeResponsable: null, analista: null });
     assert.equal(r.body.items[2].idHistoria, r.body.items[0].idHistoria);
+  });
+
+  it('trae el nombre del Analista asignado o null [E5-B02-T06, E5-B07-T06]', async () => {
+    const asignada = await prisma.hdu.create({
+      data: {
+        codigo: 'QTY-ASIG', codigoNormalizado: 'qty-asig', titulo: 'Con analista', celulaId: celulaC.id,
+        historiaSprints: { create: { sprintId: sprint1.id } }, prioridad: 'MEDIA', qeResponsableId: qe2.id, analistaId: ana3.id,
+        estado: 'PENDIENTE', creadoPorTipo: 'USUARIO', creadoPorId: admin.id, creadoPorNombre: 'Admin C', origen: 'MANUAL',
+      },
+    });
+    const r = await post(ESTADOS, { codigos: ['QTY-ASIG', 'QTY-5'] });
+    assert.equal(r.status, 200);
+    assert.deepEqual(r.body.items.map((i: { analista: string | null; qeResponsable: string }) => [i.qeResponsable, i.analista]), [['QE Dos', 'ANA3'], ['QE Uno', null]]);
+    assert.ok(asignada.id);
   });
 
   it('no escribe ni audita', async () => {
@@ -173,6 +188,43 @@ describe('POST /v1/interno/integraciones/asignaciones/validar [E5-B05-T04, T08, 
     assert.deepEqual(por.otracelula, { sprint: null, origen: null, sprintJiraNoEncontrado: true });
     assert.equal(por.explicito, null);
     assert.equal(por.sincelula, null);
+  });
+
+  it('proponerAnalista: con un solo Analista activo lo propone; con 0 o 2+ no; el inactivo no cuenta [E5-B07-T01, T02, T03, T10]', async () => {
+    const qeDos = await crearUsuarioDePrueba('QE', { nombre: 'QE Dos Ana' });
+    const qeCero = await crearUsuarioDePrueba('QE', { nombre: 'QE Cero' });
+    const qeSoloInactiva = await crearUsuarioDePrueba('QE', { nombre: 'QE Solo Inactiva' });
+    const anaA = await crearUsuarioDePrueba('ANALISTA_QA', { nombre: 'ANA-A' });
+    const anaB = await crearUsuarioDePrueba('ANALISTA_QA', { nombre: 'ANA-B' });
+    const anaOff = await crearUsuarioDePrueba('ANALISTA_QA', { nombre: 'ANA-OFF', activo: false });
+    await prisma.supervision.create({ data: { qeId: qeDos.id, analistaId: anaA.id, ...ACTOR } });
+    await prisma.supervision.create({ data: { qeId: qeDos.id, analistaId: anaB.id, ...ACTOR } });
+    await prisma.supervision.create({ data: { qeId: qeSoloInactiva.id, analistaId: anaOff.id, ...ACTOR } });
+    const r = await post(VALIDAR, {
+      asignaciones: [
+        { ref: 'uno', qeResponsableId: qe1.id, proponerAnalista: true },
+        { ref: 'dos', qeResponsableId: qeDos.id, proponerAnalista: true },
+        { ref: 'cero', qeResponsableId: qeCero.id, proponerAnalista: true },
+        { ref: 'soloinactiva', qeResponsableId: qeSoloInactiva.id, proponerAnalista: true },
+        { ref: 'qemal', qeResponsableId: ana3.id, proponerAnalista: true },
+        { ref: 'sinpedir', qeResponsableId: qe1.id },
+        { ref: 'conanalista', qeResponsableId: qe1.id, analistaId: ana1.id, proponerAnalista: true },
+        { ref: 'sinqe', proponerAnalista: true },
+      ],
+    });
+    assert.equal(r.status, 200);
+    const por = Object.fromEntries(r.body.resultados.map((x: { ref: string }) => [x.ref, x]));
+    const resumen = (x: { analistasActivos: number | null; analistaPropuesto: { nombre: string } | null }) => [x.analistasActivos, x.analistaPropuesto?.nombre ?? null];
+    assert.deepEqual(resumen(por.uno), [1, 'ANA1']);
+    assert.equal(por.uno.analistaPropuesto.id, ana1.id);
+    assert.deepEqual(resumen(por.dos), [2, null]);
+    assert.deepEqual(resumen(por.cero), [0, null]);
+    assert.deepEqual(resumen(por.soloinactiva), [0, null]);
+    assert.deepEqual(resumen(por.qemal), [null, null]);
+    assert.deepEqual(resumen(por.sinpedir), [null, null]);
+    assert.deepEqual(resumen(por.conanalista), [1, null]);
+    assert.deepEqual(resumen(por.sinqe), [null, null]);
+    assert.equal((await post(VALIDAR, { asignaciones: [{ ref: 'a', proponerAnalista: 'si' }] })).status, 400);
   });
 
   it('el analista se valida contra el equipo vigente: reasignado a otro QE deja de ser válido', async () => {

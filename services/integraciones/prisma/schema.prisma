@@ -34,6 +34,17 @@
 //    `ejecucion_confirmacion_ck` y `ejecucion_contadores_ck` por fase (D141); el disparador
 //    `ejecucion_cerrada_inmutable` suma `fase` y `consulta_id` a la identidad.
 //  - detalle_ejecucion: CHECK `detalle_asignacion_ck` (objeto JSON).
+//
+// Lo que Prisma no expresa vive en la migración 20261106000000_e5_detalle_hdu (E5 · detalle y confirmación por HDU):
+//  - consulta_item: CHECK `item_detalle_ck` (objeto JSON de hasta 40.960 bytes), `item_revision_ck` (>= 1),
+//    `item_analista_auto_ck` (analista_auto implica analista_id), `item_ya_asignada_ck` (objeto JSON),
+//    `item_alcance_aplicacion_ck` (LOTE o HDU) e `item_aplicacion_ck` (aplicada = alcance_aplicacion no nulo; sin aplicación
+//    no hay quién ni cuándo); `item_hdu_ck` se reemplaza: una NUEVA puede guardar id_historia si está aplicada o ya_asignada.
+//  - consulta_jira: CHECK `consulta_creadas_ck` (>= 0). `creadas` se conserva al purgar (D205).
+//  - ejecucion_integracion: CHECK `ejecucion_alcance_ck`, `ejecucion_alcance_fase_ck` (HDU solo en CONFIRMACION) y
+//    `ejecucion_alcance_hdu_ck` (HDU: leidas = 1 y ya cerrada); el disparador `ejecucion_cerrada_inmutable` suma `alcance`.
+//  - detalle_ejecucion: el disparador `detalle_solo_en_curso` admite la única fila de una ejecución HDU ya cerrada.
+//  Todas las funciones de disparador fijan su search_path (DEF-E5C-05).
 
 generator client {
   provider = "prisma-client-js"
@@ -57,6 +68,8 @@ model ConfiguracionJira {
   tiposIssue           String    @default("Story,Historia") @map("tipos_issue") @db.VarChar(200)
   /// `customfield_*` detectado con `GET /rest/api/3/field` (esquema gh-sprint).
   campoSprint          String?   @map("campo_sprint") @db.VarChar(30)
+  /// `customfield_*` de «Acceptance Criteria» / «Criterios de aceptación», detectado al guardar la conexión (D199).
+  campoCriterios       String?   @map("campo_criterios") @db.VarChar(30)
   celulaId             String    @map("celula_id") @db.Uuid
   qeResponsableId      String    @map("qe_responsable_id") @db.Uuid
   sprintRespaldoId     String    @map("sprint_respaldo_id") @db.Uuid
@@ -130,6 +143,8 @@ model EjecucionIntegracion {
   nuevas             Int       @default(0)
   cambiaron          Int       @default(0)
   sinCambios         Int       @default(0) @map("sin_cambios")
+  /// `LOTE` («Confirmar marcadas» y toda ejecución que no es de una sola fila) o `HDU` («Confirmar asignación», D206).
+  alcance            String    @default("LOTE") @db.VarChar(4)
 
   consulta ConsultaJira?      @relation(fields: [consultaId], references: [id], onDelete: Restrict)
   detalle  DetalleEjecucion[]
@@ -138,6 +153,7 @@ model EjecucionIntegracion {
   @@index([origen, iniciadaEn(sort: Desc)], map: "ejecucion_integracion_origen_idx")
   @@index([resultado, iniciadaEn(sort: Desc)], map: "ejecucion_integracion_resultado_idx")
   @@index([fase, iniciadaEn(sort: Desc)], map: "ejecucion_integracion_fase_idx")
+  @@index([alcance, iniciadaEn(sort: Desc)], map: "ejecucion_integracion_alcance_idx")
   @@map("ejecucion_integracion")
 }
 
@@ -205,8 +221,10 @@ model ConsultaJira {
   conError               Int       @default(0) @map("con_error")
   conAdvertencias        Int       @default(0) @map("con_advertencias")
   descartadas            Int       @default(0)
+  /// HDU creadas desde la consulta, por fila o en lote. Se conserva al purgar (D205).
+  creadas                Int       @default(0)
 
-  items       ConsultaItem[]
+  items      ConsultaItem[]
   ejecuciones EjecucionIntegracion[]
 
   @@index([creadaEn(sort: Desc)], map: "consulta_jira_creada_idx")
@@ -249,6 +267,20 @@ model ConsultaItem {
   asignadoPorId     String?   @map("asignado_por_id") @db.Uuid
   asignadoPorNombre String?   @map("asignado_por_nombre") @db.VarChar(150)
   asignadoEn        DateTime? @map("asignado_en") @db.Timestamptz(6)
+  /// Detalle saneado de la issue (D198): objeto de hasta 40 KB, solo mientras la consulta está abierta. Nunca se registra.
+  detalle           Json?
+  /// Versión de la fila: sube con cada cambio de datos (D202).
+  revision          Int       @default(1)
+  /// El analista lo puso el servidor por ser el único del equipo del QE (D201).
+  analistaAuto      Boolean   @default(false) @map("analista_auto")
+  /// Toma atómica de «Confirmar asignación» y del lote; vence a los INTEGRACIONES_TOMA_FILA_MS (D202).
+  aplicandoDesde    DateTime? @map("aplicando_desde") @db.Timestamptz(6)
+  /// `{idHistoria, qe, analista}` de la HDU que ya existe (D204).
+  yaAsignada        Json?     @map("ya_asignada")
+  alcanceAplicacion String?   @map("alcance_aplicacion") @db.VarChar(4)
+  aplicadoPorId     String?   @map("aplicado_por_id") @db.Uuid
+  aplicadoPorNombre String?   @map("aplicado_por_nombre") @db.VarChar(150)
+  aplicadoEn        DateTime? @map("aplicado_en") @db.Timestamptz(6)
 
   consulta ConsultaJira @relation(fields: [consultaId], references: [id], onDelete: Restrict)
 

@@ -29,6 +29,7 @@ export class ConfiguracionPrismaRepositorio extends ConfiguracionRepositorio {
       proyectoClave: datos.proyecto,
       tiposIssue: datos.tiposIssue.join(','),
       campoSprint: datos.campoSprint,
+      campoCriterios: datos.campoCriterios,
       celulaId: datos.celulaId,
       qeResponsableId: datos.qeResponsableId,
       sprintRespaldoId: datos.sprintRespaldoId,

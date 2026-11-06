@@ -694,21 +694,25 @@ test.describe("E5-B05 · Consulta y asignación", () => {
     expect(await solicitudesJira()).toHaveLength(0);
   });
 
-  test("[E5-B05#13] T31 (negativo): las 8 rutas de la consulta dan 403 a QE1, QE2, ANA1, LID1 y AUD1, 401 sin token y 404 CONSULTA_NO_ENCONTRADA a ADM1 con un id inexistente; no se registran ejecuciones", async ({ request }) => {
+  test("[E5-B05#13] T31 (negativo): las 10 rutas de la consulta dan 403 a QE1, QE2, ANA1, LID1 y AUD1, 401 sin token y 404 CONSULTA_NO_ENCONTRADA a ADM1 con un id inexistente; no se registran ejecuciones", async ({ request }) => {
     await estadoConfigBase(request);
     const c = (await consultarOk(request)).consulta;
     const n0 = await ejecN();
     const fake = randomUUID();
+    // D200/D202: de 8 a 10 rutas (suma GET …/items/{itemId} y POST …/items/{itemId}/confirmaciones).
     const rutas = (id: string): Array<{ m: "GET" | "POST" | "PATCH"; ruta: string; body?: unknown; porId: boolean }> => [
       { m: "POST", ruta: CONSULTAS, body: {}, porId: false },
       { m: "GET", ruta: `${CONSULTAS}/actual`, porId: false },
       { m: "GET", ruta: `${CONSULTAS}/${id}`, porId: true },
       { m: "GET", ruta: `${CONSULTAS}/${id}/items?grupo=NUEVA`, porId: true },
+      { m: "GET", ruta: `${CONSULTAS}/${id}/items/${randomUUID()}`, porId: true },
       { m: "PATCH", ruta: `${CONSULTAS}/${id}/items`, body: { itemIds: [randomUUID()], marcada: false }, porId: true },
+      { m: "POST", ruta: `${CONSULTAS}/${id}/items/${randomUUID()}/confirmaciones`, body: { revision: 1 }, porId: true },
       { m: "POST", ruta: `${CONSULTAS}/${id}/continuaciones`, body: {}, porId: true },
       { m: "POST", ruta: `${CONSULTAS}/${id}/confirmaciones`, body: { version: 1 }, porId: true },
       { m: "POST", ruta: `${CONSULTAS}/${id}/descartes`, body: {}, porId: true },
     ];
+    expect(rutas(c.id), "la consulta tiene 10 operaciones").toHaveLength(10);
     const llamar = async (m: string, ruta: string, token: string | undefined, body?: unknown) =>
       api[m === "GET" ? "get" : m === "PATCH" ? "patch" : "post"]<any>(request, ruta, { token, ...(m === "GET" ? {} : { body }) } as any);
     for (const clave of ["qe1", "qe2", "ana1", "lid1", "aud1"] as const) {
@@ -815,7 +819,7 @@ test.describe("E5-B05 · Consulta y asignación", () => {
   test("[E5-B05#10] T35 (db): una sola ABIERTA (23505), una cerrada no se actualiza, DELETE en consulta_jira es 42501, en consulta_item lo permite el rol del servicio y el rol anónimo no lee", async ({ request }) => {
     await estadoConfigBase(request);
     const c = (await consultarOk(request)).consulta;
-    const duenio = new pg.Client({ connectionString: "postgresql://supabase_admin:postgres@127.0.0.1:54322/postgres" });
+    const duenio = new pg.Client({ connectionString: process.env.DATABASE_URL_DUENO ?? "postgresql://supabase_admin:postgres@127.0.0.1:54322/postgres" });
     const svc = new pg.Client({ connectionString: env.databaseUrlIntegraciones });
     await duenio.connect();
     await svc.connect();
