@@ -30,6 +30,7 @@ export interface ModoE5 {
     | "exitosa"
     | "con-errores"
     | "con-cambios"
+    | "con-ya-asignada"
     | "incompleta"
     | "incompleta-tasa"
     | "incompleta-tiempo"
@@ -43,6 +44,10 @@ export interface ModoE5 {
     | "en-curso";
   /** Resultado de la próxima `POST …/confirmaciones`. */
   confirmacion: "normal" | "incompleta" | "asignaciones-invalidas" | "organizacion-caida" | "sin-respuesta";
+  /** Resultado de la próxima `POST …/items/{itemId}/confirmaciones` (D202, D204). */
+  confirmacionFila: "normal" | "ya-asignada" | "modificada" | "en-curso" | "red";
+  /** Respuesta de `GET …/items/{itemId}`: `error` = 500, `antiguo` = `detalle: null`, `largo` = textos de 8.000 caracteres. */
+  detalleItem: "ok" | "error" | "antiguo" | "largo";
   /** Fuente de las lecturas `GET …/consultas/*`. */
   lecturaConsulta: EstadoFuente;
   /** Resultado de la próxima importación. */
@@ -62,6 +67,8 @@ export const modoE5: ModoE5 = {
   vistaPrevia: "ok",
   consulta: "exitosa",
   confirmacion: "normal",
+  confirmacionFila: "normal",
+  detalleItem: "ok",
   lecturaConsulta: "ok",
   importacion: "normal",
   prueba: "ok",
@@ -159,6 +166,7 @@ const adminActor = { id: ID.admin, nombre: "Valentina Rojas", rol: "ADMINISTRADO
 export function ejecucionBase(parcial: Partial<Ejecucion> & Pick<Ejecucion, "id" | "origen" | "resultado">): Ejecucion {
   return {
     fase: "DIRECTA",
+    alcance: "LOTE",
     consultaId: null,
     actor: adminActor,
     iniciadaEn: "2026-10-29T13:20:00Z",
@@ -328,6 +336,8 @@ export function reiniciarE5(): void {
     vistaPrevia: "ok",
     consulta: "exitosa",
     confirmacion: "normal",
+    confirmacionFila: "normal",
+    detalleItem: "ok",
     lecturaConsulta: "ok",
     importacion: "normal",
     prueba: "ok",

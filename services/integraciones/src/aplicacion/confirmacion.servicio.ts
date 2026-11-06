@@ -123,15 +123,31 @@ export class ConfirmacionAplicacion {
         interrupcion = 'PRESUPUESTO_DE_TIEMPO';
         break;
       }
+      // D203: cada lote toma sus filas con la misma toma atómica de «Confirmar asignación»; una fila que otra petición ya
+      // tomó o aplicó se omite sin contarla ni tratarla como error (una fila nunca la procesan los dos caminos).
+      const tomadas = await this.consultas.tomarFilas(consultaId, lote.map((p) => p.item.id));
+      const propios = lote.filter((p) => tomadas.includes(p.item.id));
+      if (propios.length === 0) continue;
       let detalle: FilaDetalle[];
       try {
-        detalle = await this.enviarLote(solicitante, sitioHost, consultaId, lote, presupuesto);
+        detalle = await this.enviarLote(solicitante, sitioHost, consultaId, propios, presupuesto);
       } catch (error) {
         this.registro.error(`Organización no pudo recibir un lote · ${error instanceof Error ? error.name : 'desconocido'}`);
+        await this.consultas.liberarFilas(consultaId, tomadas).catch(() => undefined);
         interrupcion = 'ORGANIZACION_NO_DISPONIBLE';
         break;
       }
-      await this.consultas.aplicarLote(consultaId, lote.map((p) => p.item.id), ejecucionId, detalle);
+      const historias = new Map<string, string>();
+      propios.forEach((paso, i) => {
+        const d = detalle[i];
+        if (paso.operacion === 'CREAR' && d?.resultado === 'CREADA' && d.idHistoria !== null) historias.set(paso.item.id, d.idHistoria);
+      });
+      try {
+        await this.consultas.aplicarLote(consultaId, propios.map((p) => p.item.id), ejecucionId, detalle, { por: actor, en: this.reloj.ahora(), historias });
+      } catch (error) {
+        await this.consultas.liberarFilas(consultaId, tomadas).catch(() => undefined);
+        throw error;
+      }
       for (const fila of detalle) sumarFila(contadores, fila);
     }
 

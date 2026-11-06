@@ -13,7 +13,7 @@ import { ClienteJiraHttp } from './infraestructura/jira/cliente-jira-http.js';
 
 export function crearFuenteJira(configuracion: ConfiguracionIntegraciones): FuenteJira {
   // `permitirHostPrueba` ya es `false` con NODE_ENV=production (D95): lo fija la configuración.
-  return new ClienteJiraHttp({ permitirHostPrueba: configuracion.permitirHostPrueba });
+  return new ClienteJiraHttp({ permitirHostPrueba: configuracion.permitirHostPrueba, tamanoPagina: configuracion.jiraTamanoPagina });
 }
 
 export function crearMapeador(): MapeadorIssues {

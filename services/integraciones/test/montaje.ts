@@ -4,6 +4,7 @@ import type { NestExpressApplication } from '@nestjs/platform-express';
 import request from 'supertest';
 
 import type { ConfiguracionIntegraciones } from '../src/configuracion.js';
+import type { FuenteJira } from '../src/dominio/puertos/fuente-jira.js';
 import { crearMapeador } from '../src/composicion-externa.js';
 import { crearApp } from '../src/crear-app.js';
 import { configuracionPrueba } from './ayudas-app.js';
@@ -41,6 +42,8 @@ export interface OpcionesMontaje {
   org?: OrganizacionFalsa;
   /** No limpia las tablas: sirve para levantar una segunda instancia sobre los mismos datos (otra llave, otro límite). */
   conservarDatos?: boolean;
+  /** Reemplaza al `JiraFalso` (p. ej. el cliente HTTP real contra un servidor local, para ver las peticiones y su `fields`). */
+  fuenteJira?: FuenteJira;
 }
 
 export async function montar(opciones: OpcionesMontaje = {}): Promise<Montaje> {
@@ -52,7 +55,7 @@ export async function montar(opciones: OpcionesMontaje = {}): Promise<Montaje> {
   const config = configuracionPrueba(org.url, opciones.config);
   const app = await crearApp(config, {
     registro: registro !== null,
-    extensiones: { fuenteJira: jira, mapeador: crearMapeador(), lector: new LectorFalso() },
+    extensiones: { fuenteJira: opciones.fuenteJira ?? jira, mapeador: crearMapeador(), lector: new LectorFalso() },
   });
   return {
     app,

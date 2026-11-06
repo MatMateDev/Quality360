@@ -22,12 +22,23 @@ interface Issue {
   summary: string;
   description: unknown;
   priority: string | null;
-  sprints: Array<{ name: string; state: string; endDate?: string }>;
+  sprints: Array<{ name: string; state: string; startDate?: string; endDate?: string }>;
   status: string;
   assignee: string | null;
   /** Etiquetas de Jira (p. ej. `celula-pagos`); vacío por defecto. */
   labels?: string[];
+  /** Detalle de E5 (D196-D199): como en Jira, solo se devuelven si el `fields` de la búsqueda los pide. */
+  created?: string | null;
+  updated?: string | null;
+  duedate?: string | null;
+  resolutiondate?: string | null;
+  parent?: { key: string; summary: string; tipo: string; nivel?: number } | null;
+  /** Valor ADF del campo personalizado «Acceptance Criteria». */
+  criterios?: unknown;
 }
+
+/** Id del campo personalizado «Acceptance Criteria» que expone `/field` (D199). */
+export const CAMPO_CRITERIOS = "customfield_10050";
 
 export interface SolicitudRegistrada {
   metodo: string;
@@ -35,6 +46,8 @@ export interface SolicitudRegistrada {
   consulta: Record<string, string>;
   autenticacionValida: boolean;
   fecha: string;
+  /** Tamaño en bytes de la respuesta (peso de la página, D196). */
+  bytes?: number;
 }
 
 const parrafo = (texto: string) => ({ type: "paragraph", content: [{ type: "text", text: texto }] });
@@ -68,7 +81,67 @@ function datosBase(): Map<string, Issue> {
   return m;
 }
 
-const PROYECTOS: Record<string, string> = { QTY: "Quality Tracker", BIG: "Proyecto grande", EXACTO: "Proyecto exacto", VACIO: "Proyecto vacío", ENORME: "Proyecto enorme" };
+const texto = (t: string, marks?: unknown[]) => ({ type: "text", text: t, ...(marks ? { marks } : {}) });
+const heading = (t: string, level = 2) => ({ type: "heading", attrs: { level }, content: [texto(t)] });
+const lista = (...items: string[]) => ({ type: "bulletList", content: items.map((i) => ({ type: "listItem", content: [parrafo(i)] })) });
+const docAdf = (...bloques: unknown[]) => ({ type: "doc", version: 1, content: bloques });
+
+/** 20 KB de ADF hostil: HTML ejecutable como texto, enlace `javascript:`, `media`, macros, tabla con `=cmd` y control. */
+function descripcionHostil(): unknown {
+  const relleno = Array.from({ length: 40 }, (_, i) => parrafo(`Línea ${i + 1}: ` + "x".repeat(480)));
+  return docAdf(
+    parrafo("<script>window.__xss = 1; document.title = 'xss'</script>"),
+    parrafo("<b>negrita</b> y <img src=x onerror=\"window.__xss=2\"> y <a href=\"javascript:alert(1)\">enlace html</a>"),
+    { type: "paragraph", content: [texto("enlace javascript", [{ type: "link", attrs: { href: "javascript:alert(3)" } }]), texto(" y "), texto("enlace http", [{ type: "link", attrs: { href: "https://ejemplo.test/ok" } }])] },
+    { type: "mediaSingle", attrs: { layout: "center" }, content: [{ type: "media", attrs: { id: "abc", type: "file", collection: "x" } }] },
+    { type: "bodiedExtension", attrs: { extensionType: "com.atlassian.confluence.macro.core", extensionKey: "code" }, content: [parrafo("contenido de la macro")] },
+    { type: "table", content: [{ type: "tableRow", content: [
+      { type: "tableHeader", content: [parrafo("Campo")] }, { type: "tableHeader", content: [parrafo("Valor")] }] },
+      { type: "tableRow", content: [{ type: "tableCell", content: [parrafo("=cmd|' /C calc'!A0")] }, { type: "tableCell", content: [parrafo("fin")] }] }] },
+    { type: "orderedList", content: [{ type: "listItem", content: [parrafo("primero")] }, { type: "listItem", content: [parrafo("segundo")] }] },
+    parrafo("control\u0007\u0000 incluido"),
+    ...relleno,
+  );
+}
+
+/** Issues del detalle de E5 (QTY-15 a QTY-18); se cargan con `POST /__detalle` para no mover los conteos de QTY de las pruebas certificadas. */
+function datosDetalle(): Issue[] {
+  const hostil: Issue = { ...crearIssue("QTY-15", "Story", "Detalle hostil con 20 KB", descripcionHostil(), "High", [{ name: "E5 Sprint 2", state: "active", startDate: "2026-11-03T09:00:00.000Z", endDate: "2099-01-01T00:00:00.000Z" }]), labels: ["seguridad", "<b>html</b>"] };
+  const vacia: Issue = { ...crearIssue("QTY-16", "Story", "Detalle vacío", null, "Medium"), assignee: null, labels: [], created: null, updated: null, duedate: null, resolutiondate: null, parent: null, criterios: null };
+  const completa: Issue = {
+    ...crearIssue("QTY-17", "Story", "Detalle completo con doble factor", docAdf(parrafo("Como usuario quiero activar un segundo factor."), lista("Debe enviar un código", "Debe expirar en 5 minutos")), "Highest", [
+      { name: "E5 Sprint Pasado", state: "closed", startDate: "2026-09-01T09:00:00.000Z", endDate: "2026-09-15T18:00:00.000Z" },
+      { name: "E5 Sprint 2", state: "active", startDate: "2026-11-03T09:00:00.000Z", endDate: "2099-01-01T00:00:00.000Z" },
+      { name: "E5 Sprint 3", state: "future", startDate: "2099-01-02T09:00:00.000Z" },
+    ]),
+    assignee: "Rosa Pérez",
+    labels: Array.from({ length: 25 }, (_, i) => `etiqueta-${i + 1}`),
+    created: "2026-10-01T10:00:00.000-0300",
+    updated: "2026-11-04T18:30:00.000-0300",
+    duedate: "2026-12-15",
+    resolutiondate: "2026-11-20T12:00:00.000-0300",
+    parent: { key: "QTY-100", summary: "Autenticación", tipo: "Epic", nivel: 1 },
+    criterios: docAdf(parrafo("Dado un usuario con 2FA activo"), parrafo("Cuando ingresa un código vencido"), parrafo("Entonces ve el error y puede pedir otro")),
+  };
+  const conEncabezado: Issue = {
+    ...crearIssue("QTY-18", "Story", "Criterios solo en la descripción", docAdf(
+      parrafo("Contexto de la historia."),
+      heading("Criterios de aceptación"),
+      lista("El botón queda deshabilitado sin datos", "El error se anuncia por voz"),
+      heading("Notas técnicas"),
+      parrafo("Nada que ver con los criterios."),
+    ), "Low"),
+  };
+  return [hostil, vacia, completa, conEncabezado];
+}
+
+/** Proyecto `PESADO` (100 issues con 20 KB de descripción) para medir el peso de la página y la tanda con Jira lento (E5-B06 #8). */
+function datosPesados(): Issue[] {
+  const grande = docAdf(...Array.from({ length: 40 }, (_, i) => parrafo(`Párrafo ${i + 1}: ` + "p".repeat(480))));
+  return Array.from({ length: 100 }, (_, n) => ({ ...crearIssue(`PESADO-${n + 1}`, "Story", `Historia pesada ${n + 1}`, grande, "Medium"), created: "2026-10-01T10:00:00.000-0300", updated: "2026-11-04T18:30:00.000-0300" }));
+}
+
+const PROYECTOS: Record<string, string> = { QTY: "Quality Tracker", BIG: "Proyecto grande", EXACTO: "Proyecto exacto", VACIO: "Proyecto vacío", ENORME: "Proyecto enorme", PESADO: "Proyecto pesado" };
 
 export interface JiraFalso {
   puerto: number;
@@ -80,6 +153,8 @@ export async function iniciarJiraFalso(puerto = Number(process.env.JIRA_FALSO_PU
   let modo: ModoJira = "NORMAL";
   let busquedas = 0;
   let solicitudes: SolicitudRegistrada[] = [];
+  /** `/field` lista «Acceptance Criteria» (D199); `POST /__campos {criterios:false}` lo quita para probar el sitio sin ese campo. */
+  let criteriosEnField = true;
 
   const dormir = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
   const numero = (key: string) => Number(key.slice(key.lastIndexOf("-") + 1));
@@ -94,11 +169,15 @@ export async function iniciarJiraFalso(puerto = Number(process.env.JIRA_FALSO_PU
   }
 
   const json = (res: ServerResponse, estado: number, cuerpo: unknown, cab: Record<string, string> = {}) => {
+    const texto = JSON.stringify(cuerpo);
+    const ultima = solicitudes[solicitudes.length - 1];
+    if (ultima && ultima.bytes === undefined) ultima.bytes = Buffer.byteLength(texto, "utf8");
     res.writeHead(estado, { "Content-Type": "application/json", ...cab });
-    res.end(JSON.stringify(cuerpo));
+    res.end(texto);
   };
 
-  function issueJson(i: Issue, campoSprint: string) {
+  function issueJson(i: Issue, campoSprint: string, pedidos: Set<string>) {
+    const pide = (campo: string) => pedidos.has(campo);
     return {
       id: String(numero(i.key)),
       key: i.key,
@@ -110,7 +189,14 @@ export async function iniciarJiraFalso(puerto = Number(process.env.JIRA_FALSO_PU
         status: { name: i.status },
         assignee: i.assignee === null ? null : { displayName: i.assignee },
         labels: i.labels ?? [],
-        [campoSprint]: i.sprints.length === 0 ? null : i.sprints.map((s, idx) => ({ id: idx + 1, name: s.name, state: s.state, ...(s.endDate ? { endDate: s.endDate } : {}) })),
+        [campoSprint]: i.sprints.length === 0 ? null : i.sprints.map((s, idx) => ({ id: idx + 1, name: s.name, state: s.state, ...(s.startDate ? { startDate: s.startDate } : {}), ...(s.endDate ? { endDate: s.endDate } : {}) })),
+        // Como Jira, solo lo que el `fields` de la búsqueda pide (si no, no viajan ni pesan).
+        ...(pide("created") ? { created: i.created ?? null } : {}),
+        ...(pide("updated") ? { updated: i.updated ?? null } : {}),
+        ...(pide("duedate") ? { duedate: i.duedate ?? null } : {}),
+        ...(pide("resolutiondate") ? { resolutiondate: i.resolutiondate ?? null } : {}),
+        ...(pide("parent") ? { parent: i.parent ? { key: i.parent.key, fields: { summary: i.parent.summary, issuetype: { name: i.parent.tipo, ...(i.parent.nivel !== undefined ? { hierarchyLevel: i.parent.nivel } : {}) } } } : undefined } : {}),
+        ...(pide(CAMPO_CRITERIOS) ? { [CAMPO_CRITERIOS]: i.criterios ?? null } : {}),
       },
     };
   }
@@ -128,10 +214,11 @@ export async function iniciarJiraFalso(puerto = Number(process.env.JIRA_FALSO_PU
     const inicio = token ? Number(Buffer.from(token, "base64url").toString("utf8")) : 0;
     const max = Math.min(Number(consulta.get("maxResults") ?? 50), 50);
     const pagina = lista.slice(inicio, inicio + max);
-    const campoSprint = (consulta.get("fields") ?? "").split(",").find((f) => f.startsWith("customfield_")) ?? "customfield_10020";
+    const pedidos = new Set((consulta.get("fields") ?? "").split(",").map((f) => f.trim()).filter(Boolean));
+    const campoSprint = [...pedidos].find((f) => f.startsWith("customfield_") && f !== CAMPO_CRITERIOS) ?? "customfield_10020";
     const hayMas = inicio + max < lista.length;
     return {
-      issues: pagina.map((i) => issueJson(i, campoSprint)),
+      issues: pagina.map((i) => issueJson(i, campoSprint, pedidos)),
       ...(hayMas ? { nextPageToken: Buffer.from(String(inicio + max)).toString("base64url") } : {}),
       isLast: !hayMas,
     };
@@ -159,7 +246,20 @@ export async function iniciarJiraFalso(puerto = Number(process.env.JIRA_FALSO_PU
         modo = "NORMAL";
         busquedas = 0;
         solicitudes = [];
+        criteriosEnField = true;
         return json(res, 200, { ok: true });
+      }
+      // Detalle de E5: QTY-15 a QTY-18 y el proyecto PESADO (100 issues de 20 KB) se cargan a pedido.
+      if (ruta === "/__detalle" && req.method === "POST") {
+        const d = JSON.parse(cuerpoCrudo || "{}") as { pesado?: boolean };
+        for (const i of datosDetalle()) issues.set(i.key, i);
+        if (d.pesado) for (const i of datosPesados()) issues.set(i.key, i);
+        return json(res, 200, { ok: true });
+      }
+      if (ruta === "/__campos" && req.method === "POST") {
+        const d = JSON.parse(cuerpoCrudo || "{}") as { criterios?: boolean };
+        criteriosEnField = d.criterios !== false;
+        return json(res, 200, { criterios: criteriosEnField });
       }
       if (ruta === "/__solicitudes" && req.method === "GET") return json(res, 200, solicitudes);
       if (ruta === "/__solicitudes" && req.method === "DELETE") {
@@ -178,6 +278,14 @@ export async function iniciarJiraFalso(puerto = Number(process.env.JIRA_FALSO_PU
           ...(d.priority !== undefined ? { priority: d.priority } : {}),
           ...(d.sprints !== undefined ? { sprints: d.sprints } : {}),
           ...(d.labels !== undefined ? { labels: d.labels } : {}),
+          ...(d.status !== undefined ? { status: d.status } : {}),
+          ...(d.assignee !== undefined ? { assignee: d.assignee } : {}),
+          ...(d.created !== undefined ? { created: d.created } : {}),
+          ...(d.updated !== undefined ? { updated: d.updated } : {}),
+          ...(d.duedate !== undefined ? { duedate: d.duedate } : {}),
+          ...(d.resolutiondate !== undefined ? { resolutiondate: d.resolutiondate } : {}),
+          ...(d.parent !== undefined ? { parent: d.parent } : {}),
+          ...(d.criterios !== undefined ? { criterios: d.criterios } : {}),
         });
         return json(res, 200, { ok: true });
       }
@@ -223,6 +331,7 @@ export async function iniciarJiraFalso(puerto = Number(process.env.JIRA_FALSO_PU
       return json(res, 200, [
         { id: "summary", name: "Summary", custom: false },
         { id: "customfield_10020", name: "Sprint", schema: { type: "array", items: "json", custom: "com.pyxis.greenhopper.jira:gh-sprint", customId: 10020 } },
+        ...(criteriosEnField ? [{ id: CAMPO_CRITERIOS, name: "Acceptance Criteria", custom: true, schema: { type: "string", custom: "com.atlassian.jira.plugin.system.customfieldtypes:textarea", customId: 10050 } }] : []),
       ]);
     }
     if (esBusqueda) return json(res, 200, buscar(url.searchParams));

@@ -1,7 +1,7 @@
 import { useEffect, useRef } from "react";
 import { Link } from "react-router-dom";
 import { formatearFecha } from "@/lib/formato";
-import { textoDescartadas, titularConfirmacion } from "@/lib/mensajesAsignacion";
+import { textoDescartadas, textoLoteYaCreadas, titularConfirmacion } from "@/lib/mensajesAsignacion";
 import { RUTAS_INTEGRACIONES } from "@/lib/rutasIntegraciones";
 import { formatearDuracion } from "@/lib/textosEjecucion";
 import type { Ejecucion } from "@/types/dominio";
@@ -14,7 +14,7 @@ interface Props {
   /** Filas sin marcar que la consulta descartó al confirmar (0 mientras sigue abierta). */
   descartadas: number;
   /** Cómo se repartían al confirmar, si se sabe (solo la sesión que confirmó). */
-  tipoDescartadas: { nuevas: number; cambios: number } | null;
+  tipoDescartadas: { nuevas: number; cambios: number; yaCreadas?: number } | null;
 }
 
 /** Resultado de una confirmación (diseño §6.3): cifras de la ejecución de fase `CONFIRMACION` y las cuatro listas con su asignación. */
@@ -39,6 +39,11 @@ export function ResultadoConfirmacion({ ejecucion, descartadas, tipoDescartadas 
         </Link>
       </div>
       {titular ? <p role="status">{titular}</p> : null}
+      {tipoDescartadas?.yaCreadas ? (
+        <p className="campo-ayuda" data-testid="texto-ya-creadas">
+          {textoLoteYaCreadas(tipoDescartadas.yaCreadas)}
+        </p>
+      ) : null}
       <ResumenEjecucion ejecucion={ejecucion} />
       {descartadas > 0 ? (
         <p className="campo-ayuda" data-testid="texto-descartadas">

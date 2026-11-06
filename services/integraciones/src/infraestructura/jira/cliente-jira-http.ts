@@ -9,16 +9,21 @@
 import { validarSitio } from '../../dominio/mapeo/sitio.js';
 import { PATRON_CODIGO } from '../../dominio/mapeo/tipos.js';
 import type {
-  CodigoErrorJira, CredencialJira, EventoEspera, FuenteJira, IssueJira, OpcionesLlamada,
-  PaginaJira, ResultadoJira, SprintJira,
+  CamposDetectados, CodigoErrorJira, CredencialJira, EventoEspera, FuenteJira, IssueJira, OpcionesLlamada,
+  PaginaJira, PadreJira, ResultadoJira, SprintJira,
 } from '../../dominio/puertos/fuente-jira.js';
 
 export const TAMANO_PAGINA = 50;
+/** Rango admitido para `INTEGRACIONES_JIRA_TAMANO_PAGINA` (D196): fuera de él se usa `TAMANO_PAGINA`. */
+export const TAMANO_PAGINA_MIN = 10;
+export const TAMANO_PAGINA_MAX = 100;
 const REINTENTOS_429 = 2;
 const PATRON_PROYECTO = /^[A-Z][A-Z0-9_]{1,9}$/;
 const PATRON_CAMPO = /^customfield_[0-9]{1,9}$/;
 const CAMPO_SPRINT_SCHEMA = 'com.pyxis.greenhopper.jira:gh-sprint';
 const TIPO_MAX = 60;
+/** Nombres del campo personalizado de criterios de aceptación (D199), sin tildes ni mayúsculas. */
+const NOMBRES_CRITERIOS = ['acceptance criteria', 'criterios de aceptacion'];
 
 /** Un valor que el llamador debió validar antes (error de programación, no de Jira). */
 export class ParametroJiraInvalido extends Error {
@@ -34,6 +39,13 @@ export interface DependenciasCliente {
   permitirHostPrueba?: boolean;
   dormir?: (ms: number) => Promise<void>;
   ahora?: () => Date;
+  /** Issues por página (D196). Entre 10 y 100; fuera de rango o ausente, 50. */
+  tamanoPagina?: number;
+}
+
+/** El tamaño de página efectivo: el pedido si es un entero entre 10 y 100; si no, 50. */
+export function tamanoPaginaEfectivo(valor: number | undefined): number {
+  return typeof valor === 'number' && Number.isInteger(valor) && valor >= TAMANO_PAGINA_MIN && valor <= TAMANO_PAGINA_MAX ? valor : TAMANO_PAGINA;
 }
 
 type Respuesta =
@@ -48,8 +60,10 @@ export class ClienteJiraHttp implements FuenteJira {
   private readonly permitirHostPrueba: boolean;
   private readonly dormir: (ms: number) => Promise<void>;
   private readonly ahora: () => Date;
+  private readonly tamanoPagina: number;
 
   constructor(d: DependenciasCliente = {}) {
+    this.tamanoPagina = tamanoPaginaEfectivo(d.tamanoPagina);
     this.http = d.fetch ?? globalThis.fetch.bind(globalThis);
     this.permitirHostPrueba = d.permitirHostPrueba === true;
     this.dormir = d.dormir ?? ((ms) => new Promise((r) => setTimeout(r, ms)));
@@ -75,32 +89,45 @@ export class ClienteJiraHttp implements FuenteJira {
     return exito({ usuarioJira, proyecto: { clave, nombre } }, eventos);
   }
 
+  /** Delega en `detectarCampos`: la misma llamada a `/field`, solo con el campo Sprint (la firma no cambia). */
   async detectarCampoSprint(c: CredencialJira, o: OpcionesLlamada): Promise<ResultadoJira<string | null>> {
+    const r = await this.detectarCampos(c, o);
+    return r.ok ? exito(r.valor.sprint, r.eventos) : r;
+  }
+
+  /** Una sola llamada a `GET /rest/api/3/field`: el campo Sprint y el de Criterios de aceptación (D199). */
+  async detectarCampos(c: CredencialJira, o: OpcionesLlamada): Promise<ResultadoJira<CamposDetectados>> {
     const eventos: EventoEspera[] = [];
     const r = await this.pedir(c, '/rest/api/3/field', null, o, 'sitio', eventos);
     if (!r.ok) return r;
     if (!Array.isArray(r.json)) return fallo('JIRA_RESPUESTA_INVALIDA', eventos);
-    const candidatos: { id: string; nombre: string | null }[] = [];
+    const sprints: { id: string; nombre: string | null }[] = [];
+    const criterios: { id: string; orden: number }[] = [];
     for (const campo of r.json) {
       const f = objeto(campo);
       const id = texto(f?.id);
       if (id === null || !PATRON_CAMPO.test(id)) continue;
-      if (texto(objeto(f?.schema)?.custom) === CAMPO_SPRINT_SCHEMA) candidatos.push({ id, nombre: texto(f?.name) });
+      if (texto(objeto(f?.schema)?.custom) === CAMPO_SPRINT_SCHEMA) sprints.push({ id, nombre: texto(f?.name) });
+      const nombre = texto(f?.name);
+      const orden = nombre === null ? -1 : NOMBRES_CRITERIOS.indexOf(normalizarNombre(nombre));
+      if (orden >= 0) criterios.push({ id, orden });
     }
-    const elegido = candidatos.find((x) => x.nombre === 'Sprint') ?? candidatos[0];
-    return exito(elegido?.id ?? null, eventos);
+    const sprint = sprints.find((x) => x.nombre === 'Sprint') ?? sprints[0];
+    // «Acceptance Criteria» gana sobre «Criterios de aceptación»; entre iguales, el primero que Jira lista.
+    const criterio = [...criterios].sort((a, b) => a.orden - b.orden)[0];
+    return exito({ sprint: sprint?.id ?? null, criterios: criterio?.id ?? null }, eventos);
   }
 
   async buscarPagina(
     c: CredencialJira,
-    q: { proyecto: string; tipos: string[]; despuesDe?: string; nextPageToken?: string; campoSprint: string | null },
+    q: { proyecto: string; tipos: string[]; despuesDe?: string; nextPageToken?: string; campoSprint: string | null; campoCriterios?: string | null },
     o: OpcionesLlamada,
   ): Promise<ResultadoJira<PaginaJira>> {
     const eventos: EventoEspera[] = [];
     const parametros = new URLSearchParams({
       jql: armarJql(q.proyecto, q.tipos, q.despuesDe),
-      maxResults: String(TAMANO_PAGINA),
-      fields: camposPedidos(q.campoSprint),
+      maxResults: String(this.tamanoPagina),
+      fields: camposPedidos(q.campoSprint, q.campoCriterios ?? null),
     });
     if (q.nextPageToken !== undefined) {
       this.exigir(q.nextPageToken.length > 0 && q.nextPageToken.length <= 4000, 'nextPageToken');
@@ -113,7 +140,7 @@ export class ClienteJiraHttp implements FuenteJira {
     if (cuerpo === null || !Array.isArray(cuerpo.issues)) return fallo('JIRA_RESPUESTA_INVALIDA', eventos);
     const issues: IssueJira[] = [];
     for (const bruta of cuerpo.issues) {
-      const issue = leerIssue(bruta, q.campoSprint);
+      const issue = leerIssue(bruta, q.campoSprint, q.campoCriterios ?? null);
       if (issue === null) return fallo('JIRA_RESPUESTA_INVALIDA', eventos);
       issues.push(issue);
     }
@@ -218,18 +245,47 @@ export function armarJql(proyecto: string, tipos: string[], despuesDe?: string):
   return `${jql} ORDER BY key ASC`;
 }
 
-function camposPedidos(campoSprint: string | null): string {
+/** `fields` de la búsqueda (D196): el detalle viaja en la misma llamada, sin `GET /issue/{clave}` ni `expand`. */
+export const CAMPOS_BASE = ['summary', 'description', 'priority', 'issuetype', 'status', 'assignee', 'labels', 'created', 'updated', 'duedate', 'resolutiondate', 'parent'] as const;
+
+function camposPedidos(campoSprint: string | null, campoCriterios: string | null): string {
   if (campoSprint !== null && !PATRON_CAMPO.test(campoSprint)) throw new ParametroJiraInvalido('campoSprint');
-  const base = ['summary', 'description', 'priority', 'issuetype', 'status', 'assignee', 'labels'];
-  return (campoSprint === null ? base : [...base, campoSprint]).join(',');
+  if (campoCriterios !== null && !PATRON_CAMPO.test(campoCriterios)) throw new ParametroJiraInvalido('campoCriterios');
+  const campos: string[] = [...CAMPOS_BASE];
+  if (campoSprint !== null) campos.push(campoSprint);
+  if (campoCriterios !== null && campoCriterios !== campoSprint) campos.push(campoCriterios);
+  return campos.join(',');
 }
 
-function leerIssue(bruta: unknown, campoSprint: string | null): IssueJira | null {
+function normalizarNombre(nombre: string): string {
+  return nombre.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/\s+/g, ' ').trim();
+}
+
+/** El padre de la issue; solo es épica si Jira lo dice (nivel 1 de la jerarquía o tipo «Epic»/«Épica»). */
+function leerPadre(valor: unknown): PadreJira | null {
+  const p = objeto(valor);
+  const clave = texto(p?.key);
+  if (p === null || clave === null) return null;
+  const campos = objeto(p.fields);
+  const tipo = objeto(campos?.issuetype);
+  const nombreTipo = texto(tipo?.name);
+  const nivel = tipo?.hierarchyLevel;
+  const esEpica = nivel === 1 || (nombreTipo !== null && ['epic', 'epica'].includes(normalizarNombre(nombreTipo)));
+  return { clave, titulo: typeof campos?.summary === 'string' ? campos.summary : null, esEpica };
+}
+
+function leerIssue(bruta: unknown, campoSprint: string | null, campoCriterios: string | null): IssueJira | null {
   const issue = objeto(bruta);
   const clave = texto(issue?.key);
   const campos = objeto(issue?.fields);
   if (issue === null || clave === null || campos === null) return null;
   return {
+    ...(texto(campos.created) === null ? {} : { creada: texto(campos.created) }),
+    ...(texto(campos.updated) === null ? {} : { actualizada: texto(campos.updated) }),
+    ...(texto(campos.duedate) === null ? {} : { vencimiento: texto(campos.duedate) }),
+    ...(texto(campos.resolutiondate) === null ? {} : { resolucion: texto(campos.resolutiondate) }),
+    ...(leerPadre(campos.parent) === null ? {} : { padre: leerPadre(campos.parent) }),
+    ...(campoCriterios === null || campos[campoCriterios] === undefined || campos[campoCriterios] === null ? {} : { criteriosAdf: campos[campoCriterios] }),
     clave,
     tipo: texto(objeto(campos.issuetype)?.name) ?? '',
     titulo: typeof campos.summary === 'string' ? campos.summary : null,
@@ -253,7 +309,8 @@ function leerSprints(valor: unknown): SprintJira[] {
     const nombre = texto(o?.name);
     const estado = typeof o?.state === 'string' ? o.state.toLowerCase() : '';
     if (nombre === null || (estado !== 'active' && estado !== 'future' && estado !== 'closed')) continue;
-    salida.push({ nombre, estado, fin: texto(o?.endDate) ?? texto(o?.completeDate) });
+    const inicio = texto(o?.startDate);
+    salida.push({ nombre, estado, fin: texto(o?.endDate) ?? texto(o?.completeDate), ...(inicio === null ? {} : { inicio }) });
   }
   return salida;
 }

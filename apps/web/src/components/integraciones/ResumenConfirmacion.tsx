@@ -1,4 +1,5 @@
-import { TEXTO_MARCA_AL_MENOS_UNA, textoBotonConfirmar, textoResumenConfirmacion } from "@/lib/mensajesAsignacion";
+import { conteoParaLote } from "@/lib/conteosConsulta";
+import { TEXTO_COEXISTENCIA_LOTE, TEXTO_MARCA_AL_MENOS_UNA, textoBotonConfirmar, textoResumenConfirmacion } from "@/lib/mensajesAsignacion";
 import type { Consulta } from "@/types/dominio";
 
 interface Props {
@@ -7,15 +8,16 @@ interface Props {
   onConfirmar: () => void;
 }
 
-/** Resumen previo a confirmar (diseño §6.1): contadores en vivo, texto fijo y `boton-confirmar` con N = nuevas + cambios incluidos. */
+/**
+ * Resumen previo a confirmar (diseño §6.1 y detalle §4.4): contadores en vivo, texto fijo y `boton-confirmar`
+ * («Confirmar marcadas (N)») con N = nuevas + cambios incluidos, sin contar las HDU ya creadas una a una (D203).
+ */
 export function ResumenConfirmacion({ consulta, ocupado, onConfirmar }: Props) {
-  const crear = consulta.marcadasNuevas;
-  const actualizar = consulta.marcadasCambio;
-  const total = crear + actualizar;
+  const { crear, actualizar, total } = conteoParaLote(consulta);
   const items = [
     { clave: "a-crear", titulo: "HDU nuevas a crear", valor: crear },
     { clave: "a-actualizar", titulo: "HDU a actualizar", valor: actualizar },
-    { clave: "sin-incluir-nuevas", titulo: "Nuevas sin incluir", valor: consulta.nuevas - crear },
+    { clave: "sin-incluir-nuevas", titulo: "Nuevas sin incluir", valor: consulta.nuevas - consulta.marcadasNuevas },
     { clave: "sin-incluir-cambios", titulo: "Cambios sin incluir", valor: consulta.cambiaron - actualizar },
   ];
   return (
@@ -32,6 +34,9 @@ export function ResumenConfirmacion({ consulta, ocupado, onConfirmar }: Props) {
         ))}
       </dl>
       <p data-testid="texto-confirmacion">{textoResumenConfirmacion(crear, actualizar)}</p>
+      <p className="campo-ayuda" data-testid="texto-coexistencia">
+        {TEXTO_COEXISTENCIA_LOTE}
+      </p>
       <div className="acciones-formulario">
         <button
           type="button"

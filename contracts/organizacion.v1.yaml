@@ -30,6 +30,11 @@ info:
       usuario (nunca con la credencial de servicio). Consulta de Jira (D136,
       D138, D151): lee con `POST /v1/interno/integraciones/hdu/estado-codigos`
       y valida con `POST /v1/interno/integraciones/asignaciones/validar`.
+      Detalle y confirmación por HDU (D201, D202, D204, ADR 0018): esas dos
+      lecturas suman el Analista de la HDU existente y la propuesta del
+      Analista único del QE; el upsert informa `existente` para el bloqueo
+      `HDU_YA_ASIGNADA` y la idempotencia. **Sin migración**: se lee
+      `supervision` (vigente = `fecha_hasta IS NULL`) y la auditoría.
 
     **Reglas que aplica en cada solicitud**
     - Identidad desde el token verificado (`sub`); rol y `activo` desde su base
@@ -427,8 +432,11 @@ paths:
         No escribe ni audita. Solo Administrador activo; la credencial de
         servicio → 403. Un código con formato inválido se responde `existe:
         false` (la regla de formato la aplica Integraciones al mapear).
+        Desde D204 suma `analista` (nombre del Analista asignado o `null`):
+        con `qeResponsable` es la alerta «Esta HDU ya fue asignada a <QE> /
+        <Analista>».
       x-roles: [ADMINISTRADOR]
-      x-hdu: [E5-B02#4, E5-B05#2]
+      x-hdu: [E5-B02#4, E5-B02#6, E5-B05#2, E5-B07#6]
       requestBody:
         required: true
         content:
@@ -473,8 +481,18 @@ paths:
         `respaldoId` si es de la célula (`RESPALDO`); si no, ninguno. Responde
         200 aunque haya errores. Solo Administrador activo; la credencial de
         servicio → 403.
+
+        **Analista único (D201).** Con `proponerAnalista: true`,
+        `qeResponsableId` válido y sin `analistaId`: cuenta los usuarios con
+        rol Analista QA y `activo` cuya `supervision` con ese QE está vigente
+        (`fecha_hasta IS NULL`; el índice único del analista vigente, D190,
+        garantiza un solo QE por analista). Devuelve `analistasActivos` y,
+        solo si es exactamente 1, `analistaPropuesto`. Un supervisado
+        inactivo o una supervisión cerrada no cuentan. Es la misma regla que
+        filtra `GET /v1/catalogos/personas?supervisorId=` (D147); ambas usan
+        una sola consulta del repositorio de supervisión.
       x-roles: [ADMINISTRADOR]
-      x-hdu: [E5-F05#4, E5-F05#11, E5-B05#4, E5-B05#8]
+      x-hdu: [E5-F05#4, E5-F05#11, E5-B05#4, E5-B05#8, E5-F07#2, E5-F07#3, E5-F07#8, E5-B07#1, E5-B07#2, E5-B07#3, E5-B07#10]
       requestBody:
         required: true
         content:
@@ -562,8 +580,20 @@ paths:
           descripción y prioridad (`ACTUALIZAR_HDU` con antes y después);
           una `MANUAL` pasa a `JIRA` con `claveExterna` y `urlExterna`. Si
           la HDU no existe → `ERROR` `ERROR_INTERNO`.
+
+        **Existente e idempotencia (D202, D204).** En `CREAR`, cuando el
+        código ya existe (antes de insertar o por la unicidad de
+        `codigo_normalizado` al insertar), la fila responde `OMITIDA`
+        `HDU_CREADA_DESPUES` **con `existente`**: id, nombre del QE
+        responsable y del Analista **actuales**, `creadaPorEstaConsulta`
+        (la auditoría `CREAR_HDU` de esa HDU lleva el `consultaId` de la
+        solicitud) y `creadaPorActor` (y su actor es el usuario del token).
+        No se escribe ni se audita nada en ese caso. El upsert sigue siendo
+        de lote y nunca responde 409 por una fila: Integraciones traduce
+        `existente` a 200 `repetida` o a 409 `HDU_YA_ASIGNADA`. Sirve igual
+        para el lote y para la confirmación de una sola fila (lote de 1).
       x-roles: [ADMINISTRADOR]
-      x-hdu: [E5-B02#1, E5-B03#2, E5-B03#3, E5-B05#6, E5-B05#7, E5-B05#9]
+      x-hdu: [E5-B02#1, E5-B03#2, E5-B03#3, E5-B05#6, E5-B05#7, E5-B05#9, E5-B07#4, E5-B07#7, E5-B07#8, E5-B07#11]
       requestBody:
         required: true
         content:
@@ -1706,7 +1736,7 @@ paths:
         analistas en su equipo»). Un `supervisorId` que no es QE activo → 422
         `QE_INVALIDO`.
       x-roles: [ADMINISTRADOR]
-      x-hdu: [E7-B05#1, E5-F01#1, E5-F05#4, E5-B05#4]
+      x-hdu: [E7-B05#1, E5-F01#1, E5-F05#4, E5-B05#4, E5-F07#1, E5-F07#3]
       parameters:
         - name: supervisorId
           in: query
@@ -1875,7 +1905,7 @@ paths:
       summary: Detalle de una HDU (sin checklist)
       description: Fuera de ámbito, o inexistente para QE, Analista QA y Líder QA, → 403. Inexistente para Administrador o Auditor → 404. El gateway agrega el bloque `checklist`. Para Líder QA y Auditor, `permisos` y `transicionesPermitidas` vienen en `false` y vacío (D39). Desde E5 (D108, D124) trae además `descripcion`, `origen`, `claveExterna` y `urlExterna`.
       x-roles: [ADMINISTRADOR, QE, ANALISTA_QA, LIDER_QA, AUDITOR]
-      x-hdu: [E1-B02#2, E2-F04#1, E2-F04#2, E2-B03#1, E2-B03#2, E7-B02#1, E7-B02#2, E5-F02#1, E5-B02#1]
+      x-hdu: [E1-B02#2, E2-F04#1, E2-F04#2, E2-B03#1, E2-B03#2, E7-B02#1, E7-B02#2, E5-F02#1, E5-B02#1, E5-F07#5]
       responses:
         '200':
           description: Detalle de la HDU.

@@ -36,9 +36,9 @@ export function leerFixture(nombre: string): string {
 /** Registro (stdout/stderr) de `npm run local`, donde caen los logs de todos los servicios. */
 export function registroServicios(): string {
   // Fuera de test-results: Playwright vacía esa carpeta en cada corrida.
-  const dir = path.join(RAIZ_REPO, "tests", "logs-e5");
+  const dir = path.join(RAIZ_REPO, "tests", process.env.LOGS_E5_DIR ?? "logs-e5");
   try {
-    return readdirSync(dir).filter((f) => /^(local-up|gateway-[0-9]+)\.log$/.test(f)).map((f) => readFileSync(path.join(dir, f), "utf8")).join(String.fromCharCode(10));
+    return readdirSync(dir).filter((f) => /^(local-up|gateway-[0-9]+|org|integ|gw|gw2|cert|imp|pgb-org|pgb-integ|pgb-gw|pgb-gwapi|pgb-imp)\.log$/.test(f)).map((f) => readFileSync(path.join(dir, f), "utf8")).join(String.fromCharCode(10));
   } catch {
     return "";
   }

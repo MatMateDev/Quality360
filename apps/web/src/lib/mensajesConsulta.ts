@@ -34,8 +34,9 @@ export function textoAsignadas(n: number): string {
 }
 
 /** Cuerpo del diálogo «Ya hay una consulta abierta» (datos de `ErrorConsultaAbierta`). */
-export function textoReemplazo(creadaPor: Pick<Persona, "nombre">, creadaEn: string, asignadas: number): string {
-  return `Ya hay una consulta abierta de ${creadaPor.nombre} del ${formatearFecha(creadaEn)} ${textoAsignadas(asignadas)}. Si la reemplazas, se pierden las asignaciones.`;
+export function textoReemplazo(creadaPor: Pick<Persona, "nombre">, creadaEn: string, asignadas: number, creadas = 0): string {
+  const conservadas = creadas > 0 ? ` ${creadas} HDU ya creadas se conservan.` : "";
+  return `Ya hay una consulta abierta de ${creadaPor.nombre} del ${formatearFecha(creadaEn)} ${textoAsignadas(asignadas)}. Si la reemplazas, se pierden las asignaciones.${conservadas}`;
 }
 
 /** «Jira pidió esperar 2 veces; se reintentó.» */

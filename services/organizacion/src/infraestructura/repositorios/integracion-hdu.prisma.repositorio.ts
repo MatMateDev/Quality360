@@ -13,6 +13,7 @@ import type { Actor, OrigenHdu } from '../../dominio/tipos.js';
 import { esErrorUnicidad } from '../prisma/errores-prisma.js';
 import { INCLUYE_ROL, aUsuarioDominio } from '../prisma/mapeadores.js';
 import { PrismaService } from '../prisma/prisma.service.js';
+import { leerCreacionDeHdu } from './auditoria.prisma.repositorio.js';
 import { crearHduEnTransaccion } from './hdu.prisma.repositorio.js';
 
 const SELECCION = { id: true, estado: true, origen: true, titulo: true, descripcion: true, prioridad: true } as const;
@@ -30,9 +31,24 @@ async function buscar(cliente: Cliente, codigoNormalizado: string): Promise<HduP
 
 /** Evita solicitar otra conexión mientras la transacción mantiene ocupada la única del pool. */
 function lecturasDeUnidad(cliente: Cliente): Pick<UnidadTrabajoUpsert,
-  'buscarPorCodigoNormalizado' | 'buscarCelulaPorNombre' | 'buscarSprintDeCelulaPorNombre' | 'buscarUsuarioPorCorreo'> {
+  'buscarPorCodigoNormalizado' | 'buscarCelulaPorNombre' | 'buscarSprintDeCelulaPorNombre' | 'buscarUsuarioPorCorreo' | 'describirExistente'> {
   return {
     buscarPorCodigoNormalizado: (codigoNormalizado) => buscar(cliente, codigoNormalizado),
+    async describirExistente(idHistoria, consultaId, actorId) {
+      const hdu = await cliente.hdu.findUnique({
+        where: { id: idHistoria },
+        select: { id: true, qeResponsable: { select: { nombre: true } }, analista: { select: { nombre: true } } },
+      });
+      if (hdu === null) return null;
+      const creacion = await leerCreacionDeHdu(cliente, idHistoria);
+      return {
+        idHistoria: hdu.id,
+        qe: hdu.qeResponsable.nombre,
+        analista: hdu.analista?.nombre ?? null,
+        creadaPorEstaConsulta: creacion?.consultaId === consultaId,
+        creadaPorActor: creacion?.actorId === actorId,
+      };
+    },
     buscarCelulaPorNombre: (nombre) => cliente.celula.findFirst({
       where: { nombre: { equals: nombre, mode: 'insensitive' } },
       select: { id: true, nombre: true },

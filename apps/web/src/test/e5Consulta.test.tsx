@@ -64,7 +64,7 @@ describe("E5-F02 · pestaña Consultar Jira", () => {
     expect(screen.queryByTestId("estado-vacio-consulta")).not.toBeInTheDocument();
     // Consultar no crea ni modifica HDU: sin nada marcado, confirmar queda deshabilitado.
     expect(screen.getByTestId("boton-confirmar")).toHaveAttribute("aria-disabled", "true");
-    expect(screen.getByTestId("boton-confirmar")).toHaveTextContent("Confirmar (0)");
+    expect(screen.getByTestId("boton-confirmar")).toHaveTextContent("Confirmar marcadas (0)");
   });
 
   it("«Revisar y asignar» mueve el foco a la consulta abierta [diseño §3.2]", async () => {

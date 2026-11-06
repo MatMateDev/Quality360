@@ -25,6 +25,8 @@ export function configuracionPrueba(organizacionUrl: string | null, cambios: Par
     enCursoMaxMs: 300_000,
     consultaVigenciaMs: 86_400_000,
     consultaTopeItems: 500,
+    jiraTamanoPagina: 50,
+    tomaFilaMs: 30_000,
     permitirHostPrueba: true,
     verificador: resolverOpcionesVerificador({ emisor: EMISOR, audiencia: AUDIENCIA, secretoHs256: SECRETO }),
     ...cambios,

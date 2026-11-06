@@ -119,7 +119,7 @@ describe("E5-F05 · asignación por fila", () => {
     expect(qes).not.toContain("Valentina Rojas");
     // Un QE sin analistas lo dice y bloquea la inclusión.
     await user.selectOptions(within(screen.getByTestId("fila-QTY-1")).getByTestId("selector-qe"), "Constanza Díaz");
-    expect(await screen.findByTestId("ayuda-sin-analistas")).toHaveTextContent("Este QE no tiene analistas en su equipo.");
+    expect(await screen.findByTestId("ayuda-sin-analistas")).toHaveTextContent("Este QE no supervisa analistas activos. Elige otro QE.");
     expect(within(screen.getByTestId("fila-QTY-1")).getByTestId("casilla-marcar")).toHaveAttribute("aria-disabled", "true");
   });
 
@@ -263,14 +263,14 @@ describe("E5-F05 · confirmar, descartar y vida de la consulta", () => {
     await user.selectOptions(within(panel).getByTestId("grupo-selector-analista"), "Jonathan Choque");
     await user.click(screen.getByTestId("boton-aplicar-grupo"));
     await waitFor(() => expect(screen.getByTestId("contador-incluidas")).toHaveTextContent("4"));
-    await waitFor(() => expect(screen.getByTestId("boton-confirmar")).toHaveTextContent("Confirmar (4)"));
+    await waitFor(() => expect(screen.getByTestId("boton-confirmar")).toHaveTextContent("Confirmar marcadas (4)"));
   }
 
   it("sin filas incluidas, confirmar está deshabilitado con su ayuda [E5-F05-T14]", async () => {
     await consultar();
     const boton = screen.getByTestId("boton-confirmar");
     expect(boton).toHaveAttribute("aria-disabled", "true");
-    expect(boton).toHaveTextContent("Confirmar (0)");
+    expect(boton).toHaveTextContent("Confirmar marcadas (0)");
     expect(screen.getByTestId("ayuda-confirmar")).toHaveTextContent("Marca al menos una fila");
     const user = userEvent.setup();
     await user.click(boton);

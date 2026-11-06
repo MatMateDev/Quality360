@@ -34,6 +34,7 @@ export function vistaEjecucion(e: Ejecucion) {
     hayMas: e.hayMas,
     continuarDesde: e.continuarDesde,
     fase: e.fase,
+    alcance: e.alcance,
     consultaId: e.consultaId,
     nuevas: e.nuevas,
     cambiaron: e.cambiaron,

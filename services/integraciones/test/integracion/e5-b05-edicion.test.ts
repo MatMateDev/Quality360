@@ -287,3 +287,168 @@ describe('E5-B05#13 · entradas hostiles', () => {
     assert.deepEqual([cerrada.status, cerrada.body.codigo], [410, 'CONSULTA_VENCIDA']);
   });
 });
+
+describe('E5-B07#1 a #3 · Analista único del QE (D201)', () => {
+  afterEach(() => {
+    org.equipos.set('qe1', new Set(['ana1']));
+    org.equipos.set('qe2', new Set(['ana3']));
+    org.inactivas.delete('ana3');
+    org.inactivas.delete('ana4');
+    org.versionAnterior = false;
+  });
+
+  type ItemB07 = Item & { analistaAuto: boolean; revision: number; aplicando: boolean };
+  const asignarQe = async (qe: 'qe1' | 'qe2') => {
+    const { id, f } = await consultaA();
+    const antes = await version(id);
+    const r = await patch(id, { itemIds: [f('QTY-1')], asignacion: { celulaId: CELULA_C.id, qeId: PERSONAS[qe].id } });
+    return { id, f, antes, r, fila: async () => ficha(await items(id, 'NUEVA'), 'QTY-1') as ItemB07 };
+  };
+
+  it('E5-B07-T01 con exactamente un Analista activo en el equipo vigente la fila queda con él, analistaAuto true; version y revision suben', async () => {
+    const { id, antes, r, fila } = await asignarQe('qe2');
+    assert.equal(r.status, 200);
+    const item = r.body.items[0];
+    assert.deepEqual([item.asignacion.analista.id, item.analistaAuto, item.revision, item.completa], [PERSONAS.ana3.id, true, 2, true]);
+    assert.equal(await version(id), antes + 1);
+    assert.deepEqual([(await fila()).analistaAuto, (await fila()).revision], [true, 2]);
+  });
+
+  it('E5-B07-T02 con 0, 2+ o ninguno activo queda vacío y sin error; con 1 activo y otros inactivos se asigna el activo; una supervisión cerrada no cuenta', async () => {
+    org.equipos.set('qe1', new Set(['ana1', 'ana4']));
+    const dos = await asignarQe('qe1');
+    assert.equal(dos.r.status, 200);
+    assert.deepEqual([dos.r.body.items[0].asignacion.analista, dos.r.body.items[0].analistaAuto, dos.r.body.items[0].asignacion.qeResponsable.id], [null, false, PERSONAS.qe1.id]);
+    await m.cerrar();
+
+    org.equipos.set('qe1', new Set());
+    const cero = await asignarQe('qe1');
+    assert.deepEqual([cero.r.status, cero.r.body.items[0].asignacion.analista, cero.r.body.items[0].analistaAuto], [200, null, false]);
+    await m.cerrar();
+
+    org.equipos.set('qe2', new Set(['ana3', 'ana4']));
+    org.inactivas.add('ana4');
+    const uno = await asignarQe('qe2');
+    assert.deepEqual([uno.r.body.items[0].asignacion.analista.id, uno.r.body.items[0].analistaAuto], [PERSONAS.ana3.id, true]);
+    await m.cerrar();
+
+    // Supervisión cerrada: el analista ya no está en el equipo vigente; el único activo era él.
+    org.equipos.set('qe2', new Set());
+    org.inactivas.delete('ana4');
+    const cerrada = await asignarQe('qe2');
+    assert.deepEqual([cerrada.r.body.items[0].asignacion.analista, cerrada.r.body.items[0].analistaAuto], [null, false]);
+  });
+
+  it('E5-B07-T03 un analistaId explícito se respeta y se valida como en D138; analistaAuto false', async () => {
+    const { id, f } = await consultaA();
+    const ok = await patch(id, { itemIds: [f('QTY-1')], asignacion: { celulaId: CELULA_C.id, qeId: PERSONAS.qe2.id, analistaId: PERSONAS.ana3.id } });
+    assert.deepEqual([ok.status, ok.body.items[0].analistaAuto], [200, false]);
+    const fuera = await patch(id, { itemIds: [f('QTY-2')], asignacion: { qeId: PERSONAS.qe2.id, analistaId: PERSONAS.ana1.id } });
+    assert.deepEqual([fuera.status, fuera.body.codigo, fuera.body.detalles[0].campo], [422, 'ANALISTA_FUERA_DE_EQUIPO', 'analistaId']);
+    org.inactivas.add('ana3');
+    const inactivo = await patch(id, { itemIds: [f('QTY-3')], asignacion: { qeId: PERSONAS.qe2.id, analistaId: PERSONAS.ana3.id } });
+    org.inactivas.delete('ana3');
+    assert.deepEqual([inactivo.status, inactivo.body.codigo], [422, 'ANALISTA_INVALIDO']);
+  });
+
+  it('elegir, limpiar o cambiar a un QE con 2+ analistas vuelve analistaAuto a false; tocar otra cosa lo conserva', async () => {
+    const { id, f } = await asignarQe('qe2');
+    // La célula cambia: el analista automático se conserva.
+    const celula = await patch(id, { itemIds: [f('QTY-1')], asignacion: { celulaId: CELULA_A.id } });
+    assert.deepEqual([celula.status, celula.body.items[0].analistaAuto, celula.body.items[0].asignacion.analista.id], [200, true, PERSONAS.ana3.id]);
+    await patch(id, { itemIds: [f('QTY-1')], asignacion: { celulaId: CELULA_C.id } });
+    // Elige al mismo analista: deja de ser automático (y la fila cambia: revision sube).
+    const antes = ficha(await items(id, 'NUEVA'), 'QTY-1') as ItemB07;
+    const mismo = await patch(id, { itemIds: [f('QTY-1')], asignacion: { analistaId: PERSONAS.ana3.id } });
+    assert.deepEqual([mismo.body.items[0].analistaAuto, mismo.body.items[0].revision], [false, antes.revision + 1]);
+    // Vuelve a automático con un QE de un solo analista, y lo limpia.
+    const otraVez = await patch(id, { itemIds: [f('QTY-1')], asignacion: { qeId: PERSONAS.qe1.id } });
+    assert.deepEqual([otraVez.body.items[0].asignacion.analista.id, otraVez.body.items[0].analistaAuto], [PERSONAS.ana1.id, true]);
+    const limpia = await patch(id, { itemIds: [f('QTY-1')], asignacion: { analistaId: null } });
+    assert.deepEqual([limpia.body.items[0].asignacion.analista, limpia.body.items[0].analistaAuto], [null, false]);
+    // A un QE con 2+ analistas.
+    org.equipos.set('qe2', new Set(['ana3', 'ana4']));
+    const dos = await patch(id, { itemIds: [f('QTY-1')], asignacion: { qeId: PERSONAS.qe2.id } });
+    assert.deepEqual([dos.body.items[0].asignacion.analista, dos.body.items[0].analistaAuto], [null, false]);
+  });
+
+  it('también aplica a la edición en grupo: cada fila queda con el único analista', async () => {
+    const { id } = await consultaA();
+    const r = await patch(id, { grupo: 'NUEVA', todas: true, asignacion: { celulaId: CELULA_C.id, qeId: PERSONAS.qe2.id } });
+    assert.equal(r.status, 200);
+    assert.equal(r.body.rechazadas.length, 0);
+    const lista = (await items(id, 'NUEVA')) as ItemB07[];
+    assert.equal(lista.length, r.body.aplicadas);
+    assert.ok(lista.every((i) => i.analistaAuto && i.asignacion?.analista?.id === PERSONAS.ana3.id));
+  });
+
+  it('con una Organización anterior (sin analistaPropuesto) el analista queda vacío y no hay error', async () => {
+    org.versionAnterior = true;
+    const { r } = await asignarQe('qe2');
+    assert.deepEqual([r.status, r.body.items[0].asignacion.analista, r.body.items[0].analistaAuto], [200, null, false]);
+  });
+});
+
+describe('E5-B07#6 · HDU ya asignada y fila en toma al editar (D202 f, D204)', () => {
+  type ItemB07 = Item & { analistaAuto: boolean; revision: number; aplicando: boolean };
+  const ya = (idHistoria: string) => `'{"idHistoria": "${idHistoria}", "qe": "Carla QE", "analista": null}'::jsonb`;
+
+  it('E5-B07-T06 una NUEVA con yaAsignada es 422 HDU_YA_ASIGNADA con la alerta y la fila; en grupo va a rechazadas; no se marca', async () => {
+    const { id, f } = await consultaA();
+    const hdu = '0b000000-0000-4000-8000-0000000000a1';
+    await consultaDuenio(`UPDATE integraciones.consulta_item SET ya_asignada = ${ya(hdu)}, id_historia = '${hdu}' WHERE id_item = '${f('QTY-1')}'`);
+    const unica = await patch(id, { itemIds: [f('QTY-1')], asignacion: { celulaId: CELULA_C.id } });
+    assert.deepEqual([unica.status, unica.body.codigo, unica.body.detalles[0].campo], [422, 'HDU_YA_ASIGNADA', 'itemId']);
+    assert.equal(unica.body.mensaje, 'Esta HDU ya fue asignada a Carla QE / sin Analista');
+    assert.deepEqual(unica.body.yaAsignada, { idHistoria: hdu, qe: 'Carla QE', analista: null });
+    assert.deepEqual([unica.body.item.id, unica.body.item.yaAsignada.idHistoria, unica.body.item.idHistoria], [f('QTY-1'), hdu, hdu]);
+    const marca = await patch(id, { itemIds: [f('QTY-1')], marcada: true });
+    assert.deepEqual([marca.status, marca.body.codigo], [422, 'FILA_NO_MARCABLE']);
+    const grupo = await patch(id, { grupo: 'NUEVA', todas: true, asignacion: { celulaId: CELULA_C.id } });
+    assert.equal(grupo.status, 200);
+    assert.deepEqual(grupo.body.rechazadas.map((x: { codigo: string; motivo: string }) => [x.codigo, x.motivo]), [['QTY-1', 'HDU_YA_ASIGNADA']]);
+    assert.equal(grupo.body.aplicadas, 9);
+  });
+
+  it('E5-B05-T11 / E5-B07-T06 CAMBIO y SIN_CAMBIOS con yaAsignada siguen en FILA_NO_ASIGNABLE; la marca de una CAMBIO se edita como hoy', async () => {
+    await listo();
+    org.agregarHdu({ codigo: 'QTY-1', titulo: 'Otro nombre', origen: 'JIRA', qeId: PERSONAS.qe1.id });
+    org.agregarHdu({ codigo: 'QTY-2', titulo: 'Historia QTY-2', descripcion: 'Descripción QTY-2', prioridad: 'MEDIA', origen: 'JIRA', qeId: PERSONAS.qe1.id });
+    const id = (await consultar()).body.consulta.id as string;
+    const cambio = ficha(await items(id, 'CAMBIO'), 'QTY-1');
+    const sin = ficha(await items(id, 'SIN_CAMBIOS'), 'QTY-2');
+    for (const fila of [cambio, sin]) {
+      const r = await patch(id, { itemIds: [fila.id], asignacion: { qeId: PERSONAS.qe2.id } });
+      assert.deepEqual([r.status, r.body.codigo], [422, 'FILA_NO_ASIGNABLE'], fila.codigo);
+    }
+    const marca = await patch(id, { itemIds: [cambio.id], marcada: true });
+    assert.deepEqual([marca.status, marca.body.items[0].marcada], [200, true]);
+  });
+
+  it('una fila con toma vigente responde FILA_EN_CURSO (422 con una fila, rechazadas en grupo); vencida la toma, se edita', async () => {
+    const { id, f } = await consultaA();
+    await consultaDuenio(`UPDATE integraciones.consulta_item SET aplicando_desde = now() WHERE id_item = '${f('QTY-1')}'`);
+    assert.equal((ficha(await items(id, 'NUEVA'), 'QTY-1') as ItemB07).aplicando, true);
+    const unica = await patch(id, { itemIds: [f('QTY-1')], asignacion: { celulaId: CELULA_C.id } });
+    assert.deepEqual([unica.status, unica.body.codigo], [422, 'FILA_EN_CURSO']);
+    const grupo = await patch(id, { grupo: 'NUEVA', todas: true, asignacion: { celulaId: CELULA_C.id } });
+    assert.deepEqual(grupo.body.rechazadas.map((x: { codigo: string; motivo: string }) => [x.codigo, x.motivo]), [['QTY-1', 'FILA_EN_CURSO']]);
+    await consultaDuenio(`UPDATE integraciones.consulta_item SET aplicando_desde = now() - interval '31 seconds' WHERE id_item = '${f('QTY-1')}'`);
+    assert.equal((ficha(await items(id, 'NUEVA'), 'QTY-1') as ItemB07).aplicando, false);
+    assert.equal((await patch(id, { itemIds: [f('QTY-1')], asignacion: { celulaId: CELULA_C.id } })).status, 200);
+  });
+
+  it('revision: nace en 1, sube con cada cambio de la fila y una edición que no cambia nada no la toca', async () => {
+    const { id, f } = await consultaA();
+    const rev = async () => (ficha(await items(id, 'NUEVA'), 'QTY-1') as ItemB07).revision;
+    assert.equal(await rev(), 1);
+    await patch(id, { itemIds: [f('QTY-1')], asignacion: { celulaId: CELULA_C.id } });
+    assert.equal(await rev(), 2);
+    await patch(id, { itemIds: [f('QTY-1')], asignacion: { celulaId: CELULA_C.id } });
+    assert.equal(await rev(), 2, 'la misma edición no cambia la fila');
+    await patch(id, { itemIds: [f('QTY-1')], asignacion: { qeId: PERSONAS.qe2.id, analistaId: PERSONAS.ana3.id } });
+    assert.equal(await rev(), 3);
+    await patch(id, { itemIds: [f('QTY-1')], marcada: true });
+    assert.equal(await rev(), 4);
+  });
+});

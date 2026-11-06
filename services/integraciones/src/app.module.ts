@@ -29,6 +29,7 @@ import {
 } from './aplicacion/puertos.js';
 import { ConsultaAplicacion } from './aplicacion/consulta.servicio.js';
 import { ConfirmacionAplicacion } from './aplicacion/confirmacion.servicio.js';
+import { ConfirmacionFilaAplicacion } from './aplicacion/confirmacion-fila.servicio.js';
 import { EdicionConsultaAplicacion } from './aplicacion/edicion-consulta.servicio.js';
 import { crearFuenteJira, crearLector, crearMapeador } from './composicion-externa.js';
 import { CONFIGURACION, type ConfiguracionIntegraciones } from './configuracion.js';
@@ -86,6 +87,7 @@ export class AppModule {
         ConsultaAplicacion,
         EdicionConsultaAplicacion,
         ConfirmacionAplicacion,
+        ConfirmacionFilaAplicacion,
         ArchivosAplicacion,
         HistorialAplicacion,
       ],

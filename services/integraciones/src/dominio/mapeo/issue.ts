@@ -1,6 +1,7 @@
 /** Mapeo de una issue de Jira a una fila para Organización (J2, sección 5.1 del backlog E5, D101). */
 import type { IssueJira } from '../puertos/fuente-jira.js';
 import { adfATexto } from './adf-a-texto.js';
+import { construirDetalleSeguro } from './detalle.js';
 import { mapearPrioridadJira } from './prioridad.js';
 import { elegirSprint } from './sprint.js';
 import { LIMITES, PATRON_CODIGO, limpiarControl, limpiarLinea, recortar, type AdvertenciaFila, type FilaMapeada, type MotivoFila } from './tipos.js';
@@ -15,7 +16,7 @@ function obtenerCelulaDesdeEtiquetas(
 ): { nombre: string | null; invalida: boolean } {
   const etiquetas = [
     ...new Set(
-      (labels ?? [])
+      (Array.isArray(labels) ? (labels as unknown[]).filter((e): e is string => typeof e === 'string') : [])
         .map((etiqueta) => etiqueta.trim().toLowerCase())
         .filter((etiqueta) => etiqueta.startsWith('celula-')),
     ),
@@ -90,5 +91,7 @@ export function mapearIssue(issue: IssueJira, posicion: number, sitio: string): 
     advertencias,
     referencia: { estado, responsable },
     error,
+    // El detalle (D198) viaja con la fila hacia `consulta_item.detalle`; lo que no se pueda leer queda `null` y no rechaza la fila.
+    detalle: construirDetalleSeguro(issue, codigoValido ? `${sitio}/browse/${clave}` : null),
   };
 }

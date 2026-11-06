@@ -31,16 +31,39 @@ export interface FilaUpsertHdu {
 /** `ReferenciaJira` del contrato: informativa, no se guarda en la HDU (D101). */
 export interface ReferenciaJira { estado: string | null; responsable: string | null }
 
+// ------------------------------------------------------------------ detalle de la HDU (D196-D199, `DetalleHdu` del contrato)
+export interface TextoDetalle { texto: string | null; truncado: boolean }
+export interface CriteriosDetalle { texto: string | null; origen: 'CAMPO' | 'DESCRIPCION' | null; truncado: boolean }
+export interface SprintDetalle { nombre: string; estado: 'ACTIVO' | 'FUTURO' | 'CERRADO'; inicio: string | null; fin: string | null }
+export interface DetalleHdu {
+  resumen: string | null;
+  descripcion: TextoDetalle;
+  criterios: CriteriosDetalle;
+  estadoJira: string | null;
+  prioridadJira: string | null;
+  prioridadQ360: PrioridadHdu | null;
+  tipo: string | null;
+  responsableJira: string | null;
+  etiquetas: Array<{ valor: string }>;
+  etiquetasTotal: number;
+  sprints: SprintDetalle[];
+  epica: { clave: string; titulo: string | null } | null;
+  fechas: { creada: string | null; actualizada: string | null; vencimiento: string | null; resolucion: string | null };
+  urlJira: string | null;
+}
+
 export interface FilaMapeada extends FilaUpsertHdu {
   advertencias: AdvertenciaFila[];
   referencia: ReferenciaJira | null;
   /** Si no es `null`, la fila no se envía a Organización. */
   error: MotivoFila | null;
+  /** Solo issues de Jira: el detalle saneado de la fila (D198). Ausente en las filas de archivo. */
+  detalle?: DetalleHdu | null;
 }
 
 /** Deja solo los campos de `FilaUpsertHdu` (para armar el lote hacia Organización). */
 export function aFilaUpsert(f: FilaMapeada): FilaUpsertHdu {
-  const { advertencias: _a, referencia: _r, error: _e, ...resto } = f;
+  const { advertencias: _a, referencia: _r, error: _e, detalle: _d, ...resto } = f;
   return resto;
 }
 
@@ -85,9 +108,14 @@ export function recortar(texto: string, max: number): string {
   return corte;
 }
 
-/** Quita caracteres de control (incluido NUL, que PostgreSQL rechaza), salvo \n y \t. */
+/**
+ * Quita caracteres de control (incluido NUL, que PostgreSQL rechaza), salvo \n y \t, y los sustitutos UTF-16 huérfanos
+ * (una mitad sin pareja: PostgreSQL rechaza el `jsonb` que la contiene).
+ */
 export function limpiarControl(texto: string): string {
-  return texto.replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/g, '');
+  return texto
+    .replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/g, '')
+    .replace(/[\ud800-\udbff](?![\udc00-\udfff])|(?<![\ud800-\udbff])[\udc00-\udfff]/g, '');
 }
 
 /** Texto de una línea: control fuera, espacios colapsados y recortado en los bordes. */

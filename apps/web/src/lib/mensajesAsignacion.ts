@@ -17,8 +17,12 @@ export function textoFalta(faltantes: readonly CampoAsignacion[]): string {
   return `Falta: ${listaConY(faltantes.map((c) => NOMBRE_CAMPO[c]))}`;
 }
 
-/** Estado de una fila nueva: texto + glifo + clase (nunca solo color; diseño §4.3). */
-export function estadoDeFila(fila: Pick<ItemConsulta, "asignacion" | "completa" | "faltantes" | "marcada">): { texto: string; glifo: string; clase: "neutro" | "incompleta" | "lista" } {
+/** Estado de una fila nueva: texto + glifo + clase (nunca solo color; diseño §4.3 y §3.3 del diseño de detalle). */
+export function estadoDeFila(
+  fila: Pick<ItemConsulta, "asignacion" | "completa" | "faltantes" | "marcada"> & Partial<Pick<ItemConsulta, "aplicada" | "yaAsignada">>,
+): { texto: string; glifo: string; clase: "neutro" | "incompleta" | "lista" | "creada" | "ya-asignada" } {
+  if (fila.yaAsignada) return { texto: "Ya asignada", glifo: "!", clase: "ya-asignada" };
+  if (fila.aplicada) return { texto: "Creada", glifo: "✓", clase: "creada" };
   if (fila.completa) return { texto: fila.marcada ? "Marcada" : "Lista", glifo: fila.marcada ? "✓ ☑" : "✓", clase: "lista" };
   if (fila.faltantes.length === 4 || !fila.asignacion) return { texto: "Sin asignar", glifo: "○", clase: "neutro" };
   return { texto: `Incompleta (${textoFalta(fila.faltantes).replace("Falta", "falta")})`, glifo: "◐", clase: "incompleta" };
@@ -49,7 +53,56 @@ export function textoRechazoFila(motivo: string, campo: string | null, faltantes
 
 export const TEXTO_NO_SE_PUDO_GUARDAR = "No se pudo guardar. Reintenta.";
 export const TEXTO_SPRINT_RECALCULADO = "El sprint se recalculó para la célula elegida.";
-export const TEXTO_SIN_ANALISTAS = "Este QE no tiene analistas en su equipo.";
+export const TEXTO_SIN_ANALISTAS = "Este QE no supervisa analistas activos. Elige otro QE.";
+export const TEXTO_NO_CONFIRMABLE_SIN_ANALISTAS = "No se puede confirmar: el QE no tiene analistas activos";
+export const TEXTO_LOTE_EN_CURSO = "Hay una confirmación grupal en curso";
+export const TEXTO_FILA_MODIFICADA = "Otra persona modificó esta HDU. Revisa los datos actuales y confirma de nuevo.";
+export const TEXTO_FILA_EN_CURSO = "Otra persona está confirmando esta HDU ahora. Espera unos segundos y revisa.";
+export const TEXTO_FALLA_CONFIRMAR = "No se pudo confirmar. Revisa tu conexión e inténtalo de nuevo.";
+export const TEXTO_APOYO_YA_ASIGNADA = "No se puede reasignar desde la consulta. Para cambiar el QE o el analista, hazlo en la gestión de HDU.";
+export const TEXTO_COEXISTENCIA_LOTE = "Las HDU que ya confirmaste una a una se conservan y no se repiten.";
+
+/** «Asignado automáticamente: único analista de <QE>» (D201). */
+export function textoAnalistaAutomatico(qe: string): string {
+  return `Asignado automáticamente: único analista de ${qe}`;
+}
+
+export function textoAnuncioAnalistaAutomatico(analista: string, qe: string): string {
+  return `Analista asignado automáticamente: ${analista}, único del equipo de ${qe}`;
+}
+
+/** «Esta HDU ya fue asignada a <QE> / <Analista>» o «… / sin Analista» (D204). */
+export function textoYaAsignada(y: { qe: string; analista: string | null }): string {
+  return `Esta HDU ya fue asignada a ${y.qe} / ${y.analista ?? "sin Analista"}`;
+}
+
+export function textoCarrera(codigo: string, y: { qe: string; analista: string | null }): string {
+  return `${codigo} ya fue asignada a ${y.qe} / ${y.analista ?? "sin Analista"}. No se creó nada.`;
+}
+
+export function textoCreada(qe: string, analista: string): string {
+  return `Asignada a ${qe} / ${analista}`;
+}
+
+export function textoAnuncioCreada(codigo: string, qe: string, analista: string | null): string {
+  return `HDU ${codigo} creada: asignada a ${qe} / ${analista ?? "sin Analista"}`;
+}
+
+export function textoYaAsignadas(n: number): string {
+  return `${n} ya ${n === 1 ? "asignada" : "asignadas"}`;
+}
+
+export function textoLoteYaCreadas(n: number): string {
+  return `${n} ${n === 1 ? "HDU ya estaba creada y no se repitió" : "HDU ya estaban creadas y no se repitieron"}`;
+}
+
+export function textoCuerpoTerminarRevision(creadas: number, sinConfirmar: number): string {
+  return `${creadas} HDU ya creadas se conservan; ${sinConfirmar} filas sin confirmar se perderán.`;
+}
+
+export function textoCreadas(n: number): string {
+  return `${n} ${n === 1 ? "creada" : "creadas"}`;
+}
 export const TEXTO_SIN_LIDER = "La célula no tiene Líder activo: nadie la verá como Líder.";
 export const TEXTO_SPRINT_JIRA_AUSENTE = "El sprint de Jira no existe en esta célula.";
 export const TEXTO_NOTA_CAMBIARON = "Al confirmar se actualizan solo título, descripción y prioridad. El estado, el QE, el analista, el sprint y la célula no cambian.";
@@ -106,7 +159,7 @@ export function textoVenceEn(minutos: number): string {
 // ------------------------------------------------------------ confirmación
 
 export function textoBotonConfirmar(n: number): string {
-  return `Confirmar (${n})`;
+  return `Confirmar marcadas (${n})`;
 }
 
 /** «Se crearán 4 HDU y se actualizará 1.» (diseño §6.1; con 0: «No se creará ninguna HDU»). */

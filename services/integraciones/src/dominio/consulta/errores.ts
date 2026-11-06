@@ -3,7 +3,7 @@
  * (`ErrorConsulta`, `ErrorConsultaAbierta`, `ErrorAsignacionesInvalidas`). Ninguno lleva textos de Jira.
  */
 import type { MotivoRechazo } from './asignacion.js';
-import type { CampoAsignacion, Consulta, Persona } from './tipos.js';
+import type { CampoAsignacion, Consulta, Persona, YaAsignada } from './tipos.js';
 
 export type CodigoErrorConsulta = 'CONSULTA_NO_ABIERTA' | 'CONSULTA_VENCIDA' | 'CONSULTA_MODIFICADA' | 'CONSULTA_LLENA' | 'CONSULTA_COMPLETA';
 
@@ -68,9 +68,38 @@ export class AsignacionesInvalidas extends Error {
   }
 }
 
-/** Alcance de una sola fila rechazado: 422 con el código del motivo (D145). */
+/** Alcance de una sola fila rechazado: 422 con el código del motivo (D145). `HDU_YA_ASIGNADA` trae `ErrorHduYaAsignada`. */
 export class FilaRechazadaUnica extends Error {
-  constructor(readonly fila: FilaRechazadaDto) {
+  constructor(
+    readonly fila: FilaRechazadaDto,
+    /** Solo `HDU_YA_ASIGNADA`: la alerta y la fila ya vista (`item` es la vista de la fila, D204). */
+    readonly yaAsignada?: { readonly datos: YaAsignada; readonly item: unknown },
+  ) {
     super(fila.motivo);
+  }
+}
+
+/** `HDU_YA_ASIGNADA` al confirmar una fila (409, D204): trae los nombres actuales y la fila en solo lectura. */
+export class HduYaAsignada extends Error {
+  constructor(
+    readonly yaAsignada: YaAsignada,
+    /** La vista de la fila (`ItemConsulta` del contrato). */
+    readonly item: unknown,
+  ) {
+    super('HDU_YA_ASIGNADA');
+  }
+}
+
+/** `FILA_MODIFICADA` (409, D202): la `revision` enviada no es la actual. Trae la fila vigente. */
+export class FilaModificada extends Error {
+  constructor(readonly item: unknown) {
+    super('FILA_MODIFICADA');
+  }
+}
+
+/** `FILA_EN_CURSO` (409, D202): otra petición tiene la toma de la fila (máximo 30 s). */
+export class FilaEnCurso extends Error {
+  constructor() {
+    super('FILA_EN_CURSO');
   }
 }

@@ -26,6 +26,16 @@ info:
       /v1/hdu/{id}` suma `descripcion`, `origen`, `claveExterna` y
       `urlExterna` (D108); `GET /v1/catalogos/sprints` suma `celulaId` y el
       filtro `celulaId` (D120). Listados, bandejas y CSV no cambian.
+      Detalle y confirmación por HDU (D200, D202, ADR 0018): se suman 2
+      rutas, declaradas una por una (D179), `GET
+      /v1/integraciones/jira/consultas/{id}/items/{itemId}` y `POST
+      …/items/{itemId}/confirmaciones`; la consulta pasa de 8 a 10
+      operaciones y `/v1/integraciones/*` de 16 rutas y 18 operaciones a 18
+      y 20. El `POST` usa el cubo `LIMITE_TASA_CONSULTA_MAX` (D152), igual
+      que `PATCH …/items`, y no el de escritura general. Sin composición,
+      sin cambios de sesión ni de CORS; el gateway propaga 409, 410 y 422
+      con el cuerpo tal cual. «Ir a la HDU» del portal usa `GET
+      /v1/hdu/{id}` con `idHistoria` (ruta del portal `/hdu/:id`).
 
     - **E4.** `/v1/catalogos/tipos-impedimento`, `/v1/impedimentos*`,
       `/v1/riesgo/*`, `/v1/hdu/{id}/impedimentos*`, `/v1/hdu/{id}/riesgo`,
@@ -1100,7 +1110,7 @@ paths:
         inexistente también responde 403; el 404 solo lo recibe el
         Administrador.
       x-roles: [ADMINISTRADOR, QE, ANALISTA_QA, LIDER_QA, AUDITOR]
-      x-hdu: [E1-B02#2, E2-F02#1, E2-F04#1, E2-F04#2, E2-F04#3, E2-B03#1, E2-B03#2, E7-F02#3, E7-F04#3, E7-F06#1, E7-B02#1, E7-B02#2, E5-F02#1, E5-B02#1]
+      x-hdu: [E1-B02#2, E2-F02#1, E2-F04#1, E2-F04#2, E2-F04#3, E2-B03#1, E2-B03#2, E7-F02#3, E7-F04#3, E7-F06#1, E7-B02#1, E7-B02#2, E5-F02#1, E5-B02#1, E5-F07#5]
       responses:
         '200':
           description: Detalle con responsables, estado, fecha del último cambio, transiciones permitidas, permisos y checklist.
@@ -1437,6 +1447,7 @@ paths:
   /v1/integraciones/jira/configuracion/eventos:
     $ref: './integraciones.v1.yaml#/paths/~1v1~1integraciones~1jira~1configuracion~1eventos'
   # Consulta y asignación (D132): se retira /v1/integraciones/jira/sincronizaciones (404) y se suman 7 rutas (8 operaciones).
+  # Detalle y confirmación por HDU (D200, D202): 2 rutas más (10 operaciones de la consulta).
   /v1/integraciones/jira/consultas:
     $ref: './integraciones.v1.yaml#/paths/~1v1~1integraciones~1jira~1consultas'
   /v1/integraciones/jira/consultas/actual:
@@ -1447,6 +1458,10 @@ paths:
     $ref: './integraciones.v1.yaml#/paths/~1v1~1integraciones~1jira~1consultas~1{id}~1continuaciones'
   /v1/integraciones/jira/consultas/{id}/items:
     $ref: './integraciones.v1.yaml#/paths/~1v1~1integraciones~1jira~1consultas~1{id}~1items'
+  /v1/integraciones/jira/consultas/{id}/items/{itemId}:
+    $ref: './integraciones.v1.yaml#/paths/~1v1~1integraciones~1jira~1consultas~1{id}~1items~1{itemId}'
+  /v1/integraciones/jira/consultas/{id}/items/{itemId}/confirmaciones:
+    $ref: './integraciones.v1.yaml#/paths/~1v1~1integraciones~1jira~1consultas~1{id}~1items~1{itemId}~1confirmaciones'
   /v1/integraciones/jira/consultas/{id}/confirmaciones:
     $ref: './integraciones.v1.yaml#/paths/~1v1~1integraciones~1jira~1consultas~1{id}~1confirmaciones'
   /v1/integraciones/jira/consultas/{id}/descartes:

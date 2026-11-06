@@ -20,6 +20,11 @@ export interface SupervisionRepositorio {
   listarAnalistasVigentesIds(qeId: string): Promise<string[]>;
   /** Equipo vigente del QE, con los datos del analista y desde cuándo lo supervisa. */
   listarEquipoVigente(qeId: string): Promise<Array<{ analista: { id: string; nombre: string; correo: string; activo: boolean }; desde: Date }>>;
+  /**
+   * Analistas QA activos del equipo vigente del QE (`hasta IS NULL`), ordenados por nombre. Es la consulta única de
+   * `catalogos/personas?supervisorId=` y de `asignaciones/validar` con `proponerAnalista` (D147, D201).
+   */
+  listarAnalistasActivosDelEquipo(qeId: string): Promise<Array<{ id: string; nombre: string; correo: string }>>;
   listarHistorialPorAnalista(analistaId: string): Promise<SupervisionConUsuarios[]>;
   /** QE vigente de cada analista dado, para enriquecer listados (`Usuario.supervisorVigente`). */
   mapaQeVigentePorAnalistas(analistaIds: readonly string[]): Promise<Map<string, UsuarioResumen>>;

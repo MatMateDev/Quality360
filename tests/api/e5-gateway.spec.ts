@@ -9,7 +9,7 @@ import { levantarGateway, type InstanciaE5 } from "../support/entornoE5";
  * E5 · Gateway: rutas explícitas hacia Integraciones (D127), 503 solo en esas rutas con INTEGRACIONES_URL ausente o inválida, y
  * IMPEDIMENTOS_URL no fatal (D129). El gateway principal (:3000) se usa tal cual; las variantes son instancias del mismo build.
  */
-const GATEWAY_REAL = "http://localhost:3000";
+const GATEWAY_REAL = process.env.GATEWAY_REAL_URL ?? "http://localhost:3000";
 test.describe.configure({ mode: "default" }); // cada prueba parte de su propio estado base: un fallo no debe ocultar a las demás
 test.afterAll(async () => {
   await limpiarE5();
@@ -63,7 +63,7 @@ test.describe("E5 · Gateway hacia Integraciones", () => {
   }
 
 
-  test('[E5-GW#5] la ruta retirada POST /v1/integraciones/jira/sincronizaciones responde 404 y las 8 rutas de la consulta están publicadas (no son 404)', async ({ request }) => {
+  test('[E5-GW#5] la ruta retirada POST /v1/integraciones/jira/sincronizaciones responde 404 y las 10 rutas de la consulta están publicadas (no son 404)', async ({ request }) => {
     const adm = await tk('adm1');
     const retirada = await api.post<any>(request, '/v1/integraciones/jira/sincronizaciones', { token: adm, body: {}, baseURL: GATEWAY_REAL });
     expect(retirada.status).toBe(404);
@@ -72,7 +72,10 @@ test.describe("E5 · Gateway hacia Integraciones", () => {
       ['get', `${CONSULTAS}/actual`, undefined], ['get', `${CONSULTAS}/${falso}`, undefined], ['get', `${CONSULTAS}/${falso}/items?grupo=NUEVA`, undefined],
       ['patch', `${CONSULTAS}/${falso}/items`, { itemIds: [falso], marcada: false }], ['post', `${CONSULTAS}/${falso}/continuaciones`, {}],
       ['post', `${CONSULTAS}/${falso}/confirmaciones`, { version: 1 }], ['post', `${CONSULTAS}/${falso}/descartes`, {}],
+      // D200 y D202: las 2 rutas nuevas (la consulta pasa de 8 a 10 operaciones; `POST /consultas` se prueba en B02).
+      ['get', `${CONSULTAS}/${falso}/items/${falso}`, undefined], ['post', `${CONSULTAS}/${falso}/items/${falso}/confirmaciones`, { revision: 1 }],
     ];
+    expect(casos, 'las 7 rutas con id de la 8 anteriores más las 2 nuevas').toHaveLength(9);
     for (const [metodo, ruta, body] of casos) {
       const r = await (api as any)[metodo](request, ruta, { token: adm, body, baseURL: GATEWAY_REAL });
       expect([r.status, r.body?.codigo], metodo + ' ' + ruta).not.toEqual([404, undefined]);

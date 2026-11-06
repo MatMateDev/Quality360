@@ -16,6 +16,7 @@ import {
   type AsignacionValidadaConRef,
   type SolicitudConfirmacionUpsert,
   type ContextoSolicitud,
+  type HduExistenteUpsert,
   type DestinoHdu,
   type DestinoResuelto,
   type ResultadoFilaUpsert,
@@ -60,7 +61,21 @@ function filaDeUpsert(valor: unknown): ResultadoFilaUpsert {
     idHistoria: typeof d.idHistoria === 'string' ? d.idHistoria : null,
     advertencias,
     cambios,
+    ...(d.existente === undefined || d.existente === null ? {} : { existente: existenteDeUpsert(d.existente) }),
     ...(d.errorAsignacion === undefined || d.errorAsignacion === null ? {} : { errorAsignacion: errorDeAsignacion(d.errorAsignacion) }),
+  };
+}
+
+/** `HduExistenteUpsert` (D202, D204): una respuesta con otra forma es ilegible, nunca se adivina quién creó la HDU. */
+function existenteDeUpsert(valor: unknown): HduExistenteUpsert {
+  const d = objeto(valor, 'la HDU existente del upsert');
+  if (typeof d.creadaPorEstaConsulta !== 'boolean' || typeof d.creadaPorActor !== 'boolean') return ilegible('la HDU existente del upsert');
+  return {
+    idHistoria: texto(d.idHistoria, 'la HDU existente del upsert'),
+    qe: texto(d.qe, 'la HDU existente del upsert'),
+    analista: typeof d.analista === 'string' ? d.analista : null,
+    creadaPorEstaConsulta: d.creadaPorEstaConsulta,
+    creadaPorActor: d.creadaPorActor,
   };
 }
 
@@ -92,6 +107,8 @@ function estadoDeCodigo(valor: unknown): HduExistente | null {
     descripcion: typeof d.descripcion === 'string' ? d.descripcion : null,
     prioridad,
     qeResponsable: typeof d.qeResponsable === 'string' ? d.qeResponsable : null,
+    // Opcional en el contrato: una Organización anterior (despliegue escalonado) no lo envía y se trata como «sin Analista».
+    analista: typeof d.analista === 'string' ? d.analista : null,
   };
 }
 
@@ -113,6 +130,9 @@ function validacionDeAsignacion(valor: unknown): AsignacionValidadaConRef {
     sprint: referencia(d.sprint, 'el sprint validado'),
     sprintPropuesto,
     celulaSinLiderActivo: d.celulaSinLiderActivo,
+    // D201. Una Organización anterior no los envía: sin propuesta, el analista queda vacío (nunca un error).
+    analistasActivos: typeof d.analistasActivos === 'number' && Number.isInteger(d.analistasActivos) && d.analistasActivos >= 0 ? d.analistasActivos : null,
+    analistaPropuesto: referencia(d.analistaPropuesto, 'el analista propuesto'),
   };
 }
 

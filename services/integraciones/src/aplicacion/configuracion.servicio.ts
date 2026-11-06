@@ -118,6 +118,7 @@ export class ConfiguracionAplicacion {
         proyecto: entrada.proyecto,
         tiposIssue: entrada.tiposIssue,
         campoSprint: prueba.campoSprint,
+        campoCriterios: prueba.campoCriterios,
         celulaId: entrada.celulaId,
         qeResponsableId: entrada.qeResponsableId,
         sprintRespaldoId: entrada.sprintRespaldoId,
@@ -192,19 +193,23 @@ export class ConfiguracionAplicacion {
     proyecto: string,
     presupuesto: Presupuesto,
     detectarSprint = true,
-  ): Promise<{ resultado: ResultadoPrueba; campoSprint: string | null }> {
+  ): Promise<{ resultado: ResultadoPrueba; campoSprint: string | null; campoCriterios: string | null }> {
     const opciones = this.opciones(presupuesto);
     const conexion = await this.jira.probar(credencial, proyecto, opciones);
-    if (!conexion.ok) return { resultado: this.fallo(conexion.codigo), campoSprint: null };
+    if (!conexion.ok) return { resultado: this.fallo(conexion.codigo), campoSprint: null, campoCriterios: null };
     let campoSprint: string | null = null;
+    let campoCriterios: string | null = null;
     if (detectarSprint) {
-      const campo = await this.jira.detectarCampoSprint(credencial, opciones);
-      if (!campo.ok) return { resultado: this.fallo(campo.codigo), campoSprint: null };
-      campoSprint = campo.valor;
+      // Una sola llamada a `/field`: el campo Sprint y el de Criterios de aceptación (D199). Al probar no se detecta.
+      const campos = await this.jira.detectarCampos(credencial, opciones);
+      if (!campos.ok) return { resultado: this.fallo(campos.codigo), campoSprint: null, campoCriterios: null };
+      campoSprint = campos.valor.sprint;
+      campoCriterios = campos.valor.criterios;
     }
     return {
       resultado: { ok: true, usuarioJira: conexion.valor.usuarioJira, proyecto: { clave: conexion.valor.proyecto.clave, nombre: conexion.valor.proyecto.nombre }, error: null },
       campoSprint,
+      campoCriterios,
     };
   }
 

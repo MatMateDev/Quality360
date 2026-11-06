@@ -102,3 +102,8 @@ export function proponerSprint(entrada: {
     sprintJiraNoEncontrado: hayNombre,
   };
 }
+
+/** D201: el Analista propuesto es el único activo del equipo vigente del QE; con 0 o 2 o más no se propone ninguno. */
+export function proponerAnalistaUnico<T>(activos: readonly T[]): T | null {
+  return activos.length === 1 ? (activos[0] as T) : null;
+}

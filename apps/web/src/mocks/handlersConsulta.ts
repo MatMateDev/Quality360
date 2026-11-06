@@ -7,6 +7,7 @@ import type {
   AdvertenciaFila,
   CampoAsignacion,
   Consulta,
+  DetalleHdu,
   EstadoConsulta,
   Ejecucion,
   FilaRechazada,
@@ -19,7 +20,7 @@ import type {
 import { ID, analistasVigentesDe, celulas, hdus, sprints, usuarios } from "./data";
 import { ejecucionBase, estadoConfig, estadoConsulta, hduCreadasPorConsulta, modoE5, origenesHdu, sprintsE5, celulaDeSprintBase, type FilaMock } from "./dataE5";
 import { fallaDe, nuevoId, registrar, soloAdmin, SUGERENCIAS, TEXTO_DE_JIRA } from "./handlersE5";
-import { cuerpoError, leerNumero } from "./utils";
+import { cuerpoError, leerNumero, sprintsAdicionales } from "./utils";
 
 const BASE = env.gatewayUrl;
 const VIGENCIA_MS = 24 * 3_600_000;
@@ -38,6 +39,10 @@ const err = (status: number, codigo: string, extra: Record<string, unknown> = {}
 const todosLosSprints = () => [...sprints.map((s) => ({ ...s, celulaId: celulaDeSprintBase[s.id] ?? ID.celPagos })), ...sprintsE5];
 
 // --------------------------------------------------------------------- filas
+
+/** Ids fijos de las HDU «ya asignadas» del modo `con-ya-asignada` (destino de «Ir a la HDU»). */
+export const ID_YA_ASIGNADA = "e5aaaaaa-0000-4000-8000-000000000005";
+export const ID_YA_ASIGNADA_CAMBIO = "e5aaaaaa-0000-4000-8000-000000000006";
 
 const FALTANTES_ORDEN: CampoAsignacion[] = ["celulaId", "qeId", "analistaId", "sprintId"];
 
@@ -80,6 +85,11 @@ function itemBase(posicion: number, grupo: GrupoConsulta, codigo: string, parcia
     marcada: false,
     marcable: false,
     aplicada: false,
+    revision: 1,
+    analistaAuto: false,
+    aplicando: false,
+    aplicacion: null,
+    yaAsignada: null,
     avisoSinLider: false,
     asignadoPor: null,
     asignadoEn: null,
@@ -99,6 +109,16 @@ function issueDelUniverso(i: number): ItemConsulta | null {
     if (i <= 2) return itemBase(n, "CAMBIO", `QTY-${i}`, { cambios: i === 1 ? { titulo: { antes: "Recuperar clave", despues: "Recuperar clave de acceso" }, prioridad: { antes: "MEDIA", despues: "CRITICA" } } : { descripcion: { antes: "Antes", despues: "Después" } }, origenHdu: i === 1 ? "JIRA" : "MANUAL", hdu: { estado: "EN_EJECUCION", qeResponsable: "Jose Seguel" }, idHistoria: nuevoId(), marcable: true });
     if (i <= 10) return itemBase(n, "SIN_CAMBIOS", `QTY-${i + 2}`, { motivo: "SIN_CAMBIOS", hdu: { estado: "EN_EJECUCION", qeResponsable: "Jose Seguel" } });
     if (i === 11) return itemBase(n, "CON_ERROR", "QTY-13", { titulo: null, motivo: "TITULO_VACIO" });
+    return null;
+  }
+  if (modo === "con-ya-asignada") {
+    if (i < 2) return itemBase(n, "NUEVA", `QTY-${n}`);
+    // QTY-5 la creó otra persona (a mano) durante la revisión: ya tiene QE y no tiene analista (D204).
+    if (i === 2) return itemBase(n, "NUEVA", "QTY-5", { origenHdu: "MANUAL", idHistoria: ID_YA_ASIGNADA, yaAsignada: { idHistoria: ID_YA_ASIGNADA, qe: "Jose Seguel", analista: null } });
+    if (i === 3) {
+      const y = { idHistoria: ID_YA_ASIGNADA_CAMBIO, qe: "Jose Seguel", analista: "Jonathan Choque" };
+      return itemBase(n, "CAMBIO", "QTY-6", { cambios: { titulo: { antes: "Antes", despues: "Después" } }, origenHdu: "JIRA", hdu: { estado: "EN_EJECUCION", qeResponsable: "Jose Seguel" }, idHistoria: y.idHistoria, yaAsignada: y, marcable: true });
+    }
     return null;
   }
   // exitosa y con-errores: diez nuevas; la 11 es la fila con error de la fixture base.
@@ -131,6 +151,8 @@ function recalcular(c: Consulta, items: ItemConsulta[]): Consulta {
     marcadasNuevas: nuevas.filter((i) => i.marcada).length,
     marcadasCambio: items.filter((i) => i.grupo === "CAMBIO" && i.marcada).length,
     aplicadas: items.filter((i) => i.aplicada).length,
+    creadas: items.filter((i) => i.aplicada && i.grupo === "NUEVA").length,
+    yaAsignadas: items.filter((i) => i.yaAsignada).length,
     pendientes: items.filter((i) => i.marcada && !i.aplicada).length,
   };
 }
@@ -288,6 +310,64 @@ function previos(): Respuesta | null {
   return null;
 }
 
+// ---------------------------------------------------------- detalle y confirmación por fila
+
+/** Ejecución `HDU` de cada fila confirmada una a una: un reintento del mismo actor devuelve la misma (`repetida`). */
+const ejecucionesDeFila = new Map<string, Ejecucion>();
+
+/** Crea la HDU de una fila `NUEVA` completa (lo hacen el lote y «Confirmar asignación»). */
+function crearHduDeFila(i: ItemConsulta, actorId: string, ahora: Date) {
+  const a = i.asignacion as NonNullable<ItemConsulta["asignacion"]>;
+  const hdu = {
+    id: nuevoId(),
+    codigo: i.codigo ?? "SIN-CODIGO",
+    titulo: i.titulo ?? i.codigo ?? "Sin título",
+    celulaId: (a.celula as { id: string }).id,
+    sprintId: (a.sprint as { id: string }).id,
+    prioridad: i.prioridad ?? ("MEDIA" as const),
+    estado: "PENDIENTE" as const,
+    estadoActualizadoEn: ahora.toISOString(),
+    qeResponsableId: (a.qeResponsable as { id: string }).id,
+    analistaId: a.analista?.id ?? null,
+    creadoPorId: actorId,
+    creadoEn: ahora.toISOString(),
+  };
+  hdus.push(hdu);
+  hduCreadasPorConsulta.push(hdu.id);
+  const sprintE5 = sprintsE5.find((s) => s.id === hdu.sprintId);
+  if (sprintE5 && !sprintsAdicionales.some((s) => s.id === sprintE5.id)) sprintsAdicionales.push({ id: sprintE5.id, nombre: sprintE5.nombre, inicio: sprintE5.inicio, fin: sprintE5.fin });
+  origenesHdu.set(hdu.id, { descripcion: i.descripcion, origen: "JIRA", claveExterna: i.codigo, urlExterna: i.urlExterna });
+  return hdu;
+}
+
+function referenciaDe(i: ItemConsulta, titulo?: string) {
+  return { id: i.idHistoria as string, codigo: i.codigo ?? "", titulo: titulo ?? i.titulo ?? "", estado: "PENDIENTE" as const };
+}
+
+/** `DetalleHdu` simulado de una fila (D196–D199). `largo`: textos al límite y 25 etiquetas. */
+function detalleDe(i: ItemConsulta, largo: boolean): DetalleHdu {
+  const parrafo = "Texto de la historia con palabras suficientes para llenar varias líneas del panel. ";
+  const descripcion = largo ? parrafo.repeat(120).slice(0, 8000) : `${i.descripcion ?? ""}\nSegunda línea con <b>etiquetas</b> y https://ejemplo.com/ruta. [contenido no mostrable]`.trim();
+  const sinCriterios = i.posicion === 2;
+  const desdeDescripcion = i.posicion === 3;
+  return {
+    resumen: i.titulo,
+    descripcion: { texto: i.descripcion || largo ? descripcion : null, truncado: largo },
+    criterios: sinCriterios ? { texto: null, origen: null, truncado: false } : { texto: "• El segundo factor es obligatorio\n• Se registra el intento fallido", origen: desdeDescripcion ? "DESCRIPCION" : "CAMPO", truncado: false },
+    estadoJira: "En curso",
+    prioridadJira: "High",
+    prioridadQ360: i.prioridad,
+    tipo: "Historia",
+    responsableJira: i.referencia?.responsable ?? null,
+    etiquetas: Array.from({ length: largo ? 20 : 3 }, (_, n) => ({ valor: n < 3 ? ["seguridad", "login", "mfa"][n] : `etiqueta-${n + 1}` })),
+    etiquetasTotal: largo ? 25 : 3,
+    sprints: i.sprintJira ? [{ nombre: i.sprintJira, estado: "ACTIVO", inicio: "2026-11-03T12:00:00Z", fin: "2026-11-17T12:00:00Z" }] : [],
+    epica: { clave: "QTY-100", titulo: "Autenticación" },
+    fechas: { creada: "2026-10-20T13:00:00Z", actualizada: "2026-11-04T15:30:00Z", vencimiento: "2026-11-30", resolucion: null },
+    urlJira: i.urlExterna,
+  };
+}
+
 // ------------------------------------------------------------------ edición
 
 function conCoincidencia(i: ItemConsulta, q: string | undefined): boolean {
@@ -311,6 +391,8 @@ function editarFila(item: ItemConsulta, cuerpo: SolicitudEdicionItems, actor: Pe
     rechazo: { itemId: item.id, codigo: item.codigo, campo, motivo, ...(faltantes ? { faltantes } : {}) },
     desmarcada: false,
   });
+  if (item.grupo === "NUEVA" && item.yaAsignada && (cuerpo.asignacion || cuerpo.marcada === true)) return rechazar("HDU_YA_ASIGNADA", null);
+  if (item.aplicando) return rechazar("FILA_EN_CURSO", null);
   if (item.aplicada) {
     if (cuerpo.asignacion) return rechazar("FILA_NO_ASIGNABLE", null);
     if (cuerpo.marcada !== undefined) return rechazar("FILA_NO_MARCABLE", null);
@@ -326,6 +408,7 @@ function editarFila(item: ItemConsulta, cuerpo: SolicitudEdicionItems, actor: Pe
     let analista = previa.analista;
     let sprint = previa.sprint;
     let origen = previa.sprintOrigen;
+    let auto = item.analistaAuto;
     if (cambio.celulaId !== undefined) {
       const c = cambio.celulaId === null ? null : celulas.find((x) => x.id === cambio.celulaId);
       if (cambio.celulaId !== null && !c) return rechazar("CATALOGO_INVALIDO", "celulaId");
@@ -340,13 +423,20 @@ function editarFila(item: ItemConsulta, cuerpo: SolicitudEdicionItems, actor: Pe
       const u = cambio.qeId === null ? null : usuarios.find((x) => x.id === cambio.qeId && x.rol === "QE" && x.activo);
       if (cambio.qeId !== null && !u) return rechazar("QE_INVALIDO", "qeId");
       qe = u ? { id: u.id, nombre: u.nombre } : null;
-      if (cambio.analistaId === undefined && analista && !(qe && analistasVigentesDe(qe.id).some((r) => r.analistaId === analista?.id))) analista = null;
+      if (cambio.analistaId === undefined) {
+        if (analista && !(qe && analistasVigentesDe(qe.id).some((r) => r.analistaId === analista?.id))) analista = null;
+        // D201: un QE con un único Analista activo en su equipo vigente lo asigna solo; en cualquier otro caso la marca se apaga.
+        const activos = qe ? analistasVigentesDe(qe.id).flatMap((r) => usuarios.filter((x) => x.id === r.analistaId && x.activo)) : [];
+        auto = activos.length === 1 && qe !== null;
+        if (auto) analista = { id: activos[0].id, nombre: activos[0].nombre };
+      }
     }
     if (cambio.analistaId !== undefined) {
       const u = cambio.analistaId === null ? null : usuarios.find((x) => x.id === cambio.analistaId && x.rol === "ANALISTA_QA" && x.activo);
       if (cambio.analistaId !== null && !u) return rechazar("ANALISTA_INVALIDO", "analistaId");
       if (u && !(qe && analistasVigentesDe(qe.id).some((r) => r.analistaId === u.id))) return rechazar("ANALISTA_FUERA_DE_EQUIPO", "analistaId");
       analista = u ? { id: u.id, nombre: u.nombre } : null;
+      auto = false;
     }
     if (cambio.sprintId !== undefined) {
       const s = cambio.sprintId === null ? null : todosLosSprints().find((x) => x.id === cambio.sprintId);
@@ -358,6 +448,7 @@ function editarFila(item: ItemConsulta, cuerpo: SolicitudEdicionItems, actor: Pe
     fila = {
       ...fila,
       asignacion: algo ? { celula, qeResponsable: qe, analista, sprint, sprintOrigen: origen } : null,
+      analistaAuto: Boolean(analista) && auto,
       asignadoPor: actor,
       asignadoEn: new Date().toISOString(),
     };
@@ -377,6 +468,8 @@ function editarFila(item: ItemConsulta, cuerpo: SolicitudEdicionItems, actor: Pe
     fila.marcada = false;
     desmarcada = true;
   }
+  // D202: la `revision` de la fila sube con cada cambio de la fila.
+  if (JSON.stringify({ ...fila, revision: 0 }) !== JSON.stringify({ ...item, revision: 0 })) fila = { ...fila, revision: item.revision + 1 };
   return { fila, rechazo: null, desmarcada };
 }
 
@@ -404,6 +497,7 @@ export const handlersConsulta = [
     }
     if (abierta) cerrar("REEMPLAZADA", persona);
     Object.assign(estadoConsulta, { items: [], leidas: 0, tandas: 0 });
+    ejecucionesDeFila.clear();
     const tanda = leerTanda();
     const ahora = new Date();
     const config = estadoConfig.actual;
@@ -420,7 +514,7 @@ export const handlersConsulta = [
       sitioHost: HOST,
       hayMas: tanda.hayMas,
       continuarDesde: tanda.hayMas ? (tanda.leidas.at(-1)?.codigo ?? null) : null,
-      leidas: 0, nuevas: 0, cambiaron: 0, sinCambios: 0, conError: 0, conAdvertencias: 0, asignadas: 0, completas: 0, marcadasNuevas: 0, marcadasCambio: 0, aplicadas: 0, pendientes: 0, descartadas: 0,
+      leidas: 0, nuevas: 0, cambiaron: 0, sinCambios: 0, conError: 0, conAdvertencias: 0, asignadas: 0, completas: 0, marcadasNuevas: 0, marcadasCambio: 0, aplicadas: 0, pendientes: 0, descartadas: 0, creadas: 0, yaAsignadas: 0,
       sugerencia: { celula: config.celula, qeResponsable: config.qeResponsable, sprintRespaldo: config.sprintRespaldo },
     };
     estadoConsulta.items = tanda.leidas;
@@ -500,7 +594,114 @@ export const handlersConsulta = [
     const tamano = Math.min(100, leerNumero(p.get("tamanoPagina"), 25));
     const pagina = leerNumero(p.get("pagina"), 1);
     const filtradas = estadoConsulta.items.filter((i) => i.grupo === grupo && conCoincidencia(i, q)).sort((a, b) => a.posicion - b.posicion);
-    return HttpResponse.json({ items: filtradas.slice((pagina - 1) * tamano, pagina * tamano), total: filtradas.length, pagina, tamanoPagina: tamano, version: hallada.consulta.version });
+    return HttpResponse.json({ items: filtradas.slice((pagina - 1) * tamano, pagina * tamano), total: filtradas.length, yaAsignadas: filtradas.filter((i) => i.yaAsignada).length, pagina, tamanoPagina: tamano, version: hallada.consulta.version });
+  }),
+
+  // Detalle de una fila (D200): lee la base propia; no llama a Jira ni a Organización.
+  http.get(`${BASE}/v1/integraciones/jira/consultas/:id/items/:itemId`, async ({ request, params }) => {
+    const { actor, respuesta } = soloAdmin(request);
+    if (!actor) return respuesta;
+    const hallada = buscar(String(params.id));
+    if (!hallada) return noEncontrada();
+    const item = hallada.abierta ? estadoConsulta.items.find((i) => i.id === params.itemId) : undefined;
+    if (hallada.abierta && !item) return noEncontrada();
+    if (!hallada.abierta) return cerrada(hallada.consulta);
+    await delay(40);
+    if (modoE5.detalleItem === "error") return err(500, "ERROR_INTERNO");
+    return HttpResponse.json({
+      item,
+      detalle: modoE5.detalleItem === "antiguo" ? null : detalleDe(item as ItemConsulta, modoE5.detalleItem === "largo"),
+      leidaEn: "2026-11-05T10:32:00Z",
+      version: hallada.consulta.version,
+    });
+  }),
+
+  // «Confirmar asignación» de una sola HDU (D202, D204): crea esa HDU; la consulta sigue abierta (D205).
+  http.post(`${BASE}/v1/integraciones/jira/consultas/:id/items/:itemId/confirmaciones`, async ({ request, params }) => {
+    const { actor, respuesta } = soloAdmin(request);
+    if (!actor) return respuesta;
+    const hallada = buscar(String(params.id));
+    if (!hallada) return noEncontrada();
+    const item = estadoConsulta.items.find((i) => i.id === params.itemId);
+    if (hallada.abierta && !item) return noEncontrada();
+    const { revision } = (await request.json().catch(() => ({}))) as { revision?: number };
+    if (typeof revision !== "number") return err(400, "VALIDACION", {}, [{ campo: "revision", codigo: "REQUERIDO", mensaje: "Falta la revisión." }]);
+    if (!hallada.abierta || !item) return cerrada(hallada.consulta);
+    if (item.grupo !== "NUEVA") return err(422, "FILA_NO_ASIGNABLE", {}, [{ campo: "itemId", codigo: "FILA_NO_ASIGNABLE", mensaje: "No es una fila nueva." }]);
+    const persona = { id: actor.id, nombre: actor.nombre };
+    const reemplazar = (nueva: ItemConsulta) => {
+      estadoConsulta.items = estadoConsulta.items.map((i) => (i.id === nueva.id ? nueva : i));
+      if (estadoConsulta.consulta) estadoConsulta.consulta = { ...estadoConsulta.consulta, version: estadoConsulta.consulta.version + 1 };
+      sincronizar();
+      return nueva;
+    };
+    if (item.yaAsignada) return err(409, "HDU_YA_ASIGNADA", { yaAsignada: item.yaAsignada, item });
+    if (item.aplicada) {
+      const previa = ejecucionesDeFila.get(item.id);
+      if (item.aplicacion?.por.id === actor.id && previa) {
+        return HttpResponse.json({ resultado: "CREADA", repetida: true, hdu: referenciaDe(item), item, ejecucion: previa, consulta: sincronizar() });
+      }
+      return err(409, "HDU_YA_ASIGNADA", { yaAsignada: { idHistoria: item.idHistoria, qe: item.asignacion?.qeResponsable?.nombre ?? "—", analista: item.asignacion?.analista?.nombre ?? null }, item });
+    }
+    // Gatillos de prueba de un solo uso: la próxima confirmación de fila se rechaza como lo haría el servidor.
+    const modo = modoE5.confirmacionFila;
+    if (modo !== "normal") modoE5.confirmacionFila = "normal";
+    if (modo === "ya-asignada") {
+      const yaAsignada = { idHistoria: ID_YA_ASIGNADA, qe: item.asignacion?.qeResponsable?.nombre ?? "Jose Seguel", analista: null };
+      const nueva = reemplazar({ ...item, marcada: false, revision: item.revision + 1, yaAsignada, idHistoria: yaAsignada.idHistoria, origenHdu: "MANUAL" });
+      return err(409, "HDU_YA_ASIGNADA", { yaAsignada, item: nueva });
+    }
+    if (modo === "modificada") return err(409, "FILA_MODIFICADA", { item: reemplazar({ ...item, revision: item.revision + 1 }) });
+    if (modo === "en-curso") return err(409, "FILA_EN_CURSO");
+    if (modo === "red") return err(503, "SERVICIO_NO_DISPONIBLE");
+    if (revision !== item.revision) return err(409, "FILA_MODIFICADA", { item });
+    if (!item.completa) return err(422, "ASIGNACION_INCOMPLETA", {}, item.faltantes.map((f) => ({ campo: f, codigo: "ASIGNACION_INCOMPLETA", mensaje: "Falta este dato." })));
+    if (item.aplicando) return err(409, "FILA_EN_CURSO");
+    await delay(modoE5.demoraMs);
+    const ahora = new Date();
+    const a = item.asignacion as NonNullable<ItemConsulta["asignacion"]>;
+    const hdu = crearHduDeFila(item, actor.id, ahora);
+    const nueva = reemplazar({
+      ...item,
+      aplicada: true,
+      marcada: true,
+      marcable: false,
+      idHistoria: hdu.id,
+      revision: item.revision + 1,
+      aplicacion: { alcance: "HDU", por: persona, en: ahora.toISOString() },
+    });
+    const ejecucion = ejecucionBase({
+      id: nuevoId(),
+      origen: "JIRA",
+      fase: "CONFIRMACION",
+      alcance: "HDU",
+      consultaId: hallada.consulta.id,
+      resultado: "EXITOSA",
+      actor: { id: actor.id, nombre: actor.nombre, rol: "ADMINISTRADOR" },
+      iniciadaEn: ahora.toISOString(),
+      terminadaEn: new Date(ahora.getTime() + 600).toISOString(),
+      duracionMs: 600,
+      proyecto: PROYECTO,
+      sitioHost: HOST,
+      leidas: 1,
+      creadas: 1,
+    });
+    registrar(ejecucion, [
+      {
+        fila: 1,
+        codigo: item.codigo,
+        titulo: item.titulo,
+        idHistoria: hdu.id,
+        resultado: "CREADA",
+        motivo: null,
+        advertencias: item.advertencias,
+        cambios: null,
+        referencia: item.referencia,
+        asignacion: a.celula && a.qeResponsable && a.analista && a.sprint ? { celula: a.celula.nombre, qe: a.qeResponsable.nombre, analista: a.analista.nombre, sprint: a.sprint.nombre } : null,
+      },
+    ]);
+    ejecucionesDeFila.set(item.id, ejecucion);
+    return HttpResponse.json({ resultado: "CREADA", repetida: false, hdu: referenciaDe(nueva, hdu.titulo), item: nueva, ejecucion, consulta: sincronizar() });
   }),
 
   http.patch(`${BASE}/v1/integraciones/jira/consultas/:id/items`, async ({ request, params }) => {
@@ -530,6 +731,8 @@ export const handlersConsulta = [
       const r = rechazadas[0];
       const campo = r.campo ?? "itemId";
       const detalles = r.motivo === ("ASIGNACION_INCOMPLETA" as MotivoRechazoFila) ? (r.faltantes ?? []).map((f) => ({ campo: f, codigo: r.motivo, mensaje: "Falta este dato." })) : [{ campo, codigo: r.motivo, mensaje: "Fila rechazada." }];
+      if (r.motivo === "HDU_YA_ASIGNADA") return err(422, r.motivo, { yaAsignada: alcance[0].yaAsignada, item: alcance[0] }, detalles);
+      if (r.motivo === "FILA_EN_CURSO") return err(409, r.motivo, {}, detalles);
       return err(422, r.motivo, {}, detalles);
     }
     const nuevos = new Map(resultados.filter((r) => !r.rechazo).map((r) => [r.fila.id, r.fila]));
@@ -574,7 +777,7 @@ export const handlersConsulta = [
     const incompleta = modoE5.confirmacion === "incompleta";
     const procesadas = incompleta ? pendientes.slice(0, Math.max(1, Math.min(LOTE_CONFIRMACION, Math.floor(pendientes.length / 2)))) : pendientes;
     const ids = new Set(procesadas.map((i) => i.id));
-    estadoConsulta.items = estadoConsulta.items.map((i) => (ids.has(i.id) ? { ...i, aplicada: true } : i));
+    estadoConsulta.items = estadoConsulta.items.map((i) => (ids.has(i.id) ? { ...i, aplicada: true, revision: i.revision + 1, aplicacion: { alcance: "LOTE" as const, por: { id: actor.id, nombre: actor.nombre }, en: new Date().toISOString() } } : i));
     const creadas = procesadas.filter((i) => i.grupo === "NUEVA");
     const actualizadas = procesadas.filter((i) => i.grupo === "CAMBIO");
     const persona = { id: actor.id, nombre: actor.nombre };
@@ -583,24 +786,7 @@ export const handlersConsulta = [
     for (const i of creadas) {
       const a = i.asignacion;
       if (!a?.celula || !a.qeResponsable || !a.sprint || !i.codigo) continue;
-      const id = nuevoId();
-      idsCreadas.set(i.id, id);
-      hdus.push({
-        id,
-        codigo: i.codigo,
-        titulo: i.titulo ?? i.codigo,
-        celulaId: a.celula.id,
-        sprintId: a.sprint.id,
-        prioridad: i.prioridad ?? "MEDIA",
-        estado: "PENDIENTE",
-        estadoActualizadoEn: ahora.toISOString(),
-        qeResponsableId: a.qeResponsable.id,
-        analistaId: a.analista?.id ?? null,
-        creadoPorId: actor.id,
-        creadoEn: ahora.toISOString(),
-      });
-      hduCreadasPorConsulta.push(id);
-      origenesHdu.set(id, { descripcion: i.descripcion, origen: "JIRA", claveExterna: i.codigo, urlExterna: i.urlExterna });
+      idsCreadas.set(i.id, crearHduDeFila(i, actor.id, ahora).id);
     }
     for (const i of actualizadas) {
       const existente = hdus.find((h) => h.id === i.idHistoria);
@@ -659,6 +845,9 @@ export const handlersConsulta = [
     const hallada = buscar(String(params.id));
     if (!hallada) return noEncontrada();
     if (!hallada.abierta) return cerrada(hallada.consulta);
-    return HttpResponse.json(cerrar("DESCARTADA", { id: actor.id, nombre: actor.nombre }));
+    const sinConfirmar = estadoConsulta.items.filter((i) => !i.aplicada).length;
+    const descartada = { ...cerrar("DESCARTADA", { id: actor.id, nombre: actor.nombre }), descartadas: sinConfirmar };
+    estadoConsulta.ultimaCerrada = descartada;
+    return HttpResponse.json(descartada);
   }),
 ];

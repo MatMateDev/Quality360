@@ -19,7 +19,11 @@ export type MotivoRechazo =
   | 'CATALOGO_INVALIDO'
   | 'ASIGNACION_INCOMPLETA'
   | 'FILA_NO_MARCABLE'
-  | 'FILA_NO_ASIGNABLE';
+  | 'FILA_NO_ASIGNABLE'
+  /** Solo una `NUEVA` con `yaAsignada` (D204): otra persona creó su HDU durante la revisión. */
+  | 'HDU_YA_ASIGNADA'
+  /** Otra petición está confirmando la fila ahora (D202). */
+  | 'FILA_EN_CURSO';
 
 export interface Rechazo {
   readonly motivo: MotivoRechazo;
@@ -34,6 +38,12 @@ export interface EstadoFila {
   readonly asignacion: AsignacionFila;
   readonly marcada: boolean;
   readonly aplicada: boolean;
+  /** El analista lo puso el servidor (D201). Ausente = `false`. */
+  readonly analistaAuto?: boolean;
+  /** Hay una toma vigente de otra petición (D202). Ausente = `false`. */
+  readonly aplicando?: boolean;
+  /** La HDU ya existe (D204). Ausente o `null` = no. */
+  readonly yaAsignada?: unknown;
 }
 
 export type IdsAsignacion = Record<CampoAsignacion, string | null>;
@@ -53,21 +63,27 @@ export const estaCompleta = (asignacion: AsignacionFila): boolean => faltantes(a
 /** `true` si algún campo está asignado (texto «N filas asignadas» del diálogo de reemplazo). */
 export const tieneAsignacion = (asignacion: AsignacionFila): boolean => faltantes(asignacion).length < CAMPOS_ASIGNACION.length;
 
-/** Solo `NUEVA` se asigna, y una fila ya `aplicada` por una confirmación incompleta es de solo lectura (D148). */
-export function puedeAsignarse(fila: Pick<EstadoFila, 'grupo' | 'aplicada'>): boolean {
-  return fila.grupo === 'NUEVA' && !fila.aplicada;
+const tieneYaAsignada = (fila: Pick<EstadoFila, 'yaAsignada'>): boolean => fila.yaAsignada !== undefined && fila.yaAsignada !== null;
+
+/**
+ * Solo `NUEVA` se asigna, y una fila ya `aplicada` (por un lote incompleto o por «Confirmar asignación») es de solo lectura
+ * (D148). Una `NUEVA` cuya HDU ya existe (`yaAsignada`) tampoco se asigna (D204).
+ */
+export function puedeAsignarse(fila: Pick<EstadoFila, 'grupo' | 'aplicada' | 'yaAsignada'>): boolean {
+  return fila.grupo === 'NUEVA' && !fila.aplicada && !tieneYaAsignada(fila);
 }
 
-/** `NUEVA` completa y `CAMBIO`, ninguna `aplicada`; `SIN_CAMBIOS` y `CON_ERROR` nunca (D139). */
+/** `NUEVA` completa y `CAMBIO`, ninguna `aplicada`; `SIN_CAMBIOS` y `CON_ERROR` nunca (D139). Una `NUEVA` `yaAsignada` tampoco. */
 export function esMarcable(fila: EstadoFila): boolean {
   if (fila.aplicada) return false;
   if (fila.grupo === 'CAMBIO') return true;
-  return fila.grupo === 'NUEVA' && estaCompleta(fila.asignacion);
+  return fila.grupo === 'NUEVA' && !tieneYaAsignada(fila) && estaCompleta(fila.asignacion);
 }
 
 /** Por qué no se puede marcar la fila, o `null` si sí. */
 export function motivoNoMarcable(fila: EstadoFila): Rechazo | null {
   if (fila.aplicada || fila.grupo === 'SIN_CAMBIOS' || fila.grupo === 'CON_ERROR') return { motivo: 'FILA_NO_MARCABLE', campo: null };
+  if (fila.grupo === 'NUEVA' && tieneYaAsignada(fila)) return { motivo: 'FILA_NO_MARCABLE', campo: null };
   if (fila.grupo === 'NUEVA' && !estaCompleta(fila.asignacion)) return { motivo: 'ASIGNACION_INCOMPLETA', campo: null, faltantes: faltantes(fila.asignacion) };
   return null;
 }
@@ -80,6 +96,11 @@ export interface CombinacionFinal {
   readonly modoSprint: ModoSprint;
   /** Campos que la edición toca (más su pareja): los únicos que se validan contra Organización. */
   readonly aValidar: ReadonlySet<CampoAsignacion>;
+  /**
+   * D201: la edición cambió el QE y no mandó `analistaId`, así que se le pide a Organización el único Analista activo del
+   * equipo vigente de ese QE (`proponerAnalista`).
+   */
+  readonly proponerAnalista: boolean;
 }
 
 /**
@@ -123,7 +144,8 @@ export function combinarAsignacion(actual: AsignacionFila, cambio: CambioAsignac
   // Con sprint propuesto no hay `sprintId` que validar: lo propone Organización desde la célula.
   if (modoSprint === 'PROPONER' || modoSprint === 'LIMPIAR') aValidar.delete('sprintId');
   for (const campo of [...aValidar]) if (ids[campo] === null) aValidar.delete(campo);
-  return { ids, modoSprint, aValidar };
+  const proponerAnalista = tocados.has('qeId') && ids.qeId !== null && !trajo('analistaId');
+  return { ids, modoSprint, aValidar, proponerAnalista };
 }
 
 export interface ErrorValidacion {
@@ -140,6 +162,10 @@ export interface ValidacionAsignacion {
   readonly sprint: Ref | null;
   readonly sprintPropuesto: { readonly sprint: Ref | null; readonly origen: 'JIRA' | 'RESPALDO' | null; readonly sprintJiraNoEncontrado: boolean } | null;
   readonly celulaSinLiderActivo: boolean;
+  /** Solo con `proponerAnalista` y QE válido: Analistas activos del equipo vigente del QE (D201). */
+  readonly analistasActivos?: number | null;
+  /** El único Analista activo del equipo del QE, o `null` con 0 o 2+ (D201). */
+  readonly analistaPropuesto?: Ref | null;
 }
 
 export interface PedidoEdicion {
@@ -153,6 +179,8 @@ export type DecisionEdicion =
   | {
       readonly tipo: 'OK';
       readonly asignacion: AsignacionFila;
+      /** D201: el analista lo puso el servidor por ser el único del equipo del QE. */
+      readonly analistaAuto: boolean;
       readonly avisoSinLider: boolean;
       /** La advertencia `SPRINT_NO_ENCONTRADO` de D136 solo se recalcula si la célula se fijó en esta edición. */
       readonly sprintJiraNoEncontrado: boolean | null;
@@ -177,9 +205,16 @@ export function rechazoDeValidacion(errores: readonly ErrorValidacion[]): Rechaz
  * marcado. Una fila rechazada no cambia en nada.
  */
 export function decidirEdicion(fila: EstadoFila, pedido: PedidoEdicion, combinacion: CombinacionFinal | null, validacion: ValidacionAsignacion | null): DecisionEdicion {
-  if (pedido.cambio !== undefined && !puedeAsignarse(fila)) return { tipo: 'RECHAZADA', rechazo: { motivo: 'FILA_NO_ASIGNABLE', campo: null } };
+  // Otra petición está confirmando la fila: no se edita (D202). Un `marcarListas` de grupo la deja pasar sin tocarla.
+  if (fila.aplicando === true && (pedido.cambio !== undefined || pedido.marcada !== undefined)) return { tipo: 'RECHAZADA', rechazo: { motivo: 'FILA_EN_CURSO', campo: null } };
+  if (pedido.cambio !== undefined && !puedeAsignarse(fila)) {
+    // D204: solo una `NUEVA` con la HDU ya creada es `HDU_YA_ASIGNADA`; `CAMBIO` y `SIN_CAMBIOS` siguen siendo `FILA_NO_ASIGNABLE` (E5-B05-T11).
+    const yaCreada = fila.grupo === 'NUEVA' && !fila.aplicada && tieneYaAsignada(fila);
+    return { tipo: 'RECHAZADA', rechazo: { motivo: yaCreada ? 'HDU_YA_ASIGNADA' : 'FILA_NO_ASIGNABLE', campo: null } };
+  }
 
   let asignacion = fila.asignacion;
+  let analistaAuto = fila.analistaAuto === true;
   let avisoSinLider = false;
   let sprintJiraNoEncontrado: boolean | null = null;
   let cambioAsignacion = false;
@@ -192,6 +227,10 @@ export function decidirEdicion(fila: EstadoFila, pedido: PedidoEdicion, combinac
     avisoSinLider = validacion?.celulaSinLiderActivo ?? false;
     sprintJiraNoEncontrado = combinacion.modoSprint === 'PROPONER' ? (validacion?.sprintPropuesto?.sprintJiraNoEncontrado ?? false) : null;
     cambioAsignacion = JSON.stringify(idsDe(asignacion)) !== JSON.stringify(idsDe(fila.asignacion)) || asignacion.sprintOrigen !== fila.asignacion.sprintOrigen;
+    // D201: el analista es automático solo si lo propuso el servidor en esta edición (o ya lo era y no se tocó el analista).
+    if (pedido.cambio.analistaId !== undefined) analistaAuto = false;
+    else if (combinacion.proponerAnalista) analistaAuto = asignacion.analista !== null;
+    if (asignacion.analista === null) analistaAuto = false;
   }
 
   const completa = fila.grupo !== 'NUEVA' || estaCompleta(asignacion);
@@ -211,7 +250,7 @@ export function decidirEdicion(fila: EstadoFila, pedido: PedidoEdicion, combinac
     marcada = false;
   }
 
-  if (pedido.marcarListas === true && fila.grupo === 'NUEVA') {
+  if (pedido.marcarListas === true && fila.grupo === 'NUEVA' && fila.aplicando !== true && !tieneYaAsignada(fila)) {
     if (esMarcable(despues)) {
       if (!marcada) marcadaAhora = true;
       marcada = true;
@@ -223,7 +262,7 @@ export function decidirEdicion(fila: EstadoFila, pedido: PedidoEdicion, combinac
     marcada = false;
     desmarcada = fila.marcada;
   }
-  return { tipo: 'OK', asignacion, avisoSinLider, sprintJiraNoEncontrado, marcada, desmarcada, marcadaAhora, incompleta, cambioAsignacion };
+  return { tipo: 'OK', asignacion, analistaAuto, avisoSinLider, sprintJiraNoEncontrado, marcada, desmarcada, marcadaAhora, incompleta, cambioAsignacion };
 }
 
 /** La asignación resultante: los nombres salen de la validación (D148); lo que no se tocó se conserva. */
@@ -237,7 +276,9 @@ export function construirAsignacion(actual: AsignacionFila, combinacion: Combina
   };
   const celula = conservar('celulaId', actual.celula, validacion?.celula);
   const qe = conservar('qeId', actual.qe, validacion?.qe);
-  const analista = conservar('analistaId', actual.analista, validacion?.analista);
+  let analista = conservar('analistaId', actual.analista, validacion?.analista);
+  // D201: sin analista elegido y con exactamente uno activo en el equipo vigente del QE, Organización lo propone.
+  if (combinacion.proponerAnalista && ids.analistaId === null && validacion?.analistaPropuesto) analista = validacion.analistaPropuesto;
 
   let sprint: Ref | null = actual.sprint;
   let sprintOrigen: OrigenSprint | null = actual.sprintOrigen;

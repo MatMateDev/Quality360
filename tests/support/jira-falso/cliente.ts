@@ -14,6 +14,10 @@ export const jiraFalso = {
   reset: () => pedir("POST", "/__reset"),
   issue: (clave: string, datos: Record<string, unknown>) => pedir("PUT", `/__issues/${clave}`, datos),
   borrarIssue: (clave: string) => pedir("DELETE", `/__issues/${clave}`),
+  /** Carga QTY-15 a QTY-18 (detalle de E5); con `pesado`, además el proyecto PESADO (100 issues de 20 KB). `reset` las quita. */
+  detalle: (pesado = false) => pedir("POST", "/__detalle", { pesado }),
+  /** Quita (o repone) «Acceptance Criteria» de `/field`: el sitio sin campo de criterios (D199). */
+  campoCriterios: (presente: boolean) => pedir("POST", "/__campos", { criterios: presente }),
   solicitudes: (): Promise<SolicitudRegistrada[]> => pedir("GET", "/__solicitudes"),
   limpiarSolicitudes: () => pedir("DELETE", "/__solicitudes"),
 };
