@@ -139,7 +139,7 @@ export function useBandejaAnalista(filtros: FiltrosUrl) {
   return useQuery({ queryKey: ["bandeja", "analista", query], queryFn: () => http.get<BandejaAnalista>(`/v1/bandeja/analista${query}`) });
 }
 
-export function useBandejaQe(filtros: FiltrosUrl) {
+export function useBandejaQe(filtros: FiltrosUrl | null) {
   const query = aQueryApi(filtros, { claves: CLAVES_QE });
   return useQuery({ queryKey: ["bandeja", "qe", query], queryFn: () => http.get<BandejaQe>(`/v1/bandeja/qe${query}`) });
 }
