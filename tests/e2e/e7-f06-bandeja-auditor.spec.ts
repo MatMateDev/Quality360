@@ -192,7 +192,7 @@ test.describe("E7-F06 · Bandeja del Auditor", () => {
       await page.goto(`${env.portalUrl}/auditor/integraciones`);
       await expect(page.getByTestId("vista-historial")).toBeVisible();
       await verificarSoloLectura(page, "/auditor/integraciones");
-      await expect(page.getByTestId("boton-sincronizar")).toHaveCount(0);
+      await expect(page.getByTestId("boton-consultar-jira")).toHaveCount(0);
       await expect(page.getByTestId("selector-archivo")).toHaveCount(0);
       await page.goto(`${env.portalUrl}/hdu/${h["E7-H1"].id}`);
       await expect(page.getByTestId("panel-checklist")).toBeVisible();

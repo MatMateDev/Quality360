@@ -8,13 +8,14 @@ import { hoySantiago, uid } from "../support/e4";
 import { crearUsuarioE7 } from "../support/e7";
 import {
   borrarUsuariosDePrueba, hallazgosDeSecreto, PREFIJO_MANUAL, URL_INTEGRACIONES, cadenasSecretas, contieneSecreto, detalleEjecucion, destino, ejecuciones, estadoConfigBase, guardarConfigBase, hduPorCodigo,
-  importar, leerFixture, limpiarE5, prepararR1aR4, registroServicios, sincronizar, sincronizarOk, sql, tk, vistaPrevia, TOKEN_FALSO, CORREO_FALSO,
+  importar, leerFixture, limpiarE5, registroServicios, sql, tk, vistaPrevia, TOKEN_FALSO, CORREO_FALSO,
 } from "../support/e5";
-import { levantarIntegraciones, proxyOrganizacion, type InstanciaE5 } from "../support/entornoE5";
+import { levantarIntegraciones, proxyCortaRuta, type InstanciaE5 } from "../support/entornoE5";
+import { consultar, consultarOk, ejecucionesPorFase, prepararR1aR4 } from "../support/e5c";
 import { jiraFalso } from "../support/jira-falso/cliente";
 import { marcarConEnlace, aprobarEntregable, ORDEN_ENTREGABLES } from "../support/checklist";
 
-/** E5-B04 · Registrar cada ejecución de sincronización o importación (3 escenarios, T01..T15). */
+/** E5-B04 · Registrar cada ejecución de consulta, confirmación o importación (4 escenarios, T01..T17). */
 test.describe.configure({ mode: "default" }); // cada prueba parte de su propio estado base: un fallo no debe ocultar a las demás
 test.afterAll(async () => {
   await limpiarE5();
@@ -27,12 +28,12 @@ const ejecucion = async (request: any, id: string, clave: any = "adm1") => api.g
 test.describe("E5-B04 · Registro de ejecuciones", () => {
   test("[E5-B04#1] T01: la ejecución de QTY registra origen, actor, fechas, duración, resultado, contadores y proyecto", async ({ request }) => {
     await estadoConfigBase(request);
-    const e = await sincronizarOk(request);
+    const e = (await consultarOk(request)).ejecucion;
     const r = await ejecucion(request, e.id);
     expect(r.status).toBe(200);
     expect(cumpleContrato("Ejecucion", r.body)).toEqual({ ok: true, errores: [] });
     expect(r.body).toMatchObject({
-      origen: "JIRA", resultado: "CON_ERRORES", leidas: 11, creadas: 10, actualizadas: 0, omitidas: 0, conError: 1, conAdvertencias: 5, proyecto: "QTY", reintentos429: 0,
+      origen: "JIRA", fase: "CONSULTA", resultado: "CON_ERRORES", leidas: 11, nuevas: 10, cambiaron: 0, sinCambios: 0, creadas: 0, actualizadas: 0, omitidas: 0, conError: 1, conAdvertencias: 4, proyecto: "QTY", reintentos429: 0,
       actor: { nombre: expect.stringContaining("ADM1"), rol: "ADMINISTRADOR" },
     });
     expect(r.body.actor.id).toBe(await uid(request, "adm1"));
@@ -56,28 +57,30 @@ test.describe("E5-B04 · Registro de ejecuciones", () => {
     for (const fragmento of [ENC, "Registro básico", "ARC-1,Alta de cliente", contenido.slice(0, 80)]) expect(volcado, `tabla sin «${fragmento}»`).not.toContain(fragmento);
   });
 
-  test("[E5-B04#1] T03: el detalle de QTY trae 11 filas (10 CREADA con idHistoria y QTY-11 ERROR TITULO_VACIO) con la referencia de Jira", async ({ request }) => {
+  test("[E5-B04#1] T03: el detalle de la confirmación de QTY trae 10 filas CREADA con idHistoria y la referencia de Jira; la consulta no tiene detalle y QTY-11 queda en su grupo CON_ERROR", async ({ request }) => {
     await estadoConfigBase(request);
-    const e = await sincronizarOk(request);
+    const { c1, r1: e } = await prepararR1aR4(request);
+    expect((await detalleEjecucion(request, c1.id)).body.items).toEqual([]);
     const d = await detalleEjecucion(request, e.id);
     expect(d.status).toBe(200);
     expect(cumpleContrato("PaginaFilasEjecucion", d.body)).toEqual({ ok: true, errores: [] });
-    expect(d.body.total).toBe(11);
+    expect(d.body.total).toBe(10);
     const creadas = d.body.items.filter((f: any) => f.resultado === "CREADA");
     expect(creadas).toHaveLength(10);
     for (const f of creadas) {
       expect(f.idHistoria, f.codigo).toMatch(/^[0-9a-f-]{36}$/);
       expect(f.referencia).toEqual({ estado: "En progreso", responsable: "Persona Jira" });
     }
-    expect(d.body.items.find((f: any) => f.codigo === "QTY-11")).toMatchObject({ resultado: "ERROR", motivo: "TITULO_VACIO", idHistoria: null });
+    expect(d.body.items.find((f: any) => f.codigo === "QTY-11")).toBeUndefined();
   });
 
-  test("[E5-B04#1] T04: en R1–R4 la suma de contadores es igual a leídas y la fallida cierra con código, fecha y los CHECK de la base", async ({ request }) => {
+  test("[E5-B04#1] T04: en C1, R1–R4 la suma de contadores por fase es igual a leídas y la fallida cierra con código, fecha y los CHECK de la base", async ({ request }) => {
     await prepararR1aR4(request);
     const lista = await ejecuciones(request, "tamanoPagina=100");
-    expect(lista.body.items).toHaveLength(4);
+    expect(lista.body.items).toHaveLength(5);
     for (const e of lista.body.items) {
-      expect(e.creadas + e.actualizadas + e.omitidas + e.conError, `${e.origen} ${e.resultado}`).toBe(e.leidas);
+      const suma = e.fase === "CONSULTA" ? e.nuevas + e.cambiaron + e.sinCambios + e.conError : e.creadas + e.actualizadas + e.omitidas + e.conError;
+      expect(suma, `${e.origen} ${e.fase} ${e.resultado}`).toBe(e.leidas);
       expect(e.terminadaEn).toBeTruthy();
     }
     const r4 = lista.body.items[0];
@@ -88,36 +91,33 @@ test.describe("E5-B04 · Registro de ejecuciones", () => {
   });
 
   test("[E5-B04#2] T05: el historial se ordena por fecha, filtra por origen y resultado, pagina con tope 100 y acota por desde y hasta", async ({ request }) => {
-    const { r1, r2, r3, r4 } = await prepararR1aR4(request);
+    const { c1, r1, r2, r3, r4 } = await prepararR1aR4(request);
     const ids = (r: any) => r.body.items.map((e: any) => e.id);
-    expect(ids(await ejecuciones(request))).toEqual([r4.id, r3.id, r2.id, r1.id]);
+    expect(ids(await ejecuciones(request))).toEqual([r4.id, r3.id, r2.id, r1.id, c1.id]);
     expect(ids(await ejecuciones(request, "origen=CSV"))).toEqual([r3.id, r2.id]);
     expect(ids(await ejecuciones(request, "resultado=FALLIDA"))).toEqual([r4.id]);
-    expect(ids(await ejecuciones(request, "orden=iniciadaEn:asc"))[0]).toBe(r1.id);
+    expect(ids(await ejecuciones(request, "orden=iniciadaEn:asc"))[0]).toBe(c1.id);
     const grande = await ejecuciones(request, "tamanoPagina=500");
     expect(grande.status).toBe(200);
     expect(grande.body.tamanoPagina).toBe(100);
     const hoy = hoySantiago();
-    expect((await ejecuciones(request, `desde=${hoy}&hasta=${hoy}`)).body.total).toBe(4);
+    expect((await ejecuciones(request, `desde=${hoy}&hasta=${hoy}`)).body.total).toBe(5);
     expect((await ejecuciones(request, "desde=2099-01-01")).body.total).toBe(0);
     expect((await ejecuciones(request, "hasta=2000-01-01")).body.total).toBe(0);
     expect((await ejecuciones(request, "orden=fecha:asc")).status).toBe(400);
     const p1 = await ejecuciones(request, "tamanoPagina=3&pagina=1");
     const p2 = await ejecuciones(request, "tamanoPagina=3&pagina=2");
-    expect([p1.body.items.length, p2.body.items.length, p1.body.total]).toEqual([3, 1, 4]);
+    expect([p1.body.items.length, p2.body.items.length, p1.body.total]).toEqual([3, 2, 5]);
   });
 
-  test("[E5-B04#2] T06: el detalle respeta el ámbito del QE: QE2 ve sus HDU, QE1 solo las filas con error (sin título) y el contador de ocultas, AUD1 todo", async ({ request }) => {
+  test("[E5-B04#2] T06: el detalle respeta el ámbito del QE: QE2 ve las 10 HDU de la confirmación, QE1 ninguna con el contador de ocultas, AUD1 todo", async ({ request }) => {
     const { r1, r3 } = await prepararR1aR4(request);
     const q2r1 = await detalleEjecucion(request, r1.id, "tamanoPagina=100", "qe2");
     expect(q2r1.status).toBe(200);
-    expect(q2r1.body.items).toHaveLength(11);
+    expect(q2r1.body.items).toHaveLength(10);
     expect(q2r1.body.filasOcultas).toBe(0);
-    expect(q2r1.body.items.find((f: any) => f.codigo === "QTY-11")).toMatchObject({ resultado: "ERROR", motivo: "TITULO_VACIO" });
     const q1r1 = await detalleEjecucion(request, r1.id, "tamanoPagina=100", "qe1");
-    expect(q1r1.body.items.map((f: any) => f.codigo)).toEqual(["QTY-11"]);
-    expect(q1r1.body.items[0].titulo ?? null).toBeNull();
-    expect(q1r1.body.items[0].referencia ?? null).toBeNull();
+    expect(q1r1.body.items).toEqual([]);
     expect(q1r1.body.filasOcultas).toBe(10);
     expect(cumpleContrato("PaginaFilasEjecucion", q1r1.body)).toEqual({ ok: true, errores: [] });
     const q1r3 = await detalleEjecucion(request, r3.id, "tamanoPagina=100", "qe1");
@@ -125,10 +125,10 @@ test.describe("E5-B04 · Registro de ejecuciones", () => {
     expect(q1r3.body.items.every((f: any) => f.resultado === "ERROR" && f.motivo)).toBe(true);
     expect(q1r3.body.filasOcultas).toBe(2);
     const aud = await detalleEjecucion(request, r1.id, "tamanoPagina=100", "aud1");
-    expect(aud.body.items).toHaveLength(11);
+    expect(aud.body.items).toHaveLength(10);
     expect(aud.body.filasOcultas).toBe(0);
     // El QE puede leer el resumen de todas las ejecuciones (D106).
-    expect((await ejecuciones(request, "", "qe1")).body.total).toBe(4);
+    expect((await ejecuciones(request, "", "qe1")).body.total).toBe(5);
   });
 
   test("[E5-B04#2] T07 (negativo): LID1 y ANA1 reciben 403 en todo; un id inexistente da 404 a ADM1 y AUD1 y 403 a QE1 y LID1; sin token 401", async ({ request }) => {
@@ -162,7 +162,7 @@ test.describe("E5-B04 · Registro de ejecuciones", () => {
   test("[E5-B04#3] T08: con Jira en TOKEN_REVOCADO el token, su Base64 y Authorization/Basic no aparecen en la respuesta, en ninguna tabla ni en el registro del servicio", async ({ request }) => {
     await estadoConfigBase(request);
     await jiraFalso.modo("TOKEN_REVOCADO");
-    const e = await sincronizarOk(request);
+    const e = (await consultar(request)).body.ejecucion;
     expect(e).toMatchObject({ resultado: "FALLIDA", codigoError: "JIRA_CREDENCIAL_INVALIDA", mensajeError: "Jira rechazó el correo o el API token. Revisa la conexión." });
     expect(contieneSecreto(JSON.stringify(e))).toBeUndefined();
     const g = await ejecucion(request, e.id);
@@ -177,7 +177,7 @@ test.describe("E5-B04 · Registro de ejecuciones", () => {
   test.describe("instancias del perfil de QA", () => {
     let i6: InstanciaE5 | undefined;
     let i7: InstanciaE5 | undefined;
-    let proxy: Awaited<ReturnType<typeof proxyOrganizacion>> | undefined;
+    let proxy: Awaited<ReturnType<typeof proxyCortaRuta>> | undefined;
     test.afterAll(async () => {
       await Promise.all([i6?.detener(), i7?.detener(), proxy?.cerrar()]);
     });
@@ -185,10 +185,11 @@ test.describe("E5-B04 · Registro de ejecuciones", () => {
     test("[E5-B04#3] T09: con Organización cortada el error es el mensaje fijo, sin URL internas, trazas ni cabeceras, en la respuesta y en la tabla", async ({ request }) => {
       await estadoConfigBase(request);
       expect((await guardarConfigBase(request, { proyecto: "BIG" })).body.guardado).toBe(true);
-      proxy = await proxyOrganizacion(env.organizacionUrl, 3199, 0);
+      proxy = await proxyCortaRuta(env.organizacionUrl, 3199, "/estado-codigos", 0);
       i6 = await levantarIntegraciones(3108, { ORGANIZACION_URL: proxy.url });
-      const r = await sincronizar(request, {}, "http://localhost:3108");
-      expect(r.status).toBe(200);
+      const rc = await consultar(request, {}, "http://localhost:3108");
+      expect(rc.status).toBe(200);
+      const r = { ...rc, body: rc.body.ejecucion };
       expect(r.body.codigoError).toBe("ORGANIZACION_NO_DISPONIBLE");
       expect(r.body.mensajeError).toBe("No pudimos guardar las HDU en este momento.");
       const sospechosos = /127\.0\.0\.1|localhost|:3199|:3001|ECONN|socket|stack|\bat \w+|Authorization|Bearer|Basic /;
@@ -204,7 +205,7 @@ test.describe("E5-B04 · Registro de ejecuciones", () => {
 
     test("[E5-B04#1] T10: con svc_integraciones no se puede borrar, modificar una ejecución cerrada ni un detalle, ni violar los CHECK; no hay llaves foráneas a otro esquema", async ({ request }) => {
       await estadoConfigBase(request);
-      const e = await sincronizarOk(request);
+      const e = (await consultarOk(request)).ejecucion;
       const denegado = /permission denied|permiso denegado/i;
       await conIntegraciones(async (c) => {
         await expect(c.query("DELETE FROM integraciones.ejecucion_integracion")).rejects.toThrow(denegado);
@@ -216,15 +217,15 @@ test.describe("E5-B04 · Registro de ejecuciones", () => {
         await expect(c.query(base, ["INVENTADO", 1])).rejects.toThrow(/check|violates/i);
         await expect(c.query(base, ["EXITOSA", 5])).rejects.toThrow(/check|violates/i); // 1 + 0 + 0 + 0 no suma 5
         const fk = await c.query(`SELECT confrelid::regclass::text r FROM pg_constraint WHERE contype='f' AND connamespace='integraciones'::regnamespace`);
-        for (const f of fk.rows) expect(String(f.r)).toMatch(/ejecucion_integracion$/);
+        for (const f of fk.rows) expect(String(f.r)).toMatch(/(ejecucion_integracion|consulta_jira)$/); // consulta_item → consulta_jira, mismo esquema (D133)
       });
     });
 
-    test("[E5-B04#1] T11: dos sincronizaciones simultáneas dan 200 y 409 INTEGRACION_EN_CURSO con una sola ejecución; una EN_CURSO de hace 6 minutos queda INTERRUMPIDA", async ({ request }) => {
+    test("[E5-B04#1] T11: dos consultas simultáneas dan 200 y 409 INTEGRACION_EN_CURSO con una sola ejecución; una EN_CURSO de hace 6 minutos queda INTERRUMPIDA", async ({ request }) => {
       await estadoConfigBase(request);
       i7 = await levantarIntegraciones(3109, { JIRA_TIEMPO_LIMITE_MS: "20000", INTEGRACIONES_PRESUPUESTO_MS: "9500" });
       await jiraFalso.modo("LENTO");
-      const [a, b] = await Promise.all([sincronizar(request, {}, i7.url), (async () => { await new Promise((r) => setTimeout(r, 700)); return sincronizar(request, {}, i7!.url); })()]);
+      const [a, b] = await Promise.all([consultar(request, {}, i7.url), (async () => { await new Promise((r) => setTimeout(r, 700)); return consultar(request, {}, i7!.url); })()]);
       const estados = [a.status, b.status].sort();
       expect(estados).toEqual([200, 409]);
       const conflicto = a.status === 409 ? a : b;
@@ -237,9 +238,9 @@ test.describe("E5-B04 · Registro de ejecuciones", () => {
                  VALUES ('11111111-1111-4111-8111-111111111111', 'JIRA', $1, 'ADM1 Administrador', 'ADMINISTRADOR', now() - interval '6 minutes', 'EN_CURSO')`, [adm]);
       const est = await api.get<any>(request, "/v1/integraciones/estado", { token: await tk("adm1") });
       expect(est.body.enCurso).toMatchObject({ abandonada: true });
-      const nueva = await sincronizar(request, {}, i7.url);
-      expect(nueva.status).toBe(200);
-      expect(nueva.body.resultado).toMatch(/EXITOSA|CON_ERRORES/);
+      const nueva = await consultar(request, { reemplazar: true }, i7.url);
+      expect(nueva.status, JSON.stringify(nueva.body)).toBe(200);
+      expect(nueva.body.ejecucion.resultado).toMatch(/EXITOSA|CON_ERRORES/);
       const vieja = await sql("SELECT resultado, terminada_en FROM integraciones.ejecucion_integracion WHERE id_ejecucion = '11111111-1111-4111-8111-111111111111'");
       expect(vieja[0].resultado).toBe("INTERRUMPIDA");
       expect(vieja[0].terminada_en).toBeTruthy();
@@ -368,6 +369,50 @@ test.describe("E5-B04 · Registro de ejecuciones", () => {
       // Se borran los tres usuarios y su auditoría: los valores absolutos de E7 (inactivos, últimos cambios) deben quedar como antes de la prueba.
       await borrarUsuariosDePrueba([qeA.id, qeB.id, ana.id], t0);
     }
+  });
+  test("[E5-B04#4] T16: el historial se filtra por fase (CONSULTA, CONFIRMACION, DIRECTA = archivo), el invariante se cumple en las tres y una ejecución cerrada no se puede actualizar", async ({ request }) => {
+    const { c1, r1, r2, r3, r4 } = await prepararR1aR4(request);
+    const ids = (xs: any[]) => xs.map((e) => e.id).sort();
+    const consulta = await ejecucionesPorFase(request, "CONSULTA");
+    const confirmacion = await ejecucionesPorFase(request, "CONFIRMACION");
+    const directa = await ejecucionesPorFase(request, "DIRECTA");
+    expect(ids(consulta)).toEqual(ids([c1, r4]));
+    expect(ids(confirmacion)).toEqual(ids([r1]));
+    expect(ids(directa)).toEqual(ids([r2, r3]));
+    for (const e of consulta.filter((x) => x.resultado !== "FALLIDA")) expect(e.nuevas + e.cambiaron + e.sinCambios + e.conError).toBe(e.leidas);
+    for (const e of [...confirmacion, ...directa]) {
+      expect(e.creadas + e.actualizadas + e.omitidas + e.conError).toBe(e.leidas);
+      expect(e.nuevas + e.cambiaron + e.sinCambios).toBe(0);
+    }
+    const mala = await api.get<any>(request, "/v1/integraciones/ejecuciones?fase=INVENTADA", { token: await tk("adm1") });
+    expect(mala.status).toBe(400);
+    await conIntegraciones(async (c) => {
+      await expect(c.query("UPDATE integraciones.ejecucion_integracion SET leidas = 99 WHERE id_ejecucion = $1", [c1.id])).rejects.toThrow(/cerrada|inmutable|permission|check|denied/i);
+    });
+    const volcado = await volcarIntegraciones();
+    expect(volcado).not.toContain("Otra descripción de Jira");
+  });
+
+  test("[E5-B04#4] T17: el detalle de la confirmación lo ven ADM1 y AUD1 completo con la asignación, QE2 solo su ámbito con filasOcultas y la ejecución de consulta no tiene filas de detalle para nadie", async ({ request }) => {
+    const { c1, r1 } = await prepararR1aR4(request);
+    for (const clave of ["adm1", "aud1"] as const) {
+      const d = await detalleEjecucion(request, r1.id, "tamanoPagina=100", clave);
+      expect(d.status, clave).toBe(200);
+      expect(d.body.items, clave).toHaveLength(10);
+      expect(d.body.filasOcultas, clave).toBe(0);
+      for (const fila of d.body.items) expect(fila.asignacion, clave + " " + fila.codigo).toMatchObject({ celula: "CEL-C" });
+    }
+    const q2 = await detalleEjecucion(request, r1.id, "tamanoPagina=100", "qe2");
+    expect(q2.body.items).toHaveLength(10);
+    const q1 = await detalleEjecucion(request, r1.id, "tamanoPagina=100", "qe1");
+    expect(q1.body.items).toHaveLength(0);
+    expect(q1.body.filasOcultas).toBe(10);
+    for (const clave of ["adm1", "aud1", "qe1", "qe2"] as const) {
+      const d = await detalleEjecucion(request, c1.id, "tamanoPagina=100", clave);
+      expect(d.status, clave).toBe(200);
+      expect(d.body.items, clave).toEqual([]);
+    }
+    expect(cumpleContrato("PaginaFilasEjecucion", q2.body)).toEqual({ ok: true, errores: [] });
   });
 });
 

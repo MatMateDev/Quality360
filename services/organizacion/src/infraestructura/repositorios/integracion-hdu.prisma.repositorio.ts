@@ -11,7 +11,9 @@ import {
 } from '../../dominio/repositorios/integracion-hdu.repositorio.js';
 import type { Actor, OrigenHdu } from '../../dominio/tipos.js';
 import { esErrorUnicidad } from '../prisma/errores-prisma.js';
+import { INCLUYE_ROL, aUsuarioDominio } from '../prisma/mapeadores.js';
 import { PrismaService } from '../prisma/prisma.service.js';
+import { leerCreacionDeHdu } from './auditoria.prisma.repositorio.js';
 import { crearHduEnTransaccion } from './hdu.prisma.repositorio.js';
 
 const SELECCION = { id: true, estado: true, origen: true, titulo: true, descripcion: true, prioridad: true } as const;
@@ -27,10 +29,45 @@ async function buscar(cliente: Cliente, codigoNormalizado: string): Promise<HduP
   return fila === null ? null : aHduParaUpsert(fila);
 }
 
+/** Evita solicitar otra conexión mientras la transacción mantiene ocupada la única del pool. */
+function lecturasDeUnidad(cliente: Cliente): Pick<UnidadTrabajoUpsert,
+  'buscarPorCodigoNormalizado' | 'buscarCelulaPorNombre' | 'buscarSprintDeCelulaPorNombre' | 'buscarUsuarioPorCorreo' | 'describirExistente'> {
+  return {
+    buscarPorCodigoNormalizado: (codigoNormalizado) => buscar(cliente, codigoNormalizado),
+    async describirExistente(idHistoria, consultaId, actorId) {
+      const hdu = await cliente.hdu.findUnique({
+        where: { id: idHistoria },
+        select: { id: true, qeResponsable: { select: { nombre: true } }, analista: { select: { nombre: true } } },
+      });
+      if (hdu === null) return null;
+      const creacion = await leerCreacionDeHdu(cliente, idHistoria);
+      return {
+        idHistoria: hdu.id,
+        qe: hdu.qeResponsable.nombre,
+        analista: hdu.analista?.nombre ?? null,
+        creadaPorEstaConsulta: creacion?.consultaId === consultaId,
+        creadaPorActor: creacion?.actorId === actorId,
+      };
+    },
+    buscarCelulaPorNombre: (nombre) => cliente.celula.findFirst({
+      where: { nombre: { equals: nombre, mode: 'insensitive' } },
+      select: { id: true, nombre: true },
+    }),
+    buscarSprintDeCelulaPorNombre: (celulaId, nombre) => cliente.sprint.findFirst({
+      where: { celulaId, nombre: { equals: nombre, mode: 'insensitive' } },
+      select: { id: true, nombre: true, inicio: true, fin: true, celulaId: true },
+    }),
+    async buscarUsuarioPorCorreo(correo) {
+      const fila = await cliente.usuario.findUnique({ where: { correo: correo.toLowerCase() }, include: INCLUYE_ROL });
+      return fila === null ? null : aUsuarioDominio(fila);
+    },
+  };
+}
+
 /** Unidad que escribe dentro de la transacción `tx`. */
 function unidadEscritura(tx: Prisma.TransactionClient): UnidadTrabajoUpsert {
   return {
-    buscarPorCodigoNormalizado: (codigoNormalizado) => buscar(tx, codigoNormalizado),
+    ...lecturasDeUnidad(tx),
 
     async crear(datos: DatosAltaUpsert, actor: Actor) {
       try {
@@ -47,6 +84,8 @@ function unidadEscritura(tx: Prisma.TransactionClient): UnidadTrabajoUpsert {
             origen: datos.origen,
             claveExterna: datos.claveExterna,
             urlExterna: datos.urlExterna,
+            analistaId: datos.analistaId ?? null,
+            consultaId: datos.consultaId ?? null,
           },
           actor,
         );
@@ -107,7 +146,7 @@ export class IntegracionHduPrismaRepositorio implements IntegracionHduRepositori
 
   soloLectura(): UnidadTrabajoUpsert {
     return {
-      buscarPorCodigoNormalizado: (codigoNormalizado) => buscar(this.prisma, codigoNormalizado),
+      ...lecturasDeUnidad(this.prisma),
       crear: () => Promise.resolve({ id: '' }),
       actualizar: () => Promise.resolve(),
     };

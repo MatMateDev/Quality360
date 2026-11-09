@@ -1,5 +1,5 @@
 /**
- * Validación de los cuerpos de configuración, prueba, sincronización y archivos. El sitio se valida aquí, sin ninguna
+ * Validación de los cuerpos de configuración, prueba y archivos. El sitio se valida aquí, sin ninguna
  * llamada saliente (D95): solo `https://<subdominio>.atlassian.net` (y, en pruebas, `http://127.0.0.1:<puerto>`).
  */
 import type { ConfiguracionIntegraciones } from '../../configuracion.js';
@@ -7,14 +7,12 @@ import { MAXIMO_BYTES_ARCHIVO } from '../../dominio/ejecucion.js';
 import { ErrorEstructuraArchivo } from '../../dominio/errores.js';
 import type { EntradaArchivo } from '../../aplicacion/archivos.servicio.js';
 import { TIPOS_ISSUE_POR_DEFECTO, type EntradaGuardado, type EntradaPrueba } from '../../aplicacion/configuracion.servicio.js';
-import type { EntradaSincronizacion } from '../../aplicacion/sincronizacion.servicio.js';
 import { validarSitio } from '../../dominio/mapeo/sitio.js';
 import { Acumulador, objeto } from './comunes.js';
 
 const PROYECTO = /^[A-Z][A-Z0-9_]{1,9}$/;
 const CORREO = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const TIPO_ISSUE = /^[\p{L}\p{N} _-]+$/u;
-const CLAVE_CONTINUAR = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
 
 function sitio(datos: Record<string, unknown>, a: Acumulador, permitirHostPrueba: boolean, requerido: boolean): string | undefined {
   const valor = datos.sitio;
@@ -123,24 +121,6 @@ export function leerPrueba(cuerpo: unknown, configuracion: ConfiguracionIntegrac
   tipos(datos, a, undefined);
   a.lanzarSiHay();
   return entrada;
-}
-
-/** `POST /v1/integraciones/jira/sincronizaciones`. */
-export function leerSincronizacion(cuerpo: unknown): EntradaSincronizacion {
-  const datos = objeto(cuerpo, true);
-  const a = new Acumulador();
-  a.sinCamposExtra(datos, ['continuarDesde', 'vincularExistentes']);
-  let continuarDesde: string | undefined;
-  if (datos.continuarDesde !== undefined) {
-    const valor = datos.continuarDesde;
-    if (typeof valor !== 'string' || valor.length > 40 || !CLAVE_CONTINUAR.test(valor)) {
-      // Se valida antes de interpolarla en la consulta a Jira (D96).
-      a.falla('continuarDesde', 'FORMATO_INVALIDO', 'La clave desde la que continuar no es válida.');
-    } else continuarDesde = valor;
-  }
-  const vincularExistentes = a.booleano(datos, 'vincularExistentes');
-  a.lanzarSiHay();
-  return { continuarDesde, vincularExistentes };
 }
 
 /**

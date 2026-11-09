@@ -57,6 +57,15 @@ describe('configuración', () => {
     assert.equal(cargarConfiguracion({ ...base, INTEGRACIONES_PERMITIR_HOST_PRUEBA: 'true' }).permitirHostPrueba, true);
   });
 
+  it('INTEGRACIONES_JIRA_TAMANO_PAGINA: 50 por defecto, 10 a 100 vale, fuera de rango o inválido usa 50; la toma de fila dura 30 s (D196, D202)', () => {
+    assert.equal(cargarConfiguracion(base).jiraTamanoPagina, 50);
+    assert.equal(cargarConfiguracion(base).tomaFilaMs, 30_000);
+    for (const [valor, esperado] of [['25', 25], ['10', 10], ['100', 100], ['9', 50], ['101', 50], ['abc', 50], ['', 50], ['25.5', 50]] as const) {
+      assert.equal(cargarConfiguracion({ ...base, INTEGRACIONES_JIRA_TAMANO_PAGINA: valor }).jiraTamanoPagina, esperado, valor);
+    }
+    assert.equal(cargarConfiguracion({ ...base, INTEGRACIONES_TOMA_FILA_MS: '2000' }).tomaFilaMs, 2000);
+  });
+
   it('los valores por defecto son los de D96 y D114', () => {
     const c = cargarConfiguracion(base);
     assert.deepEqual([c.presupuestoMs, c.tiempoLimiteJiraMs, c.esperaMax429Ms, c.topeIssues, c.enCursoMaxMs, c.tiempoLimiteOrganizacionMs], [8000, 3000, 3000, 100, 300_000, 5000]);

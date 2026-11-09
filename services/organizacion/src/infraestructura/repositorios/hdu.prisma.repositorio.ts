@@ -62,6 +62,9 @@ async function contarPorEstado(prisma: PrismaService, where: Prisma.HduWhereInpu
  * ninguno puede saltarse el historial inicial (la fila misma, con `creado_por` y `estado_actualizado_en`) ni
  * la auditoría. `origen` solo aparece en la auditoría cuando no es `MANUAL`.
  */
+/** Motivo fijo de la entrada inicial del historial de asignación de una HDU creada desde una consulta (D141). */
+export const MOTIVO_ASIGNACION_INICIAL = 'Asignación inicial al confirmar la consulta de Jira';
+
 export async function crearHduEnTransaccion(tx: Prisma.TransactionClient, datos: DatosNuevaHdu, actor: Actor): Promise<Hdu> {
   const origen = datos.origen ?? 'MANUAL';
   const creada = await tx.hdu.create({
@@ -74,6 +77,7 @@ export async function crearHduEnTransaccion(tx: Prisma.TransactionClient, datos:
       historiaSprints: { create: { sprintId: datos.sprintId } },
       prioridad: datos.prioridad,
       qeResponsableId: datos.qeResponsableId,
+      analistaId: datos.analistaId ?? null,
       estado: 'PENDIENTE',
       creadoPorTipo: actor.tipo,
       creadoPorId: actor.id,
@@ -100,10 +104,29 @@ export async function crearHduEnTransaccion(tx: Prisma.TransactionClient, datos:
         sprintId: datos.sprintId,
         prioridad: creada.prioridad,
         ...(origen === 'MANUAL' ? {} : { origen }),
+        ...(datos.consultaId == null ? {} : { consultaId: datos.consultaId }),
+        ...(datos.analistaId == null
+          ? {}
+          : { asignacion: { celulaId: datos.celulaId, qeResponsableId: datos.qeResponsableId, analistaId: datos.analistaId, sprintId: datos.sprintId } }),
       },
       motivo: null,
     },
   });
+  if (datos.analistaId != null) {
+    // Asignación inicial al confirmar una consulta de Jira (D141): el analista anterior es vacío.
+    await tx.hduHistorialAsignacion.create({
+      data: {
+        hduId: creada.id,
+        analistaAnteriorId: null,
+        analistaNuevoId: datos.analistaId,
+        motivo: MOTIVO_ASIGNACION_INICIAL,
+        actorTipo: actor.tipo,
+        actorId: actor.id,
+        actorNombre: actor.nombre,
+        fecha: creada.creadoEn,
+      },
+    });
+  }
   return aHduDominio(creada);
 }
 
@@ -130,6 +153,12 @@ export class HduPrismaRepositorio implements HduRepositorio {
     return fila === null ? null : aHduDominio(fila);
   }
 
+  async buscarPorCodigosNormalizados(codigosNormalizados: readonly string[]): Promise<Hdu[]> {
+    if (codigosNormalizados.length === 0) return [];
+    const filas = await this.prisma.hdu.findMany({ where: { codigoNormalizado: { in: [...codigosNormalizados] } }, include: INCLUYE_SPRINT_VIGENTE });
+    return filas.map(aHduDominio);
+  }
+
   async buscarPorIds(ids: readonly string[]): Promise<Hdu[]> {
     if (ids.length === 0) return [];
     const filas = await this.prisma.hdu.findMany({ where: { id: { in: [...ids] } }, include: INCLUYE_SPRINT_VIGENTE });
@@ -152,7 +181,7 @@ export class HduPrismaRepositorio implements HduRepositorio {
 
   async fijarSprintVigente(hduId: string, sprintId: string): Promise<{ cambio: boolean }> {
     return this.prisma.$transaction(async (tx) => {
-      await tx.$queryRaw`SELECT "id_historia" FROM "historia_usuario" WHERE "id_historia" = ${hduId}::uuid FOR UPDATE`;
+      await tx.$queryRaw`SELECT "id_historia" FROM "organizacion"."historia_usuario" WHERE "id_historia" = ${hduId}::uuid FOR UPDATE`;
       const vigente = await tx.historiaSprint.findFirst({ where: { hduId, fechaRetiro: null } });
       if (vigente?.sprintId === sprintId) return { cambio: false };
       if (vigente !== null) await tx.historiaSprint.update({ where: { id: vigente.id }, data: { fechaRetiro: new Date() } });
@@ -179,7 +208,7 @@ export class HduPrismaRepositorio implements HduRepositorio {
 
   async reasignarQeResponsable(input: { hduId: string; qeNuevoId: string; motivo: string; actor: Actor }): Promise<ResultadoReasignacionQe> {
     return this.prisma.$transaction(async (tx) => {
-      await tx.$queryRaw`SELECT "id_historia" FROM "historia_usuario" WHERE "id_historia" = ${input.hduId}::uuid FOR UPDATE`;
+      await tx.$queryRaw`SELECT "id_historia" FROM "organizacion"."historia_usuario" WHERE "id_historia" = ${input.hduId}::uuid FOR UPDATE`;
       const antes = await tx.hdu.findUniqueOrThrow({ where: { id: input.hduId }, include: INCLUYE_SPRINT_VIGENTE });
       if (antes.qeResponsableId === input.qeNuevoId) {
         return { cambio: false, hdu: aHduDominio(antes), qeAnteriorId: antes.qeResponsableId, fecha: antes.estadoActualizadoEn };

@@ -6,10 +6,10 @@ import { VistaHistorial } from "@/components/integraciones/VistaHistorial";
 export function QeIntegracionesPage() {
   return (
     <div data-testid="pagina-qe-integraciones">
-      <EncabezadoBandeja etiqueta="Portal QE" titulo="Integraciones" descripcion="Consulta lo que el Administrador sincronizó o importó desde Jira o desde archivos.">
+      <EncabezadoBandeja etiqueta="Portal QE" titulo="Integraciones" descripcion="Consulta lo que el Administrador consultó, confirmó o importó desde Jira o desde archivos.">
         <AvisoSoloLectura texto="Vista de solo lectura. Aquí ves lo que se sincronizó o importó; no puedes configurar ni ejecutar nada." />
         <p className="campo-ayuda" data-testid="nota-integraciones-qe">
-          Las HDU nuevas llegan sin analista: las verás en tu <Link to="/qe">bandeja</Link>, en «Asignar analista».
+          Las HDU que el Administrador crea desde Jira llegan asignadas. Las importadas desde un archivo llegan sin analista: las verás en <Link to="/qe">«Asignar analista»</Link>.
         </p>
       </EncabezadoBandeja>
       <VistaHistorial soloLectura />

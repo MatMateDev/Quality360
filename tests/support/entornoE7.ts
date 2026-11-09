@@ -115,7 +115,7 @@ export async function organizacionCaida(conPortal = false): Promise<PilaCaida> {
 }
 
 export async function certificacionesConLimite(limiteFilas: number): Promise<PilaCaida> {
-  const cert = await levantarServicio("certificaciones", 3202, { EXPORTACION_LIMITE_FILAS: String(limiteFilas) });
+  const cert = await levantarServicio("certificaciones", Number(process.env.PUERTO_ALT_CERTIFICACIONES ?? 3202), { EXPORTACION_LIMITE_FILAS: String(limiteFilas) });
   let gateway: GatewayCaido | undefined;
   try {
     gateway = await levantarGatewayConFuenteCaida({ CERTIFICACIONES_URL: cert.url });

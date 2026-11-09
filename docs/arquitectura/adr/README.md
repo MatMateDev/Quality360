@@ -1,1 +1,1 @@
-# docs/arquitectura/adr · Registros de decisiones de arquitectura (ADR) del MVP, uno por decisión D1–D12, más 0013 (E7, bandejas por rol), 0014 (E4, impedimentos y riesgo) y 0015 (E5, integración con Jira y archivos) · dueño: q360-arquitecto.
+# docs/arquitectura/adr · Registros de decisiones de arquitectura (ADR) del MVP, uno por decisión D1–D12, más 0013 (E7, bandejas por rol), 0014 (E4, impedimentos y riesgo), 0015 (E5, integración con Jira y archivos), 0016 (E5, consulta de Jira en dos pasos) y 0018 (E5, detalle y confirmación por HDU) · dueño: q360-arquitecto.

@@ -1,14 +1,15 @@
 import { expect, test } from "@playwright/test";
 import { api } from "../support/api";
 import { hduFixture } from "../support/e7";
-import { tk, limpiarE5 } from "../support/e5";
+import { tk, limpiarE5, estadoConfigBase, guardarConfigBase } from "../support/e5";
+import { CONSULTAS, asignarYMarcar, consultarOk, continuar, editar, fila, pares } from "../support/e5c";
 import { levantarGateway, type InstanciaE5 } from "../support/entornoE5";
 
 /**
  * E5 · Gateway: rutas explícitas hacia Integraciones (D127), 503 solo en esas rutas con INTEGRACIONES_URL ausente o inválida, y
  * IMPEDIMENTOS_URL no fatal (D129). El gateway principal (:3000) se usa tal cual; las variantes son instancias del mismo build.
  */
-const GATEWAY_REAL = "http://localhost:3000";
+const GATEWAY_REAL = process.env.GATEWAY_REAL_URL ?? "http://localhost:3000";
 test.describe.configure({ mode: "default" }); // cada prueba parte de su propio estado base: un fallo no debe ocultar a las demás
 test.afterAll(async () => {
   await limpiarE5();
@@ -48,7 +49,7 @@ test.describe("E5 · Gateway hacia Integraciones", () => {
           const r = await api.get<any>(request, ruta, { token, baseURL: g.url });
           expect([r.status, r.body.codigo], ruta).toEqual([503, "SERVICIO_NO_DISPONIBLE"]);
         }
-        const post = await api.post<any>(request, "/v1/integraciones/jira/sincronizaciones", { token, body: {}, baseURL: g.url });
+        const post = await api.post<any>(request, "/v1/integraciones/jira/consultas", { token, body: {}, baseURL: g.url });
         expect([post.status, post.body.codigo]).toEqual([503, "SERVICIO_NO_DISPONIBLE"]);
         // Lo demás no se afecta: HDU, usuarios y la composición del inicio.
         expect((await api.get<any>(request, "/v1/hdu?tamanoPagina=1", { token, baseURL: g.url })).status).toBe(200);
@@ -60,6 +61,50 @@ test.describe("E5 · Gateway hacia Integraciones", () => {
       });
     });
   }
+
+
+  test('[E5-GW#5] la ruta retirada POST /v1/integraciones/jira/sincronizaciones responde 404 y las 10 rutas de la consulta están publicadas (no son 404)', async ({ request }) => {
+    const adm = await tk('adm1');
+    const retirada = await api.post<any>(request, '/v1/integraciones/jira/sincronizaciones', { token: adm, body: {}, baseURL: GATEWAY_REAL });
+    expect(retirada.status).toBe(404);
+    const falso = '00000000-0000-4000-8000-000000000000';
+    const casos: Array<[string, string, unknown]> = [
+      ['get', `${CONSULTAS}/actual`, undefined], ['get', `${CONSULTAS}/${falso}`, undefined], ['get', `${CONSULTAS}/${falso}/items?grupo=NUEVA`, undefined],
+      ['patch', `${CONSULTAS}/${falso}/items`, { itemIds: [falso], marcada: false }], ['post', `${CONSULTAS}/${falso}/continuaciones`, {}],
+      ['post', `${CONSULTAS}/${falso}/confirmaciones`, { version: 1 }], ['post', `${CONSULTAS}/${falso}/descartes`, {}],
+      // D200 y D202: las 2 rutas nuevas (la consulta pasa de 8 a 10 operaciones; `POST /consultas` se prueba en B02).
+      ['get', `${CONSULTAS}/${falso}/items/${falso}`, undefined], ['post', `${CONSULTAS}/${falso}/items/${falso}/confirmaciones`, { revision: 1 }],
+    ];
+    expect(casos, 'las 7 rutas con id de la 8 anteriores más las 2 nuevas').toHaveLength(9);
+    for (const [metodo, ruta, body] of casos) {
+      const r = await (api as any)[metodo](request, ruta, { token: adm, body, baseURL: GATEWAY_REAL });
+      expect([r.status, r.body?.codigo], metodo + ' ' + ruta).not.toEqual([404, undefined]);
+      expect(r.status, ruta).not.toBe(501);
+    }
+  });
+
+  test('[E5-B05#5] GW-D152: 100 PATCH seguidos de la consulta y un PATCH de 230 filas pasan el gateway real sin 429 (cubo propio de 120/min, no el de escritura de 30/min)', async ({ request }) => {
+    await estadoConfigBase(request);
+    expect((await guardarConfigBase(request, { proyecto: 'BIG' })).body.guardado).toBe(true);
+    const r = await consultarOk(request);
+    const id = r.consulta.id as string;
+    await continuar(request, id);
+    await continuar(request, id);
+    const p = await pares(request);
+    const primera = await fila(request, id, 'BIG-1');
+    const token = await tk('adm1');
+    const estados: number[] = [];
+    for (let i = 0; i < 100; i += 1) {
+      const resp = await fetch(`${GATEWAY_REAL}${CONSULTAS}/${id}/items`, { method: 'PATCH', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ itemIds: [primera.id], asignacion: { celulaId: p.celC } }) });
+      estados.push(resp.status);
+    }
+    expect(estados.filter((s) => s === 429), 'respuestas 429 en 100 PATCH').toHaveLength(0);
+    expect(new Set(estados)).toEqual(new Set([200]));
+    const grande = await fetch(`${GATEWAY_REAL}${CONSULTAS}/${id}/items`, { method: 'PATCH', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ grupo: 'NUEVA', todas: true, asignacion: { celulaId: p.celC, qeId: p.qe2, analistaId: p.ana3 } }) });
+    expect(grande.status).toBe(200);
+    expect(((await grande.json()) as any).aplicadas).toBe(230);
+    void editar; void asignarYMarcar;
+  });
 
   test.describe("IMPEDIMENTOS_URL ausente", () => {
     let g: InstanciaE5 | undefined;

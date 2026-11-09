@@ -302,7 +302,7 @@ export function FormularioConexionJira({ config, onTokenNoDescifrable, onIntegra
             </section>
 
             <section className="panel" aria-labelledby="titulo-destino-jira">
-              <h2 id="titulo-destino-jira">Destino de las HDU nuevas</h2>
+              <h2 id="titulo-destino-jira">Destino por defecto (archivos y sprint de respaldo)</h2>
               <div className="campos-columna">
                 <CampoForm id="campo-celula" clave="celula" etiqueta="Célula" error={err("celula")}>
                   {(props) => (
@@ -316,7 +316,7 @@ export function FormularioConexionJira({ config, onTokenNoDescifrable, onIntegra
                     </select>
                   )}
                 </CampoForm>
-                <CampoForm id="campo-qe" clave="qe" etiqueta="QE responsable por defecto" error={err("qe")} ayuda="Las HDU llegan sin analista; tu QE lo asigna después.">
+                <CampoForm id="campo-qe" clave="qe" etiqueta="QE responsable por defecto" error={err("qe")} ayuda="Las HDU de Jira se asignan al revisar la consulta. Estos valores se usan al importar archivos.">
                   {(props) => (
                     <select {...props} ref={referenciar("qe")} data-testid="campo-qe" value={campos.qeId} onChange={(e) => cambiar("qeId", e.target.value)}>
                       <option value="">Elige el QE</option>

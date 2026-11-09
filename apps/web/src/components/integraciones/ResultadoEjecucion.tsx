@@ -36,7 +36,7 @@ function AvisoVincularSugerido({ ejecucion }: { ejecucion: Ejecucion }) {
   );
 }
 
-/** Resultado de una sincronización o de una importación (diseño §4.4–§4.6 y §6.5). Los textos salen de tablas locales. */
+/** Resultado de una importación (la consulta usa ResultadoConsulta) (diseño §4.4–§4.6 y §6.5). Los textos salen de tablas locales. */
 export function ResultadoEjecucion({ ejecucion, modo, testId, testIdError, vincularActivo, totalFilasArchivo, acciones }: Props) {
   const encabezado = useRef<HTMLHeadingElement>(null);
   const aviso = useRef<HTMLDivElement>(null);
@@ -78,7 +78,7 @@ export function ResultadoEjecucion({ ejecucion, modo, testId, testIdError, vincu
             testId={testIdError}
             codigo={ejecucion.codigoError ?? "DESCONOCIDO"}
             contexto={{ conError: ejecucion.conError }}
-            titulo={modo === "jira" ? "No se pudo sincronizar" : "No se importó nada"}
+            titulo={modo === "jira" ? "No se pudo consultar Jira" : "No se importó nada"}
             sugerencias={ejecucion.sugerencias}
             acciones={acciones}
             pie="La ejecución quedó registrada como fallida y no se creó ninguna HDU."

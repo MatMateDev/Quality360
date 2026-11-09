@@ -4,10 +4,12 @@ import type { ConfiguracionJira, DetalleEjecucion, EjecucionIntegracion, EventoC
 import { esAdvertenciaFila, esCodigoErrorIntegracion, esMotivoFila } from '../../dominio/catalogos.js';
 import type {
   Actor,
+  AsignacionNombres,
   CambiosHdu,
   CampoConfiguracion,
   ConfiguracionGuardada,
   Ejecucion,
+  FaseEjecucion,
   EstadoConexion,
   EventoConfiguracion,
   EventoEjecucion,
@@ -28,6 +30,7 @@ export function aConfiguracionGuardada(fila: ConfiguracionJira): ConfiguracionGu
     proyecto: fila.proyectoClave,
     tiposIssue: fila.tiposIssue.split(',').map((tipo) => tipo.trim()).filter((tipo) => tipo.length > 0),
     campoSprint: fila.campoSprint,
+    campoCriterios: fila.campoCriterios,
     celulaId: fila.celulaId,
     qeResponsableId: fila.qeResponsableId,
     sprintRespaldoId: fila.sprintRespaldoId,
@@ -101,11 +104,18 @@ export function aEjecucion(fila: EjecucionIntegracion): Ejecucion {
     archivo,
     hayMas: fila.hayMas,
     continuarDesde: fila.continuarDesde,
+    fase: fila.fase as FaseEjecucion,
+    alcance: fila.alcance === 'HDU' ? 'HDU' : 'LOTE',
+    consultaId: fila.consultaId,
+    nuevas: fila.nuevas,
+    cambiaron: fila.cambiaron,
+    sinCambios: fila.sinCambios,
   };
 }
 
 export function aFilaDetalle(fila: DetalleEjecucion): FilaDetalle {
   const referencia = fila.referencia as { estado?: unknown; responsable?: unknown } | null;
+  const asignacion = fila.asignacion as Partial<AsignacionNombres> | null;
   return {
     fila: fila.fila,
     codigo: fila.codigo,
@@ -123,5 +133,14 @@ export function aFilaDetalle(fila: DetalleEjecucion): FilaDetalle {
             estado: typeof referencia.estado === 'string' ? referencia.estado : null,
             responsable: typeof referencia.responsable === 'string' ? referencia.responsable : null,
           } satisfies ReferenciaJira),
+    asignacion:
+      asignacion === null
+        ? null
+        : {
+            celula: String(asignacion.celula ?? ''),
+            qe: String(asignacion.qe ?? ''),
+            analista: String(asignacion.analista ?? ''),
+            sprint: String(asignacion.sprint ?? ''),
+          },
   };
 }

@@ -24,6 +24,8 @@ export type MotivoFilaUpsert =
   | 'SPRINT_NO_ENCONTRADO'
   | 'SPRINT_REQUERIDO'
   | 'QE_INVALIDO'
+  | 'HDU_CREADA_DESPUES'
+  | 'ASIGNACION_INVALIDA'
   | 'ERROR_INTERNO';
 
 export type AdvertenciaUpsert = 'SPRINT_NO_ENCONTRADO';
@@ -40,6 +42,9 @@ export interface FilaUpsert {
   readonly qeCorreo: string | null;
   readonly claveExterna: string | null;
   readonly urlExterna: string | null;
+  /** Solo en modo confirmación (D140, D151): qué hacer con la fila y, en CREAR, la asignación elegida. */
+  readonly operacion?: 'CREAR' | 'ACTUALIZAR';
+  readonly asignacion?: { readonly celulaId: string; readonly qeResponsableId: string; readonly analistaId: string; readonly sprintId: string };
 }
 
 export interface CambioValor {

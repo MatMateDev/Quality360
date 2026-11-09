@@ -3,11 +3,15 @@
  * valor por defecto. Si algo está mal, el proceso no arranca, salvo las URL de
  * los servicios opcionales (Impedimentos e Integraciones, D127 y D129): si
  * faltan en producción o son inválidas, quedan en `null`, el gateway arranca y
- * solo sus rutas responden 503 `SERVICIO_NO_DISPONIBLE`.
+ * solo sus rutas responden 503 `SERVICIO_NO_DISPONIBLE`; y
+ * `LIMITE_TASA_CONSULTA_MAX` (D152), que si es inválido usa su valor por defecto.
  */
 import { errorInterno, opcionesDesdeEntorno, type OpcionesVerificador } from '@quality360/auth-nest';
 
 export const CONFIGURACION = Symbol.for('quality360.ConfiguracionGateway');
+
+/** Final del aviso de un servicio opcional sin URL válida (D127, D129). */
+export const AVISO_URL_OPCIONAL = 'no configurada o inválida';
 
 /**
  * Una URL por bloque compuesto, para poder tumbar una sola fuente sin tocar
@@ -35,6 +39,11 @@ export interface LimiteTasa {
   maximo: number;
   /** Máximo por ventana en escrituras (POST, PUT, PATCH, DELETE). */
   maximoEscritura: number;
+  /**
+   * Máximo por ventana en `PATCH /v1/integraciones/jira/consultas/{id}/items`
+   * (D152, 120 por defecto). Esa ruta no consume el cubo de escritura.
+   */
+  maximoConsulta: number;
 }
 
 export interface ConfiguracionGateway {
@@ -111,7 +120,7 @@ function leerUrlOpcional(
       // Se informa abajo, sin el valor.
     }
   }
-  avisos.push(`${nombre} no configurada o inválida`);
+  avisos.push(`${nombre} ${AVISO_URL_OPCIONAL}`);
   return null;
 }
 
@@ -122,6 +131,24 @@ function leerEntero(valor: string | undefined, porDefecto: number, nombre: strin
     throw errorInterno(`${nombre} debe ser un entero >= ${minimo} (valor omitido por seguridad)`);
   }
   return numero;
+}
+
+/**
+ * Entero que no debe impedir el arranque (D152): si es inválido, usa el valor
+ * por defecto y deja un aviso sin el valor.
+ */
+function leerEnteroTolerante(
+  valor: string | undefined,
+  porDefecto: number,
+  nombre: string,
+  avisos: string[],
+): number {
+  try {
+    return leerEntero(valor, porDefecto, nombre);
+  } catch {
+    avisos.push(`${nombre} inválido: se usa ${porDefecto}`);
+    return porDefecto;
+  }
 }
 
 function leerLista(valor: string | undefined, porDefecto: string[]): string[] {
@@ -198,6 +225,7 @@ export function cargarConfiguracion(entorno: NodeJS.ProcessEnv = process.env): C
       ventanaMs: leerEntero(entorno.LIMITE_TASA_VENTANA_MS, 60_000, 'LIMITE_TASA_VENTANA_MS'),
       maximo: leerEntero(entorno.LIMITE_TASA_MAX, 300, 'LIMITE_TASA_MAX'),
       maximoEscritura: leerEntero(entorno.LIMITE_TASA_ESCRITURA_MAX, 30, 'LIMITE_TASA_ESCRITURA_MAX'),
+      maximoConsulta: leerEnteroTolerante(entorno.LIMITE_TASA_CONSULTA_MAX, 120, 'LIMITE_TASA_CONSULTA_MAX', avisos),
     },
     verificador: opcionesDesdeEntorno(entorno),
   };

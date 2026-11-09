@@ -1,6 +1,9 @@
 /**
- * Rutas de E5 en el gateway (G1, D127): reenvío explícito de las 10 rutas de
- * `/v1/integraciones/*` a Integraciones (`INTEGRACIONES_URL`), 503 solo en esas
+ * Rutas de E5 en el gateway (G1, D127; GC1, D132 y D152): reenvío explícito de
+ * las 18 rutas (20 operaciones) de `/v1/integraciones/*` a Integraciones
+ * (`INTEGRACIONES_URL`), `jira/sincronizaciones` retirada (404), cubo de tasa
+ * propio para `PATCH …/consultas/{id}/items` y `POST …/items/{itemId}/confirmaciones`
+ * (GD1, ADR 0018, D202 g), 503 solo en esas
  * rutas si la URL falta o es inválida, cuerpo de 1,5 MB solo en `archivos/*`,
  * tiempo límite propio de 12 s (D115), rutas internas no publicadas, y los
  * cambios aditivos de E5 en Organización: `?celulaId` en sprints (D120) y los
@@ -33,8 +36,14 @@ let app: NestExpressApplication;
 
 const EJECUCION_ID = '0b9a6a2e-7c6f-4d4b-9a3e-1f2d3c4b5a69';
 const CELULA_ID = '3f1c2b4a-5d6e-4f70-8a91-b2c3d4e5f607';
+const CONSULTA_ID = '7d2e4f60-1a3b-4c5d-8e9f-a0b1c2d3e4f5';
+const ITEM_ID = '9e8d7c6b-5a49-4382-9716-05f4e3d2c1b0';
+const CONSULTA = `/v1/integraciones/jira/consultas/${CONSULTA_ID}`;
+const RUTA_EDICION = `${CONSULTA}/items`;
+const RUTA_ITEM = `${CONSULTA}/items/${ITEM_ID}`;
+const RUTA_CONFIRMACION_FILA = `${RUTA_ITEM}/confirmaciones`;
 
-type Metodo = 'get' | 'post' | 'put';
+type Metodo = 'get' | 'post' | 'put' | 'patch';
 
 interface Ruta {
   metodo: Metodo;
@@ -45,7 +54,7 @@ interface Ruta {
   estado?: number;
 }
 
-/** Las 11 operaciones de las 10 rutas de E5 (integraciones.v1.yaml). */
+/** Las 20 operaciones de las 18 rutas de E5 (integraciones.v1.yaml). */
 const RUTAS: Ruta[] = [
   { metodo: 'get', ruta: '/v1/integraciones/jira/configuracion', ids: 'E5-F01#3, E5-B01#1, E5-B01#3' },
   {
@@ -56,7 +65,22 @@ const RUTAS: Ruta[] = [
   },
   { metodo: 'post', ruta: '/v1/integraciones/jira/configuracion/probar', ids: 'E5-F01#2, E5-B01#2, E5-B01#3', cuerpo: {} },
   { metodo: 'get', ruta: '/v1/integraciones/jira/configuracion/eventos', ids: 'E5-F01#1, E5-B01#1' },
-  { metodo: 'post', ruta: '/v1/integraciones/jira/sincronizaciones', ids: 'E5-F02#1, E5-B02#1, E5-B04#1', cuerpo: { continuarDesde: 'Q360-100' }, estado: 200 },
+  { metodo: 'post', ruta: '/v1/integraciones/jira/consultas', ids: 'E5-F02#1, E5-B02#1, E5-B04#1, E5-B05#2', cuerpo: { reemplazar: true }, estado: 201 },
+  { metodo: 'get', ruta: '/v1/integraciones/jira/consultas/actual', ids: 'E5-F02#1, E5-F05#8, E5-B05#1' },
+  { metodo: 'get', ruta: CONSULTA, ids: 'E5-F05#8, E5-F05#9, E5-B05#13' },
+  { metodo: 'post', ruta: `${CONSULTA}/continuaciones`, ids: 'E5-F02#5, E5-B02#2, E5-B05#12', cuerpo: {}, estado: 200 },
+  { metodo: 'get', ruta: `${CONSULTA}/items`, ids: 'E5-F05#1, E5-F05#2, E5-B05#1, E5-B05#3' },
+  {
+    metodo: 'patch',
+    ruta: RUTA_EDICION,
+    ids: 'E5-F05#3, E5-F05#4, E5-B05#4, E5-B05#5',
+    cuerpo: { version: 3, itemIds: [ITEM_ID], asignacion: { celulaId: CELULA_ID }, marcarListas: true },
+    estado: 200,
+  },
+  { metodo: 'get', ruta: RUTA_ITEM, ids: 'E5-F06#1, E5-B06#6, E5-B05#13' },
+  { metodo: 'post', ruta: RUTA_CONFIRMACION_FILA, ids: 'E5-F07#1, E5-B07#1, E5-B07#14', cuerpo: { revision: 3 }, estado: 200 },
+  { metodo: 'post', ruta: `${CONSULTA}/confirmaciones`, ids: 'E5-F05#5, E5-B05#6, E5-B04#4', cuerpo: { version: 4 }, estado: 200 },
+  { metodo: 'post', ruta: `${CONSULTA}/descartes`, ids: 'E5-F05#8, E5-B05#10, E5-B05#11', cuerpo: { version: 4 }, estado: 200 },
   {
     metodo: 'post',
     ruta: '/v1/integraciones/archivos/vista-previa',
@@ -119,7 +143,13 @@ function enviar(
   return solicitud;
 }
 
-describe('Reenvío de las 10 rutas de E5 a Integraciones [D127]', () => {
+describe('Reenvío de las 18 rutas (20 operaciones) de E5 a Integraciones [D127, D132, GD1]', () => {
+  it('la lista cubre 18 rutas y 20 operaciones, sin jira/sincronizaciones', () => {
+    assert.equal(RUTAS.length, 20);
+    assert.equal(new Set(RUTAS.map(({ ruta }) => ruta)).size, 18);
+    assert.equal(RUTAS.some(({ ruta }) => ruta.endsWith('/sincronizaciones')), false);
+  });
+
   for (const { metodo, ruta, ids, cuerpo, estado } of RUTAS) {
     const nombre = `${metodo.toUpperCase()} ${ruta}`;
 
@@ -167,7 +197,7 @@ describe('Reenvío de las 10 rutas de E5 a Integraciones [D127]', () => {
 describe('Respuestas de Integraciones llegan tal cual', () => {
   it('409, 422 con ErrorArchivo, 404 y 503 LLAVE_CIFRADO_NO_DISPONIBLE se propagan con su cuerpo [E5-B03#2, E5-B04#3, D113, D128]', async () => {
     const casos: Array<[Metodo, string, number, Record<string, unknown>]> = [
-      ['post', '/v1/integraciones/jira/sincronizaciones', 409, { codigo: 'INTEGRACION_EN_CURSO' }],
+      ['post', '/v1/integraciones/jira/consultas', 409, { codigo: 'INTEGRACION_EN_CURSO' }],
       ['post', '/v1/integraciones/archivos/importaciones', 422, { codigo: 'COLUMNAS_FALTANTES', ejecucionId: EJECUCION_ID, columnasFaltantes: ['titulo'] }],
       ['get', `/v1/integraciones/ejecuciones/${EJECUCION_ID}`, 404, { codigo: 'NO_ENCONTRADO' }],
       ['put', '/v1/integraciones/jira/configuracion', 503, { codigo: 'LLAVE_CIFRADO_NO_DISPONIBLE' }],
@@ -181,14 +211,93 @@ describe('Respuestas de Integraciones llegan tal cual', () => {
     }
   });
 
-  it('un id de ejecución que no es UUID responde 400 VALIDACION y no llega a Integraciones', async () => {
+  it('409, 410 y 422 de la consulta llegan con su cuerpo extendido [E5-B05#4, E5-B05#10, E5-B05#12, D134, D139, D148]', async () => {
+    const casos: Array<[Metodo, string, number, Record<string, unknown>]> = [
+      ['post', '/v1/integraciones/jira/consultas', 409, { codigo: 'CONSULTA_ABIERTA', consulta: { id: CONSULTA_ID, version: 2 } }],
+      ['get', `${CONSULTA}/items`, 410, { codigo: 'CONSULTA_VENCIDA' }],
+      ['get', CONSULTA, 404, { codigo: 'CONSULTA_NO_ENCONTRADA' }],
+      ['post', `${CONSULTA}/continuaciones`, 409, { codigo: 'CONSULTA_COMPLETA' }],
+      ['patch', RUTA_EDICION, 409, { codigo: 'CONSULTA_MODIFICADA', version: 5 }],
+      ['patch', RUTA_EDICION, 422, { codigo: 'FILA_NO_MARCABLE' }],
+      ['post', `${CONSULTA}/confirmaciones`, 409, { codigo: 'ASIGNACIONES_INVALIDAS', filas: [{ id: ITEM_ID, motivo: 'ASIGNACION_INVALIDA' }] }],
+      ['post', `${CONSULTA}/confirmaciones`, 422, { codigo: 'SIN_SELECCION' }],
+      ['post', `${CONSULTA}/descartes`, 409, { codigo: 'CONSULTA_NO_ABIERTA', estado: 'CONFIRMADA' }],
+    ];
+    for (const [metodo, ruta, estado, extra] of casos) {
+      const cuerpo = { mensaje: 'm', traceId: 'x', detalles: [], ...extra };
+      integraciones.responder(`${metodo.toUpperCase()} ${ruta}`, { estado, cuerpo });
+      const respuesta = await enviar(app, metodo, ruta, await autorizacion(), metodo === 'get' ? undefined : { version: 4 });
+      assert.equal(respuesta.status, estado, `${metodo} ${ruta}`);
+      assert.deepEqual(respuesta.body, cuerpo);
+    }
+  });
+
+  it('detalle y confirmación de una HDU: 404, 409, 410 y 422 llegan con su cuerpo tal cual [E5-B07#14, E5-B05#13, ADR 0018]', async () => {
+    const casos: Array<[Metodo, string, number, Record<string, unknown>]> = [
+      ['get', RUTA_ITEM, 404, { codigo: 'CONSULTA_NO_ENCONTRADA' }],
+      ['get', RUTA_ITEM, 410, { codigo: 'CONSULTA_VENCIDA' }],
+      ['get', RUTA_ITEM, 409, { codigo: 'CONSULTA_NO_ABIERTA', estado: 'CONFIRMADA' }],
+      ['post', RUTA_CONFIRMACION_FILA, 409, { codigo: 'FILA_MODIFICADA', item: { id: ITEM_ID, revision: 4 } }],
+      ['post', RUTA_CONFIRMACION_FILA, 409, { codigo: 'FILA_EN_CURSO' }],
+      [
+        'post',
+        RUTA_CONFIRMACION_FILA,
+        409,
+        { codigo: 'HDU_YA_ASIGNADA', existente: { idHistoria: HDU_ID, creadaPorEstaConsulta: true, creadaPorActor: { nombre: 'ADM2' } } },
+      ],
+      ['post', RUTA_CONFIRMACION_FILA, 410, { codigo: 'CONSULTA_VENCIDA' }],
+      ['post', RUTA_CONFIRMACION_FILA, 422, { codigo: 'FILA_NO_ASIGNABLE', detalles: [{ campo: 'analistaId', codigo: 'FALTANTE' }] }],
+      ['post', RUTA_CONFIRMACION_FILA, 503, { codigo: 'SERVICIO_NO_DISPONIBLE' }],
+    ];
+    for (const [metodo, ruta, estado, extra] of casos) {
+      const cuerpo = { mensaje: 'm', traceId: 'x', detalles: [], ...extra };
+      integraciones.responder(`${metodo.toUpperCase()} ${ruta}`, { estado, cuerpo });
+      const respuesta = await enviar(app, metodo, ruta, await autorizacion(), metodo === 'get' ? undefined : { revision: 3 });
+      assert.equal(respuesta.status, estado, `${metodo} ${ruta} ${String(extra.codigo)}`);
+      assert.deepEqual(respuesta.body, cuerpo);
+    }
+  });
+
+  it('el detalle de una fila no choca con consultas/actual ni con …/items: cada ruta llega a la suya', async () => {
+    integraciones.responder('GET /v1/integraciones/jira/consultas/actual', { estado: 200, cuerpo: { de: 'actual' } });
+    integraciones.responder(`GET ${RUTA_EDICION}`, { estado: 200, cuerpo: { de: 'items' } });
+    integraciones.responder(`GET ${RUTA_ITEM}`, { estado: 200, cuerpo: { de: 'item' } });
     const token = await autorizacion();
-    for (const ruta of [
-      '/v1/integraciones/ejecuciones/xyz',
-      '/v1/integraciones/ejecuciones/xyz/detalle',
-      '/v1/integraciones/ejecuciones/..%2F..%2Finterno%2Facceso',
-    ]) {
-      const respuesta = await enviar(app, 'get', ruta, token);
+    const servidor = app.getHttpServer();
+    assert.deepEqual((await request(servidor).get('/v1/integraciones/jira/consultas/actual').set('authorization', token).expect(200)).body, { de: 'actual' });
+    assert.deepEqual((await request(servidor).get(RUTA_EDICION).set('authorization', token).expect(200)).body, { de: 'items' });
+    assert.deepEqual((await request(servidor).get(RUTA_ITEM).set('authorization', token).expect(200)).body, { de: 'item' });
+    assert.deepEqual(
+      integraciones.solicitudes.map((s) => s.url),
+      ['/v1/integraciones/jira/consultas/actual', RUTA_EDICION, RUTA_ITEM],
+    );
+    // `actual` en el lugar del id de una fila no es un UUID: 400 y no se reenvía.
+    const choque = await request(servidor).get(`/v1/integraciones/jira/consultas/actual/items/${ITEM_ID}`).set('authorization', token);
+    assert.equal(choque.status, 400);
+    assert.equal(choque.body.codigo, 'VALIDACION');
+    assert.equal(integraciones.solicitudes.length, 3);
+  });
+
+  it('un id de ejecución o de consulta que no es UUID responde 400 VALIDACION y no llega a Integraciones', async () => {
+    const token = await autorizacion();
+    for (const [metodo, ruta] of [
+      ['get', '/v1/integraciones/ejecuciones/xyz'],
+      ['get', '/v1/integraciones/ejecuciones/xyz/detalle'],
+      ['get', '/v1/integraciones/ejecuciones/..%2F..%2Finterno%2Facceso'],
+      ['get', '/v1/integraciones/jira/consultas/xyz'],
+      ['get', '/v1/integraciones/jira/consultas/xyz/items'],
+      ['patch', '/v1/integraciones/jira/consultas/xyz/items'],
+      ['post', '/v1/integraciones/jira/consultas/..%2F..%2F..%2Finterno%2Fintegraciones/confirmaciones'],
+      ['post', '/v1/integraciones/jira/consultas/xyz/continuaciones'],
+      ['post', '/v1/integraciones/jira/consultas/xyz/descartes'],
+      ['get', `/v1/integraciones/jira/consultas/xyz/items/${ITEM_ID}`],
+      ['get', `${CONSULTA}/items/xyz`],
+      ['get', `${CONSULTA}/items/..%2F..%2F..%2F..%2Finterno%2Facceso`],
+      ['post', `/v1/integraciones/jira/consultas/xyz/items/${ITEM_ID}/confirmaciones`],
+      ['post', `${CONSULTA}/items/xyz/confirmaciones`],
+      ['post', `${CONSULTA}/items/..%2F..%2Finterno%2Fintegraciones/confirmaciones`],
+    ] as const) {
+      const respuesta = await enviar(app, metodo, ruta, token, metodo === 'get' ? undefined : {});
       assert.equal(respuesta.status, 400, ruta);
       assert.equal(respuesta.body.codigo, 'VALIDACION', ruta);
     }
@@ -207,11 +316,27 @@ describe('Rutas no publicadas [D127]', () => {
       ['delete', '/v1/integraciones/jira/configuracion'],
       ['post', '/v1/integraciones/archivos/plantilla'],
       ['post', '/v1/integraciones/estado'],
+      ['post', '/v1/interno/integraciones/hdu/estado-codigos'],
+      ['post', '/v1/interno/integraciones/asignaciones/validar'],
+      ['put', RUTA_EDICION],
+      ['delete', CONSULTA],
+      ['get', `${CONSULTA}/confirmaciones`],
     ] as const) {
       const respuesta = await request(app.getHttpServer())[metodo](ruta).set('authorization', token).send({});
       assert.equal(respuesta.status, 404, `${metodo} ${ruta}`);
       assert.equal(respuesta.body.codigo, 'NO_ENCONTRADO');
     }
+    assert.equal(integraciones.solicitudes.length + totalOtros(), 0);
+  });
+
+  it('POST /v1/integraciones/jira/sincronizaciones se retiró: 404 NO_ENCONTRADO y no llega a Integraciones [D132]', async () => {
+    integraciones.responder('POST /v1/integraciones/jira/sincronizaciones', { estado: 200, cuerpo: { ok: true } });
+    const respuesta = await enviar(app, 'post', '/v1/integraciones/jira/sincronizaciones', await autorizacion(), {
+      continuarDesde: 'Q360-100',
+    });
+    assert.equal(respuesta.status, 404);
+    assert.equal(respuesta.body.codigo, 'NO_ENCONTRADO');
+    assert.equal(respuesta.body.traceId, respuesta.headers['x-trace-id']);
     assert.equal(integraciones.solicitudes.length + totalOtros(), 0);
   });
 
@@ -224,7 +349,7 @@ describe('Rutas no publicadas [D127]', () => {
 });
 
 describe('INTEGRACIONES_URL ausente o inválida: solo esas rutas dan 503 [D127]', () => {
-  it('cada una de las 11 operaciones responde 503 SERVICIO_NO_DISPONIBLE sin llamar a nadie; sin token sigue dando 401', async () => {
+  it('cada una de las 20 operaciones responde 503 SERVICIO_NO_DISPONIBLE sin llamar a nadie; sin token sigue dando 401', async () => {
     const sinIntegraciones = await crearAppPrueba({ organizacionUrl: organizacion.url, integracionesUrl: null });
     try {
       const token = await autorizacion();
@@ -298,7 +423,7 @@ describe('INTEGRACIONES_URL ausente o inválida: solo esas rutas dan 503 [D127]'
     try {
       for (const [metodo, ruta] of [
         ['get', '/v1/integraciones/estado'],
-        ['post', '/v1/integraciones/jira/sincronizaciones'],
+        ['post', '/v1/integraciones/jira/consultas'],
       ] as const) {
         const respuesta = await enviar(caida, metodo, ruta, await autorizacion(), {});
         assert.equal(respuesta.status, 503, ruta);
@@ -340,6 +465,19 @@ describe('Configuración INTEGRACIONES_URL e INTEGRACIONES_TIMEOUT_MS [D127]', (
     }
   });
 
+  it('LIMITE_TASA_CONSULTA_MAX: 120 por defecto, respeta un valor válido y uno inválido usa 120 con un aviso sin el valor [D152]', () => {
+    const base = { SUPABASE_URL: 'http://127.0.0.1:54321' };
+    assert.equal(cargarConfiguracion(base).limiteTasa.maximoConsulta, 120);
+    assert.equal(cargarConfiguracion({ ...base, LIMITE_TASA_CONSULTA_MAX: '200' }).limiteTasa.maximoConsulta, 200);
+    for (const invalido of ['0', '-5', 'abc', '1.5']) {
+      const configuracion = cargarConfiguracion({ ...base, LIMITE_TASA_CONSULTA_MAX: invalido });
+      assert.equal(configuracion.limiteTasa.maximoConsulta, 120, invalido);
+      assert.deepEqual(configuracion.avisos, ['LIMITE_TASA_CONSULTA_MAX inválido: se usa 120']);
+    }
+    assert.equal(cargarConfiguracion(base).limiteTasa.maximoEscritura, 30, 'el cubo de escritura no cambia');
+    assert.equal(cargarConfiguracion(base).limiteTasa.maximo, 300, 'el límite general no cambia');
+  });
+
   it('un INTEGRACIONES_TIMEOUT_MS inválido impide arrancar (no es una URL de servicio)', () => {
     assert.throws(
       () => cargarConfiguracion({ SUPABASE_URL: 'http://127.0.0.1:54321', INTEGRACIONES_TIMEOUT_MS: '0' }),
@@ -349,7 +487,7 @@ describe('Configuración INTEGRACIONES_URL e INTEGRACIONES_TIMEOUT_MS [D127]', (
 });
 
 describe('Tiempo límite propio de Integraciones [D115]', () => {
-  it('sincronizar e importar esperan más que el tiempo general de servicio: no se corta antes que Integraciones', async () => {
+  it('consultar Jira e importar esperan más que el tiempo general de servicio: no se corta antes que Integraciones', async () => {
     const lenta = await crearAppPrueba({
       organizacionUrl: organizacion.url,
       integracionesUrl: integraciones.url,
@@ -357,7 +495,7 @@ describe('Tiempo límite propio de Integraciones [D115]', () => {
       tiempoLimiteIntegracionesMs: 3000,
     });
     try {
-      for (const ruta of ['/v1/integraciones/jira/sincronizaciones', '/v1/integraciones/archivos/importaciones']) {
+      for (const ruta of ['/v1/integraciones/jira/consultas', '/v1/integraciones/archivos/importaciones']) {
         integraciones.responder(`POST ${ruta}`, { estado: 200, cuerpo: { id: EJECUCION_ID, resultado: 'EXITOSA' }, retrasoMs: 400 });
         const respuesta = await enviar(lenta, 'post', ruta, await autorizacion(), { nombre: 'a.csv', contenido: 'codigo,titulo\n' });
         assert.equal(respuesta.status, 200, ruta);
@@ -376,9 +514,9 @@ describe('Tiempo límite propio de Integraciones [D115]', () => {
       tiempoLimiteIntegracionesMs: 150,
     });
     try {
-      integraciones.responder('POST /v1/integraciones/jira/sincronizaciones', { estado: 200, cuerpo: {}, retrasoMs: 600 });
+      integraciones.responder('POST /v1/integraciones/jira/consultas', { estado: 200, cuerpo: {}, retrasoMs: 600 });
       const inicio = Date.now();
-      const respuesta = await enviar(corta, 'post', '/v1/integraciones/jira/sincronizaciones', await autorizacion(), {});
+      const respuesta = await enviar(corta, 'post', '/v1/integraciones/jira/consultas', await autorizacion(), {});
       assert.equal(respuesta.status, 503);
       assert.equal(respuesta.body.codigo, 'SERVICIO_NO_DISPONIBLE');
       assert.ok(Date.now() - inicio < 2000, 'corta en el tiempo de Integraciones, no en el general');
@@ -425,7 +563,7 @@ describe('Límite de cuerpo de 1,5 MB solo en archivos/* [D127, E5-F03#2]', () =
     const token = await autorizacion();
     for (const [metodo, ruta] of [
       ['put', '/v1/integraciones/jira/configuracion'],
-      ['post', '/v1/integraciones/jira/sincronizaciones'],
+      ['post', '/v1/integraciones/jira/consultas'],
       ['post', '/v1/hdu'],
     ] as const) {
       const respuesta = await enviar(app, metodo, ruta, token, { relleno: contenidoDe(200_000) });
@@ -455,15 +593,136 @@ describe('Límite de tasa estricto en las escrituras de E5', () => {
       limiteTasa: { maximoEscritura: 1 },
     });
     try {
-      integraciones.responder('POST /v1/integraciones/jira/sincronizaciones', { estado: 200, cuerpo: {} });
+      integraciones.responder('POST /v1/integraciones/jira/consultas', { estado: 200, cuerpo: {} });
       integraciones.responder('GET /v1/integraciones/estado', { estado: 200, cuerpo: {} });
       const token = await autorizacion();
       const servidor = limitada.getHttpServer();
       for (let i = 0; i < 3; i += 1) await request(servidor).get('/v1/integraciones/estado').set('authorization', token).expect(200);
-      await request(servidor).post('/v1/integraciones/jira/sincronizaciones').set('authorization', token).send({}).expect(200);
+      await request(servidor).post('/v1/integraciones/jira/consultas').set('authorization', token).send({}).expect(200);
       const segunda = await request(servidor).post('/v1/integraciones/archivos/importaciones').set('authorization', token).send({});
       assert.equal(segunda.status, 429);
       assert.equal(segunda.body.codigo, 'DEMASIADAS_SOLICITUDES');
+    } finally {
+      await limitada.close();
+    }
+  });
+});
+
+describe('Cubo de tasa propio de la edición de la consulta [D152]', () => {
+  const cuerpoEdicion = { version: 1, itemIds: [ITEM_ID], asignacion: { celulaId: CELULA_ID } };
+
+  it('con los valores por defecto (escritura 30, consulta 120), 31 PATCH seguidos no dan 429 y no gastan el cubo de escritura', async () => {
+    const porDefecto = cargarConfiguracion({ SUPABASE_URL: 'http://127.0.0.1:54321' }).limiteTasa;
+    const limitada = await crearAppPrueba({
+      organizacionUrl: organizacion.url,
+      integracionesUrl: integraciones.url,
+      limiteTasa: porDefecto,
+    });
+    try {
+      integraciones.responder(`PATCH ${RUTA_EDICION}`, { estado: 200, cuerpo: { ok: true } });
+      integraciones.responder('POST /v1/integraciones/jira/consultas', { estado: 201, cuerpo: {} });
+      const token = await autorizacion();
+      const servidor = limitada.getHttpServer();
+      for (let i = 0; i < 31; i += 1) {
+        const respuesta = await request(servidor).patch(RUTA_EDICION).set('authorization', token).send(cuerpoEdicion);
+        assert.equal(respuesta.status, 200, `PATCH n.º ${i + 1}`);
+      }
+      // El cubo de escritura sigue intacto: otra escritura pasa.
+      await request(servidor).post('/v1/integraciones/jira/consultas').set('authorization', token).send({}).expect(201);
+      assert.equal(integraciones.solicitudes.filter((s) => s.metodo === 'PATCH').length, 31);
+    } finally {
+      await limitada.close();
+    }
+  });
+
+  it('superado LIMITE_TASA_CONSULTA_MAX el PATCH responde 429 con Retry-After y no se reenvía; las demás escrituras siguen', async () => {
+    const limitada = await crearAppPrueba({
+      organizacionUrl: organizacion.url,
+      integracionesUrl: integraciones.url,
+      limiteTasa: { maximoEscritura: 2, maximoConsulta: 2 },
+    });
+    try {
+      integraciones.responder(`PATCH ${RUTA_EDICION}`, { estado: 200, cuerpo: {} });
+      integraciones.responder(`POST ${CONSULTA}/confirmaciones`, { estado: 200, cuerpo: {} });
+      const token = await autorizacion();
+      const servidor = limitada.getHttpServer();
+      for (let i = 0; i < 2; i += 1) await request(servidor).patch(RUTA_EDICION).set('authorization', token).send(cuerpoEdicion).expect(200);
+      const tercera = await request(servidor).patch(RUTA_EDICION).set('authorization', token).send(cuerpoEdicion);
+      assert.equal(tercera.status, 429);
+      assert.equal(tercera.body.codigo, 'DEMASIADAS_SOLICITUDES');
+      assert.ok(Number(tercera.headers['retry-after']) >= 1);
+      assert.equal(integraciones.solicitudes.filter((s) => s.metodo === 'PATCH').length, 2);
+
+      await request(servidor).post(`${CONSULTA}/confirmaciones`).set('authorization', token).send({ version: 1 }).expect(200);
+      await request(servidor).post(`${CONSULTA}/confirmaciones`).set('authorization', token).send({ version: 1 }).expect(200);
+      const escritura = await request(servidor).post(`${CONSULTA}/confirmaciones`).set('authorization', token).send({ version: 1 });
+      assert.equal(escritura.status, 429, 'el cubo de escritura cuenta aparte');
+    } finally {
+      await limitada.close();
+    }
+  });
+
+  it('la confirmación de una HDU usa el cubo de la consulta: 31 seguidas no dan 429 ni gastan el de escritura [D202 g, E5-B07#14]', async () => {
+    const porDefecto = cargarConfiguracion({ SUPABASE_URL: 'http://127.0.0.1:54321' }).limiteTasa;
+    const limitada = await crearAppPrueba({
+      organizacionUrl: organizacion.url,
+      integracionesUrl: integraciones.url,
+      limiteTasa: porDefecto,
+    });
+    try {
+      integraciones.responder(`POST ${RUTA_CONFIRMACION_FILA}`, { estado: 200, cuerpo: { resultado: 'CREADA' } });
+      integraciones.responder('POST /v1/integraciones/jira/consultas', { estado: 201, cuerpo: {} });
+      const token = await autorizacion();
+      const servidor = limitada.getHttpServer();
+      for (let i = 0; i < 31; i += 1) {
+        const respuesta = await request(servidor).post(RUTA_CONFIRMACION_FILA).set('authorization', token).send({ revision: 1 });
+        assert.equal(respuesta.status, 200, `confirmación n.º ${i + 1}`);
+      }
+      await request(servidor).post('/v1/integraciones/jira/consultas').set('authorization', token).send({}).expect(201);
+    } finally {
+      await limitada.close();
+    }
+  });
+
+  it('superado LIMITE_TASA_CONSULTA_MAX, PATCH y confirmación de una HDU comparten el cubo: la tercera da 429 y no se reenvía', async () => {
+    const limitada = await crearAppPrueba({
+      organizacionUrl: organizacion.url,
+      integracionesUrl: integraciones.url,
+      limiteTasa: { maximoEscritura: 1, maximoConsulta: 2 },
+    });
+    try {
+      integraciones.responder(`PATCH ${RUTA_EDICION}`, { estado: 200, cuerpo: {} });
+      integraciones.responder(`POST ${RUTA_CONFIRMACION_FILA}`, { estado: 200, cuerpo: {} });
+      integraciones.responder(`POST ${CONSULTA}/confirmaciones`, { estado: 200, cuerpo: {} });
+      const token = await autorizacion();
+      const servidor = limitada.getHttpServer();
+      await request(servidor).patch(RUTA_EDICION).set('authorization', token).send(cuerpoEdicion).expect(200);
+      await request(servidor).post(RUTA_CONFIRMACION_FILA).set('authorization', token).send({ revision: 1 }).expect(200);
+      const tercera = await request(servidor).post(RUTA_CONFIRMACION_FILA).set('authorization', token).send({ revision: 1 });
+      assert.equal(tercera.status, 429);
+      assert.equal(tercera.body.codigo, 'DEMASIADAS_SOLICITUDES');
+      assert.ok(Number(tercera.headers['retry-after']) >= 1);
+      assert.equal(integraciones.solicitudes.filter((s) => s.url === RUTA_CONFIRMACION_FILA).length, 1);
+      // El lote sigue en el cubo de escritura, que estaba intacto.
+      await request(servidor).post(`${CONSULTA}/confirmaciones`).set('authorization', token).send({ version: 1 }).expect(200);
+    } finally {
+      await limitada.close();
+    }
+  });
+
+  it('el GET de las filas no consume el cubo de la edición', async () => {
+    const limitada = await crearAppPrueba({
+      organizacionUrl: organizacion.url,
+      integracionesUrl: integraciones.url,
+      limiteTasa: { maximoConsulta: 1 },
+    });
+    try {
+      integraciones.responder(`GET ${RUTA_EDICION}`, { estado: 200, cuerpo: { items: [] } });
+      integraciones.responder(`PATCH ${RUTA_EDICION}`, { estado: 200, cuerpo: {} });
+      const token = await autorizacion();
+      const servidor = limitada.getHttpServer();
+      for (let i = 0; i < 3; i += 1) await request(servidor).get(RUTA_EDICION).set('authorization', token).expect(200);
+      await request(servidor).patch(RUTA_EDICION).set('authorization', token).send(cuerpoEdicion).expect(200);
     } finally {
       await limitada.close();
     }

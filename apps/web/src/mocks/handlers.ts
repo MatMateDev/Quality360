@@ -30,6 +30,7 @@ import {
 import { analistaEnEquipoDe, autenticar, esUsuarioMock, exigirRol } from "./comun";
 import { aplicarCelulasLider, celulasVigentesDe } from "./dataE7";
 import { handlersE4, verificarImpedimentosCierre } from "./handlersE4";
+import { handlersConsulta } from "./handlersConsulta";
 import { handlersE5 } from "./handlersE5";
 import { handlersE7 } from "./handlersE7";
 import { origenesHdu } from "./dataE5";
@@ -118,6 +119,7 @@ function usuarioAAudiencia(usuario: UsuarioMock) {
 export const handlers = [
   // E5 va primero: reemplaza el catálogo de sprints (suma `celulaId`, D120) sin tocar los demás.
   ...handlersE5,
+  ...handlersConsulta,
 
   http.get(`${BASE}/health`, () => HttpResponse.json({ estado: "ok" })),
 

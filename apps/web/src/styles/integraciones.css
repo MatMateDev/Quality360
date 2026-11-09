@@ -246,13 +246,26 @@
 /* ------------------------------------------------------------- resumen */
 .resumen-ejecucion {
   display: grid;
-  grid-template-columns: repeat(5, 1fr) 1.2fr;
+  grid-template-columns: repeat(5, minmax(0, 1fr)) minmax(0, 1.2fr);
   gap: 12px;
   margin: 0 0 16px;
 }
 
 .resumen-ejecucion--previa {
-  grid-template-columns: repeat(4, 1fr) 1.2fr;
+  grid-template-columns: repeat(4, minmax(0, 1fr)) minmax(0, 1.2fr);
+}
+
+.resumen-ejecucion--grupos {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.resumen-ejecucion__item {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.texto-largo {
+  overflow-wrap: anywhere;
 }
 
 .resumen-ejecucion__item {
@@ -460,6 +473,11 @@
     flex-direction: column-reverse;
   }
 
+  /* En «Consultar Jira», «Continuar consulta» queda encima del botón principal (diseño §3.4). */
+  .acciones-formulario--consulta {
+    flex-direction: column;
+  }
+
   .acciones-formulario--integracion .boton,
   .acciones-vista-previa .boton {
     width: 100%;
@@ -467,8 +485,9 @@
   }
 
   .resumen-ejecucion,
-  .resumen-ejecucion--previa {
-    grid-template-columns: repeat(2, 1fr);
+  .resumen-ejecucion--previa,
+  .resumen-ejecucion--grupos {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .detalle-ejecucion__meta {

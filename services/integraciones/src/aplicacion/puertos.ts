@@ -4,10 +4,14 @@
  * (q360-integraciones: `FuenteJira`, mapeo y lector de archivos). Las clases abstractas sirven de token de inyección.
  */
 import type { FuenteJira } from '../dominio/puertos/fuente-jira.js';
+import type { ErrorValidacion, ValidacionAsignacion } from '../dominio/consulta/asignacion.js';
+import type { HduExistente } from '../dominio/consulta/clasificacion.js';
+import type { CampoAsignacion, Consulta, ConteosFilas, EstadoConsulta, GrupoConsulta, ItemConsulta, Persona, YaAsignada } from '../dominio/consulta/tipos.js';
 import type { FilaMapeada } from '../dominio/mapeo/tipos.js';
 import type { IssueJira } from '../dominio/puertos/fuente-jira.js';
 import type {
   Actor,
+  AlcanceEjecucion,
   AdvertenciaFila,
   CambiosHdu,
   CodigoErrorArchivo,
@@ -18,6 +22,7 @@ import type {
   EstadoConexion,
   EventoConfiguracion,
   EventoEjecucion,
+  FaseEjecucion,
   FilaDetalle,
   MotivoFila,
   OrigenEjecucion,
@@ -78,6 +83,7 @@ export interface FilaUpsert {
   readonly urlExterna?: string | null;
 }
 
+/** Modo archivo (E5): `destino` y `sprintNoEncontrado` obligatorios. */
 export interface SolicitudUpsert {
   readonly origen: OrigenEjecucion;
   readonly soloSimular: boolean;
@@ -88,6 +94,35 @@ export interface SolicitudUpsert {
   readonly filas: readonly FilaUpsert[];
 }
 
+export interface AsignacionUpsert {
+  readonly celulaId: string;
+  readonly qeResponsableId: string;
+  readonly analistaId: string;
+  readonly sprintId: string;
+}
+
+export interface FilaUpsertConfirmacion extends FilaUpsert {
+  readonly operacion: 'CREAR' | 'ACTUALIZAR';
+  /** Solo en `CREAR`. */
+  readonly asignacion?: AsignacionUpsert;
+}
+
+/** Modo confirmación (D140, D151): la consulta que se confirma y, por fila, su operación. */
+export interface SolicitudConfirmacionUpsert {
+  readonly origen: 'JIRA';
+  readonly consultaId: string;
+  readonly filas: readonly FilaUpsertConfirmacion[];
+}
+
+/** Quién tiene hoy la HDU y si la creó esta misma consulta y este mismo actor (`HduExistenteUpsert`, D202, D204). */
+export interface HduExistenteUpsert {
+  readonly idHistoria: string;
+  readonly qe: string;
+  readonly analista: string | null;
+  readonly creadaPorEstaConsulta: boolean;
+  readonly creadaPorActor: boolean;
+}
+
 export interface ResultadoFilaUpsert {
   readonly fila: number;
   readonly codigo: string;
@@ -96,11 +131,37 @@ export interface ResultadoFilaUpsert {
   readonly idHistoria: string | null;
   readonly advertencias: AdvertenciaFila[];
   readonly cambios: CambiosHdu | null;
+  /** Solo con `ASIGNACION_INVALIDA` (D140). */
+  readonly errorAsignacion?: ErrorValidacion;
+  /** Solo modo confirmación, `CREAR` y `OMITIDA` `HDU_CREADA_DESPUES`. Una Organización anterior no lo envía. */
+  readonly existente?: HduExistenteUpsert;
 }
 
 export interface ResultadoUpsert {
   readonly simulado: boolean;
   readonly filas: ResultadoFilaUpsert[];
+}
+
+/** Una combinación a validar (`AsignacionAValidar`): los campos ausentes no se validan. */
+export interface AsignacionAValidar {
+  readonly ref: string;
+  readonly celulaId?: string;
+  readonly qeResponsableId?: string;
+  readonly analistaId?: string;
+  readonly sprintId?: string;
+  readonly proponerSprint?: { readonly nombreJira: string | null; readonly respaldoId: string | null };
+  /** D201: con `qeResponsableId` y sin `analistaId`, Organización devuelve el único Analista activo del equipo del QE. */
+  readonly proponerAnalista?: boolean;
+}
+
+export interface AsignacionValidadaConRef extends ValidacionAsignacion {
+  readonly ref: string;
+}
+
+export interface SugerenciaDestino {
+  readonly celula: { id: string; nombre: string } | null;
+  readonly qe: Persona | null;
+  readonly sprintRespaldo: { id: string; nombre: string } | null;
 }
 
 export interface AmbitoHdu {
@@ -113,7 +174,11 @@ export abstract class ProveedorOrganizacion {
   /** `GET /v1/me`: el nombre del actor para el registro (el acceso solo trae id y rol). */
   abstract perfil(contexto: ContextoSolicitud, limiteMs: number): Promise<{ id: string; nombre: string }>;
   abstract destino(destino: DestinoHdu, contexto: ContextoSolicitud, limiteMs: number): Promise<DestinoResuelto>;
-  abstract upsert(solicitud: SolicitudUpsert, contexto: ContextoSolicitud, limiteMs: number): Promise<ResultadoUpsert>;
+  abstract upsert(solicitud: SolicitudUpsert | SolicitudConfirmacionUpsert, contexto: ContextoSolicitud, limiteMs: number): Promise<ResultadoUpsert>;
+  /** `hdu/estado-codigos` en lotes de 100 (D136): lectura. Uno por código pedido, en el mismo orden; `null` si no existe. */
+  abstract estadoCodigos(codigos: readonly string[], contexto: ContextoSolicitud, limiteMs: number): Promise<Array<HduExistente | null>>;
+  /** `asignaciones/validar` en lotes de 100 (D138): lectura. Uno por combinación, en el mismo orden. */
+  abstract validarAsignaciones(asignaciones: readonly AsignacionAValidar[], contexto: ContextoSolicitud, limiteMs: number): Promise<AsignacionValidadaConRef[]>;
   /** `GET /v1/interno/hdu/ambito`: una sola llamada para el detalle del QE (D106). */
   abstract ambito(contexto: ContextoSolicitud, limiteMs: number): Promise<AmbitoHdu>;
 }
@@ -135,6 +200,7 @@ export interface DatosGuardadoConfiguracion {
   readonly proyecto: string;
   readonly tiposIssue: string[];
   readonly campoSprint: string | null;
+  readonly campoCriterios: string | null;
   readonly celulaId: string;
   readonly qeResponsableId: string;
   readonly sprintRespaldoId: string;
@@ -169,9 +235,18 @@ export interface DatosInicioEjecucion {
   readonly sitioHost: string | null;
   readonly archivo: { nombre: string; tamano: number; huella: string } | null;
   readonly iniciadaEn: Date;
+  /** Por defecto `DIRECTA` (archivos). `CONSULTA` y `CONFIRMACION` son siempre de origen Jira (D141). */
+  readonly fase?: FaseEjecucion;
+  readonly consultaId?: string | null;
 }
 
 export interface DatosCierreEjecucion extends Contadores {
+  /** Solo fase `CONSULTA`: filas de la tanda por grupo (D141). */
+  readonly nuevas?: number;
+  readonly cambiaron?: number;
+  readonly sinCambios?: number;
+  /** La primera tanda de una consulta se registra antes de que la consulta exista: se fija una sola vez al cerrar. */
+  readonly consultaId?: string | null;
   readonly resultado: Exclude<ResultadoEjecucion, 'EN_CURSO'>;
   readonly terminadaEn: Date;
   readonly duracionMs: number;
@@ -184,6 +259,9 @@ export interface DatosCierreEjecucion extends Contadores {
 
 export interface FiltroEjecuciones {
   readonly origen?: OrigenEjecucion;
+  readonly fase?: FaseEjecucion;
+  /** D206: `HDU` = confirmaciones de una sola fila; `LOTE` = el resto. */
+  readonly alcance?: AlcanceEjecucion;
   readonly resultado?: ResultadoEjecucion;
   readonly desde?: Date;
   readonly hastaExcluyente?: Date;
@@ -216,8 +294,197 @@ export abstract class EjecucionRepositorio {
     pagina: number,
     tamanoPagina: number,
   ): Promise<{ items: FilaDetalle[]; total: number; ocultas: number }>;
-  abstract estado(): Promise<{ ultima: Ejecucion | null; ultimaCompletada: Ejecucion | null; ultimaJira: Ejecucion | null; enCurso: Ejecucion | null }>;
+  abstract estado(): Promise<{ ultima: Ejecucion | null; ultimaCompletada: Ejecucion | null; enCurso: Ejecucion | null }>;
 }
+
+// ------------------------------------------------------------------ consulta de Jira (D133-D141)
+export interface DatosFilaNueva {
+  readonly posicion: number;
+  readonly grupo: GrupoConsulta;
+  readonly codigo: string | null;
+  readonly titulo: string | null;
+  readonly descripcion: string | null;
+  readonly prioridad: string | null;
+  readonly sprintJira: string | null;
+  readonly referencia: { estado: string | null; responsable: string | null } | null;
+  readonly advertencias: AdvertenciaFila[];
+  readonly motivo: MotivoFila | null;
+  readonly existente: HduExistente | null;
+  readonly cambios: ItemConsulta['cambios'];
+  /** Detalle saneado (D198) y la hora de la tanda que leyó la issue. `null`: sin detalle (la fila vale igual). */
+  readonly detalle?: { readonly valor: unknown; readonly leidaEn: Date } | null;
+}
+
+export interface DatosNuevaConsulta {
+  readonly creadaPor: Persona;
+  readonly creadaEn: Date;
+  readonly proyecto: string;
+  readonly sitioHost: string;
+  readonly sugerencia: {
+    readonly celulaId: string;
+    readonly celulaNombre: string | null;
+    readonly qeId: string;
+    readonly qeNombre: string | null;
+    readonly sprintRespaldoId: string;
+    readonly sprintRespaldoNombre: string | null;
+  };
+}
+
+/** Todo lo que se guarda de una tanda, en UNA transacción junto con el cierre de su ejecución (IC3). */
+export interface DatosTanda {
+  readonly ejecucionId: string;
+  readonly cierre: DatosCierreEjecucion;
+  /** `null`: crea la consulta. Con id: acumula en esa consulta. */
+  readonly consultaId: string | null;
+  readonly nueva: DatosNuevaConsulta | null;
+  /** La consulta abierta que esta tanda reemplaza (se cierra `REEMPLAZADA` y se purga en la misma transacción). */
+  readonly reemplaza: { readonly id: string; readonly por: Persona; readonly en: Date } | null;
+  readonly filas: readonly DatosFilaNueva[];
+  readonly venceEn: Date;
+  readonly hayMas: boolean;
+  readonly continuarDesde: string | null;
+}
+
+export interface DatosCierreConsulta {
+  readonly estado: Exclude<EstadoConsulta, 'ABIERTA'>;
+  readonly en: Date;
+  readonly por: Persona | null;
+  readonly descartadas?: number;
+}
+
+/** Una HDU creada una a una: todo lo que se guarda en UNA transacción (D202, D205, D206). */
+export interface DatosConfirmacionFila {
+  readonly consultaId: string;
+  readonly itemId: string;
+  readonly idHistoria: string;
+  readonly actor: Actor;
+  readonly iniciadaEn: Date;
+  readonly terminadaEn: Date;
+  readonly duracionMs: number;
+  readonly proyecto: string;
+  readonly sitioHost: string;
+  readonly detalle: FilaDetalle;
+}
+
+export interface ResultadoConfirmacionFilaRepo {
+  /** La fila tal como quedó; `null` si la consulta se cerró (y se purgó) mientras se confirmaba. */
+  readonly item: ItemConsulta | null;
+  readonly consulta: Consulta;
+  readonly ejecucion: Ejecucion;
+}
+
+/** Una fila rechazada por Organización durante la confirmación: se limpia lo inválido y se libera la toma. */
+export interface LimpiezaDeFila {
+  readonly consultaId: string;
+  readonly itemId: string;
+  /** Campos de la asignación a dejar vacíos (con sus dependientes). */
+  readonly limpiar: readonly CampoAsignacion[];
+}
+
+export interface EdicionDeFila {
+  readonly itemId: string;
+  readonly asignacion: ItemConsulta['asignacion'];
+  readonly analistaAuto: boolean;
+  readonly avisoSinLider: boolean;
+  readonly marcada: boolean;
+  readonly advertencias: AdvertenciaFila[];
+  readonly asignadoPor: Persona | null;
+  readonly asignadoEn: Date | null;
+}
+
+export interface FiltroItems {
+  readonly grupo: GrupoConsulta;
+  readonly q?: string;
+}
+
+export abstract class ConsultaRepositorio {
+  /** La consulta `ABIERTA` (puede haber pasado `venceEn`), o `null`. */
+  abstract obtenerAbierta(): Promise<Consulta | null>;
+  abstract obtener(id: string): Promise<Consulta | null>;
+  /** La más reciente que no está abierta. */
+  abstract ultimaCerrada(): Promise<Consulta | null>;
+  abstract conteos(id: string): Promise<ConteosFilas>;
+  /** Códigos (en mayúsculas) ya guardados en la consulta: gana la primera lectura (D135). */
+  abstract codigosGuardados(id: string): Promise<Set<string>>;
+  /** Guarda la tanda y cierra su ejecución. @throws ConsultaAbiertaDuplicada si otra se abrió mientras tanto. */
+  abstract guardarTanda(datos: DatosTanda): Promise<Consulta>;
+  /** Cierra una consulta abierta, purga sus filas y sube `version`. Devuelve `null` si ya no estaba abierta. */
+  abstract cerrar(id: string, cierre: DatosCierreConsulta): Promise<Consulta | null>;
+  /** Una página del grupo, sin el detalle (D200). `yaAsignadas` cuenta las filas del grupo (y de `q`) con `yaAsignada`. */
+  abstract listarItems(consultaId: string, filtro: FiltroItems, pagina: number, tamanoPagina: number): Promise<{ items: ItemConsulta[]; total: number; yaAsignadas: number }>;
+  abstract obtenerItems(consultaId: string, itemIds: readonly string[]): Promise<ItemConsulta[]>;
+  abstract itemsDeGrupo(consultaId: string, grupo: GrupoConsulta, q?: string): Promise<ItemConsulta[]>;
+  /** Todas las filas marcadas sin aplicar y sin toma vigente (para confirmar en lote, D203). */
+  abstract itemsMarcadosPendientes(consultaId: string): Promise<ItemConsulta[]>;
+  /** La fila y su detalle guardado (`GET …/items/{itemId}`, D200). `null` si no existe en esa consulta. */
+  abstract obtenerItemConDetalle(consultaId: string, itemId: string): Promise<{ item: ItemConsulta; detalle: unknown; leidaEn: Date | null } | null>;
+  /**
+   * Toma atómica de una fila (D202): `UPDATE … SET aplicando_desde = now() WHERE revision = $r AND NOT aplicada AND
+   * (aplicando_desde IS NULL OR aplicando_desde < now() - toma)`. `false` si no se pudo tomar (otra petición, otra revisión
+   * o ya aplicada).
+   */
+  abstract tomarFila(consultaId: string, itemId: string, revision: number): Promise<boolean>;
+  /** Libera la toma (si la fila sigue sin aplicar). No sube `revision`. */
+  abstract liberarFila(consultaId: string, itemId: string): Promise<void>;
+  /** La misma toma para el lote: solo las filas marcadas, sin aplicar y sin toma vigente. Devuelve los ids tomados. */
+  abstract tomarFilas(consultaId: string, itemIds: readonly string[]): Promise<string[]>;
+  abstract liberarFilas(consultaId: string, itemIds: readonly string[]): Promise<void>;
+  /**
+   * Organización dice que la HDU ya existe y no es de este actor (D204): guarda `yaAsignada` e `id_historia`, desmarca,
+   * libera la toma, sube `revision` y `version`. Devuelve la fila actual (o `null` si la consulta ya no está abierta).
+   */
+  abstract registrarYaAsignada(consultaId: string, itemId: string, ya: YaAsignada): Promise<ItemConsulta | null>;
+  /** Una asignación que dejó de ser válida: limpia los campos, quita la marca, libera la toma y sube `revision` y `version`. */
+  abstract limpiarAsignacion(datos: LimpiezaDeFila): Promise<{ item: ItemConsulta | null; version: number | null }>;
+  /** La fila quedó creada: fila `aplicada`, `creadas`, `version` y la ejecución `HDU` ya cerrada, todo en una transacción. */
+  abstract confirmarFila(datos: DatosConfirmacionFila): Promise<ResultadoConfirmacionFilaRepo>;
+  /** La ejecución que registró esa HDU en esa consulta (idempotencia de D202), o `null`. */
+  abstract ejecucionDeHdu(consultaId: string, idHistoria: string): Promise<Ejecucion | null>;
+  /**
+   * Guarda las ediciones y sube `version` en 1, en una transacción con `WHERE estado = 'ABIERTA' AND vence_en > now()`.
+   * Devuelve la `version` nueva, o `null` si la consulta dejó de estar abierta o vigente.
+   */
+  /**
+   * Ejecuta `accion` con las filas dadas bloqueadas (`SELECT ... FOR UPDATE`, en orden estable por id para evitar
+   * interbloqueos). Quien espera el bloqueo lee, al entrar, el estado ya confirmado por el anterior (DEF-E5C-01).
+   */
+  abstract conFilasBloqueadas<T>(consultaId: string, itemIds: readonly string[], accion: () => Promise<T>): Promise<T>;
+  abstract guardarEdiciones(consultaId: string, ediciones: readonly EdicionDeFila[], ahora: Date): Promise<number | null>;
+  /** Desmarca las filas dadas y sube `version` (pre-validación fallida de la confirmación). Devuelve la versión nueva. */
+  abstract desmarcar(consultaId: string, itemIds: readonly string[]): Promise<number | null>;
+  /**
+   * Inicia la confirmación: en UNA transacción bloquea la fila de la consulta (\`SELECT ... FOR UPDATE\`), comprueba que
+   * siga abierta, vigente y en la \`version\` vista, e inserta la ejecución \`CONFIRMACION\` (el índice de \`en curso\` hace
+   * que dos confirmaciones simultáneas sean una sola). @throws IntegracionEnCurso
+   */
+  abstract iniciarConfirmacion(
+    consultaId: string,
+    version: number,
+    datos: DatosInicioEjecucion,
+    enCursoMaxMs: number,
+  ): Promise<{ tipo: 'OK'; ejecucion: Ejecucion } | { tipo: 'NO_ENCONTRADA' } | { tipo: 'CERRADA' | 'MODIFICADA'; consulta: Consulta }>;
+  /** Cierra la ejecución; con \`cierreConsulta\` además cierra la consulta (\`CONFIRMADA\`), purga sus filas y cuenta las descartadas. */
+  abstract cerrarConfirmacion(
+    consultaId: string,
+    ejecucionId: string,
+    cierre: DatosCierreEjecucion,
+    cierreConsulta: DatosCierreConsulta | null,
+  ): Promise<{ consulta: Consulta; ejecucion: Ejecucion }>;
+  /**
+   * Marca las filas como aplicadas (alcance `LOTE`, quién y cuándo), sube `revision` y `version`, suma las HDU creadas a
+   * `consulta.creadas` y guarda el detalle de la ejecución, todo junto (por lote). `historias` lleva el `id_historia` de las
+   * filas `NUEVA` creadas.
+   */
+  abstract aplicarLote(
+    consultaId: string,
+    itemIds: readonly string[],
+    ejecucionId: string,
+    detalle: readonly FilaDetalle[],
+    aplicacion: { readonly por: Persona; readonly en: Date; readonly historias: ReadonlyMap<string, string> },
+  ): Promise<void>;
+}
+
+export type { CampoAsignacion, ConteosFilas };
 
 // ------------------------------------------------------------------ frontera con Jira y archivos (q360-integraciones)
 /** Convierte una issue de Jira en una fila lista para Organización (D101, sección 5.1). Puro. */

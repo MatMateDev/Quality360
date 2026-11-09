@@ -23,6 +23,11 @@ class PersonasQueryDto {
   @TransformBooleanoQuery()
   @IsBoolean()
   activo?: boolean;
+
+  /** D147: analistas del equipo vigente de ese QE. */
+  @IsOptional()
+  @IsUUID('all')
+  supervisorId?: string;
 }
 
 @Controller('v1/catalogos')

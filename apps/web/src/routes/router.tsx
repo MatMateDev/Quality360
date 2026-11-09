@@ -9,7 +9,7 @@ import { PaginaConexionJira } from "@/pages/admin/integraciones/PaginaConexionJi
 import { PaginaHistorial } from "@/pages/admin/integraciones/PaginaHistorial";
 import { PaginaImportar } from "@/pages/admin/integraciones/PaginaImportar";
 import { PaginaIntegraciones } from "@/pages/admin/integraciones/PaginaIntegraciones";
-import { PaginaSincronizar } from "@/pages/admin/integraciones/PaginaSincronizar";
+import { PaginaConsultarJira } from "@/pages/admin/integraciones/PaginaConsultarJira";
 import { HduDetailPage } from "@/pages/hdu/HduDetailPage";
 import { AuditorBandejaPage } from "@/pages/auditor/AuditorBandejaPage";
 import { AuditorIntegracionesPage } from "@/pages/auditor/AuditorIntegracionesPage";
@@ -59,7 +59,7 @@ export function AppRoutes() {
             {/* E5: cuatro pestañas por ruta; «Conexión» es el índice y no redirige. */}
             <Route path="admin/integraciones" element={<PaginaIntegraciones />}>
               <Route index element={<PaginaConexionJira />} />
-              <Route path="sincronizar" element={<PaginaSincronizar />} />
+              <Route path="sincronizar" element={<PaginaConsultarJira />} />
               <Route path="importar" element={<PaginaImportar />} />
               <Route path="historial" element={<PaginaHistorial />} />
             </Route>

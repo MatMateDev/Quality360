@@ -1,4 +1,4 @@
-import { screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
 import { EJ, modoE5 } from "@/mocks/dataE5";
@@ -48,6 +48,18 @@ describe("E5-F04 · historial de ejecuciones", () => {
     await waitFor(() => expect(idsFilas().length).toBe(4));
     await user.click(within(screen.getByTestId("lista-ejecuciones")).getByRole("button", { name: /Fecha/ }));
     await waitFor(() => expect(idsFilas()).toEqual([R(EJ.jiraErrores), R(EJ.csvOk), R(EJ.csvErrores), R(EJ.jiraFallida)]));
+  });
+
+  it("dos filtros cambiados seguidos, sin esperar, se aplican juntos [DEF-E5C-03]", async () => {
+    await abrirComo(ADMIN, "/admin/integraciones/historial");
+    await screen.findByTestId("lista-ejecuciones");
+    act(() => {
+      fireEvent.change(screen.getByTestId("filtro-origen"), { target: { value: "CSV" } });
+      fireEvent.change(screen.getByTestId("filtro-resultado"), { target: { value: "CON_ERRORES" } });
+    });
+    await waitFor(() => expect(idsFilas()).toEqual([R(EJ.csvErrores)]));
+    expect((screen.getByTestId("filtro-origen") as HTMLSelectElement).value).toBe("CSV");
+    expect((screen.getByTestId("filtro-resultado") as HTMLSelectElement).value).toBe("CON_ERRORES");
   });
 
   it("sin coincidencias con filtros: mensaje propio, distinto del vacío sin filtros", async () => {

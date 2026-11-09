@@ -1,9 +1,20 @@
-import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { keepPreviousData, useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { FiltrosUrl } from "@/lib/filtrosUrl";
 import { ErrorApi, http } from "@/lib/httpClient";
 import type {
+  Consulta,
+  ConsultaActual,
+  DetalleItemConsulta,
+  ResultadoConfirmacionFila,
   Ejecucion,
   EstadoIntegracion,
+  GrupoConsulta,
+  PaginaItemsConsulta,
+  ResultadoConfirmacion,
+  ResultadoConsultaJira,
+  ResultadoEdicionItems,
+  SolicitudConsultaJira,
+  SolicitudEdicionItems,
   ConfiguracionJira,
   ListaPersonas,
   ListaSprints,
@@ -116,15 +127,130 @@ export function consultarEstado(): Promise<EstadoIntegracion> {
   return http.get<EstadoIntegracion>(`${BASE}/estado`);
 }
 
-export function useSincronizarJira() {
+// ------------------------------------------------------------------ consulta de Jira (D132–D152)
+
+const CONSULTAS = `${BASE}/jira/consultas`;
+
+/** Llamadas directas (sin caché): las usan las acciones y el reintento tras `SIN_RESPUESTA` (D115). */
+export const llamadasConsulta = {
+  consultar: (cuerpo: SolicitudConsultaJira = { reemplazar: false }) => http.post<ResultadoConsultaJira>(CONSULTAS, cuerpo),
+  continuar: (id: string) => http.post<ResultadoConsultaJira>(`${CONSULTAS}/${id}/continuaciones`, {}),
+  actual: () => http.get<ConsultaActual>(`${CONSULTAS}/actual`),
+  obtener: (id: string) => http.get<Consulta>(`${CONSULTAS}/${id}`),
+  items: (id: string, opciones: { grupo: GrupoConsulta; q?: string; pagina?: number; tamanoPagina?: number }) => {
+    const params = new URLSearchParams({ grupo: opciones.grupo });
+    if (opciones.q) params.set("q", opciones.q);
+    if (opciones.pagina && opciones.pagina > 1) params.set("pagina", String(opciones.pagina));
+    if (opciones.tamanoPagina) params.set("tamanoPagina", String(opciones.tamanoPagina));
+    return http.get<PaginaItemsConsulta>(`${CONSULTAS}/${id}/items?${params.toString()}`);
+  },
+  editar: (id: string, cuerpo: SolicitudEdicionItems) => http.patch<ResultadoEdicionItems>(`${CONSULTAS}/${id}/items`, cuerpo),
+  confirmar: (id: string, version: number) => http.post<ResultadoConfirmacion>(`${CONSULTAS}/${id}/confirmaciones`, { version }),
+  /** Detalle completo de una fila (D200): lee la base propia, no llama a Jira. */
+  detalle: (id: string, itemId: string) => http.get<DetalleItemConsulta>(`${CONSULTAS}/${id}/items/${itemId}`),
+  /** «Confirmar asignación» de una sola HDU (D202): crea esa HDU con la `revision` que vio la persona. */
+  confirmarFila: (id: string, itemId: string, revision: number) => http.post<ResultadoConfirmacionFila>(`${CONSULTAS}/${id}/items/${itemId}/confirmaciones`, { revision }),
+  descartar: (id: string) => http.post<Consulta>(`${CONSULTAS}/${id}/descartes`, {}),
+};
+
+/** La consulta abierta (o `null` con `ultimaCerrada`). Aplica el vencimiento perezoso en el servidor. */
+export function useConsultaActual(opciones: { habilitado?: boolean } = {}) {
+  return useQuery({
+    queryKey: ["integraciones", "consulta", "actual"],
+    queryFn: llamadasConsulta.actual,
+    enabled: opciones.habilitado ?? true,
+    retry: false,
+  });
+}
+
+/** Lectura barata de la cabecera y la `version` (D148). */
+export function useConsulta(id: string | null) {
+  return useQuery({
+    queryKey: ["integraciones", "consulta", "cabecera", id],
+    queryFn: () => llamadasConsulta.obtener(id as string),
+    enabled: Boolean(id),
+    retry: false,
+  });
+}
+
+export function useItemsConsulta(id: string | null, opciones: { grupo: GrupoConsulta; q?: string; pagina?: number; tamanoPagina?: number }) {
+  return useQuery({
+    queryKey: ["integraciones", "consulta", "items", id, opciones.grupo, opciones.q ?? "", opciones.pagina ?? 1, opciones.tamanoPagina ?? 25],
+    queryFn: () => llamadasConsulta.items(id as string, opciones),
+    placeholderData: keepPreviousData,
+    enabled: Boolean(id),
+    retry: false,
+  });
+}
+
+/** Detalle de una fila para el panel «Ver detalle». Se pide solo con el panel abierto y no se reintenta solo. */
+export function useDetalleItem(consultaId: string | null, itemId: string | null) {
+  return useQuery({
+    queryKey: ["integraciones", "consulta", "detalle", consultaId, itemId],
+    queryFn: () => llamadasConsulta.detalle(consultaId as string, itemId as string),
+    enabled: Boolean(consultaId && itemId),
+    retry: false,
+    staleTime: 0,
+  });
+}
+
+/** Analistas vigentes del equipo de un QE (D147). Un QE sin analistas devuelve lista vacía, que es el dato real. */
+export function useAnalistasDeQe(qeId: string | null) {
+  return useQuery({
+    queryKey: ["personas", "analistas-de-qe", qeId],
+    queryFn: () => http.get<ListaPersonas>(`/v1/catalogos/personas?supervisorId=${encodeURIComponent(qeId as string)}`),
+    enabled: Boolean(qeId),
+    staleTime: 60_000,
+    retry: false,
+  });
+}
+
+function refrescarConsulta(cliente: ReturnType<typeof useQueryClient>) {
+  void cliente.invalidateQueries({ queryKey: ["integraciones"] });
+}
+
+/** Consultar Jira (o reemplazar la abierta). No crea ni modifica HDU. */
+export function useConsultarJira() {
   const cliente = useQueryClient();
   return useMutation({
-    mutationFn: (cuerpo: { vincularExistentes: boolean; continuarDesde?: string }) => http.post<Ejecucion>(`${BASE}/jira/sincronizaciones`, cuerpo),
+    mutationFn: (cuerpo: SolicitudConsultaJira) => llamadasConsulta.consultar(cuerpo),
+    onSettled: () => refrescarConsulta(cliente),
+  });
+}
+
+export function useContinuarConsulta() {
+  const cliente = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => llamadasConsulta.continuar(id),
+    onSettled: () => refrescarConsulta(cliente),
+  });
+}
+
+export function useEditarItemsConsulta(id: string) {
+  const cliente = useQueryClient();
+  return useMutation({
+    mutationFn: (cuerpo: SolicitudEdicionItems) => llamadasConsulta.editar(id, cuerpo),
+    onSettled: () => refrescarConsulta(cliente),
+  });
+}
+
+/** Confirmar crea y actualiza HDU: mueve bandejas y listados. */
+export function useConfirmarConsulta(id: string) {
+  const cliente = useQueryClient();
+  return useMutation({
+    mutationFn: (version: number) => llamadasConsulta.confirmar(id, version),
     onSettled: () => {
-      void cliente.invalidateQueries({ queryKey: ["integraciones"] });
-      // Crear o actualizar HDU mueve bandejas y listados.
+      refrescarConsulta(cliente);
       void cliente.invalidateQueries({ queryKey: ["bandeja"] });
     },
+  });
+}
+
+export function useDescartarConsulta(id: string) {
+  const cliente = useQueryClient();
+  return useMutation({
+    mutationFn: () => llamadasConsulta.descartar(id),
+    onSettled: () => refrescarConsulta(cliente),
   });
 }
 
@@ -147,12 +273,14 @@ export function useImportarArchivo() {
 
 // ------------------------------------------------------------------ historial
 
-const CLAVES_HISTORIAL = ["origen", "resultado", "desde", "hasta"] as const;
+const CLAVES_HISTORIAL = ["fase", "alcance", "origen", "resultado", "desde", "hasta"] as const;
 
 /** Parámetros del API desde la URL del portal (origen, resultado, desde, hasta, orden, página). Lo inválido se ignora. */
 export function queryHistorial(filtros: FiltrosUrl): string {
   const params = new URLSearchParams();
   const validos: Record<string, (v: string) => boolean> = {
+    fase: (v) => ["CONSULTA", "CONFIRMACION", "DIRECTA"].includes(v),
+    alcance: (v) => ["LOTE", "HDU"].includes(v),
     origen: (v) => ["JIRA", "CSV", "JSON"].includes(v),
     resultado: (v) => ["EN_CURSO", "EXITOSA", "CON_ERRORES", "INCOMPLETA", "FALLIDA", "INTERRUMPIDA"].includes(v),
     desde: (v) => /^\d{4}-\d{2}-\d{2}$/.test(v),

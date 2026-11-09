@@ -3,7 +3,7 @@
  * `svc_integraciones`. Las tres fronteras externas son implementaciones falsas EN PROCESO o locales:
  *  - Organización: un servidor HTTP (acceso, perfil, destino, upsert, ámbito) con estado en memoria.
  *  - Jira: un `FuenteJira` programable (los modos de falla del Jira simulado de q360-qa).
- *  - Mapeo y lector de archivos: versiones mínimas de las que construye q360-integraciones.
+ *  - Lector de archivos: una versión mínima de la que construye q360-integraciones (el mapeo de issues es el real).
  * Los tokens son HS256 equivalentes a los de Supabase local.
  */
 import './entorno.js';
@@ -14,7 +14,7 @@ import { createServer, type IncomingMessage, type Server } from 'node:http';
 import { PrismaClient } from '#prisma';
 import { SignJWT } from 'jose';
 
-import type { LectorArchivo, MapeadorIssues, ResultadoLectura } from '../src/aplicacion/puertos.js';
+import type { LectorArchivo, ResultadoLectura } from '../src/aplicacion/puertos.js';
 import type { FuenteJira, IssueJira, PaginaJira, ResultadoJira, CodigoErrorJira, EventoEspera } from '../src/dominio/puertos/fuente-jira.js';
 import type { FilaMapeada } from '../src/dominio/mapeo/tipos.js';
 import { AUDIENCIA, EMISOR, SECRETO } from './ayudas-app.js';
@@ -27,6 +27,9 @@ export const PERSONAS = {
   lid1: { id: '0e500000-0000-4000-8000-000000000005', nombre: 'Lidia Líder', rol: 'LIDER_QA' },
   aud1: { id: '0e500000-0000-4000-8000-000000000006', nombre: 'Aurelio Auditor', rol: 'AUDITOR' },
   inact1: { id: '0e500000-0000-4000-8000-000000000007', nombre: 'Ines Inactiva', rol: 'QE' },
+  adm2: { id: '0e500000-0000-4000-8000-000000000008', nombre: 'Pablo Admin', rol: 'ADMINISTRADOR' },
+  ana3: { id: '0e500000-0000-4000-8000-000000000009', nombre: 'Ana Tres', rol: 'ANALISTA_QA' },
+  ana4: { id: '0e500000-0000-4000-8000-00000000000a', nombre: 'Ana Cuatro', rol: 'ANALISTA_QA' },
 } as const;
 export type ClavePersona = keyof typeof PERSONAS;
 const CLAVE_POR_ID = new Map<string, ClavePersona>((Object.keys(PERSONAS) as ClavePersona[]).map((c) => [PERSONAS[c].id, c]));
@@ -62,7 +65,7 @@ const duenio = new PrismaClient({ datasourceUrl: 'postgresql://supabase_admin:po
 export const prismaServicio = new PrismaClient();
 
 export async function limpiarIntegraciones(): Promise<void> {
-  await duenio.$executeRawUnsafe('TRUNCATE TABLE integraciones.detalle_ejecucion, integraciones.ejecucion_integracion, integraciones.evento_configuracion, integraciones.configuracion_jira');
+  await duenio.$executeRawUnsafe('TRUNCATE TABLE integraciones.consulta_item, integraciones.consulta_jira, integraciones.detalle_ejecucion, integraciones.ejecucion_integracion, integraciones.evento_configuracion, integraciones.configuracion_jira');
 }
 
 export async function consultaDuenio<T = Record<string, unknown>>(sql: string): Promise<T[]> {
@@ -90,6 +93,10 @@ export interface HduFalsa {
   qeId: string;
   celulaId: string;
   sprintId: string;
+  analistaId?: string;
+  /** Quién la creó desde una consulta (la auditoría `CREAR_HDU` lleva `consultaId` y actor): base de `existente` (D202). */
+  creadaPorConsultaId?: string;
+  creadaPorActorId?: string;
 }
 
 export interface OrganizacionFalsa {
@@ -105,8 +112,18 @@ export interface OrganizacionFalsa {
   accesoCaido: boolean;
   /** Los upsert desde el N-ésimo (1 = el primero) responden 500. */
   fallarUpsertDesde: number | null;
+  /** Una Organización anterior al cambio: sin `analista`, sin `analistasActivos`/`analistaPropuesto` y sin `existente` (despliegue escalonado). */
+  versionAnterior: boolean;
+  /** Retardo (ms) de cada upsert antes de escribir: abre la ventana para las pruebas de carrera. */
+  retardoUpsertMs: number;
+  /** Se ejecuta justo antes de escribir el upsert (para que otra persona cree la HDU «durante la revisión»). */
+  alAplicarUpsert: (() => void) | null;
+  /** El upsert escribe la HDU y responde 500 (Integraciones no alcanza a marcar la fila). */
+  perderRespuestaUpsert: boolean;
   /** Personas desactivadas. */
   readonly inactivas: Set<ClavePersona>;
+  /** Equipo vigente de cada QE (supervisión): QE1 → ANA1; QE2 → ANA3. */
+  readonly equipos: Map<ClavePersona, Set<ClavePersona>>;
   agregarHdu(parcial: Partial<HduFalsa> & { codigo: string }): HduFalsa;
   cerrar(): Promise<void>;
 }
@@ -130,8 +147,20 @@ export async function iniciarOrganizacionFalsa(): Promise<OrganizacionFalsa> {
   const llamadas: string[] = [];
   const upserts: Array<Record<string, unknown>> = [];
   const inactivas = new Set<ClavePersona>(['inact1']);
+  const equipos = new Map<ClavePersona, Set<ClavePersona>>([
+    ['qe1', new Set<ClavePersona>(['ana1'])],
+    ['qe2', new Set<ClavePersona>(['ana3'])],
+  ]);
   let upsertsRecibidos = 0;
-  const estado = { caida: false, accesoCaido: false, fallarUpsertDesde: null as number | null };
+  const estado = {
+    caida: false,
+    accesoCaido: false,
+    fallarUpsertDesde: null as number | null,
+    versionAnterior: false,
+    retardoUpsertMs: 0,
+    alAplicarUpsert: null as (() => void) | null,
+    perderRespuestaUpsert: false,
+  };
 
   const servidor: Server = createServer((peticion, res) => {
     void (async () => {
@@ -167,12 +196,31 @@ export async function iniciarOrganizacionFalsa(): Promise<OrganizacionFalsa> {
         return enviar(200, resolverDestino(d, inactivas));
       }
 
+      if (url.pathname === '/v1/interno/integraciones/hdu/estado-codigos' && peticion.method === 'POST') {
+        if (persona.rol !== 'ADMINISTRADOR') return enviar(403, { codigo: 'ACCESO_DENEGADO' });
+        const { codigos } = (await cuerpoDe(peticion)) as { codigos: string[] };
+        return enviar(200, { items: codigos.map((codigo) => estadoDeCodigo(codigo, hdus, estado.versionAnterior)) });
+      }
+
+      if (url.pathname === '/v1/interno/integraciones/asignaciones/validar' && peticion.method === 'POST') {
+        if (persona.rol !== 'ADMINISTRADOR') return enviar(403, { codigo: 'ACCESO_DENEGADO' });
+        const { asignaciones } = (await cuerpoDe(peticion)) as { asignaciones: Array<Record<string, unknown>> };
+        return enviar(200, { resultados: asignaciones.map((a) => validarAsignacionFalsa(a, inactivas, equipos, estado.versionAnterior)) });
+      }
+
       if (url.pathname === '/v1/interno/integraciones/hdu/upsert' && peticion.method === 'POST') {
         if (persona.rol !== 'ADMINISTRADOR') return enviar(403, { codigo: 'ACCESO_DENEGADO' });
         upsertsRecibidos += 1;
         if (estado.fallarUpsertDesde !== null && upsertsRecibidos >= estado.fallarUpsertDesde) return enviar(500, { codigo: 'ERROR_INTERNO' });
         const solicitud = await cuerpoDe(peticion);
         upserts.push(solicitud);
+        if (estado.retardoUpsertMs > 0) await new Promise((resolver) => setTimeout(resolver, estado.retardoUpsertMs));
+        estado.alAplicarUpsert?.();
+        if (solicitud.consultaId !== undefined) {
+          const respuesta = aplicarConfirmacion(solicitud, hdus, inactivas, equipos, persona.id, estado.versionAnterior);
+          if (estado.perderRespuestaUpsert) return enviar(500, { codigo: 'ERROR_INTERNO' });
+          return enviar(200, respuesta);
+        }
         return enviar(200, aplicarUpsert(solicitud, hdus, inactivas));
       }
       return enviar(404, { codigo: 'NO_ENCONTRADO' });
@@ -192,6 +240,7 @@ export async function iniciarOrganizacionFalsa(): Promise<OrganizacionFalsa> {
     llamadas,
     upserts,
     inactivas,
+    equipos,
     get caida() {
       return estado.caida;
     },
@@ -210,6 +259,30 @@ export async function iniciarOrganizacionFalsa(): Promise<OrganizacionFalsa> {
     set fallarUpsertDesde(valor: number | null) {
       estado.fallarUpsertDesde = valor;
       upsertsRecibidos = 0;
+    },
+    get versionAnterior() {
+      return estado.versionAnterior;
+    },
+    set versionAnterior(valor: boolean) {
+      estado.versionAnterior = valor;
+    },
+    get retardoUpsertMs() {
+      return estado.retardoUpsertMs;
+    },
+    set retardoUpsertMs(valor: number) {
+      estado.retardoUpsertMs = valor;
+    },
+    get alAplicarUpsert() {
+      return estado.alAplicarUpsert;
+    },
+    set alAplicarUpsert(valor: (() => void) | null) {
+      estado.alAplicarUpsert = valor;
+    },
+    get perderRespuestaUpsert() {
+      return estado.perderRespuestaUpsert;
+    },
+    set perderRespuestaUpsert(valor: boolean) {
+      estado.perderRespuestaUpsert = valor;
     },
     agregarHdu(parcial) {
       const hdu: HduFalsa = {
@@ -250,6 +323,136 @@ function resolverDestino(d: Record<string, unknown>, inactivas: Set<ClavePersona
     sprintRespaldo: sprint === null ? null : { id: sprint.id, nombre: sprint.nombre },
     errores,
   };
+}
+
+/** Lo que dice Organización de un código (`hdu/estado-codigos`, D136). */
+function estadoDeCodigo(codigo: string, hdus: Map<string, HduFalsa>, versionAnterior: boolean) {
+  const h = hdus.get(norm(codigo));
+  if (h === undefined) return { codigo, existe: false, idHistoria: null, estado: null, origen: null, titulo: null, descripcion: null, prioridad: null, qeResponsable: null };
+  const qe = CLAVE_POR_ID.get(h.qeId);
+  const ana = h.analistaId === undefined ? undefined : CLAVE_POR_ID.get(h.analistaId);
+  return {
+    codigo,
+    existe: true,
+    idHistoria: h.id,
+    estado: h.estado,
+    origen: h.origen,
+    titulo: h.titulo,
+    descripcion: h.descripcion,
+    prioridad: h.prioridad,
+    qeResponsable: qe === undefined ? null : PERSONAS[qe].nombre,
+    // D204: el nombre del Analista asignado o `null`. Una Organización anterior no lo envía.
+    ...(versionAnterior ? {} : { analista: ana === undefined ? null : PERSONAS[ana].nombre }),
+  };
+}
+
+/** Réplica mínima de las reglas D137-D138 (`asignaciones/validar`): lo bastante fiel para probar Integraciones. */
+function validarAsignacionFalsa(a: Record<string, unknown>, inactivas: Set<ClavePersona>, equipos: Map<ClavePersona, Set<ClavePersona>>, versionAnterior = false) {
+  const errores: Array<{ campo: string; codigo: string }> = [];
+  const celula = CELULAS.find((c) => c.id === a.celulaId) ?? null;
+  const sprint = SPRINTS.find((x) => x.id === a.sprintId) ?? null;
+  const claveQe = typeof a.qeResponsableId === 'string' ? CLAVE_POR_ID.get(a.qeResponsableId) : undefined;
+  const claveAna = typeof a.analistaId === 'string' ? CLAVE_POR_ID.get(a.analistaId) : undefined;
+  const qeValido = claveQe !== undefined && PERSONAS[claveQe].rol === 'QE' && !inactivas.has(claveQe);
+  const anaValida = claveAna !== undefined && PERSONAS[claveAna].rol === 'ANALISTA_QA' && !inactivas.has(claveAna);
+  if (a.celulaId !== undefined && celula === null) errores.push({ campo: 'celulaId', codigo: 'CATALOGO_INVALIDO' });
+  if (a.qeResponsableId !== undefined && !qeValido) errores.push({ campo: 'qeResponsableId', codigo: 'QE_INVALIDO' });
+  if (a.analistaId !== undefined) {
+    if (!anaValida) errores.push({ campo: 'analistaId', codigo: 'ANALISTA_INVALIDO' });
+    else if (a.qeResponsableId === undefined || (qeValido && !equipos.get(claveQe as ClavePersona)?.has(claveAna as ClavePersona))) errores.push({ campo: 'analistaId', codigo: 'ANALISTA_FUERA_DE_EQUIPO' });
+  }
+  if (a.sprintId !== undefined) {
+    if (sprint === null || (celula !== null && sprint.celulaId !== celula.id)) errores.push({ campo: 'sprintId', codigo: 'CATALOGO_INVALIDO' });
+  }
+  const falla = (campo: string): boolean => errores.some((e) => e.campo === campo);
+  const persona = (clave: ClavePersona | undefined, campo: string) => (clave === undefined || falla(campo) ? null : { id: PERSONAS[clave].id, nombre: PERSONAS[clave].nombre });
+  let sprintPropuesto: unknown = null;
+  const proponer = a.proponerSprint as { nombreJira: string | null; respaldoId: string | null } | undefined;
+  if (proponer !== undefined && a.sprintId === undefined && celula !== null && !falla('celulaId')) {
+    const porNombre = proponer.nombreJira === null ? undefined : SPRINTS.find((x) => x.celulaId === celula.id && x.nombre.toLowerCase() === proponer.nombreJira?.toLowerCase());
+    const respaldo = SPRINTS.find((x) => x.id === proponer.respaldoId && x.celulaId === celula.id);
+    const elegido = porNombre ?? respaldo;
+    sprintPropuesto = {
+      sprint: elegido === undefined ? null : { id: elegido.id, nombre: elegido.nombre },
+      origen: porNombre !== undefined ? 'JIRA' : respaldo !== undefined ? 'RESPALDO' : null,
+      sprintJiraNoEncontrado: proponer.nombreJira !== null && porNombre === undefined,
+    };
+  }
+  // D201: con `proponerAnalista`, el QE válido y sin `analistaId`: los Analistas ACTIVOS de su equipo vigente y el único, si hay uno.
+  let propuesta: { analistasActivos: number; analistaPropuesto: { id: string; nombre: string } | null } | undefined;
+  if (!versionAnterior && a.proponerAnalista === true && a.analistaId === undefined && qeValido) {
+    const activos = [...(equipos.get(claveQe as ClavePersona) ?? [])].filter((c) => PERSONAS[c].rol === 'ANALISTA_QA' && !inactivas.has(c));
+    const unico = activos.length === 1 ? (activos[0] as ClavePersona) : undefined;
+    propuesta = { analistasActivos: activos.length, analistaPropuesto: unico === undefined ? null : { id: PERSONAS[unico].id, nombre: PERSONAS[unico].nombre } };
+  }
+  return {
+    ref: a.ref,
+    valida: errores.length === 0,
+    ...(propuesta ?? {}),
+    errores,
+    celula: celula === null || falla('celulaId') ? null : { id: celula.id, nombre: celula.nombre },
+    qeResponsable: persona(claveQe, 'qeResponsableId'),
+    analista: persona(claveAna, 'analistaId'),
+    sprint: sprint === null || falla('sprintId') ? null : { id: sprint.id, nombre: sprint.nombre },
+    sprintPropuesto,
+    celulaSinLiderActivo: celula !== null && celula.id === CELULA_A.id,
+  };
+}
+
+/** Réplica mínima del modo confirmación del upsert (D140, D151). */
+function aplicarConfirmacion(solicitud: Record<string, unknown>, hdus: Map<string, HduFalsa>, inactivas: Set<ClavePersona>, equipos: Map<ClavePersona, Set<ClavePersona>>, actorId: string, versionAnterior = false) {
+  const filas = solicitud.filas as Array<FilaEntrada & { operacion: string; asignacion?: Record<string, string>; claveExterna?: string }>;
+  const origen = solicitud.origen as HduFalsa['origen'];
+  const resultados = filas.map((f) => {
+    const base = { fila: f.fila, codigo: f.codigo.trim(), idHistoria: null as string | null, advertencias: [] as string[], cambios: null as unknown };
+    const existente = hdus.get(norm(f.codigo));
+    if (f.operacion === 'CREAR') {
+      if (existente !== undefined) {
+        const qe = CLAVE_POR_ID.get(existente.qeId);
+        const ana = existente.analistaId === undefined ? undefined : CLAVE_POR_ID.get(existente.analistaId);
+        return {
+          ...base,
+          resultado: 'OMITIDA',
+          motivo: 'HDU_CREADA_DESPUES',
+          idHistoria: existente.id,
+          // D202: quién tiene hoy la HDU y si la creó esta consulta y este actor (la auditoría `CREAR_HDU` lleva ambos).
+          ...(versionAnterior
+            ? {}
+            : {
+                existente: {
+                  idHistoria: existente.id,
+                  qe: qe === undefined ? 'Sin QE' : PERSONAS[qe].nombre,
+                  analista: ana === undefined ? null : PERSONAS[ana].nombre,
+                  creadaPorEstaConsulta: existente.creadaPorConsultaId === solicitud.consultaId,
+                  creadaPorActor: existente.creadaPorActorId === actorId,
+                },
+              }),
+        };
+      }
+      const a = f.asignacion as Record<string, string>;
+      const v = validarAsignacionFalsa({ ref: 'x', celulaId: a.celulaId, qeResponsableId: a.qeResponsableId, analistaId: a.analistaId, sprintId: a.sprintId }, inactivas, equipos);
+      if (!v.valida) return { ...base, resultado: 'ERROR', motivo: 'ASIGNACION_INVALIDA', errorAsignacion: v.errores[0] };
+      const id = randomUUID();
+      hdus.set(norm(f.codigo), { id, codigo: f.codigo.trim(), titulo: (f.titulo ?? '').trim(), descripcion: f.descripcion ?? null, prioridad: f.prioridad ?? 'MEDIA', estado: 'PENDIENTE', origen, qeId: a.qeResponsableId as string, celulaId: a.celulaId as string, sprintId: a.sprintId as string, analistaId: a.analistaId, creadaPorConsultaId: solicitud.consultaId as string, creadaPorActorId: actorId });
+      return { ...base, resultado: 'CREADA', motivo: null, idHistoria: id };
+    }
+    if (existente === undefined) return { ...base, resultado: 'ERROR', motivo: 'ERROR_INTERNO' };
+    if (existente.estado === 'CERRADA') return { ...base, resultado: 'OMITIDA', motivo: 'HDU_CERRADA', idHistoria: existente.id };
+    const cambios: Record<string, { antes: string | null; despues: string | null }> = {};
+    const titulo = (f.titulo ?? '').trim();
+    if (titulo.length > 0 && titulo !== existente.titulo) cambios.titulo = { antes: existente.titulo, despues: titulo };
+    const descripcion = (f.descripcion ?? '').trim();
+    if (descripcion.length > 0 && descripcion !== (existente.descripcion ?? '')) cambios.descripcion = { antes: existente.descripcion, despues: descripcion };
+    if (f.prioridad && f.prioridad !== existente.prioridad) cambios.prioridad = { antes: existente.prioridad, despues: f.prioridad };
+    const vincula = existente.origen === 'MANUAL';
+    if (Object.keys(cambios).length === 0 && !vincula) return { ...base, resultado: 'OMITIDA', motivo: 'SIN_CAMBIOS', idHistoria: existente.id };
+    if (cambios.titulo) existente.titulo = titulo;
+    if (cambios.descripcion) existente.descripcion = descripcion;
+    if (cambios.prioridad) existente.prioridad = f.prioridad as string;
+    if (vincula) existente.origen = origen;
+    return { ...base, resultado: 'ACTUALIZADA', motivo: null, idHistoria: existente.id, cambios };
+  });
+  return { simulado: false, filas: resultados };
 }
 
 interface FilaEntrada {
@@ -359,8 +562,10 @@ export function issue(numero: number, clave: string, parcial: Partial<IssueJira>
 export class JiraFalso implements FuenteJira {
   modo: ModoJira = 'NORMAL';
   retardoMs = 0;
+  /** Se ejecuta después de entregar cada página (p. ej. para detener Organización a mitad de una tanda). */
+  alLeerPagina: (() => void) | null = null;
   readonly llamadas: string[] = [];
-  readonly consultas: Array<{ proyecto: string; tipos: string[]; despuesDe?: string; nextPageToken?: string }> = [];
+  readonly consultas: Array<{ proyecto: string; tipos: string[]; despuesDe?: string; nextPageToken?: string; campoCriterios?: string | null }> = [];
   readonly proyectos = new Map<string, IssueJira[]>();
   readonly tokensValidos = new Set<string>([TOKEN_JIRA, TOKEN_JIRA_NUEVO]);
   /** Esperas por 429 que cada llamada a `buscarPagina` informa mientras `modo` es LIMITE. */
@@ -372,17 +577,32 @@ export class JiraFalso implements FuenteJira {
 
   reiniciar(): void {
     this.modo = 'NORMAL';
+    this.campoCriterios = null;
     this.retardoMs = 0;
+    this.alLeerPagina = null;
     this.llamadas.length = 0;
     this.consultas.length = 0;
     this.limitesRestantes = 2;
     this.proyectos.clear();
+    // QTY (docs/backlog/e5-consulta-asignacion.md, sección 8): 12 issues; QTY-7 es un Bug y QTY-11 no tiene título.
+    const parcialesQty: Record<number, Partial<IssueJira>> = {
+      1: { descripcionAdf: 'Como usuario quiero activar 2FA' },
+      2: { prioridad: 'Medium' },
+      3: { prioridad: 'Highest', sprints: [{ nombre: 'Sprint inexistente', estado: 'active', fin: null }] },
+      4: { prioridad: 'Low', sprints: [] },
+      5: { prioridad: null },
+      6: { prioridad: 'Urgentísima' },
+      7: { tipo: 'Bug' },
+      8: { titulo: 'T'.repeat(250) },
+      9: { descripcionAdf: 'D'.repeat(1200) },
+      11: { titulo: '' },
+      12: { sprints: [{ nombre: 'E5 Sprint 1', estado: 'active', fin: null }] },
+    };
     this.proyectos.set(
       'QTY',
-      [
-        ...Array.from({ length: 12 }, (_, i) => issue(i + 1, 'QTY', i + 1 === 7 ? { tipo: 'Bug' } : i + 1 === 11 ? { titulo: '' } : {})),
-      ],
+      Array.from({ length: 12 }, (_, i) => issue(i + 1, 'QTY', parcialesQty[i + 1] ?? {})),
     );
+    this.proyectos.set('ENORME', Array.from({ length: 520 }, (_, i) => issue(i + 1, 'ENORME')));
     this.proyectos.set('BIG', Array.from({ length: 230 }, (_, i) => issue(i + 1, 'BIG')));
     this.proyectos.set('EXACTO', Array.from({ length: 100 }, (_, i) => issue(i + 1, 'EXACTO')));
     this.proyectos.set('VACIO', []);
@@ -414,17 +634,26 @@ export class JiraFalso implements FuenteJira {
     return { ok: true, valor: { usuarioJira: 'Admin Jira Falso', proyecto: { clave: proyecto, nombre: `Proyecto ${proyecto}` } }, eventos: [] };
   }
 
+  /** El campo de criterios que `/field` informa (D199). `null`: el sitio no tiene uno. */
+  campoCriterios: string | null = null;
+
   async detectarCampoSprint(): ReturnType<FuenteJira['detectarCampoSprint']> {
     this.llamadas.push('detectarCampoSprint');
     return { ok: true, valor: 'customfield_10020', eventos: [] };
   }
 
+  /** La misma llamada a `/field` que `detectarCampoSprint`: Sprint y Criterios de aceptación (D199). */
+  async detectarCampos(): ReturnType<FuenteJira['detectarCampos']> {
+    this.llamadas.push('detectarCampos');
+    return { ok: true, valor: { sprint: 'customfield_10020', criterios: this.campoCriterios }, eventos: [] };
+  }
+
   async buscarPagina(
     c: { sitio: string; correo: string; token: string },
-    q: { proyecto: string; tipos: string[]; despuesDe?: string; nextPageToken?: string; campoSprint: string | null },
+    q: { proyecto: string; tipos: string[]; despuesDe?: string; nextPageToken?: string; campoSprint: string | null; campoCriterios?: string | null },
   ): Promise<ResultadoJira<PaginaJira>> {
     this.llamadas.push('buscarPagina');
-    this.consultas.push({ proyecto: q.proyecto, tipos: q.tipos, despuesDe: q.despuesDe, nextPageToken: q.nextPageToken });
+    this.consultas.push({ proyecto: q.proyecto, tipos: q.tipos, despuesDe: q.despuesDe, nextPageToken: q.nextPageToken, campoCriterios: q.campoCriterios });
     await this.esperar();
     const error = this.errorDeCredencial<PaginaJira>(c.token);
     if (error !== null) return error;
@@ -445,6 +674,7 @@ export class JiraFalso implements FuenteJira {
     const issues = todas.slice(desde, desde + 50);
     const siguiente = desde + 50;
     const esUltima = siguiente >= todas.length;
+    this.alLeerPagina?.();
     return { ok: true, valor: { issues, nextPageToken: esUltima ? null : String(siguiente), esUltima }, eventos };
   }
 }
@@ -453,25 +683,6 @@ export class JiraFalso implements FuenteJira {
 const PRIORIDADES: Record<string, string> = {
   highest: 'CRITICA', blocker: 'CRITICA', critical: 'CRITICA', high: 'ALTA', medium: 'MEDIA', low: 'BAJA', lowest: 'BAJA', baja: 'BAJA', media: 'MEDIA', alta: 'ALTA', critica: 'CRITICA',
 };
-
-export class MapeadorFalso implements MapeadorIssues {
-  mapear(i: IssueJira, contexto: { fila: number; sitio: string }): FilaMapeada {
-    const titulo = (i.titulo ?? '').trim();
-    return {
-      fila: contexto.fila,
-      codigo: i.clave,
-      titulo: titulo.length === 0 ? null : titulo.slice(0, 200),
-      descripcion: typeof i.descripcionAdf === 'string' ? i.descripcionAdf : null,
-      prioridad: (i.prioridad === null ? 'MEDIA' : (PRIORIDADES[i.prioridad.toLowerCase()] ?? 'MEDIA')) as FilaMapeada['prioridad'],
-      sprint: i.sprints[0]?.nombre ?? null,
-      claveExterna: i.clave,
-      urlExterna: `${contexto.sitio}/browse/${i.clave}`,
-      advertencias: [],
-      referencia: { estado: i.estado, responsable: i.responsable },
-      error: titulo.length === 0 ? 'TITULO_VACIO' : null,
-    };
-  }
-}
 
 export class LectorFalso implements LectorArchivo {
   leer(formato: 'CSV' | 'JSON', contenido: string): ResultadoLectura {

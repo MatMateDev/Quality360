@@ -24,6 +24,14 @@ export interface ConfiguracionIntegraciones {
   topeIssues: number;
   /** Una ejecución `EN_CURSO` de más de este tiempo se cierra como `INTERRUMPIDA` (D104). */
   enCursoMaxMs: number;
+  /** Vigencia de una consulta desde la última llamada a Jira (D134). */
+  consultaVigenciaMs: number;
+  /** Tope de filas de una consulta (D135). */
+  consultaTopeItems: number;
+  /** Issues por página de `search/jql` (D196): 50 por defecto, entre 10 y 100; fuera de rango vale 50. */
+  jiraTamanoPagina: number;
+  /** Cuánto dura la toma de una fila (`aplicando_desde`, D202): 30 s por defecto; en pruebas de carrera, 2 s. */
+  tomaFilaMs: number;
   /** Admite `http://127.0.0.1:<puerto>` como sitio de Jira. Siempre `false` con `NODE_ENV=production` (D95). */
   permitirHostPrueba: boolean;
   verificador: OpcionesVerificador;
@@ -34,6 +42,14 @@ function leerEntero(valor: string | undefined, porDefecto: number, nombre: strin
   const numero = Number(valor);
   if (!Number.isInteger(numero) || numero < minimo) throw errorInterno(`${nombre} debe ser un entero >= ${minimo} (valor omitido por seguridad)`);
   return numero;
+}
+
+/** `INTEGRACIONES_JIRA_TAMANO_PAGINA`: un entero entre 10 y 100; vacío, no numérico o fuera de rango usa 50 (D196). */
+export function leerTamanoPagina(valor: string | undefined): number {
+  const crudo = valor?.trim() ?? '';
+  if (!/^\d{1,4}$/.test(crudo)) return 50;
+  const numero = Number(crudo);
+  return numero >= 10 && numero <= 100 ? numero : 50;
 }
 
 function leerBooleano(valor: string | undefined): boolean {
@@ -82,6 +98,10 @@ export function cargarConfiguracion(entorno: NodeJS.ProcessEnv = process.env): C
     esperaMax429Ms: leerEntero(entorno.JIRA_ESPERA_MAX_429_MS, 3000, 'JIRA_ESPERA_MAX_429_MS', 0),
     topeIssues: leerEntero(entorno.JIRA_TOPE_ISSUES, 100, 'JIRA_TOPE_ISSUES'),
     enCursoMaxMs: leerEntero(entorno.INTEGRACIONES_EN_CURSO_MAX_MS, 300_000, 'INTEGRACIONES_EN_CURSO_MAX_MS'),
+    consultaVigenciaMs: leerEntero(entorno.INTEGRACIONES_CONSULTA_VIGENCIA_MS, 86_400_000, 'INTEGRACIONES_CONSULTA_VIGENCIA_MS'),
+    consultaTopeItems: leerEntero(entorno.INTEGRACIONES_CONSULTA_TOPE_ITEMS, 500, 'INTEGRACIONES_CONSULTA_TOPE_ITEMS'),
+    jiraTamanoPagina: leerTamanoPagina(entorno.INTEGRACIONES_JIRA_TAMANO_PAGINA),
+    tomaFilaMs: leerEntero(entorno.INTEGRACIONES_TOMA_FILA_MS, 30_000, 'INTEGRACIONES_TOMA_FILA_MS'),
     permitirHostPrueba: !produccion && leerBooleano(entorno.INTEGRACIONES_PERMITIR_HOST_PRUEBA),
     verificador: opcionesDesdeEntorno(entorno),
   };

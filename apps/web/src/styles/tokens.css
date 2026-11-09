@@ -92,6 +92,16 @@
   --q360-color-res-incompleta-suave: var(--q360-color-imp-escalado-suave);
   --q360-color-res-fallida: var(--q360-color-riesgo-alto);
   --q360-color-res-fallida-suave: var(--q360-color-riesgo-alto-suave);
+  /* E5 consulta · grupos y estado de las filas (alias de los pares de resultado) */
+  --q360-color-grupo-nuevas: var(--q360-color-res-exitosa);
+  --q360-color-grupo-nuevas-suave: var(--q360-color-res-exitosa-suave);
+  --q360-color-grupo-cambiaron: var(--q360-color-res-incompleta);
+  --q360-color-grupo-cambiaron-suave: var(--q360-color-res-incompleta-suave);
+  --q360-color-grupo-sin-cambios: var(--q360-color-res-neutra);
+  --q360-color-grupo-con-error: var(--q360-color-res-fallida);
+  --q360-color-grupo-con-error-suave: var(--q360-color-res-fallida-suave);
+  --q360-color-fila-incompleta: var(--q360-color-res-con-errores);
+  --q360-color-fila-lista: var(--q360-color-res-exitosa);
   --q360-color-res-neutra: var(--q360-color-solo-lectura);
   --q360-color-res-neutra-suave: var(--q360-color-solo-lectura-suave);
 }

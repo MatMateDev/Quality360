@@ -59,6 +59,14 @@ export class SupervisionPrismaRepositorio implements SupervisionRepositorio {
     }));
   }
 
+  async listarAnalistasActivosDelEquipo(qeId: string): Promise<Array<{ id: string; nombre: string; correo: string }>> {
+    const filas = await this.prisma.supervision.findMany({
+      where: { qeId, hasta: null, analista: { activo: true } },
+      select: { analista: { select: { id: true, nombre: true, correo: true } } },
+    });
+    return filas.map((fila) => fila.analista).sort((a, b) => a.nombre.localeCompare(b.nombre, 'es'));
+  }
+
   async listarHistorialPorAnalista(analistaId: string): Promise<SupervisionConUsuarios[]> {
     const filas = await this.prisma.supervision.findMany({
       where: { analistaId },

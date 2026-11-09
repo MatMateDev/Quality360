@@ -6,10 +6,17 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import { CABECERA_TRAZA, ExcepcionQ360, accesoDenegado, noAutenticado } from '@quality360/auth-nest';
 
+import { trocear } from '../../aplicacion/lotes.js';
+import type { ErrorValidacion, ValidacionAsignacion } from '../../dominio/consulta/asignacion.js';
+import type { HduExistente } from '../../dominio/consulta/clasificacion.js';
 import {
   ProveedorOrganizacion,
   type AmbitoHdu,
+  type AsignacionAValidar,
+  type AsignacionValidadaConRef,
+  type SolicitudConfirmacionUpsert,
   type ContextoSolicitud,
+  type HduExistenteUpsert,
   type DestinoHdu,
   type DestinoResuelto,
   type ResultadoFilaUpsert,
@@ -54,6 +61,78 @@ function filaDeUpsert(valor: unknown): ResultadoFilaUpsert {
     idHistoria: typeof d.idHistoria === 'string' ? d.idHistoria : null,
     advertencias,
     cambios,
+    ...(d.existente === undefined || d.existente === null ? {} : { existente: existenteDeUpsert(d.existente) }),
+    ...(d.errorAsignacion === undefined || d.errorAsignacion === null ? {} : { errorAsignacion: errorDeAsignacion(d.errorAsignacion) }),
+  };
+}
+
+/** `HduExistenteUpsert` (D202, D204): una respuesta con otra forma es ilegible, nunca se adivina quién creó la HDU. */
+function existenteDeUpsert(valor: unknown): HduExistenteUpsert {
+  const d = objeto(valor, 'la HDU existente del upsert');
+  if (typeof d.creadaPorEstaConsulta !== 'boolean' || typeof d.creadaPorActor !== 'boolean') return ilegible('la HDU existente del upsert');
+  return {
+    idHistoria: texto(d.idHistoria, 'la HDU existente del upsert'),
+    qe: texto(d.qe, 'la HDU existente del upsert'),
+    analista: typeof d.analista === 'string' ? d.analista : null,
+    creadaPorEstaConsulta: d.creadaPorEstaConsulta,
+    creadaPorActor: d.creadaPorActor,
+  };
+}
+
+const LOTE_LECTURA = 100;
+const CAMPO_DE_ORGANIZACION = { celulaId: 'celulaId', qeResponsableId: 'qeId', analistaId: 'analistaId', sprintId: 'sprintId' } as const;
+const CODIGOS_ERROR_ASIGNACION = ['QE_INVALIDO', 'ANALISTA_INVALIDO', 'ANALISTA_FUERA_DE_EQUIPO', 'CATALOGO_INVALIDO'] as const;
+
+function errorDeAsignacion(valor: unknown): ErrorValidacion {
+  const d = objeto(valor, 'un error de asignación');
+  const campo = CAMPO_DE_ORGANIZACION[d.campo as keyof typeof CAMPO_DE_ORGANIZACION];
+  const codigo = (CODIGOS_ERROR_ASIGNACION as readonly unknown[]).includes(d.codigo) ? (d.codigo as ErrorValidacion['codigo']) : undefined;
+  if (campo === undefined || codigo === undefined) return ilegible('un error de asignación');
+  return { campo, codigo };
+}
+
+function estadoDeCodigo(valor: unknown): HduExistente | null {
+  const d = objeto(valor, 'un estado de código');
+  if (typeof d.existe !== 'boolean') return ilegible('un estado de código');
+  if (!d.existe) return null;
+  const origen = d.origen;
+  if (origen !== 'MANUAL' && origen !== 'JIRA' && origen !== 'CSV' && origen !== 'JSON') return ilegible('un origen de HDU');
+  const prioridad = d.prioridad;
+  if (prioridad !== 'BAJA' && prioridad !== 'MEDIA' && prioridad !== 'ALTA' && prioridad !== 'CRITICA') return ilegible('una prioridad de HDU');
+  return {
+    idHistoria: texto(d.idHistoria, 'un estado de código'),
+    estado: texto(d.estado, 'un estado de código'),
+    origen,
+    titulo: texto(d.titulo, 'un estado de código'),
+    descripcion: typeof d.descripcion === 'string' ? d.descripcion : null,
+    prioridad,
+    qeResponsable: typeof d.qeResponsable === 'string' ? d.qeResponsable : null,
+    // Opcional en el contrato: una Organización anterior (despliegue escalonado) no lo envía y se trata como «sin Analista».
+    analista: typeof d.analista === 'string' ? d.analista : null,
+  };
+}
+
+function validacionDeAsignacion(valor: unknown): AsignacionValidadaConRef {
+  const d = objeto(valor, 'una asignación validada');
+  if (!Array.isArray(d.errores) || typeof d.ref !== 'string' || typeof d.celulaSinLiderActivo !== 'boolean') return ilegible('una asignación validada');
+  let sprintPropuesto: ValidacionAsignacion['sprintPropuesto'] = null;
+  if (d.sprintPropuesto !== null && d.sprintPropuesto !== undefined) {
+    const p = objeto(d.sprintPropuesto, 'un sprint propuesto');
+    if (p.origen !== null && p.origen !== 'JIRA' && p.origen !== 'RESPALDO') return ilegible('un sprint propuesto');
+    sprintPropuesto = { sprint: referencia(p.sprint, 'un sprint propuesto'), origen: p.origen, sprintJiraNoEncontrado: p.sprintJiraNoEncontrado === true };
+  }
+  return {
+    ref: d.ref,
+    errores: d.errores.map(errorDeAsignacion),
+    celula: referencia(d.celula, 'la célula validada'),
+    qe: referencia(d.qeResponsable, 'el QE validado'),
+    analista: referencia(d.analista, 'el analista validado'),
+    sprint: referencia(d.sprint, 'el sprint validado'),
+    sprintPropuesto,
+    celulaSinLiderActivo: d.celulaSinLiderActivo,
+    // D201. Una Organización anterior no los envía: sin propuesta, el analista queda vacío (nunca un error).
+    analistasActivos: typeof d.analistasActivos === 'number' && Number.isInteger(d.analistasActivos) && d.analistasActivos >= 0 ? d.analistasActivos : null,
+    analistaPropuesto: referencia(d.analistaPropuesto, 'el analista propuesto'),
   };
 }
 
@@ -84,7 +163,27 @@ export class OrganizacionCliente extends ProveedorOrganizacion {
     };
   }
 
-  async upsert(solicitud: SolicitudUpsert, contexto: ContextoSolicitud, limiteMs: number): Promise<ResultadoUpsert> {
+  async estadoCodigos(codigos: readonly string[], contexto: ContextoSolicitud, limiteMs: number): Promise<Array<HduExistente | null>> {
+    const resultado: Array<HduExistente | null> = [];
+    for (const lote of trocear(codigos, LOTE_LECTURA)) {
+      const cuerpo = objeto(await this.llamar('POST', '/v1/interno/integraciones/hdu/estado-codigos', contexto, limiteMs, { codigos: lote }), 'un estado de códigos');
+      if (!Array.isArray(cuerpo.items) || cuerpo.items.length !== lote.length) return ilegible('un estado de códigos con otra cantidad de elementos');
+      resultado.push(...cuerpo.items.map(estadoDeCodigo));
+    }
+    return resultado;
+  }
+
+  async validarAsignaciones(asignaciones: readonly AsignacionAValidar[], contexto: ContextoSolicitud, limiteMs: number): Promise<AsignacionValidadaConRef[]> {
+    const resultado: AsignacionValidadaConRef[] = [];
+    for (const lote of trocear(asignaciones, LOTE_LECTURA)) {
+      const cuerpo = objeto(await this.llamar('POST', '/v1/interno/integraciones/asignaciones/validar', contexto, limiteMs, { asignaciones: lote }), 'una validación de asignaciones');
+      if (!Array.isArray(cuerpo.resultados) || cuerpo.resultados.length !== lote.length) return ilegible('una validación con otra cantidad de elementos');
+      resultado.push(...cuerpo.resultados.map(validacionDeAsignacion));
+    }
+    return resultado;
+  }
+
+  async upsert(solicitud: SolicitudUpsert | SolicitudConfirmacionUpsert, contexto: ContextoSolicitud, limiteMs: number): Promise<ResultadoUpsert> {
     const cuerpo = objeto(await this.llamar('POST', '/v1/interno/integraciones/hdu/upsert', contexto, limiteMs, solicitud), 'un resultado de upsert');
     if (typeof cuerpo.simulado !== 'boolean' || !Array.isArray(cuerpo.filas)) return ilegible('un resultado de upsert');
     const filas = cuerpo.filas.map(filaDeUpsert);

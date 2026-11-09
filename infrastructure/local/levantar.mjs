@@ -114,6 +114,8 @@ for (const proceso of PROCESOS) {
     console.log(`  ${proceso.nombre}: ya responde, se reutiliza`);
     continue;
   }
+  // Los hijos heredan process.env: INTEGRACIONES_CONSULTA_VIGENCIA_MS, INTEGRACIONES_CONSULTA_TOPE_ITEMS y
+  // LIMITE_TASA_CONSULTA_MAX definidos al lanzar `npm run local` pasan tal cual y ganan a los .env (sin valor fijo).
   const hijo = proceso.npm
     ? spawn(proceso.npm, { cwd: RAIZ, shell: true })
     : spawn(process.execPath, proceso.args, { cwd: RAIZ });

@@ -110,7 +110,7 @@ export class ImpedimentoPrismaRepositorio extends ImpedimentoRepositorio {
     return this.prisma.$transaction(async (tx) => {
       // D62: la fila queda tomada hasta el final de la transacción; la segunda de dos órdenes
       // simultáneas espera, ve el estado nuevo y recibe 409.
-      await tx.$queryRaw`SELECT "id_impedimento" FROM "impedimento" WHERE "id_impedimento" = ${id}::uuid FOR UPDATE`;
+      await tx.$queryRaw`SELECT "id_impedimento" FROM "impedimentos"."impedimento" WHERE "id_impedimento" = ${id}::uuid FOR UPDATE`;
       const actual = aImpedimento(await tx.impedimento.findUniqueOrThrow({ where: { id } }));
       const plan = decidir(actual);
 

@@ -31,6 +31,20 @@ export type CodigoError =
   | 'COLUMNAS_FALTANTES'
   | 'DEMASIADAS_FILAS'
   | 'LLAVE_CIFRADO_NO_DISPONIBLE'
+  // E5 · consulta y asignación (D134-D140, D148)
+  | 'CONSULTA_ABIERTA'
+  | 'CONSULTA_NO_ABIERTA'
+  | 'CONSULTA_VENCIDA'
+  | 'CONSULTA_MODIFICADA'
+  | 'CONSULTA_LLENA'
+  | 'CONSULTA_COMPLETA'
+  | 'CONSULTA_NO_ENCONTRADA'
+  | 'SIN_SELECCION'
+  | 'ASIGNACION_INCOMPLETA'
+  | 'ASIGNACION_INVALIDA'
+  | 'ASIGNACIONES_INVALIDAS'
+  | 'FILA_NO_MARCABLE'
+  | 'FILA_NO_ASIGNABLE'
   | 'TRANSICION_INVALIDA'
   | 'CHECKLIST_INCOMPLETO'
   | 'CHECKLIST_NO_DISPONIBLE'
@@ -71,8 +85,8 @@ export const MENSAJES: Readonly<Record<CodigoError, string>> = Object.freeze({
   RELACIONES_INCOMPATIBLES: 'Resuelve las relaciones de supervisión antes de continuar.',
   ROL_INCOMPATIBLE: 'El usuario no tiene el rol Líder QA.',
   EXPORTACION_EXCEDE_LIMITE: 'La exportación supera las 50.000 filas. Acota los filtros.',
-  JIRA_NO_CONFIGURADO: 'Configura la conexión con Jira antes de sincronizar.',
-  INTEGRACION_EN_CURSO: 'Ya hay una sincronización en curso.',
+  JIRA_NO_CONFIGURADO: 'Configura la conexión con Jira antes de consultar.',
+  INTEGRACION_EN_CURSO: 'Ya hay una consulta o confirmación en curso.',
   TOKEN_NO_DESCIFRABLE: 'Vuelve a ingresar el API token.',
   ARCHIVO_MUY_GRANDE: 'El archivo supera el máximo de 1 MB.',
   ARCHIVO_VACIO: 'El archivo está vacío o no tiene filas de datos.',
@@ -81,6 +95,19 @@ export const MENSAJES: Readonly<Record<CodigoError, string>> = Object.freeze({
   COLUMNAS_FALTANTES: 'Faltan las columnas: codigo, titulo.',
   DEMASIADAS_FILAS: 'El archivo supera el máximo de 500 filas.',
   LLAVE_CIFRADO_NO_DISPONIBLE: 'La integración no está habilitada en el servidor.',
+  CONSULTA_ABIERTA: 'Ya hay una consulta abierta.',
+  CONSULTA_NO_ABIERTA: 'La consulta ya no está abierta.',
+  CONSULTA_VENCIDA: 'La consulta venció. Consulta Jira de nuevo.',
+  CONSULTA_MODIFICADA: 'Otra persona modificó la consulta.',
+  CONSULTA_LLENA: 'La consulta llegó a 500 filas. Confirma y consulta de nuevo.',
+  CONSULTA_COMPLETA: 'La consulta ya leyó todas las historias de Jira.',
+  CONSULTA_NO_ENCONTRADA: 'La consulta no existe.',
+  SIN_SELECCION: 'Marca al menos una fila.',
+  ASIGNACION_INCOMPLETA: 'Falta completar la asignación.',
+  ASIGNACION_INVALIDA: 'La asignación no es válida.',
+  ASIGNACIONES_INVALIDAS: 'Hay filas cuya asignación ya no es válida.',
+  FILA_NO_MARCABLE: 'Esta fila no se puede incluir en la confirmación.',
+  FILA_NO_ASIGNABLE: 'Esta fila no admite asignación.',
   TRANSICION_INVALIDA: 'La HDU no puede pasar a ese estado.',
   CHECKLIST_INCOMPLETO: 'No se puede cerrar la HDU: el checklist de entregables está incompleto.',
   CHECKLIST_NO_DISPONIBLE:
