@@ -26,6 +26,10 @@ $$;
 
 grant connect on database postgres to svc_indicadores;
 
+-- Igual que los otros roles de servicio en la nube (migración q360_roles_search_path, 2026-11-05):
+-- defensa en profundidad tras el pooler. Las SQL crudas de Indicadores ya nombran su esquema (DEF-E5C-05).
+alter role svc_indicadores set search_path to indicadores;
+
 -- Ni PUBLIC ni los roles de la Data API alcanzan el esquema.
 revoke all on schema indicadores from public, anon, authenticated, service_role;
 
