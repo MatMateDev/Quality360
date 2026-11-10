@@ -350,7 +350,7 @@ export class HduPrismaRepositorio implements HduRepositorio {
   }): Promise<ResultadoCierreExcepcion> {
     return this.prisma.$transaction(async (tx) => {
       // Bloquea la fila: el segundo de dos cierres simultáneos espera aquí y ve la HDU ya cerrada.
-      await tx.$queryRaw`SELECT "id_historia" FROM "historia_usuario" WHERE "id_historia" = ${input.hduId}::uuid FOR UPDATE`;
+      await tx.$queryRaw`SELECT "id_historia" FROM "organizacion"."historia_usuario" WHERE "id_historia" = ${input.hduId}::uuid FOR UPDATE`;
       const antes = await tx.hdu.findUniqueOrThrow({ where: { id: input.hduId } });
       if (antes.estado !== 'PENDIENTE_CIERRE') throw new EstadoHduCambiado(antes.estado);
 

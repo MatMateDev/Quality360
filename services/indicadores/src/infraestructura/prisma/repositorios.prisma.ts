@@ -35,7 +35,7 @@ export class SnapshotPrismaRepositorio extends SnapshotRepositorio {
       for (const f of filas) {
         // `xmax = 0` es verdadero solo para una fila recién insertada; en un upsert actualizado vale distinto de 0.
         const resultado = await tx.$queryRaw<Array<{ insertada: boolean }>>`
-          INSERT INTO "snapshot_indicadores" (
+          INSERT INTO "indicadores"."snapshot_indicadores" (
             "fecha", "id_celula", "celula_nombre", "id_sprint", "sprint_nombre", "sprint_inicio", "sprint_fin", "ambito",
             "hdu_total", "certificadas", "cerradas_excepcion", "en_curso", "sin_iniciar", "bloqueadas", "suma_avance",
             "cumplimiento_promedio", "hdu_riesgo_alto", "hdu_riesgo_medio", "impedimentos_abiertos", "impedimentos_escalados",
@@ -213,7 +213,7 @@ export class UmbralPrismaRepositorio extends UmbralRepositorio {
     return this.prisma.$transaction(async (tx) => {
       // Serializa los cambios del mismo QE, también el primero (cuando aún no hay fila que bloquear con FOR UPDATE).
       await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${'umbral_carga:' + datos.idQe}))`;
-      const filas = await tx.$queryRaw<Array<{ valor: number }>>`SELECT "valor" FROM "umbral_carga" WHERE "id_qe" = ${datos.idQe}::uuid FOR UPDATE`;
+      const filas = await tx.$queryRaw<Array<{ valor: number }>>`SELECT "valor" FROM "indicadores"."umbral_carga" WHERE "id_qe" = ${datos.idQe}::uuid FOR UPDATE`;
       const existente = filas[0];
       const vigente = existente?.valor ?? datos.defecto;
       if (vigente === datos.valor) {
