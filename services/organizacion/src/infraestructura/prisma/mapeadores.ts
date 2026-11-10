@@ -1,7 +1,7 @@
 /** Traduce filas de Prisma a los tipos del dominio. Vive solo en infraestructura. */
-import type { Hdu as HduPrisma, Usuario as UsuarioPrisma } from '#prisma';
+import type { CierreHdu as CierreHduPrisma, Hdu as HduPrisma, Usuario as UsuarioPrisma } from '#prisma';
 
-import { ROLES, type Actor, type Hdu, type OrigenHdu, type Rol, type Usuario } from '../../dominio/tipos.js';
+import { ROLES, type Actor, type CierreExcepcion, type Hdu, type OrigenHdu, type Rol, type Usuario } from '../../dominio/tipos.js';
 
 /** El rol vive en la tabla `rol` (modelo de datos); toda lectura de usuario lo incluye. */
 export const INCLUYE_ROL = { rol: { select: { nombre: true } } } as const;
@@ -9,10 +9,12 @@ export const INCLUYE_ROL = { rol: { select: { nombre: true } } } as const;
 /** El sprint de una HU vive en `historia_sprint`; el vigente es el que no tiene fecha de retiro. */
 export const INCLUYE_SPRINT_VIGENTE = {
   historiaSprints: { where: { fechaRetiro: null, sprintId: { not: null } }, select: { sprintId: true }, take: 1 },
+  /** E6: la existencia de la constancia define `cierreParcial`; solo se lee el id. */
+  cierre: { select: { id: true } },
 } as const;
 
 export type UsuarioConRol = UsuarioPrisma & { rol: { nombre: string } };
-export type HduConSprint = HduPrisma & { historiaSprints: Array<{ sprintId: string | null }> };
+export type HduConSprint = HduPrisma & { historiaSprints: Array<{ sprintId: string | null }>; cierre: { id: string } | null };
 
 export function aRol(nombre: string): Rol {
   if (!(ROLES as readonly string[]).includes(nombre)) throw new Error(`Rol desconocido en la tabla rol: ${nombre}`);
@@ -52,5 +54,19 @@ export function aHduDominio(fila: HduConSprint): Hdu {
     origen: fila.origen as OrigenHdu,
     claveExterna: fila.claveExterna,
     urlExterna: fila.urlExterna,
+    cierreParcial: fila.cierre !== null,
+  };
+}
+
+/** Fila de `cierre_hdu` → constancia del dominio (E6, D175). */
+export function aCierreDominio(fila: CierreHduPrisma): CierreExcepcion {
+  return {
+    hduId: fila.hduId,
+    aprobados: fila.aprobados,
+    pendientes: fila.pendientes,
+    justificacion: fila.justificacion,
+    actor: { tipo: 'USUARIO', id: fila.actorId, nombre: fila.actorNombre },
+    actorRol: aRol(fila.actorRol),
+    fecha: fila.fecha,
   };
 }

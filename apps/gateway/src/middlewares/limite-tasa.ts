@@ -1,7 +1,8 @@
 /**
  * Límite de tasa: uno general para `/v1/*` y otro más estricto para las
  * escrituras, que son las rutas sensibles (altas, cambios de rol, supervisión
- * y estados). Responde 429 `DEMASIADAS_SOLICITUDES` con `Retry-After`.
+ * y estados). El cron público de Indicadores (`GET`) también usa el de
+ * escritura (D178). Responde 429 `DEMASIADAS_SOLICITUDES` con `Retry-After`.
  *
  * La edición de la consulta de Jira (`PATCH /v1/integraciones/jira/consultas/{id}/items`)
  * guarda cada cambio al instante, así que tiene su propio cubo (D152,
@@ -28,6 +29,16 @@ const RUTA_EDICION_CONSULTA = /^\/v1\/integraciones\/jira\/consultas\/[^/]+\/ite
 
 /** `/v1/integraciones/jira/consultas/{id}/items/{itemId}/confirmaciones`, con o sin barra final. */
 const RUTA_CONFIRMACION_FILA = /^\/v1\/integraciones\/jira\/consultas\/[^/]+\/items\/[^/]+\/confirmaciones\/?$/;
+/** `/v1/cron/indicadores/snapshot`, con o sin barra final (D178). */
+const RUTA_CRON_INDICADORES = /^\/v1\/cron\/indicadores\/snapshot\/?$/;
+
+/**
+ * El cron de Indicadores es un `GET` público que dispara una escritura (el
+ * snapshot), así que consume el cubo de escritura (D178).
+ */
+export function esCronIndicadores(solicitud: Pick<Request, 'baseUrl' | 'path'>): boolean {
+  return RUTA_CRON_INDICADORES.test(`${solicitud.baseUrl}${solicitud.path}`);
+}
 
 /** `PATCH` de las filas de una consulta (D152). */
 export function esEdicionConsulta(solicitud: Pick<Request, 'method' | 'baseUrl' | 'path'>): boolean {
@@ -85,7 +96,8 @@ export function crearLimitadores(configuracion: ConfiguracionGateway): Limitador
       limit: maximoEscritura,
       standardHeaders: false,
       legacyHeaders: false,
-      skip: (solicitud) => !esEscritura(solicitud.method) || usaCuboConsulta(solicitud),
+      skip: (solicitud) =>
+        !(esEscritura(solicitud.method) || esCronIndicadores(solicitud)) || usaCuboConsulta(solicitud),
       handler: (solicitud, respuesta) => responder429(solicitud, respuesta, ventanaMs),
     }),
     consulta: rateLimit({

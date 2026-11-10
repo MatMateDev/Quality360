@@ -23,6 +23,7 @@ export function configuracionPrueba(organizacionUrl: string, cambios: Partial<Co
     exportacionLimiteFilas: 50_000,
     credencialServicio: 'token-servicio-local-de-pruebas-0123456789',
     permitirCargaSemilla: true,
+    indicadoresServicioToken: null,
     ...cambios,
   };
 }

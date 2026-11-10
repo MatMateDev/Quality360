@@ -35,6 +35,13 @@ info:
       Analista único del QE; el upsert informa `existente` para el bloqueo
       `HDU_YA_ASIGNADA` y la idempotencia. **Sin migración**: se lee
       `supervision` (vigente = `fecha_hasta IS NULL`) y la auditoría.
+    - Indicadores (E6, D176, D177): `GET /v1/interno/indicadores/ambito` con
+      el token del usuario; `GET /v1/interno/indicadores/snapshot` con
+      `credencialIndicadores` (lectura global, sin sesión); `POST
+      /v1/interno/auditoria/exportaciones` con recurso `INDICADORES`. El
+      cierre con excepción (D173–D175, D189) es una variante de `POST
+      /v1/hdu/{id}/estado` y vive aquí: tabla `cierre_hdu`, auditoría
+      `CERRAR_HDU_PARCIAL`.
 
     **Reglas que aplica en cada solicitud**
     - Identidad desde el token verificado (`sub`); rol y `activo` desde su base
@@ -350,8 +357,14 @@ paths:
         no responde, Certificaciones no entrega el archivo. Las exportaciones
         de Organización se registran sin pasar por aquí. Desde E4 también lo
         llama Impedimentos (recursos `IMPEDIMENTOS` y `GESTION_IMPEDIMENTOS`, D70).
-      x-roles: [AUDITOR]
-      x-hdu: [E7-B04#3, E4-B04#2]
+
+        E6 (D168, D186): Indicadores lo llama con el token del QE, del Líder
+        QA o del Auditor y recurso `INDICADORES` (en `filtros`: `vista`,
+        `formato`, `celulaId`, `sprintId`, `desde`, `hasta`). El recurso
+        `INDICADORES` admite QE, Líder QA y Auditor activos; los demás
+        recursos siguen siendo solo del Auditor (otro rol → 403).
+      x-roles: [AUDITOR, QE, LIDER_QA]
+      x-hdu: [E7-B04#3, E4-B04#2, E6-B04#1, E6-B04#2]
       requestBody:
         required: true
         content:
@@ -376,6 +389,79 @@ paths:
           $ref: '#/components/responses/NoAutenticado'
         '403':
           $ref: '#/components/responses/AccesoDenegado'
+        '500':
+          $ref: '#/components/responses/ErrorInterno'
+
+  # ---------------------------------------------- E6 · indicadores (D176, D177)
+  /v1/interno/indicadores/ambito:
+    get:
+      operationId: obtenerAmbitoIndicadores
+      tags: [Acceso interno]
+      summary: Ámbito y datos de HDU para los indicadores del usuario
+      description: |
+        D176. Indicadores lo llama una vez por consulta con el token del
+        usuario (2 s). Responde 403 si el usuario está inactivo, no existe o
+        no es QE, Líder QA o Auditor (Administrador y Analista QA no ven
+        indicadores, D153). Ámbito de D153 (el mismo de `GET
+        /v1/interno/hdu/ambito`), todas las HDU sin importar el estado, con
+        célula, sprint vigente con sus fechas, QE responsable, analista (con
+        `activo`) y `cierreParcial`; las células visibles y los analistas
+        de la vista de carga según `AmbitoIndicadores`. Sin caché ni
+        paginación (pregunta abierta de volumen, como D46).
+      x-roles: [QE, LIDER_QA, AUDITOR]
+      x-hdu: [E6-B01#1, E6-B02#1, E6-B02#2]
+      responses:
+        '200':
+          description: Ámbito del usuario.
+          content:
+            application/json:
+              schema:
+                $ref: './comun.v1.yaml#/components/schemas/AmbitoIndicadores'
+        '401':
+          $ref: '#/components/responses/NoAutenticado'
+        '403':
+          $ref: '#/components/responses/AccesoDenegado'
+        '500':
+          $ref: '#/components/responses/ErrorInterno'
+
+  /v1/interno/indicadores/snapshot:
+    get:
+      operationId: obtenerDatosSnapshotIndicadores
+      tags: [Acceso interno]
+      summary: Todas las HDU y el ámbito de cada QE, para el snapshot diario
+      description: |
+        D177. Solo con `credencialIndicadores` (cabecera
+        `X-Q360-Servicio-Token` con el valor de `INDICADORES_SERVICIO_TOKEN`,
+        distinto de la credencial de la semilla); sin ella o con otro valor,
+        401; sin la variable configurada, 401 siempre. No acepta sesión de
+        usuario. Solo lectura. Devuelve hasta `limite` HDU (todas las de
+        cualquier estado) y, en `total`, cuántas hay; `ambitosQe` trae el
+        ámbito D153 de cada QE activo con al menos una HDU.
+      x-roles: [SERVICIO]
+      x-hdu: [E6-B03#1]
+      security:
+        - credencialIndicadores: []
+      parameters:
+        - name: limite
+          in: query
+          required: false
+          description: Máximo de HDU en `hdu` (Indicadores pide `INDICADORES_TOPE_HDU + 1`).
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 5000
+            default: 1001
+      responses:
+        '200':
+          description: Datos para el snapshot.
+          content:
+            application/json:
+              schema:
+                $ref: './comun.v1.yaml#/components/schemas/DatosSnapshotOrganizacion'
+        '400':
+          $ref: '#/components/responses/Validacion'
+        '401':
+          $ref: '#/components/responses/NoAutenticado'
         '500':
           $ref: '#/components/responses/ErrorInterno'
 
@@ -1814,7 +1900,7 @@ paths:
         (E2-B03, E7-B02): Líder QA, HDU de sus células vigentes (sin células,
         lista vacía con 200; `celulaId` de otra célula → 403); Auditor, todas.
       x-roles: [ADMINISTRADOR, QE, ANALISTA_QA, LIDER_QA, AUDITOR]
-      x-hdu: [E2-F03#1, E2-F03#2, E2-F03#3, E2-B03#1, E2-B03#2, E2-B03#3, E7-B02#1, E7-B02#2]
+      x-hdu: [E2-F03#1, E2-F03#2, E2-F03#3, E2-B03#1, E2-B03#2, E2-B03#3, E7-B02#1, E7-B02#2, E6-B05#3]
       parameters:
         - name: celulaId
           in: query
@@ -1903,9 +1989,9 @@ paths:
       operationId: obtenerHdu
       tags: [HDU]
       summary: Detalle de una HDU (sin checklist)
-      description: Fuera de ámbito, o inexistente para QE, Analista QA y Líder QA, → 403. Inexistente para Administrador o Auditor → 404. El gateway agrega el bloque `checklist`. Para Líder QA y Auditor, `permisos` y `transicionesPermitidas` vienen en `false` y vacío (D39). Desde E5 (D108, D124) trae además `descripcion`, `origen`, `claveExterna` y `urlExterna`.
+      description: Fuera de ámbito, o inexistente para QE, Analista QA y Líder QA, → 403. Inexistente para Administrador o Auditor → 404. El gateway agrega el bloque `checklist`. Para Líder QA y Auditor, `permisos` y `transicionesPermitidas` vienen en `false` y vacío (D39). Desde E5 (D108, D124) trae además `descripcion`, `origen`, `claveExterna` y `urlExterna`. Desde E6 (D189) trae `cierre` (constancia del cierre con excepción o `null`), `cierreParcial` y `permisos.cerrarConExcepcion`.
       x-roles: [ADMINISTRADOR, QE, ANALISTA_QA, LIDER_QA, AUDITOR]
-      x-hdu: [E1-B02#2, E2-F04#1, E2-F04#2, E2-B03#1, E2-B03#2, E7-B02#1, E7-B02#2, E5-F02#1, E5-B02#1, E5-F07#5]
+      x-hdu: [E1-B02#2, E2-F04#1, E2-F04#2, E2-B03#1, E2-B03#2, E7-B02#1, E7-B02#2, E5-F02#1, E5-B02#1, E5-F07#5, E6-F05#1, E6-F05#3, E6-B05#3]
       responses:
         '200':
           description: Detalle de la HDU.
@@ -2054,8 +2140,34 @@ paths:
         (2 s, `IMPEDIMENTOS_TIMEOUT_MS`). `total > 0` → 409 `HDU_BLOQUEADA`
         con la lista; sin respuesta → 503 `SERVICIO_NO_DISPONIBLE`
         («No pudimos verificar los impedimentos de la HDU»). La HDU no cambia.
+
+        **E6 · cierre con excepción (D173–D175, D189).** Al pedir `CERRADA`:
+        1. Permiso general de cambio de estado (403 si no lo tiene) y
+           transición (D10): 409 `TRANSICION_INVALIDA` antes de mirar la
+           justificación.
+        2. Checklist: Certificaciones caída → 409 `CHECKLIST_NO_DISPONIBLE`,
+           con o sin `justificacion`. Con 10 aprobados → cierre normal; la
+           `justificacion` se ignora y no se guarda.
+        3. Checklist incompleto **sin** `justificacion` (ausente o `null`) →
+           409 `CHECKLIST_INCOMPLETO` con `puedeCerrarConExcepcion` (`true`
+           solo para el QE responsable). Comportamiento certificado intacto.
+        4. Checklist incompleto **con** `justificacion`: si quien pide no es
+           el QE responsable (analista asignado, QE supervisor,
+           Administrador) → 403 `ACCESO_DENEGADO`.
+        5. Justificación: en blanco → 422 `JUSTIFICACION_REQUERIDA`; fuera de
+           20–500 tras quitar espacios → 400 `VALIDACION` (`campo:
+           justificacion`).
+        6. Impedimentos `ABIERTO` o `ESCALADO` → 409 `HDU_BLOQUEADA`;
+           Impedimentos caído → 503.
+        7. Una transacción que bloquea la HDU (`SELECT … FOR UPDATE`) y
+           vuelve a exigir `PENDIENTE_CIERRE` (el segundo de dos cierres
+           simultáneos recibe 409 `TRANSICION_INVALIDA`): estado `CERRADA`,
+           fila en `cierre_hdu` (única por HDU), eventos `ESTADO` y
+           `CIERRE_EXCEPCION` del historial, auditoría `CAMBIAR_ESTADO_HDU` y
+           `CERRAR_HDU_PARCIAL`. Respuesta 200 con `cierre` y
+           `hdu.cierreParcial: true`. Sin certificado (D174).
       x-roles: [ADMINISTRADOR, QE, ANALISTA_QA, SERVICIO]
-      x-hdu: [E2-F04#3, E2-B02#1, E2-B02#2, E2-B02#3, E2-B04#1, E7-B02#3, E4-B02#2]
+      x-hdu: [E2-F04#3, E2-B02#1, E2-B02#2, E2-B02#3, E2-B04#1, E7-B02#3, E4-B02#2, E6-F05#1, E6-F05#2, E6-B05#1, E6-B05#2, E6-B05#3]
       security:
         - sesionSupabase: []
         - credencialServicio: []
@@ -2090,6 +2202,21 @@ paths:
                   - $ref: '#/components/schemas/ErrorTransicionInvalida'
                   - $ref: '#/components/schemas/ErrorCierreRechazado'
                   - $ref: './comun.v1.yaml#/components/schemas/ErrorHduBloqueada'
+        '422':
+          description: E6 (D173). Cierre con excepción con la justificación en blanco. La HDU no cambia.
+          x-codigos: [JUSTIFICACION_REQUERIDA]
+          content:
+            application/json:
+              schema:
+                $ref: './comun.v1.yaml#/components/schemas/Error'
+              example:
+                codigo: JUSTIFICACION_REQUERIDA
+                mensaje: La justificación es obligatoria.
+                traceId: 4bf92f3577b34da6a3ce929d0e0e4736
+                detalles:
+                  - campo: justificacion
+                    codigo: REQUERIDO
+                    mensaje: La justificación es obligatoria.
         '500':
           $ref: '#/components/responses/ErrorInterno'
         '503':
@@ -2107,9 +2234,9 @@ paths:
       operationId: obtenerHistorialHdu
       tags: [HDU]
       summary: Historial de estados y asignaciones de una HDU
-      description: Mismo acceso que el detalle. Orden cronológico ascendente.
+      description: Mismo acceso que el detalle. Orden cronológico ascendente. Desde E6 (D189) un cierre con excepción agrega el evento `CIERRE_EXCEPCION` justo después del `ESTADO` del cierre, con la misma fecha.
       x-roles: [ADMINISTRADOR, QE, ANALISTA_QA, LIDER_QA, AUDITOR]
-      x-hdu: [E2-B04#1, E2-B04#2, E2-B04#3, E7-B02#2, E7-F06#1]
+      x-hdu: [E2-B04#1, E2-B04#2, E2-B04#3, E7-B02#2, E7-F06#1, E6-F05#3, E6-B05#3]
       responses:
         '200':
           description: Historial.
@@ -2386,6 +2513,18 @@ components:
         integraciones}`. El gateway descarta esta cabecera si llega desde
         afuera. Las rutas `/v1/interno/carga/*` responden 403 si
         `PERMITIR_CARGA_SEMILLA` no es `true`.
+    credencialIndicadores:
+      type: apiKey
+      in: header
+      name: X-Q360-Servicio-Token
+      description: |
+        E6 (D177). Misma cabecera, otro secreto: `INDICADORES_SERVICIO_TOKEN`,
+        compartido solo entre Indicadores y las 3 rutas de lectura global que
+        lo aceptan (`GET /v1/interno/indicadores/snapshot` aquí, `POST
+        /v1/interno/checklist/estados` en Certificaciones y `POST
+        /v1/interno/impedimentos/evaluacion` en Impedimentos). Comparación en
+        tiempo constante. No habilita ninguna escritura. El gateway descarta
+        la cabecera si llega desde afuera.
 
   parameters:
     AnalistaIdQuery:

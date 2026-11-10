@@ -6,7 +6,7 @@
  * por sí mismo: estos endpoints entregan ámbito y relación, no deciden por el llamador.
  */
 import { Body, Controller, Get, HttpCode, Param, Post, Query } from '@nestjs/common';
-import { AccesoActual, Roles, errorValidacion, type ResolucionAcceso } from '@quality360/auth-nest';
+import { AccesoActual, Roles, accesoDenegado, errorValidacion, type ResolucionAcceso } from '@quality360/auth-nest';
 
 import {
   AccesoAplicacion,
@@ -85,9 +85,11 @@ export class AccesoInternoController {
    * Certificaciones registra aquí, con el token del Auditor, sus exportaciones de bitácora y
    * de certificados antes de entregar el archivo (D48). Solo el Auditor.
    */
-  @Roles('AUDITOR')
+  @Roles('AUDITOR', 'QE', 'LIDER_QA')
   @Post('auditoria/exportaciones')
   async registrarExportacion(@Body() dto: RegistroExportacionDto, @AccesoActual() acceso: ResolucionAcceso) {
+    // E6 (D168): el recurso `INDICADORES` lo registran también el QE y el Líder QA; los demás siguen siendo del Auditor.
+    if (dto.recurso !== 'INDICADORES' && acceso.rol !== 'AUDITOR') throw accesoDenegado('recurso solo del Auditor');
     const actor = await this.auditor.actorDe(acceso.usuarioId);
     return this.auditor.registrarExportacion(actor, dto.recurso, dto.filtros, dto.filas);
   }

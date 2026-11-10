@@ -1,6 +1,7 @@
 import type { FiltroAmbitoHdu } from '../reglas/ambito.js';
 import type {
   Actor,
+  CierreExcepcion,
   ConteoPorEstado,
   EstadoHdu,
   EventoHistorialHdu,
@@ -9,6 +10,7 @@ import type {
   OrigenHdu,
   Pagina,
   PrioridadHdu,
+  Rol,
 } from '../tipos.js';
 
 export interface DatosNuevaHdu {
@@ -59,6 +61,10 @@ export interface ResultadoCambioEstado {
   readonly fecha: Date;
 }
 
+export interface ResultadoCierreExcepcion extends ResultadoCambioEstado {
+  readonly cierre: CierreExcepcion;
+}
+
 /** Token de inyección del repositorio de HDU. */
 export const HDU_REPOSITORIO = Symbol('HDU_REPOSITORIO');
 
@@ -96,6 +102,24 @@ export interface HduRepositorio {
 
   /** Cambia el estado, audita y registra el historial en la misma transacción. */
   cambiarEstado(input: { hduId: string; estadoNuevo: EstadoHdu; actor: Actor }): Promise<ResultadoCambioEstado>;
+
+  /**
+   * Cierre con excepción (E6, D175, D189), todo en una transacción que bloquea la HDU (`SELECT … FOR UPDATE`)
+   * y vuelve a exigir `PENDIENTE_CIERRE` (si no, lanza `EstadoHduCambiado`): estado `CERRADA`, constancia en
+   * `cierre_hdu`, eventos `ESTADO` y `CIERRE_EXCEPCION` del historial y auditoría `CAMBIAR_ESTADO_HDU` y
+   * `CERRAR_HDU_PARCIAL`.
+   */
+  cerrarConExcepcion(input: {
+    hduId: string;
+    aprobados: number;
+    pendientes: readonly string[];
+    justificacion: string;
+    actor: Actor;
+    actorRol: Rol;
+  }): Promise<ResultadoCierreExcepcion>;
+
+  /** Constancia del cierre con excepción de cada HDU que la tiene (una sola consulta). */
+  buscarCierres(hduIds: readonly string[]): Promise<Map<string, CierreExcepcion>>;
 
   /**
    * Fija el sprint vigente (`historia_sprint`): cierra la fila vigente y abre una nueva; el mismo sprint

@@ -1,0 +1,791 @@
+openapi: 3.1.0
+info:
+  title: Quality360 · Servicio de Indicadores
+  version: 1.0.0
+  license:
+    name: Uso académico · Capstone Duoc UC
+    identifier: LicenseRef-Capstone-Duoc-UC
+  description: |
+    Indicadores de cumplimiento, semáforo por célula, carga por analista con
+    umbral, tendencia diaria (snapshots) y exportación CSV/PDF (E6:
+    D153–D172 de `docs/backlog/e6-indicadores-dashboards.md` y D176–D195 de
+    `docs/arquitectura/decisiones-mvp.md`). Lo consume el gateway, que
+    publica estas mismas rutas salvo `/v1/interno/*` (`INDICADORES_URL`,
+    D179). Esquema propio `indicadores`, rol `svc_indicadores`; no lee ni
+    escribe otros esquemas (D154).
+
+    - **Acceso (D153, D176).** Ni el rol ni el estado activo salen del token
+      (D4). Las vistas de indicadores llaman una vez a `GET
+      /v1/interno/indicadores/ambito` de Organización (token propagado), que
+      responde 403 a quien no es QE, Líder QA o Auditor activo. El umbral y
+      los snapshots usan `GET /v1/interno/acceso`. Matriz:
+
+      | Operación | QE | Líder QA | Auditor | Administrador | Analista QA |
+      | --- | --- | --- | --- | --- | --- |
+      | Filtros, cumplimiento, semáforo, drill-down, carga, tendencia, exportación | Su ámbito | Sus células vigentes | Todo | 403 | 403 |
+      | Ver umbral | El propio | QE de su ámbito | Cualquier QE | 403 | 403 |
+      | Fijar umbral | Solo el propio | 403 | 403 | 403 | 403 |
+      | Historial del umbral | El propio | 403 | Cualquier QE | 403 | 403 |
+      | Snapshot manual y ejecuciones | 403 | 403 | 403 | Sí | 403 |
+      | Cron | — | — | — | — | — |
+
+      El cron no usa sesión: solo `Authorization: Bearer <CRON_SECRET>`
+      (D178). Sin sesión: 401. Orden de validación: 401 → 403 → 400 → 409
+      → 422 → 503.
+    - **Fuentes y tiempos (D154, D178).** Sin caché. Cada llamada a
+      Organización, Certificaciones (`POST /v1/interno/checklist/estados`) e
+      Impedimentos (`POST /v1/interno/impedimentos/evaluacion`) tiene 2 s
+      (`INDICADORES_FUENTE_TIMEOUT_MS`); los lotes son de hasta 1000 HDU.
+      Organización caída: 503 `SERVICIO_NO_DISPONIBLE`. Certificaciones o
+      Impedimentos caídos: solo los indicadores que dependen de ellos van
+      `indisponible`, con valor `null`, nunca 0 ni VERDE (D169).
+    - **Filtros (D180).** `celulaId` y `sprintId` (UUID o `SIN_SPRINT`). Un
+      UUID válido que no existe o está fuera del ámbito no es error: 200 con
+      `sinDatos: true` y `FILTRO_SIN_COINCIDENCIAS`. Un valor mal formado:
+      400 `VALIDACION` con `campo`. El drill-down de una célula ajena sí es
+      un recurso: 403 para QE y Líder, 404 para el Auditor si no existe.
+    - **Fechas.** Todo en `America/Santiago`; «hoy» se puede fijar con
+      `Q360_FECHA_REFERENCIA`, que se ignora con `NODE_ENV=production`
+      (D172).
+servers:
+  - url: http://indicadores:3005
+    description: Red interna de Docker Compose
+  - url: http://localhost:3005
+    description: Desarrollo local
+security:
+  - sesionSupabase: []
+tags:
+  - name: Salud
+    description: Estado del proceso.
+  - name: Cumplimiento
+    description: Indicadores de cumplimiento y opciones de filtro (E6-F01, E6-B01).
+  - name: Semáforo
+    description: Semáforo por célula y drill-down (E6-F02, E6-B02#1).
+  - name: Carga
+    description: Carga por analista y umbral de sobrecarga (E6-F03, E6-B02#2, #3).
+  - name: Tendencia
+    description: Serie histórica desde los snapshots (E6-F04#1, #3, E6-B03#3).
+  - name: Exportación
+    description: CSV y PDF de la vista abierta (E6-F04#2, E6-B04).
+  - name: Snapshots
+    description: Generación diaria y manual, y ejecuciones (E6-B03#1, #2).
+  - name: Carga semilla
+    description: Snapshot con instante fijado, solo para pruebas (D184).
+
+paths:
+  /health:
+    get:
+      operationId: obtenerSaludIndicadores
+      tags: [Salud]
+      summary: Estado del servicio
+      description: No consulta otros servicios ni informa si `CRON_SECRET` está configurado.
+      security: []
+      x-roles: [PUBLICO]
+      x-hdu: []
+      responses:
+        '200':
+          description: El proceso responde.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [estado]
+                additionalProperties: false
+                properties:
+                  estado:
+                    type: string
+                    const: ok
+        '500':
+          $ref: './comun.v1.yaml#/components/responses/ErrorInterno'
+
+  # ---------------------------------------------------------- Cumplimiento
+  /v1/indicadores/filtros:
+    get:
+      operationId: obtenerOpcionesFiltroIndicadores
+      tags: [Cumplimiento]
+      summary: Células y sprints para los filtros del dashboard
+      description: |
+        D180 (brecha 3 del diseño). Solo células y sprints de las HDU del
+        ámbito (cualquier estado); los sprints cerrados traen `cerrado: true`.
+        `hduSinSprint` cuenta las HDU sin sprint vigente: si es mayor que 0,
+        el portal ofrece «Sin sprint» (`sprintId=SIN_SPRINT`). Solo depende
+        de Organización.
+      x-roles: [QE, LIDER_QA, AUDITOR]
+      x-hdu: [E6-F01#2]
+      responses:
+        '200':
+          description: Opciones de filtro.
+          content:
+            application/json:
+              schema:
+                $ref: './comun.v1.yaml#/components/schemas/OpcionesFiltroIndicadores'
+        '401':
+          $ref: './comun.v1.yaml#/components/responses/NoAutenticado'
+        '403':
+          $ref: './comun.v1.yaml#/components/responses/AccesoDenegado'
+        '500':
+          $ref: './comun.v1.yaml#/components/responses/ErrorInterno'
+        '503':
+          $ref: './comun.v1.yaml#/components/responses/ServicioNoDisponible'
+
+  /v1/indicadores/cumplimiento:
+    get:
+      operationId: obtenerCumplimiento
+      tags: [Cumplimiento]
+      summary: Indicadores de cumplimiento del ámbito
+      description: |
+        Clasificación excluyente de 3.2 (D155): cerrada con excepción
+        (`cierreParcial`); certificada (no es cerrada con excepción y tiene
+        certificado o está `CERRADA`); sin iniciar (`PENDIENTE`); en curso
+        (`DISENO_PRUEBAS`, `EN_EJECUCION`, `PENDIENTE_CIERRE`). «Bloqueadas»
+        es transversal y no suma. Cumplimiento promedio = media del avance
+        real (`aprobados × 10`) de cada HDU del filtro; una cerrada con
+        excepción aporta su avance real (D156). Sin HDU: `sinDatos: true` y
+        todos los `valor` en `null`, nunca 0 (E6-B01#2). Se calcula en cada
+        consulta, sin caché (E6-B01#3).
+      x-roles: [QE, LIDER_QA, AUDITOR]
+      x-hdu: [E6-F01#1, E6-F01#2, E6-F01#3, E6-B01#1, E6-B01#2, E6-B01#3, E6-B05#3]
+      parameters:
+        - $ref: '#/components/parameters/CelulaId'
+        - $ref: '#/components/parameters/SprintId'
+      responses:
+        '200':
+          description: Indicadores, cada uno con su estado.
+          content:
+            application/json:
+              schema:
+                $ref: './comun.v1.yaml#/components/schemas/IndicadoresCumplimiento'
+              example:
+                generadoEn: '2026-11-04T18:20:00Z'
+                filtros: {celulaId: null, sprintId: null}
+                sinDatos: false
+                motivoSinDatos: null
+                hduTotales: {estado: ok, valor: 5}
+                certificadas: {estado: ok, valor: 1}
+                cerradasConExcepcion: {estado: ok, valor: 0}
+                enCurso: {estado: ok, valor: 3}
+                sinIniciar: {estado: ok, valor: 1}
+                bloqueadas: {estado: ok, valor: 2}
+                cumplimientoPromedio: {estado: ok, valor: 44.0}
+        '400':
+          $ref: './comun.v1.yaml#/components/responses/Validacion'
+        '401':
+          $ref: './comun.v1.yaml#/components/responses/NoAutenticado'
+        '403':
+          $ref: './comun.v1.yaml#/components/responses/AccesoDenegado'
+        '500':
+          $ref: './comun.v1.yaml#/components/responses/ErrorInterno'
+        '503':
+          $ref: './comun.v1.yaml#/components/responses/ServicioNoDisponible'
+
+  # -------------------------------------------------------------- Semáforo
+  /v1/indicadores/semaforo:
+    get:
+      operationId: obtenerSemaforo
+      tags: [Semáforo]
+      summary: Semáforo de riesgo e impedimentos por célula
+      description: |
+        D157, 3.4. Solo HDU no cerradas del ámbito. ROJO: alguna con riesgo
+        vigente `ALTO` o algún impedimento `ESCALADO`. AMARILLO: alguna con
+        `MEDIO` o algún `ABIERTO`. VERDE: ninguno, o la célula solo tiene
+        HDU cerradas. `SIN_HDU`: célula asignada al Líder sin HDU. No filtra
+        por sprint (es el estado actual). Con Certificaciones caída, el riesgo
+        se pide a Impedimentos con `avance: null` (riesgo parcial); con
+        Impedimentos caído no se conoce ni el bloqueo ni el riesgo: todas
+        `indisponible`. Sin caché (E6-F02#3).
+      x-roles: [QE, LIDER_QA, AUDITOR]
+      x-hdu: [E6-F02#1, E6-F02#3, E6-B02#1]
+      parameters:
+        - $ref: '#/components/parameters/CelulaId'
+      responses:
+        '200':
+          description: Una tarjeta por célula visible.
+          content:
+            application/json:
+              schema:
+                $ref: './comun.v1.yaml#/components/schemas/SemaforoIndicadores'
+        '400':
+          $ref: './comun.v1.yaml#/components/responses/Validacion'
+        '401':
+          $ref: './comun.v1.yaml#/components/responses/NoAutenticado'
+        '403':
+          $ref: './comun.v1.yaml#/components/responses/AccesoDenegado'
+        '500':
+          $ref: './comun.v1.yaml#/components/responses/ErrorInterno'
+        '503':
+          $ref: './comun.v1.yaml#/components/responses/ServicioNoDisponible'
+
+  /v1/indicadores/semaforo/{celulaId}/hdu:
+    parameters:
+      - $ref: '#/components/parameters/CelulaIdPath'
+    get:
+      operationId: obtenerDrilldownSemaforo
+      tags: [Semáforo]
+      summary: HDU que generan el color de una célula
+      description: |
+        D158, D181. Una HDU puede tener un motivo de riesgo y uno de
+        impedimento. Célula fuera de las `celulas` del ámbito: 403 para QE y
+        Líder QA (exista o no); para el Auditor, 404 si la célula no existe
+        en Organización (y 200 con `items: []` si existe sin HDU).
+      x-roles: [QE, LIDER_QA, AUDITOR]
+      x-hdu: [E6-F02#2, E6-B02#1]
+      responses:
+        '200':
+          description: Drill-down de la célula.
+          content:
+            application/json:
+              schema:
+                $ref: './comun.v1.yaml#/components/schemas/DrilldownSemaforo'
+        '400':
+          $ref: './comun.v1.yaml#/components/responses/Validacion'
+        '401':
+          $ref: './comun.v1.yaml#/components/responses/NoAutenticado'
+        '403':
+          $ref: './comun.v1.yaml#/components/responses/AccesoDenegado'
+        '404':
+          $ref: './comun.v1.yaml#/components/responses/NoEncontrado'
+        '500':
+          $ref: './comun.v1.yaml#/components/responses/ErrorInterno'
+        '503':
+          $ref: './comun.v1.yaml#/components/responses/ServicioNoDisponible'
+
+  # ----------------------------------------------------------------- Carga
+  /v1/indicadores/carga:
+    get:
+      operationId: obtenerCarga
+      tags: [Carga]
+      summary: Carga por analista con la sobrecarga evaluada
+      description: |
+        D159, D160, D182, 3.5. Activa = cualquier estado distinto de
+        `CERRADA`. Sobrecarga = `activas > umbral` (5 no lo es; 6 sí). Los
+        filtros cambian `porEstado` y `cumplimiento`, nunca `activas` ni
+        `sobrecargado`. Con Certificaciones caída, `cumplimiento` va
+        `indisponible` en cada fila y lo demás sigue (solo depende de
+        Organización). No llama a Impedimentos.
+      x-roles: [QE, LIDER_QA, AUDITOR]
+      x-hdu: [E6-F03#1, E6-F03#2, E6-F03#3, E6-B02#2, E6-B02#3]
+      parameters:
+        - $ref: '#/components/parameters/CelulaId'
+        - $ref: '#/components/parameters/SprintId'
+      responses:
+        '200':
+          description: Grupos de analistas con su umbral.
+          content:
+            application/json:
+              schema:
+                $ref: './comun.v1.yaml#/components/schemas/CargaIndicadores'
+        '400':
+          $ref: './comun.v1.yaml#/components/responses/Validacion'
+        '401':
+          $ref: './comun.v1.yaml#/components/responses/NoAutenticado'
+        '403':
+          $ref: './comun.v1.yaml#/components/responses/AccesoDenegado'
+        '500':
+          $ref: './comun.v1.yaml#/components/responses/ErrorInterno'
+        '503':
+          $ref: './comun.v1.yaml#/components/responses/ServicioNoDisponible'
+
+  /v1/indicadores/umbral-carga:
+    get:
+      operationId: obtenerUmbralCarga
+      tags: [Carga]
+      summary: Umbral de sobrecarga de un QE
+      description: |
+        D183. Sin `qeId`: el propio (solo QE). QE con `qeId` de otro: 403.
+        Líder QA: solo un QE de su ámbito (supervisor vigente de un analista
+        con HDU en sus células, o QE responsable de una HDU de sus células);
+        otro, 403. Auditor: cualquier usuario con rol QE; un id que no es QE,
+        404. Sin fila guardada: el valor por defecto con `porDefecto: true`.
+      x-roles: [QE, LIDER_QA, AUDITOR]
+      x-hdu: [E6-F03#2, E6-B02#3]
+      parameters:
+        - $ref: '#/components/parameters/QeId'
+      responses:
+        '200':
+          description: Umbral vigente.
+          content:
+            application/json:
+              schema:
+                $ref: './comun.v1.yaml#/components/schemas/UmbralCarga'
+        '400':
+          $ref: './comun.v1.yaml#/components/responses/Validacion'
+        '401':
+          $ref: './comun.v1.yaml#/components/responses/NoAutenticado'
+        '403':
+          $ref: './comun.v1.yaml#/components/responses/AccesoDenegado'
+        '404':
+          $ref: './comun.v1.yaml#/components/responses/NoEncontrado'
+        '500':
+          $ref: './comun.v1.yaml#/components/responses/ErrorInterno'
+        '503':
+          $ref: './comun.v1.yaml#/components/responses/ServicioNoDisponible'
+    put:
+      operationId: fijarUmbralCarga
+      tags: [Carga]
+      summary: Fijar el umbral de sobrecarga propio
+      description: |
+        Solo el QE, sobre su propio umbral (D159). En una transacción: bloquea
+        la fila de `umbral_carga` del QE (o la crea), compara y, si el valor
+        cambia, inserta `evento_umbral_carga` con el valor anterior efectivo
+        (5 la primera vez), el nuevo, el actor y la fecha (D161). Igual al
+        vigente: 200 con `cambio: false` y sin evento. Se aplica al instante
+        a la vista; no cambia los snapshots guardados.
+      x-roles: [QE]
+      x-hdu: [E6-F03#2, E6-B02#3]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: './comun.v1.yaml#/components/schemas/SolicitudUmbralCarga'
+      responses:
+        '200':
+          description: Umbral guardado (o sin cambios).
+          content:
+            application/json:
+              schema:
+                $ref: './comun.v1.yaml#/components/schemas/ResultadoUmbralCarga'
+        '400':
+          description: 'Valor no entero (`VALIDACION`) o fuera de 1 a 50 (`VALOR_FUERA_DE_RANGO`), con `campo: valor`. El umbral no cambia.'
+          x-codigos: [VALIDACION, VALOR_FUERA_DE_RANGO]
+          headers:
+            x-trace-id:
+              $ref: './comun.v1.yaml#/components/headers/XTraceId'
+          content:
+            application/json:
+              schema:
+                $ref: './comun.v1.yaml#/components/schemas/Error'
+              example:
+                codigo: VALOR_FUERA_DE_RANGO
+                mensaje: El umbral debe estar entre 1 y 50.
+                traceId: 4bf92f3577b34da6a3ce929d0e0e4736
+                detalles:
+                  - campo: valor
+                    codigo: VALOR_NO_PERMITIDO
+                    mensaje: El umbral debe estar entre 1 y 50.
+        '401':
+          $ref: './comun.v1.yaml#/components/responses/NoAutenticado'
+        '403':
+          $ref: './comun.v1.yaml#/components/responses/AccesoDenegado'
+        '500':
+          $ref: './comun.v1.yaml#/components/responses/ErrorInterno'
+        '503':
+          $ref: './comun.v1.yaml#/components/responses/ServicioNoDisponible'
+
+  /v1/indicadores/umbral-carga/historial:
+    get:
+      operationId: listarHistorialUmbralCarga
+      tags: [Carga]
+      summary: Cambios del umbral de un QE
+      description: |
+        D161. El más reciente primero. QE: solo el propio (`qeId` ausente o
+        el suyo; otro, 403). Auditor: cualquier QE (`qeId` obligatorio; sin
+        él, 400). Líder QA y el resto: 403. Un intento de `UPDATE` o `DELETE`
+        sobre `evento_umbral_carga` con `svc_indicadores` falla (42501).
+      x-roles: [QE, AUDITOR]
+      x-hdu: [E6-B02#3]
+      parameters:
+        - $ref: '#/components/parameters/QeId'
+        - $ref: './comun.v1.yaml#/components/parameters/Pagina'
+        - name: tamanoPagina
+          in: query
+          required: false
+          description: 5 por defecto (diseño 5.4); más de 100 se recorta.
+          schema:
+            type: integer
+            minimum: 1
+            default: 5
+      responses:
+        '200':
+          description: Página de eventos.
+          content:
+            application/json:
+              schema:
+                $ref: './comun.v1.yaml#/components/schemas/PaginaEventosUmbral'
+        '400':
+          $ref: './comun.v1.yaml#/components/responses/Validacion'
+        '401':
+          $ref: './comun.v1.yaml#/components/responses/NoAutenticado'
+        '403':
+          $ref: './comun.v1.yaml#/components/responses/AccesoDenegado'
+        '500':
+          $ref: './comun.v1.yaml#/components/responses/ErrorInterno'
+        '503':
+          $ref: './comun.v1.yaml#/components/responses/ServicioNoDisponible'
+
+  # ------------------------------------------------------------- Tendencia
+  /v1/indicadores/tendencia:
+    get:
+      operationId: obtenerTendencia
+      tags: [Tendencia]
+      summary: Evolución del cumplimiento por (célula, sprint)
+      description: |
+        D166, D167, D185. Lee solo `snapshot_indicadores`; para el rol y las
+        células del Líder usa `GET /v1/interno/acceso` (`ambito.celulasIds`).
+        Sin filtros: los sprints vigentes (`inicio ≤ hoy ≤ fin`) de las
+        células visibles; si no hay, el sprint con snapshot más reciente de
+        cada célula. Hasta 6 series también con filtros (`totalSeries` dice
+        cuántas había). `desde` por defecto = `hasta` − 89 días; `hasta` por
+        defecto = hoy. `desde > hasta` o un rango de más de 366 días: 400.
+        `sprintId=SIN_SPRINT`: `sinDatos` (los snapshots no guardan HDU sin
+        sprint, D162). Sin filas en el ámbito: `SIN_HISTORIAL`.
+      x-roles: [QE, LIDER_QA, AUDITOR]
+      x-hdu: [E6-F04#1, E6-F04#3, E6-B03#3]
+      parameters:
+        - $ref: '#/components/parameters/CelulaId'
+        - $ref: '#/components/parameters/SprintId'
+        - $ref: '#/components/parameters/Desde'
+        - $ref: '#/components/parameters/Hasta'
+      responses:
+        '200':
+          description: Series ordenadas.
+          content:
+            application/json:
+              schema:
+                $ref: './comun.v1.yaml#/components/schemas/TendenciaIndicadores'
+        '400':
+          $ref: './comun.v1.yaml#/components/responses/Validacion'
+        '401':
+          $ref: './comun.v1.yaml#/components/responses/NoAutenticado'
+        '403':
+          $ref: './comun.v1.yaml#/components/responses/AccesoDenegado'
+        '500':
+          $ref: './comun.v1.yaml#/components/responses/ErrorInterno'
+        '503':
+          $ref: './comun.v1.yaml#/components/responses/ServicioNoDisponible'
+
+  # ----------------------------------------------------------- Exportación
+  /v1/indicadores/exportacion:
+    get:
+      operationId: exportarIndicadores
+      tags: [Exportación]
+      summary: Exportar la vista abierta en CSV o PDF
+      description: |
+        D168, D186. Mismo cálculo y ámbito que la vista. Filas:
+        `cumplimiento` = una por indicador (Indicador, Valor);
+        `semaforo` = una por HDU no cerrada del ámbito (Célula, Color de la
+        célula, HDU, Título, Riesgo vigente, Impedimentos abiertos,
+        Escalados, Motivos) y una por célula sin HDU no cerradas;
+        `carga` = una por (grupo, analista) más «Sin analista asignado»;
+        `tendencia` = una por (fecha, serie), por fecha ascendente.
+        Encabezado: `Reporte`, `Vista`, `Filtros`, `Rol y ámbito`,
+        `Generado (hora de Chile)`; luego una línea en blanco y la tabla.
+        CSV: UTF-8 con BOM, separador **`;`** (igual que D48), CRLF, RFC 4180 (backlog
+        E6-B04; difiere del `;` de D48 a propósito) y neutralización de
+        fórmulas (D122) en toda celda de texto, encabezado incluido. PDF
+        (`%PDF`, pdf-lib): título «Quality360 · Indicadores», el encabezado,
+        la tabla con el color escrito en texto y el número de página.
+
+        Orden: 401 → 403 → 400 → cálculo → 503 `INDICADORES_NO_DISPONIBLES`
+        si algún bloque de la vista está indisponible → 422
+        `EXPORTACION_EXCEDE_LIMITE` (CSV: `EXPORTACION_LIMITE_FILAS`, 50.000,
+        «Acota los filtros»; PDF: `EXPORTACION_PDF_LIMITE_FILAS`, 200, «Usa
+        CSV») → registro `EXPORTAR` en Organización (`POST
+        /v1/interno/auditoria/exportaciones`, recurso `INDICADORES`, con
+        vista, formato, filtros y filas) → archivo. Si el registro falla:
+        503 `SERVICIO_NO_DISPONIBLE` y sin archivo. Sin datos: 200 con el
+        encabezado y «Sin datos para los filtros aplicados».
+      x-roles: [QE, LIDER_QA, AUDITOR]
+      x-hdu: [E6-F04#2, E6-B04#1, E6-B04#2, E6-B04#3]
+      parameters:
+        - name: vista
+          in: query
+          required: true
+          schema:
+            $ref: './comun.v1.yaml#/components/schemas/VistaIndicadores'
+        - name: formato
+          in: query
+          required: true
+          schema:
+            $ref: './comun.v1.yaml#/components/schemas/FormatoExportacionIndicadores'
+        - $ref: '#/components/parameters/CelulaId'
+        - $ref: '#/components/parameters/SprintId'
+        - $ref: '#/components/parameters/Desde'
+        - $ref: '#/components/parameters/Hasta'
+      responses:
+        '200':
+          description: Archivo de la vista.
+          headers:
+            x-trace-id:
+              $ref: './comun.v1.yaml#/components/headers/XTraceId'
+            Content-Disposition:
+              description: '`attachment; filename="quality360-indicadores-<vista>-AAAAMMDD.<csv|pdf>"` (fecha de Santiago).'
+              schema:
+                type: string
+            X-Q360-Filas:
+              description: Filas de datos de la tabla, sin el encabezado.
+              schema:
+                type: integer
+                minimum: 0
+          content:
+            text/csv:
+              schema:
+                type: string
+            application/pdf:
+              schema:
+                type: string
+                contentEncoding: binary
+        '400':
+          $ref: './comun.v1.yaml#/components/responses/Validacion'
+        '401':
+          $ref: './comun.v1.yaml#/components/responses/NoAutenticado'
+        '403':
+          $ref: './comun.v1.yaml#/components/responses/AccesoDenegado'
+        '422':
+          description: Más filas que el máximo del formato. No se registra la exportación.
+          x-codigos: [EXPORTACION_EXCEDE_LIMITE]
+          headers:
+            x-trace-id:
+              $ref: './comun.v1.yaml#/components/headers/XTraceId'
+          content:
+            application/json:
+              schema:
+                $ref: './comun.v1.yaml#/components/schemas/Error'
+              examples:
+                csv:
+                  summary: CSV
+                  value:
+                    codigo: EXPORTACION_EXCEDE_LIMITE
+                    mensaje: La exportación supera las 50.000 filas. Acota los filtros.
+                    traceId: 4bf92f3577b34da6a3ce929d0e0e4736
+                    detalles: []
+                pdf:
+                  summary: PDF
+                  value:
+                    codigo: EXPORTACION_EXCEDE_LIMITE
+                    mensaje: El reporte supera las 200 filas de un PDF. Usa CSV.
+                    traceId: 4bf92f3577b34da6a3ce929d0e0e4736
+                    detalles: []
+        '500':
+          $ref: './comun.v1.yaml#/components/responses/ErrorInterno'
+        '503':
+          description: Un bloque de la vista está indisponible (`INDICADORES_NO_DISPONIBLES`), Organización no respondió o no registró la exportación (`SERVICIO_NO_DISPONIBLE`). No se entrega archivo.
+          x-codigos: [INDICADORES_NO_DISPONIBLES, SERVICIO_NO_DISPONIBLE]
+          headers:
+            x-trace-id:
+              $ref: './comun.v1.yaml#/components/headers/XTraceId'
+          content:
+            application/json:
+              schema:
+                $ref: './comun.v1.yaml#/components/schemas/Error'
+
+  # ------------------------------------------------------------- Snapshots
+  /v1/indicadores/snapshots:
+    post:
+      operationId: generarSnapshot
+      tags: [Snapshots]
+      summary: Generar el snapshot de hoy (manual)
+      description: |
+        Solo Administrador activo (D165). Ejecuta el mismo caso de uso que el
+        cron, con origen `MANUAL` y el Administrador como actor. Lee con la
+        credencial de Indicadores (D177), no con el token del usuario.
+        Todo o nada (D164): si una fuente falla, la ejecución queda `FALLIDA`
+        con su `motivo` y 0 filas; la respuesta sigue siendo 200 con la
+        ejecución cerrada. Otra ejecución `EN_CURSO` de menos de 5 minutos:
+        409 `EJECUCION_EN_CURSO` sin ejecución nueva; una de más de 5 minutos
+        se cierra como `FALLIDA` / `INTERRUMPIDA` y deja de bloquear.
+        Repetir el mismo día actualiza las filas (upsert por fecha, célula,
+        sprint y ámbito) y no duplica.
+      x-roles: [ADMINISTRADOR]
+      x-hdu: [E6-B03#1, E6-B03#2]
+      responses:
+        '200':
+          description: Ejecución terminada (`EXITOSA` o `FALLIDA`).
+          content:
+            application/json:
+              schema:
+                $ref: './comun.v1.yaml#/components/schemas/EjecucionSnapshot'
+        '401':
+          $ref: './comun.v1.yaml#/components/responses/NoAutenticado'
+        '403':
+          $ref: './comun.v1.yaml#/components/responses/AccesoDenegado'
+        '409':
+          $ref: '#/components/responses/EjecucionEnCurso'
+        '500':
+          $ref: './comun.v1.yaml#/components/responses/ErrorInterno'
+        '503':
+          $ref: './comun.v1.yaml#/components/responses/ServicioNoDisponible'
+
+  /v1/indicadores/snapshots/ejecuciones:
+    get:
+      operationId: listarEjecucionesSnapshot
+      tags: [Snapshots]
+      summary: Últimas ejecuciones del snapshot
+      description: Solo Administrador (D165). Metadatos, nunca cifras. La más reciente primero.
+      x-roles: [ADMINISTRADOR]
+      x-hdu: [E6-B03#1]
+      parameters:
+        - $ref: './comun.v1.yaml#/components/parameters/Pagina'
+        - $ref: './comun.v1.yaml#/components/parameters/TamanoPaginaBandeja'
+      responses:
+        '200':
+          description: Página de ejecuciones.
+          content:
+            application/json:
+              schema:
+                $ref: './comun.v1.yaml#/components/schemas/PaginaEjecucionesSnapshot'
+        '400':
+          $ref: './comun.v1.yaml#/components/responses/Validacion'
+        '401':
+          $ref: './comun.v1.yaml#/components/responses/NoAutenticado'
+        '403':
+          $ref: './comun.v1.yaml#/components/responses/AccesoDenegado'
+        '500':
+          $ref: './comun.v1.yaml#/components/responses/ErrorInterno'
+        '503':
+          $ref: './comun.v1.yaml#/components/responses/ServicioNoDisponible'
+
+  /v1/cron/indicadores/snapshot:
+    get:
+      operationId: ejecutarSnapshotProgramado
+      tags: [Snapshots]
+      summary: Disparo programado (Vercel Cron)
+      description: |
+        D163, D178. Vercel Cron llama por `GET` a la ruta declarada en
+        `services/indicadores/vercel.json` (`0 6 * * *` UTC) con
+        `Authorization: Bearer <CRON_SECRET>`. Se compara en tiempo constante
+        con `CRON_SECRET`; sin cabecera, con otro valor, con un JWT de sesión
+        o con `CRON_SECRET` sin configurar: 401 `NO_AUTENTICADO` y no se
+        crea ejecución. Actor `SISTEMA`, origen `CRON`; `fecha` = fecha de
+        Santiago al ejecutarse. Mismo resultado y conflicto que el manual.
+      security:
+        - cronSecret: []
+      x-roles: [CRON]
+      x-hdu: [E6-B03#1, E6-B03#2]
+      responses:
+        '200':
+          description: Ejecución terminada (`EXITOSA` o `FALLIDA`).
+          content:
+            application/json:
+              schema:
+                $ref: './comun.v1.yaml#/components/schemas/EjecucionSnapshot'
+        '401':
+          $ref: './comun.v1.yaml#/components/responses/NoAutenticado'
+        '409':
+          $ref: '#/components/responses/EjecucionEnCurso'
+        '500':
+          $ref: './comun.v1.yaml#/components/responses/ErrorInterno'
+
+  # --------------------------------------------------------- Carga semilla
+  /v1/interno/carga/snapshots:
+    post:
+      operationId: cargarSnapshotDePrueba
+      tags: [Carga semilla]
+      summary: Ejecutar el snapshot como si fuera otro instante (solo pruebas)
+      description: |
+        D184. Solo con `credencialServicio` y `PERMITIR_CARGA_SEMILLA=true`
+        (si no, 403); nunca en producción. Corre el mismo caso de uso que el
+        manual, con origen `MANUAL` y actor «Carga de prueba», pero la
+        `fecha` del snapshot y el «hoy» del cálculo salen de `instante`
+        (convertido a `America/Santiago`). Sirve para la serie de tres días
+        (E6-F04-T01, E6-B03-T09), los huecos (E6-F04-T06) y E6-B03-T12. Lo
+        llaman `seed:e6` y el arnés de `q360-qa`; el gateway no lo publica.
+      x-roles: [SERVICIO]
+      x-hdu: []
+      security:
+        - credencialServicio: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [instante]
+              additionalProperties: false
+              properties:
+                instante:
+                  $ref: './comun.v1.yaml#/components/schemas/FechaHora'
+      responses:
+        '200':
+          description: Ejecución terminada.
+          content:
+            application/json:
+              schema:
+                $ref: './comun.v1.yaml#/components/schemas/EjecucionSnapshot'
+        '400':
+          $ref: './comun.v1.yaml#/components/responses/Validacion'
+        '401':
+          $ref: './comun.v1.yaml#/components/responses/NoAutenticado'
+        '403':
+          $ref: './comun.v1.yaml#/components/responses/AccesoDenegado'
+        '409':
+          $ref: '#/components/responses/EjecucionEnCurso'
+        '500':
+          $ref: './comun.v1.yaml#/components/responses/ErrorInterno'
+
+components:
+  securitySchemes:
+    sesionSupabase:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: Access token de Supabase Auth propagado por el gateway.
+    cronSecret:
+      type: http
+      scheme: bearer
+      description: '`CRON_SECRET` del proyecto `quality360-indicadores` en Vercel, que Vercel Cron envía solo (D178). No es un JWT ni una sesión.'
+    credencialServicio:
+      type: apiKey
+      in: header
+      name: X-Q360-Servicio-Token
+      description: Credencial de la semilla (ADR 0007), solo para `/v1/interno/carga/*` con `PERMITIR_CARGA_SEMILLA=true`. El gateway descarta esta cabecera si llega desde afuera.
+
+  parameters:
+    CelulaId:
+      name: celulaId
+      in: query
+      required: false
+      description: UUID. Inexistente o fuera del ámbito → 200 con `sinDatos` (no revela existencia); mal formado → 400.
+      schema:
+        $ref: './comun.v1.yaml#/components/schemas/Uuid'
+    SprintId:
+      name: sprintId
+      in: query
+      required: false
+      description: UUID o `SIN_SPRINT` (D180). Mismas reglas que `celulaId`.
+      schema:
+        $ref: './comun.v1.yaml#/components/schemas/FiltroSprintIndicadores'
+    Desde:
+      name: desde
+      in: query
+      required: false
+      description: Fecha de Santiago, inclusiva (tendencia y su exportación).
+      schema:
+        $ref: './comun.v1.yaml#/components/schemas/Fecha'
+    Hasta:
+      name: hasta
+      in: query
+      required: false
+      description: Fecha de Santiago, inclusiva. Anterior a `desde` → 400.
+      schema:
+        $ref: './comun.v1.yaml#/components/schemas/Fecha'
+    QeId:
+      name: qeId
+      in: query
+      required: false
+      description: UUID del QE; ver reglas de cada operación (D183).
+      schema:
+        $ref: './comun.v1.yaml#/components/schemas/Uuid'
+    CelulaIdPath:
+      name: celulaId
+      in: path
+      required: true
+      schema:
+        $ref: './comun.v1.yaml#/components/schemas/Uuid'
+
+  responses:
+    EjecucionEnCurso:
+      description: Hay otra ejecución `EN_CURSO` de menos de 5 minutos (D164). No se crea ejecución.
+      x-codigos: [EJECUCION_EN_CURSO]
+      headers:
+        x-trace-id:
+          $ref: './comun.v1.yaml#/components/headers/XTraceId'
+      content:
+        application/json:
+          schema:
+            $ref: './comun.v1.yaml#/components/schemas/Error'
+          example:
+            codigo: EJECUCION_EN_CURSO
+            mensaje: Ya hay un snapshot en ejecución.
+            traceId: 4bf92f3577b34da6a3ce929d0e0e4736
+            detalles: []

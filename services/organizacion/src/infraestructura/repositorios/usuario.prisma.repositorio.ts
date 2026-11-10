@@ -131,6 +131,19 @@ export class UsuarioPrismaRepositorio implements UsuarioRepositorio {
     return filas;
   }
 
+  async listarEstadoPorIds(ids: readonly string[]): Promise<Array<{ id: string; nombre: string; activo: boolean; rol: Rol }>> {
+    if (ids.length === 0) return [];
+    const filas = await this.prisma.usuario.findMany({
+      where: { id: { in: [...ids] } },
+      select: { id: true, nombre: true, activo: true, rol: { select: { nombre: true } } },
+    });
+    return filas.map((fila) => ({ id: fila.id, nombre: fila.nombre, activo: fila.activo, rol: aRol(fila.rol.nombre) }));
+  }
+
+  async listarActivosPorRol(rol: Rol): Promise<Array<{ id: string; nombre: string }>> {
+    return this.prisma.usuario.findMany({ where: { rol: { nombre: rol }, activo: true }, select: { id: true, nombre: true }, orderBy: { nombre: 'asc' } });
+  }
+
   async contarAdministradoresActivos(): Promise<number> {
     return this.prisma.usuario.count({ where: { rol: { nombre: 'ADMINISTRADOR' }, activo: true } });
   }

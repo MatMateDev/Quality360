@@ -10,6 +10,12 @@ import { PaginaHistorial } from "@/pages/admin/integraciones/PaginaHistorial";
 import { PaginaImportar } from "@/pages/admin/integraciones/PaginaImportar";
 import { PaginaIntegraciones } from "@/pages/admin/integraciones/PaginaIntegraciones";
 import { PaginaConsultarJira } from "@/pages/admin/integraciones/PaginaConsultarJira";
+import { PaginaSnapshots } from "@/pages/admin/PaginaSnapshots";
+import { PaginaIndicadores } from "@/pages/indicadores/PaginaIndicadores";
+import { PestanaCarga } from "@/pages/indicadores/PestanaCarga";
+import { PestanaCumplimiento } from "@/pages/indicadores/PestanaCumplimiento";
+import { PestanaSemaforo } from "@/pages/indicadores/PestanaSemaforo";
+import { PestanaTendencia } from "@/pages/indicadores/PestanaTendencia";
 import { HduDetailPage } from "@/pages/hdu/HduDetailPage";
 import { AuditorBandejaPage } from "@/pages/auditor/AuditorBandejaPage";
 import { AuditorIntegracionesPage } from "@/pages/auditor/AuditorIntegracionesPage";
@@ -62,6 +68,7 @@ export function AppRoutes() {
               <Route path="importar" element={<PaginaImportar />} />
               <Route path="historial" element={<PaginaHistorial />} />
             </Route>
+            <Route path="admin/indicadores/snapshots" element={<PaginaSnapshots />} />
           </Route>
 
           <Route element={<RequireRole roles={["QE"]} />}>
@@ -73,10 +80,23 @@ export function AppRoutes() {
             <Route path="qe/impedimentos" element={<QeImpedimentosPage />} />
             <Route path="qe/impedimentos/riesgo" element={<QeRiesgoPage />} />
             <Route path="qe/integraciones" element={<QeIntegracionesPage />} />
+            {/* E6: cuatro pestañas por ruta; «Cumplimiento» es el índice y no redirige. */}
+            <Route path="qe/indicadores" element={<PaginaIndicadores rol="QE" />}>
+              <Route index element={<PestanaCumplimiento />} />
+              <Route path="semaforo" element={<PestanaSemaforo />} />
+              <Route path="carga" element={<PestanaCarga />} />
+              <Route path="tendencia" element={<PestanaTendencia />} />
+            </Route>
           </Route>
 
           <Route element={<RequireRole roles={["LIDER_QA"]} />}>
             <Route path="lider" element={<LiderBandejaPage />} />
+            <Route path="lider/indicadores" element={<PaginaIndicadores rol="LIDER_QA" />}>
+              <Route index element={<PestanaCumplimiento />} />
+              <Route path="semaforo" element={<PestanaSemaforo />} />
+              <Route path="carga" element={<PestanaCarga />} />
+              <Route path="tendencia" element={<PestanaTendencia />} />
+            </Route>
           </Route>
 
           <Route element={<RequireRole roles={["AUDITOR"]} />}>
@@ -87,6 +107,13 @@ export function AppRoutes() {
             <Route path="auditor/auditoria-usuarios" element={<AuditorAuditoriaUsuariosPage />} />
             <Route path="auditor/impedimentos" element={<AuditorImpedimentosPage />} />
             <Route path="auditor/integraciones" element={<AuditorIntegracionesPage />} />
+            {/* E6: fuera de AuditorLayout, con su propia barra de pestañas (brecha 9 del diseño). */}
+            <Route path="auditor/indicadores" element={<PaginaIndicadores rol="AUDITOR" />}>
+              <Route index element={<PestanaCumplimiento />} />
+              <Route path="semaforo" element={<PestanaSemaforo />} />
+              <Route path="carga" element={<PestanaCarga />} />
+              <Route path="tendencia" element={<PestanaTendencia />} />
+            </Route>
           </Route>
 
           <Route element={<RequireRole roles={["ANALISTA_QA"]} />}>

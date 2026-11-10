@@ -8,7 +8,26 @@ info:
   description: |
     API que consume el portal (`apps/web`). Es el único punto de entrada
     público. Alcance: épicas E1, E2, E3, E4 (impedimentos y riesgos), E5
-    (integración con Jira Cloud) y E7 (bandejas por rol).
+    (integración con Jira Cloud), E6 (indicadores y dashboards, más el cierre
+    con excepción) y E7 (bandejas por rol).
+
+    - **E6.** Las 12 operaciones de `/v1/indicadores/*` y
+      `/v1/cron/indicadores/snapshot` se reenvían a Indicadores
+      (`INDICADORES_URL`, D179) con rutas declaradas una por una, sin
+      composición. `INDICADORES_URL` es **opcional y no fatal** (patrón de
+      D127 y D129): si falta o es inválida en producción, solo esas rutas
+      responden 503 `SERVICIO_NO_DISPONIBLE`; en desarrollo vale
+      `http://localhost:3005`. Tiempo límite propio `INDICADORES_TIMEOUT_MS`
+      (25 s por defecto). La exportación devuelve `text/csv` o
+      `application/pdf` tal cual, con `Content-Disposition` y
+      `X-Q360-Filas`. **La ruta del cron no verifica sesión**: el gateway
+      reenvía `Authorization` sin tocarla y solo Indicadores la valida contra
+      `CRON_SECRET` (D178); se le aplica el límite de tasa de escritura. La
+      cabecera `X-Q360-Servicio-Token` se sigue descartando si llega desde
+      afuera. Cierre con excepción (D173–D175, D189): `POST
+      /v1/hdu/{id}/estado` acepta `justificacion`; `GET /v1/hdu/{id}` suma
+      `cierre`, `cierreParcial` y `permisos.cerrarConExcepcion`; los
+      listados suman `cierreParcial`; el historial suma `CIERRE_EXCEPCION`.
 
     - **E5.** `/v1/integraciones/*` se reenvía a Integraciones
       (`INTEGRACIONES_URL`, D127) con rutas declaradas una por una; ya no
@@ -121,6 +140,18 @@ tags:
     description: Importación de CSV/JSON (E5-F03, E5-B03).
   - name: Historial
     description: Historial de consultas, confirmaciones e importaciones (E5-F04, E5-B04).
+  - name: Cumplimiento
+    description: Indicadores de cumplimiento y opciones de filtro (E6-F01, E6-B01).
+  - name: Semáforo
+    description: Semáforo por célula y drill-down (E6-F02, E6-B02).
+  - name: Carga
+    description: Carga por analista y umbral de sobrecarga (E6-F03, E6-B02).
+  - name: Tendencia
+    description: Serie histórica de cumplimiento (E6-F04, E6-B03).
+  - name: Exportación
+    description: CSV y PDF de los indicadores (E6-F04, E6-B04).
+  - name: Snapshots
+    description: Snapshot diario, manual y ejecuciones (E6-B03).
 
 x-hdu-transversal: [E1-B02#1, E1-B07#3, E1-B11#1]
 x-escenarios-sin-operacion:
@@ -1110,7 +1141,7 @@ paths:
         inexistente también responde 403; el 404 solo lo recibe el
         Administrador.
       x-roles: [ADMINISTRADOR, QE, ANALISTA_QA, LIDER_QA, AUDITOR]
-      x-hdu: [E1-B02#2, E2-F02#1, E2-F04#1, E2-F04#2, E2-F04#3, E2-B03#1, E2-B03#2, E7-F02#3, E7-F04#3, E7-F06#1, E7-B02#1, E7-B02#2, E5-F02#1, E5-B02#1, E5-F07#5]
+      x-hdu: [E1-B02#2, E2-F02#1, E2-F04#1, E2-F04#2, E2-F04#3, E2-B03#1, E2-B03#2, E7-F02#3, E7-F04#3, E7-F06#1, E7-B02#1, E7-B02#2, E5-F02#1, E5-B02#1, E5-F07#5, E6-F05#1, E6-F05#3, E6-B05#3]
       responses:
         '200':
           description: Detalle con responsables, estado, fecha del último cambio, transiciones permitidas, permisos y checklist.
@@ -1230,8 +1261,19 @@ paths:
         - Aceptado: actualiza `estadoActualizadoEn` y, en la misma transacción,
           registra el evento `ESTADO` (anterior, nuevo, actor, fecha) y la
           auditoría `CAMBIAR_ESTADO_HDU` (E2-B02#1, E2-B04#1, E2-F04#3).
+        - **E6 · cierre con excepción (D173, D189).** Con el checklist
+          incompleto y `justificacion`, solo el QE responsable puede cerrar
+          (otro → 403). Orden: transición → checklist (`CHECKLIST_NO_DISPONIBLE`
+          si Certificaciones no responde) → sin justificación, 409
+          `CHECKLIST_INCOMPLETO` con `puedeCerrarConExcepcion` → permiso de
+          excepción (403) → justificación (422 `JUSTIFICACION_REQUERIDA` en
+          blanco; 400 `VALIDACION` fuera de 20–500) → impedimentos (409
+          `HDU_BLOQUEADA`). Aceptado: 200 con `cierre` y
+          `hdu.cierreParcial: true`, eventos `ESTADO` y `CIERRE_EXCEPCION`,
+          auditoría `CAMBIAR_ESTADO_HDU` y `CERRAR_HDU_PARCIAL`. Detalle en
+          `organizacion.v1.yaml`.
       x-roles: [ADMINISTRADOR, QE, ANALISTA_QA]
-      x-hdu: [E2-F04#3, E2-B02#1, E2-B02#2, E2-B02#3, E2-B04#1, E7-B02#3, E4-B02#2]
+      x-hdu: [E2-F04#3, E2-B02#1, E2-B02#2, E2-B02#3, E2-B04#1, E7-B02#3, E4-B02#2, E6-F05#1, E6-F05#2, E6-B05#1, E6-B05#2, E6-B05#3]
       requestBody:
         required: true
         content:
@@ -1293,6 +1335,13 @@ paths:
                       total: 1
                       items:
                         - {id: 7c6f1a52-2f0e-4b8e-9b44-0d2f8a1c9e31, titulo: Faltan cuentas de prueba con saldo, tipo: DATOS_PRUEBA, estado: ABIERTO, diasAbierto: 6}
+        '422':
+          description: E6 (D173). Cierre con excepción con la justificación en blanco. La HDU no cambia.
+          x-codigos: [JUSTIFICACION_REQUERIDA]
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
         '429':
           $ref: '#/components/responses/DemasiadasSolicitudes'
         '500':
@@ -1314,9 +1363,9 @@ paths:
       operationId: obtenerHistorialHdu
       tags: [HDU]
       summary: Historial de estados y asignaciones de una HDU
-      description: Mismo acceso que el detalle. Eventos en orden cronológico ascendente (E2-B04#3).
+      description: Mismo acceso que el detalle. Eventos en orden cronológico ascendente (E2-B04#3). Desde E6 (D189), un cierre con excepción suma `CIERRE_EXCEPCION` después del `ESTADO` del cierre.
       x-roles: [ADMINISTRADOR, QE, ANALISTA_QA, LIDER_QA, AUDITOR]
-      x-hdu: [E2-B04#1, E2-B04#2, E2-B04#3, E7-B02#2, E7-F06#1]
+      x-hdu: [E2-B04#1, E2-B04#2, E2-B04#3, E7-B02#2, E7-F06#1, E6-F05#3, E6-B05#3]
       responses:
         '200':
           description: Historial de la HDU.
@@ -1479,6 +1528,35 @@ paths:
   /v1/integraciones/estado:
     $ref: './integraciones.v1.yaml#/paths/~1v1~1integraciones~1estado'
 
+  # ---------------------------------------------------------------- E6
+  # Reenvío a la misma ruta de Indicadores (INDICADORES_URL, opcional y no fatal, D179),
+  # sin composición. El cron no pasa por la verificación de sesión (D178).
+  # El gateway no publica /v1/interno/*.
+  /v1/indicadores/filtros:
+    $ref: './indicadores.v1.yaml#/paths/~1v1~1indicadores~1filtros'
+  /v1/indicadores/cumplimiento:
+    $ref: './indicadores.v1.yaml#/paths/~1v1~1indicadores~1cumplimiento'
+  /v1/indicadores/semaforo:
+    $ref: './indicadores.v1.yaml#/paths/~1v1~1indicadores~1semaforo'
+  /v1/indicadores/semaforo/{celulaId}/hdu:
+    $ref: './indicadores.v1.yaml#/paths/~1v1~1indicadores~1semaforo~1{celulaId}~1hdu'
+  /v1/indicadores/carga:
+    $ref: './indicadores.v1.yaml#/paths/~1v1~1indicadores~1carga'
+  /v1/indicadores/umbral-carga:
+    $ref: './indicadores.v1.yaml#/paths/~1v1~1indicadores~1umbral-carga'
+  /v1/indicadores/umbral-carga/historial:
+    $ref: './indicadores.v1.yaml#/paths/~1v1~1indicadores~1umbral-carga~1historial'
+  /v1/indicadores/tendencia:
+    $ref: './indicadores.v1.yaml#/paths/~1v1~1indicadores~1tendencia'
+  /v1/indicadores/exportacion:
+    $ref: './indicadores.v1.yaml#/paths/~1v1~1indicadores~1exportacion'
+  /v1/indicadores/snapshots:
+    $ref: './indicadores.v1.yaml#/paths/~1v1~1indicadores~1snapshots'
+  /v1/indicadores/snapshots/ejecuciones:
+    $ref: './indicadores.v1.yaml#/paths/~1v1~1indicadores~1snapshots~1ejecuciones'
+  /v1/cron/indicadores/snapshot:
+    $ref: './indicadores.v1.yaml#/paths/~1v1~1cron~1indicadores~1snapshot'
+
 components:
   securitySchemes:
     sesionSupabase:
@@ -1486,6 +1564,10 @@ components:
       scheme: bearer
       bearerFormat: JWT
       description: Access token de Supabase Auth. Vencido → 401 `SESION_EXPIRADA`; ausente o inválido → 401 `NO_AUTENTICADO`.
+    cronSecret:
+      type: http
+      scheme: bearer
+      description: 'E6 (D178). Solo `GET /v1/cron/indicadores/snapshot`: `CRON_SECRET` de Vercel Cron. El gateway no la verifica; la reenvía a Indicadores.'
 
   schemas:
     Salud:

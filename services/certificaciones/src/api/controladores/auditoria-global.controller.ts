@@ -4,13 +4,14 @@
  * Administrador también recibe 403. Todo es lectura; registrar la exportación escribe en la
  * auditoría de Organización, no aquí.
  */
-import { Body, Controller, Get, HttpCode, Post, Query, Req, Res } from '@nestjs/common';
-import { IdentidadActual, Roles, noAutenticado, obtenerTraceId, type Identidad } from '@quality360/auth-nest';
+import { Body, Controller, Get, HttpCode, Post, Query, Req, Res, UseGuards } from '@nestjs/common';
+import { IdentidadActual, Publico, Roles, noAutenticado, obtenerTraceId, type Identidad } from '@quality360/auth-nest';
 import type { Request, Response } from 'express';
 
 import { AuditorAplicacion, SeguimientoAplicacion, type ExportacionTabular } from '../../aplicacion/auditoria-global.servicio.js';
 import { generarCsv, nombreArchivo } from '../../infraestructura/csv/generador-csv.js';
 import type { ContextoSolicitud } from '../../infraestructura/organizacion.cliente.js';
+import { SesionOIndicadoresGuard, type SolicitudConCredencial } from '../guardias/sesion-o-indicadores.guard.js';
 import {
   NOMBRES_FILTROS_BITACORA,
   NOMBRES_FILTROS_CERTIFICADOS,
@@ -41,11 +42,16 @@ export class InternoController {
   constructor(private readonly seguimiento: SeguimientoAplicacion) {}
 
   /** Lectura en lote (POST solo para enviar hasta 1000 ids): estado del checklist de varias HDU. */
+  @Publico()
+  @UseGuards(SesionOIndicadoresGuard)
   @Roles(...ROLES_TODOS)
   @Post('checklist/estados')
   @HttpCode(200)
-  estados(@Body() cuerpo: unknown, @IdentidadActual() identidad: Identidad, @Req() solicitud: Request) {
-    return this.seguimiento.estados(leerLoteHdu(cuerpo), contexto(identidad, solicitud));
+  estados(@Body() cuerpo: unknown, @IdentidadActual() identidad: Identidad | undefined, @Req() solicitud: Request & SolicitudConCredencial) {
+    const lote = leerLoteHdu(cuerpo);
+    // E6 (D177): con la credencial de Indicadores es una lectura global; no hay usuario ni ámbito que consultar.
+    if (solicitud.servicioIndicadores === true) return this.seguimiento.estadosGlobal(lote);
+    return this.seguimiento.estados(lote, contexto(identidad, solicitud));
   }
 
   @Roles('AUDITOR')

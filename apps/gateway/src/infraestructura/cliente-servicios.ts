@@ -15,6 +15,12 @@ export interface PeticionServicio {
   metodo: string;
   /** Access token del usuario, que se propaga tal cual; `null` solo en rutas públicas. */
   token: string | null;
+  /**
+   * `Authorization` recibida, sin interpretar, para la ruta pública del cron
+   * (D178): el gateway no conoce `CRON_SECRET` y la reenvía tal cual. Si está
+   * definida, reemplaza a `token`; `undefined` = no viaja ninguna.
+   */
+  autorizacionCruda?: string | undefined;
   traceId: string;
   /** Query string sin `?`. */
   consulta?: string | undefined;
@@ -30,9 +36,9 @@ export interface RespuestaServicio {
   texto: string;
   tipoContenido: string | null;
   ubicacion: string | null;
-  /** Bytes tal cual llegaron: una exportación CSV conserva su BOM (D48). */
+  /** Bytes tal cual llegaron: un CSV conserva su BOM (D48) y un PDF sus bytes (D186). */
   bytes: Buffer;
-  /** `Content-Disposition` y `X-Q360-Filas` de las exportaciones CSV. */
+  /** `Content-Disposition` y `X-Q360-Filas` de las exportaciones CSV y PDF. */
   disposicion: string | null;
   filas: string | null;
 }
@@ -51,6 +57,7 @@ export async function solicitarServicio(peticion: PeticionServicio): Promise<Res
     [CABECERA_TRAZA]: peticion.traceId,
   };
   if (peticion.token !== null) cabeceras.authorization = `Bearer ${peticion.token}`;
+  if (peticion.autorizacionCruda !== undefined) cabeceras.authorization = peticion.autorizacionCruda;
   if (peticion.cuerpo !== undefined) cabeceras['content-type'] = 'application/json';
 
   let respuesta: Response;

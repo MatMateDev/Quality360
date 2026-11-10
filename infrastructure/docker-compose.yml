@@ -1,8 +1,8 @@
 # Quality360 · Docker Compose local (D8, ADR 0008)
 #
-# Red interna: solo `web` y `gateway` publican puertos en el host. Los cuatro
+# Red interna: solo `web` y `gateway` publican puertos en el host. Los cinco
 # servicios de dominio (organizacion, certificaciones, impedimentos,
-# integraciones) solo son alcanzables dentro de la red `interna`.
+# integraciones, indicadores) solo son alcanzables dentro de la red `interna`.
 #
 # Cada servicio recibe ÚNICAMENTE su propia cadena de conexión a Postgres
 # (rol svc_<servicio>, nunca `postgres` ni `service_role`), apuntando al
@@ -48,6 +48,8 @@ services:
       PERMITIR_CARGA_SEMILLA: ${PERMITIR_CARGA_SEMILLA:-false}
       CERTIFICACIONES_URL: ${CERTIFICACIONES_URL:-http://certificaciones:3002}
       IMPEDIMENTOS_URL: ${IMPEDIMENTOS_URL:-http://impedimentos:3003}
+      # D177: credencial de lectura de Indicadores. Vacía = esas rutas internas responden 401.
+      INDICADORES_SERVICIO_TOKEN: ${INDICADORES_SERVICIO_TOKEN:-}
     healthcheck:
       <<: *healthcheck-defaults
       test: ["CMD", "wget", "-qO-", "http://127.0.0.1:3001/health"]
@@ -70,6 +72,7 @@ services:
       ORGANIZACION_URL: ${ORGANIZACION_URL:-http://organizacion:3001}
       PORTAL_URL: ${PORTAL_URL:-http://localhost:8080}
       X_Q360_SERVICIO_TOKEN: ${X_Q360_SERVICIO_TOKEN:-}
+      INDICADORES_SERVICIO_TOKEN: ${INDICADORES_SERVICIO_TOKEN:-}
     healthcheck:
       <<: *healthcheck-defaults
       test: ["CMD", "wget", "-qO-", "http://127.0.0.1:3002/health"]
@@ -92,6 +95,7 @@ services:
       CERTIFICACIONES_URL: ${CERTIFICACIONES_URL:-http://certificaciones:3002}
       X_Q360_SERVICIO_TOKEN: ${X_Q360_SERVICIO_TOKEN:-}
       PERMITIR_CARGA_SEMILLA: ${PERMITIR_CARGA_SEMILLA:-false}
+      INDICADORES_SERVICIO_TOKEN: ${INDICADORES_SERVICIO_TOKEN:-}
     healthcheck:
       <<: *healthcheck-defaults
       test: ["CMD", "wget", "-qO-", "http://127.0.0.1:3003/health"]
@@ -125,6 +129,35 @@ services:
       <<: *healthcheck-defaults
       test: ["CMD", "wget", "-qO-", "http://127.0.0.1:3004/health"]
 
+  indicadores:
+    <<: *service-defaults
+    build:
+      context: ..
+      dockerfile: infrastructure/docker/Dockerfile.nest
+      args:
+        WORKSPACE: services/indicadores
+        PORT: "3005"
+    environment:
+      NODE_ENV: production
+      PORT: "3005"
+      DATABASE_URL: ${DATABASE_URL_INDICADORES:?falta DATABASE_URL_INDICADORES en tu .env}
+      SUPABASE_URL: ${SUPABASE_URL:-}
+      SUPABASE_JWT_SECRET: ${SUPABASE_JWT_SECRET:-}
+      ORGANIZACION_URL: ${ORGANIZACION_URL:-http://organizacion:3001}
+      CERTIFICACIONES_URL: ${CERTIFICACIONES_URL:-http://certificaciones:3002}
+      IMPEDIMENTOS_URL: ${IMPEDIMENTOS_URL:-http://impedimentos:3003}
+      # D177 y D178: ninguna impide arrancar. Sin ellas, el cron responde 401 y el snapshot queda FALLIDA.
+      INDICADORES_SERVICIO_TOKEN: ${INDICADORES_SERVICIO_TOKEN:-}
+      CRON_SECRET: ${CRON_SECRET:-}
+      X_Q360_SERVICIO_TOKEN: ${X_Q360_SERVICIO_TOKEN:-}
+      PERMITIR_CARGA_SEMILLA: ${PERMITIR_CARGA_SEMILLA:-false}
+    depends_on:
+      organizacion:
+        condition: service_healthy
+    healthcheck:
+      <<: *healthcheck-defaults
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:3005/health"]
+
   gateway:
     <<: *service-defaults
     build:
@@ -144,6 +177,8 @@ services:
       CERTIFICACIONES_URL: ${CERTIFICACIONES_URL:-http://certificaciones:3002}
       IMPEDIMENTOS_URL: ${IMPEDIMENTOS_URL:-http://impedimentos:3003}
       INTEGRACIONES_URL: ${INTEGRACIONES_URL:-http://integraciones:3004}
+      # D179: opcional; sin ella, las rutas de indicadores responden 503 y el resto del gateway funciona.
+      INDICADORES_URL: ${INDICADORES_URL:-http://indicadores:3005}
       LIMITE_TASA_CONSULTA_MAX: ${LIMITE_TASA_CONSULTA_MAX:-}
       FUENTE_RESUMEN_EQUIPO_URL: ${FUENTE_RESUMEN_EQUIPO_URL:-http://organizacion:3001}
       FUENTE_RESUMEN_HDU_URL: ${FUENTE_RESUMEN_HDU_URL:-http://organizacion:3001}

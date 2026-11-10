@@ -1,7 +1,8 @@
 /**
  * Configuración del gateway. Todo viene del entorno; no hay secretos con
  * valor por defecto. Si algo está mal, el proceso no arranca, salvo las URL de
- * los servicios opcionales (Impedimentos e Integraciones, D127 y D129): si
+ * los servicios opcionales (Impedimentos, Integraciones e Indicadores: D127,
+ * D129 y D179): si
  * faltan en producción o son inválidas, quedan en `null`, el gateway arranca y
  * solo sus rutas responden 503 `SERVICIO_NO_DISPONIBLE`; y
  * `LIMITE_TASA_CONSULTA_MAX` (D152), que si es inválido usa su valor por defecto.
@@ -68,6 +69,13 @@ export interface ConfiguracionGateway {
   integracionesUrl: string | null;
   /** Tiempo límite al reenviar a Integraciones (12 s por defecto, D115). */
   tiempoLimiteIntegracionesMs: number;
+  /**
+   * Indicadores (E6, D179). `null` si falta en producción o es inválida: solo
+   * `/v1/indicadores/*` y `/v1/cron/indicadores/snapshot` responden 503.
+   */
+  indicadoresUrl: string | null;
+  /** Tiempo límite al reenviar a Indicadores (25 s por defecto, D179). */
+  tiempoLimiteIndicadoresMs: number;
   /**
    * Avisos de configuración, sin valores (por ejemplo, «INTEGRACIONES_URL no
    * configurada o inválida»). `crearApp` los registra una sola vez.
@@ -186,6 +194,13 @@ export function cargarConfiguracion(entorno: NodeJS.ProcessEnv = process.env): C
     produccion,
     avisos,
   );
+  const indicadoresUrl = leerUrlOpcional(
+    entorno.INDICADORES_URL,
+    'http://localhost:3005',
+    'INDICADORES_URL',
+    produccion,
+    avisos,
+  );
   const tiempoLimiteServicioMs = leerEntero(entorno.TIEMPO_LIMITE_SERVICIO_MS, 10_000, 'TIEMPO_LIMITE_SERVICIO_MS');
 
   return {
@@ -202,6 +217,8 @@ export function cargarConfiguracion(entorno: NodeJS.ProcessEnv = process.env): C
     ),
     integracionesUrl,
     tiempoLimiteIntegracionesMs: leerEntero(entorno.INTEGRACIONES_TIMEOUT_MS, 12_000, 'INTEGRACIONES_TIMEOUT_MS'),
+    indicadoresUrl,
+    tiempoLimiteIndicadoresMs: leerEntero(entorno.INDICADORES_TIMEOUT_MS, 25_000, 'INDICADORES_TIMEOUT_MS'),
     avisos,
     fuentes: {
       usuarios: leerUrl(entorno.FUENTE_RESUMEN_USUARIOS_URL, organizacionUrl, 'FUENTE_RESUMEN_USUARIOS_URL'),

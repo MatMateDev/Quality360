@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { NavLink, Outlet, useNavigate } from "react-router-dom";
+import { Link, NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "@/auth/AuthContext";
 import { rutaPortal, type Rol } from "@/types/dominio";
 import { InsigniaRol } from "./Etiquetas";
@@ -8,6 +8,8 @@ interface EnlaceNav {
   a: string;
   etiqueta: string;
   fin?: boolean;
+  /** Activo a medida (E6 §2.2): evita dos ítems con `aria-current` en rutas anidadas. */
+  activo?: (ruta: string) => boolean;
 }
 
 /** Menú por rol (diseño E7 §4.1). «Bandeja» va primero; «Perfil» se agrega al final para todos. */
@@ -18,6 +20,8 @@ const ENLACES_POR_ROL: Record<Rol, EnlaceNav[]> = {
     { a: "/admin/supervision", etiqueta: "Supervisión" },
     // E5: sin `fin`, queda activo en las cuatro pestañas de /admin/integraciones.
     { a: "/admin/integraciones", etiqueta: "Integraciones" },
+    // E6: pantalla de operación del snapshot, sin cifras (D165).
+    { a: "/admin/indicadores/snapshots", etiqueta: "Snapshots de indicadores" },
   ],
   QE: [
     { a: "/qe", etiqueta: "Bandeja", fin: true },
@@ -25,21 +29,30 @@ const ENLACES_POR_ROL: Record<Rol, EnlaceNav[]> = {
     { a: "/qe/hdu", etiqueta: "Historias supervisadas" },
     // E4: sin `fin`, queda activo también en /qe/impedimentos/riesgo.
     { a: "/qe/impedimentos", etiqueta: "Impedimentos" },
+    // E6: sin `fin`, queda activo en las cuatro pestañas de indicadores.
+    { a: "/qe/indicadores", etiqueta: "Indicadores" },
     { a: "/qe/integraciones", etiqueta: "Integraciones" },
   ],
   ANALISTA_QA: [
     { a: "/qa", etiqueta: "Bandeja", fin: true },
     { a: "/qa/hdu", etiqueta: "Mis HDU" },
   ],
-  // Sin `fin`: queda activo en las cuatro pestañas del Auditor.
-  LIDER_QA: [{ a: "/lider", etiqueta: "Bandeja" }],
-  AUDITOR: [{ a: "/auditor", etiqueta: "Bandeja" }],
+  LIDER_QA: [
+    { a: "/lider", etiqueta: "Bandeja", fin: true },
+    { a: "/lider/indicadores", etiqueta: "Indicadores" },
+  ],
+  AUDITOR: [
+    // Activo en sus pestañas de /auditor/*, salvo en /auditor/indicadores* (E6 §2.2).
+    { a: "/auditor", etiqueta: "Bandeja", activo: (ruta) => (ruta === "/auditor" || ruta.startsWith("/auditor/")) && !ruta.startsWith("/auditor/indicadores") },
+    { a: "/auditor/indicadores", etiqueta: "Indicadores" },
+  ],
 };
 
 /** Barra superior y navegación por portal (E1-F02#3: el menú del QE solo trae equipo, historias supervisadas, perfil y cerrar sesión). */
 export function Layout() {
   const { perfil, cerrarSesion, cambioRol, reconocerCambioRol } = useAuth();
   const navigate = useNavigate();
+  const { pathname } = useLocation();
   const [avisoRol, setAvisoRol] = useState(false);
 
   const rol = perfil?.rol ?? null;
@@ -73,11 +86,17 @@ export function Layout() {
         </a>
 
         <nav className="nav-portal" aria-label="Portal">
-          {enlaces.map((enlace) => (
-            <NavLink key={enlace.a} to={enlace.a} end={enlace.fin}>
-              {enlace.etiqueta}
-            </NavLink>
-          ))}
+          {enlaces.map((enlace) =>
+            enlace.activo ? (
+              <Link key={enlace.a} to={enlace.a} aria-current={enlace.activo(pathname) ? "page" : undefined}>
+                {enlace.etiqueta}
+              </Link>
+            ) : (
+              <NavLink key={enlace.a} to={enlace.a} end={enlace.fin}>
+                {enlace.etiqueta}
+              </NavLink>
+            ),
+          )}
           <NavLink to="/perfil">Perfil</NavLink>
         </nav>
 

@@ -913,8 +913,19 @@ paths:
         responde `bloqueada: false` y conteos en 0: es un dato válido.
         Para el Analista QA, `riesgo` y los niveles vienen igual pero
         Organización no los publica (D73).
-      x-roles: [ADMINISTRADOR, QE, ANALISTA_QA, LIDER_QA, AUDITOR]
-      x-hdu: [E4-F01#3, E4-F03#2, E4-B01#2, E4-B02#2]
+
+        E6 (D154, D177): Indicadores lo usa con el token del QE, del Líder QA
+        o del Auditor (mismas reglas; `incluirImpedimentos: true` para el
+        drill-down) y, para el snapshot diario, con `credencialIndicadores`:
+        entonces no consulta Organización y evalúa las HDU enviadas. Con
+        `avance: null` (Certificaciones caída) el riesgo viene parcial, como
+        en las bandejas (D90). Credencial con otro valor, o sin
+        `INDICADORES_SERVICIO_TOKEN` configurado: 401.
+      x-roles: [ADMINISTRADOR, QE, ANALISTA_QA, LIDER_QA, AUDITOR, SERVICIO]
+      x-hdu: [E4-F01#3, E4-F03#2, E4-B01#2, E4-B02#2, E6-B01#1, E6-B02#1, E6-B03#1]
+      security:
+        - sesionSupabase: []
+        - credencialIndicadores: []
       requestBody:
         required: true
         content:
@@ -1064,6 +1075,11 @@ components:
       in: header
       name: X-Q360-Servicio-Token
       description: Credencial de servicio a servicio (ADR 0007), solo para `/v1/interno/carga/*` desde Integraciones. El gateway descarta esta cabecera si llega desde afuera.
+    credencialIndicadores:
+      type: apiKey
+      in: header
+      name: X-Q360-Servicio-Token
+      description: E6 (D177). Valor de `INDICADORES_SERVICIO_TOKEN`; solo lectura global en `POST /v1/interno/impedimentos/evaluacion`. Distinta de `credencialServicio`.
 
   schemas:
     AccionCarga:

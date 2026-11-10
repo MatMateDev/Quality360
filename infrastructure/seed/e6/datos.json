@@ -1,0 +1,24 @@
+{
+  "descripcion": "Fixture E6 (seccion 8 de docs/backlog/e6-indicadores-dashboards.md). Parte del fixture E7 + E4. Lo estatico se carga con seed:e6; los escenarios que cambian el estado estan en escenarios.mjs.",
+  "celulaNueva": { "nombre": "CEL-D", "lider": "lid2" },
+  "usuarios": [
+    { "clave": "qe3", "nombre": "QE3 Quality Engineer sin analistas", "rol": "QE" },
+    { "clave": "ana4", "nombre": "ANA4 Analista sin QE", "rol": "ANALISTA_QA", "nota": "Ya existe en seed:e7 (alta idempotente por correo); aqui solo se confirma. Sin QE ni HDU." }
+  ],
+  "analistaDesactivado": {
+    "clave": "anad",
+    "nombre": "ANAD Analista desactivado con HDU",
+    "hdu": { "codigo": "E6-HD1", "titulo": "Historia E6 de analista desactivado", "celula": "CEL-A", "qe": "qe2", "prioridad": "MEDIA", "hduDelSprint": "E7-H1" }
+  },
+  "serieSnapshots": {
+    "descripcion": "Tres dias consecutivos terminados en hoy, 15:00 UTC. H1 debe leerse 30, 30 y 40 %.",
+    "diasAtras": [2, 1, 0],
+    "hdu": "H1",
+    "avanceEsperado": [30, 30, 40]
+  },
+  "esperadoBase": {
+    "usuariosActivosE7": 10,
+    "hduE7": 8,
+    "avance": { "H1": 30, "H2": 10, "H3": 0, "H4": 0, "H5": 0, "H6": 80, "H7": 100, "H8": 100 }
+  }
+}

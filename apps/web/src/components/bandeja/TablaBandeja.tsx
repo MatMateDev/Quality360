@@ -23,6 +23,9 @@ interface Props<T> {
   /** Si se indica, toda la fila es clicable y navega allí (el enlace del código sigue siendo el tope de tab). */
   hrefFila?: (item: T) => string;
   resaltar?: (item: T) => boolean;
+  /** E6: clase y atributos `data-*` propios de la fila (p. ej. `data-sobrecarga`). */
+  claseFila?: (item: T) => string | undefined;
+  atributosFila?: (item: T) => Record<string, string>;
   orden?: OrdenUrl | null;
   onOrden?: (columna: string, direccion: "asc" | "desc") => void;
   /** Cambia cuando cambia la página: el foco pasa al caption (§1.4). */
@@ -33,7 +36,7 @@ interface Props<T> {
  * Tabla genérica de bandeja: `caption`, `scope="col"`, columnas ordenables con `aria-sort`, fila navegable y
  * modo apilable ≤ 640 px (con roles ARIA repuestos para no perder la semántica de tabla).
  */
-export function TablaBandeja<T>({ testId, caption, columnas, items, clave, testIdFila, hrefFila, resaltar, orden, onOrden, focoPagina }: Props<T>) {
+export function TablaBandeja<T>({ testId, caption, columnas, items, clave, testIdFila, hrefFila, resaltar, claseFila, atributosFila, orden, onOrden, focoPagina }: Props<T>) {
   const navigate = useNavigate();
   const ubicacion = useLocation();
   const captionRef = useRef<HTMLHeadingElement>(null);
@@ -92,7 +95,8 @@ export function TablaBandeja<T>({ testId, caption, columnas, items, clave, testI
               key={clave(item)}
               role="row"
               data-testid={testIdFila?.(item)}
-              className={[hrefFila ? "fila-navegable" : "", resaltar?.(item) ? "fila-resaltada" : ""].filter(Boolean).join(" ") || undefined}
+              {...atributosFila?.(item)}
+              className={[hrefFila ? "fila-navegable" : "", resaltar?.(item) ? "fila-resaltada" : "", claseFila?.(item) ?? ""].filter(Boolean).join(" ") || undefined}
               onClick={hrefFila ? (evento) => abrirFila(evento, item) : undefined}
             >
               {columnas.map((columna) => (

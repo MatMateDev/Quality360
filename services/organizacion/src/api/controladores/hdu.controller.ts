@@ -98,7 +98,7 @@ export class HduController {
     const traceId = obtenerTraceId(solicitud);
 
     try {
-      const resultado = await this.hdus.cambiarEstado(identificador, dto.estado, contexto, actor, { token, traceId });
+      const resultado = await this.hdus.cambiarEstado(identificador, dto.estado, contexto, actor, { token, traceId }, dto.justificacion);
       respuesta.status(200).json(resultado);
     } catch (error) {
       if (error instanceof ErrorTransicionInvalidaHdu) {
@@ -110,7 +110,10 @@ export class HduController {
         return;
       }
       if (error instanceof ErrorCierreRechazadoHdu) {
-        responderErrorExtendido(respuesta, solicitud, 409, error.codigo, { checklist: error.checklist });
+        responderErrorExtendido(respuesta, solicitud, 409, error.codigo, {
+          checklist: error.checklist,
+          ...(error.puedeCerrarConExcepcion === undefined ? {} : { puedeCerrarConExcepcion: error.puedeCerrarConExcepcion }),
+        });
         return;
       }
       if (error instanceof ErrorHduBloqueada) {

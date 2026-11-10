@@ -454,7 +454,13 @@ describe('Configuración INTEGRACIONES_URL e INTEGRACIONES_TIMEOUT_MS [D127]', (
   });
 
   it('sin la variable en producción, o con un valor inválido, no lanza: null y un aviso que no incluye el valor', () => {
-    const produccion = cargarConfiguracion({ SUPABASE_URL: 'https://x.supabase.co', NODE_ENV: 'production', IMPEDIMENTOS_URL: 'https://imp.example' });
+    // INDICADORES_URL (E6, D179) se da para aislar el aviso de Integraciones.
+    const produccion = cargarConfiguracion({
+      SUPABASE_URL: 'https://x.supabase.co',
+      NODE_ENV: 'production',
+      IMPEDIMENTOS_URL: 'https://imp.example',
+      INDICADORES_URL: 'https://ind.example',
+    });
     assert.equal(produccion.integracionesUrl, null);
     assert.deepEqual(produccion.avisos, ['INTEGRACIONES_URL no configurada o inválida']);
 

@@ -17,6 +17,7 @@ import {
 } from './api/certificaciones.controller.js';
 import { HduController } from './api/hdu.controller.js';
 import { ImpedimentosController } from './api/impedimentos.controller.js';
+import { CronIndicadoresController, IndicadoresController } from './api/indicadores.controller.js';
 import { InicioController } from './api/inicio.controller.js';
 import { IntegracionesController } from './api/integraciones.controller.js';
 import { NoImplementadoController } from './api/no-implementado.controller.js';
@@ -68,6 +69,8 @@ export class AppModule {
         VerificacionCertificadoController,
         ImpedimentosController,
         IntegracionesController,
+        IndicadoresController,
+        CronIndicadoresController,
         NoImplementadoController,
       ],
       providers: [{ provide: CONFIGURACION, useValue: configuracion }, Reenviador, Compositor],

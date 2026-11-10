@@ -31,6 +31,11 @@ apis:
     output: contracts/dist/integraciones.v1.yaml
     x-openapi-ts:
       output: contracts/dist/types/integraciones.v1.d.ts
+  indicadores@v1:
+    root: contracts/indicadores.v1.yaml
+    output: contracts/dist/indicadores.v1.yaml
+    x-openapi-ts:
+      output: contracts/dist/types/indicadores.v1.d.ts
 
 rules:
   rule/operacion-declara-roles:

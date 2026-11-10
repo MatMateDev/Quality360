@@ -5,6 +5,7 @@ import { env } from "../support/env";
 import { CONTRASENA, ROLES_MATRIZ, USUARIOS_E7, crearUsuarioE7, desactivarUsuario, tokenE7, type ClaveE7 } from "../support/e7";
 import { iniciarSesionUI } from "../support/ui";
 import { TEXTO } from "../support/login";
+import { MENU, RUTAS_E6 } from "../support/e6";
 
 const estadoSesion = (clave: ClaveE7) => path.join(import.meta.dirname, "..", ".auth", `e7-${clave}.json`);
 
@@ -34,13 +35,14 @@ test.describe("E7-F01 · Ingreso a la bandeja de cada rol", () => {
     });
   }
 
+  // Actualizada en E6 (sección 7 del backlog E6): Líder y Auditor suman «Indicadores» entre «Bandeja» y «Perfil».
   for (const clave of ["lid1", "aud1"] as const) {
     test(`[E7-F01#2] T02: ${clave.toUpperCase()} ve «Bandeja» primero y ninguna opción de creación o edición`, async ({ browser }) => {
       const ctx = await browser.newContext({ storageState: estadoSesion(clave) });
       const page = await ctx.newPage();
       await page.goto(`${env.portalUrl}${USUARIOS_E7[clave].portal}`);
       const nav = page.getByRole("navigation", { name: "Portal" });
-      await expect(nav.getByRole("link")).toHaveText(["Bandeja", "Perfil"]);
+      await expect(nav.getByRole("link")).toHaveText(["Bandeja", "Indicadores", "Perfil"]);
       for (const prohibido of ["Nueva HDU", "Usuarios", "Aprobaciones", "Supervisión", "Equipo"]) {
         await expect(nav.getByRole("link", { name: prohibido })).toHaveCount(0);
       }
@@ -87,6 +89,46 @@ test.describe("E7-F01 · Ingreso a la bandeja de cada rol", () => {
       await ctx.close();
     }
     expect(combinaciones).toBe(20);
+  });
+
+  // E6 (sección 7 del backlog E6): la matriz de T04 suma las 4 rutas nuevas. Cada una solo la abre su rol; los otros 4 roles reciben acceso denegado (D41).
+  test("[E7-F01#3] T04c: las 4 rutas de Indicadores (E6) dan acceso denegado a los 4 roles ajenos, sin datos, y las abre su rol", async ({ browser }) => {
+    let combinaciones = 0;
+    for (const rol of ROLES_MATRIZ) {
+      const ctx = await browser.newContext({ storageState: estadoSesion(rol.clave) });
+      for (const { ruta, rol: rolPermitido } of RUTAS_E6) {
+        const page = await ctx.newPage();
+        const datos = registrarDatos(page);
+        await page.goto(`${env.portalUrl}${ruta}`);
+        if (rol.rol === rolPermitido) {
+          await expect(page.getByTestId("acceso-denegado"), `${rol.clave} -> ${ruta}`).toHaveCount(0);
+          expect(new URL(page.url()).pathname, `${rol.clave} -> ${ruta}`).toBe(ruta);
+        } else {
+          const denegado = page.getByTestId("acceso-denegado");
+          await expect(denegado, `${rol.clave} -> ${ruta}`).toBeVisible();
+          await expect(denegado).toContainText("No tienes acceso a esta sección");
+          await expect(denegado.getByRole("link", { name: "Ir a mi bandeja" })).toHaveAttribute("href", rol.portal);
+          expect(new URL(page.url()).pathname, `${rol.clave} -> ${ruta}`).toBe(ruta);
+          await page.waitForTimeout(400);
+          expect(datos, `${rol.clave} -> ${ruta}`).toEqual([]);
+          combinaciones += 1;
+        }
+        await page.close();
+      }
+      await ctx.close();
+    }
+    expect(combinaciones).toBe(16);
+  });
+
+  // E6 (diseño 2.2): menú exacto del Administrador y del Analista tras E6.
+  test("[E7-F01#2] T02b: ADM1 ve Bandeja, Usuarios, Supervisión, Integraciones, Snapshots de indicadores y Perfil; ANA1 no cambia", async ({ browser }) => {
+    for (const [clave, portal, menu] of [["adm1", "/admin", MENU.ADMINISTRADOR], ["ana1", "/qa", MENU.ANALISTA_QA]] as const) {
+      const ctx = await browser.newContext({ storageState: estadoSesion(clave) });
+      const page = await ctx.newPage();
+      await page.goto(`${env.portalUrl}${portal}`);
+      await expect(page.getByRole("navigation", { name: "Portal" }).getByRole("link"), clave).toHaveText([...menu]);
+      await ctx.close();
+    }
   });
 
   test("[E7-F01#3] T04b: las subrutas ajenas (Admin -> /auditor/bitacora, Auditor -> /admin/supervision, QE -> /lider) también dan acceso denegado", async ({ browser }) => {

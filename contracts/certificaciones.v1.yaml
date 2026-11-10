@@ -441,8 +441,11 @@ paths:
           Lo guarda en el bucket privado `certificados`, deja el entregable 9
           `APROBADO` con el folio como evidencia y registra el evento
           `GENERAR_CERTIFICADO` (E3-F04#1, E3-B03#1, D19).
+        - HDU `CERRADA`, incluida la cerrada con excepción: 409 `HDU_CERRADA`
+          sin crear nada (D22, D174). Un certificado emitido antes del cierre
+          sigue vigente.
       x-roles: [QE]
-      x-hdu: [E3-F04#1, E3-B03#1, E3-B03#3, E7-B02#3]
+      x-hdu: [E3-F04#1, E3-B03#1, E3-B03#3, E7-B02#3, E6-B05#3]
       responses:
         '201':
           description: Certificado emitido, con su URL de descarga.
@@ -530,8 +533,19 @@ paths:
 
         E4 (D68, D86): Impedimentos también lo usa, para el avance del riesgo
         sugerido y para el ciclo activo al registrar (`certificacionId`).
-      x-roles: [ADMINISTRADOR, QE, ANALISTA_QA, LIDER_QA, AUDITOR]
-      x-hdu: [E7-F02#1, E7-F03#1, E7-F04#1, E7-B03#1, E7-B03#2, E4-B01#1, E4-B03#2]
+
+        E6 (D154, D177): Indicadores lo usa con el token del QE, del Líder QA
+        o del Auditor (mismas reglas) y, para el snapshot diario, con
+        `credencialIndicadores`. Con esa credencial no se consulta
+        Organización: es una lectura global de las HDU pedidas; un id que
+        Certificaciones no conoce responde 0 aprobados, sin certificado. Una
+        credencial con otro valor, o sin `INDICADORES_SERVICIO_TOKEN`
+        configurado: 401.
+      x-roles: [ADMINISTRADOR, QE, ANALISTA_QA, LIDER_QA, AUDITOR, SERVICIO]
+      x-hdu: [E7-F02#1, E7-F03#1, E7-F04#1, E7-B03#1, E7-B03#2, E4-B01#1, E4-B03#2, E6-B01#1, E6-B03#1]
+      security:
+        - sesionSupabase: []
+        - credencialIndicadores: []
       requestBody:
         required: true
         content:
@@ -780,6 +794,11 @@ components:
       scheme: bearer
       bearerFormat: JWT
       description: Access token de Supabase Auth propagado por el llamador.
+    credencialIndicadores:
+      type: apiKey
+      in: header
+      name: X-Q360-Servicio-Token
+      description: E6 (D177). Valor de `INDICADORES_SERVICIO_TOKEN`; solo lectura global en `POST /v1/interno/checklist/estados`. El gateway descarta la cabecera si llega desde afuera.
 
   parameters:
     HduId:

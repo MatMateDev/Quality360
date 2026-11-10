@@ -110,3 +110,11 @@ no supervisa a nadie).
 - Jira no participa en esta semilla. La integración (E5) es solo de lectura, se configura desde el
   portal y, sin configuración, el servicio responde `JIRA_NO_CONFIGURADO` (ver
   `docs/backlog/e5-integracion-jira.md`).
+
+## Relación con E7, E4, E5 y E6
+
+`npm run seed` es aditivo e independiente de los fixtures de épicas posteriores: suma sus usuarios y
+sus 14 HDU a lo que ya haya, por lo que **no** deja el estado base de E7 (10 usuarios activos, 8 HDU).
+Ese estado solo existe sobre una base vacía con `npm run seed:e7` (luego `seed:e4`, `seed:e5` y
+`seed:e6`). La API no borra usuarios ni HDU: para volver al estado base hay que reiniciar la base local
+y recargar. Detalle y alternativas en `infrastructure/seed/e6/README.md`.

@@ -9,6 +9,7 @@ import "./styles/impedimentos.css";
 import "./styles/integraciones.css";
 import "./styles/consulta.css";
 import "./styles/detalle.css";
+import "./styles/indicadores.css";
 
 async function iniciar() {
   if (import.meta.env.VITE_USAR_MOCKS === "true") {

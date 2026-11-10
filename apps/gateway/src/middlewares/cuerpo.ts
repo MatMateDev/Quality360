@@ -46,6 +46,22 @@ export const archivoMuyGrande: ErrorRequestHandler = (
   });
 };
 
+/**
+ * Indicadores (E6): el único cuerpo es `PUT umbral-carga` (`{ "valor": n }`),
+ * así que se acota a 4 KB en `/v1/indicadores/*` y `/v1/cron/indicadores/*`.
+ * Un cuerpo mayor responde 400 `VALIDACION` (`errores-express.ts`) sin llegar
+ * al servicio.
+ */
+export const RUTAS_INDICADORES = ['/v1/indicadores', '/v1/cron/indicadores'];
+export const LIMITE_CUERPO_INDICADORES_BYTES = 4096;
+
+export function lectoresCuerpoIndicadores(): RequestHandler[] {
+  return [
+    express.json({ limit: LIMITE_CUERPO_INDICADORES_BYTES }),
+    express.urlencoded({ extended: true, limit: LIMITE_CUERPO_INDICADORES_BYTES }),
+  ];
+}
+
 /** Lectores por defecto (los mismos que registra Nest): JSON y formulario, 100 KB. */
 export function lectoresCuerpoGenerales(): RequestHandler[] {
   return [express.json(), express.urlencoded({ extended: true })];

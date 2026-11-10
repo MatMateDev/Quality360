@@ -39,14 +39,14 @@ export default defineConfig({
     {
       name: "e2e",
       testDir: "./e2e",
-      testIgnore: [/.*\.setup\.ts/, /e7-.*\.spec\.ts/, /e4-.*.spec.ts/, /e5-.*.spec.ts/],
+      testIgnore: [/.*\.setup\.ts/, /e7-.*\.spec\.ts/, /e4-.*.spec.ts/, /e5-.*.spec.ts/, /e6-.*.spec.ts/],
       dependencies: ["setup"],
       use: { ...devices["Desktop Chrome"], baseURL: env.portalUrl },
     },
     {
       name: "api",
       testDir: "./api",
-      testIgnore: [/e7-.*\.spec\.ts/, /e4-.*.spec.ts/, /e5-.*.spec.ts/],
+      testIgnore: [/e7-.*\.spec\.ts/, /e4-.*.spec.ts/, /e5-.*.spec.ts/, /e6-.*.spec.ts/],
       use: {},
     },
     // Certificación de E7 · Bandejas por rol (fixture `npm run seed:e7`; usuarios adm1, qe1... @quality360.local).
@@ -109,6 +109,26 @@ export default defineConfig({
       retries: 1,
       testDir: "./e2e",
       testMatch: /e5-.*.spec.ts/,
+      dependencies: ["e7-setup"],
+      timeout: 240_000,
+      use: { ...devices["Desktop Chrome"], baseURL: env.portalUrl, actionTimeout: 15_000, navigationTimeout: 30_000 },
+    },
+    // Certificación de E6 · Indicadores y dashboards (fixture seed:e7 + seed:e4 + seed:e6; reutiliza las sesiones de e7-setup).
+    // Los casos que cierran una HDU recargan la semilla al terminar el archivo (CERRADA es terminal), por eso `workers: 1` global.
+    {
+      name: "e6-api",
+      testDir: "./api",
+      testMatch: /e6-.*\.spec\.ts/,
+      dependencies: ["e7-setup"],
+      timeout: 240_000,
+      use: {},
+    },
+    {
+      name: "e6-e2e",
+      // El portal escribe por el gateway real, que limita la tasa (429): un reintento por prueba, informado como «flaky».
+      retries: 1,
+      testDir: "./e2e",
+      testMatch: /e6-.*\.spec\.ts/,
       dependencies: ["e7-setup"],
       timeout: 240_000,
       use: { ...devices["Desktop Chrome"], baseURL: env.portalUrl, actionTimeout: 15_000, navigationTimeout: 30_000 },

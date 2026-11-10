@@ -70,7 +70,11 @@ export type CodigoError =
   | 'ERROR_INTERNO'
   | 'SERVICIO_NO_DISPONIBLE'
   | 'PROVEEDOR_IDENTIDAD_NO_DISPONIBLE'
-  | 'CAPACIDAD_NO_DISPONIBLE';
+  | 'CAPACIDAD_NO_DISPONIBLE'
+  // E6 · indicadores (comun.v1.yaml#CodigoError, D159, D164, D168)
+  | 'VALOR_FUERA_DE_RANGO'
+  | 'EJECUCION_EN_CURSO'
+  | 'INDICADORES_NO_DISPONIBLES';
 
 /** Mensajes de referencia del contrato, tal cual la tabla de `comun.v1.yaml`. */
 export const MENSAJES: Readonly<Record<CodigoError, string>> = Object.freeze({
@@ -135,6 +139,9 @@ export const MENSAJES: Readonly<Record<CodigoError, string>> = Object.freeze({
   SERVICIO_NO_DISPONIBLE: 'El servicio no está disponible. Intenta nuevamente.',
   PROVEEDOR_IDENTIDAD_NO_DISPONIBLE: 'No fue posible coordinar el cambio con el proveedor de identidad.',
   CAPACIDAD_NO_DISPONIBLE: 'Esta capacidad aún no está disponible.',
+  VALOR_FUERA_DE_RANGO: 'El umbral debe estar entre 1 y 50.',
+  EJECUCION_EN_CURSO: 'Ya hay un snapshot en ejecución.',
+  INDICADORES_NO_DISPONIBLES: 'No se pudo generar el reporte: hay datos no disponibles.',
 });
 
 export type CodigoDetalle =

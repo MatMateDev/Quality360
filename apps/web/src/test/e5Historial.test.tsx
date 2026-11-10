@@ -240,11 +240,11 @@ describe("acceso por rol a Integraciones [E5-F01-T09, E5-F04-T08]", () => {
   });
 
   it.each([
-    ["Administrador", ADMIN, "/admin", ["Bandeja", "Usuarios", "Supervisión", "Integraciones", "Perfil"]],
-    ["QE", QE1, "/qe", ["Bandeja", "Equipo", "Historias supervisadas", "Impedimentos", "Integraciones", "Perfil"]],
-    ["Líder", LIDER, "/lider", ["Bandeja", "Perfil"]],
+    ["Administrador", ADMIN, "/admin", ["Bandeja", "Usuarios", "Supervisión", "Integraciones", "Snapshots de indicadores", "Perfil"]],
+    ["QE", QE1, "/qe", ["Bandeja", "Equipo", "Historias supervisadas", "Impedimentos", "Indicadores", "Integraciones", "Perfil"]],
+    ["Líder", LIDER, "/lider", ["Bandeja", "Indicadores", "Perfil"]],
     ["Analista", ANALISTA, "/qa", ["Bandeja", "Mis HDU", "Perfil"]],
-    ["Auditor", AUDITOR, "/auditor", ["Bandeja", "Perfil"]],
+    ["Auditor", AUDITOR, "/auditor", ["Bandeja", "Indicadores", "Perfil"]],
   ])("menú del %s", async (_rol, correo, ruta, esperado) => {
     await abrirComo(correo, ruta);
     const nav = await screen.findByRole("navigation", { name: "Portal" });

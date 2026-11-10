@@ -86,14 +86,22 @@ const artefactos = {
   'services/certificaciones': 'services/certificaciones/dist/main.js',
   'services/impedimentos': 'services/impedimentos/dist/main.js',
   'services/integraciones': 'services/integraciones/dist/main.js',
+  'services/indicadores': 'services/indicadores/dist/main.js',
   'apps/gateway': 'apps/gateway/dist/main.js',
 };
+// Un workspace sin package.json (por ejemplo, Indicadores antes de que exista su código) se omite con aviso.
+const existeWorkspace = (ruta) => existsSync(join(RAIZ, ruta, 'package.json'));
 for (const [workspace, artefacto] of Object.entries(artefactos)) {
+  if (!existeWorkspace(workspace)) {
+    console.log(`  (omitido) ${workspace}: aún no existe`);
+    continue;
+  }
   if (reconstruir || !existsSync(join(RAIZ, artefacto))) correr(`Compilando ${workspace}`, `npm run build -w ${workspace}`);
 }
 
 // 4. Migraciones de cada servicio que las tenga
-for (const servicio of ['organizacion', 'certificaciones', 'impedimentos', 'integraciones']) {
+for (const servicio of ['organizacion', 'certificaciones', 'impedimentos', 'integraciones', 'indicadores']) {
+  if (!existeWorkspace(`services/${servicio}`)) continue;
   const carpeta = join(RAIZ, 'services', servicio, 'prisma', 'migrations');
   const tieneMigraciones = existsSync(carpeta) && readdirSync(carpeta).some((f) => !f.endsWith('.toml'));
   if (tieneMigraciones) correr(`Migraciones de ${servicio}`, `npm run migrate:deploy -w services/${servicio}`);
@@ -105,10 +113,19 @@ const PROCESOS = [
   { nombre: 'certificaciones', args: ['--env-file=services/certificaciones/.env', 'services/certificaciones/dist/main.js'], salud: 'http://localhost:3002/health' },
   { nombre: 'impedimentos', args: ['--env-file=services/impedimentos/.env', 'services/impedimentos/dist/main.js'], salud: 'http://localhost:3003/health' },
   { nombre: 'integraciones', args: ['--env-file=services/integraciones/.env', 'services/integraciones/dist/main.js'], salud: 'http://localhost:3004/health' },
+  { nombre: 'indicadores', args: ['--env-file=services/indicadores/.env', 'services/indicadores/dist/main.js'], salud: 'http://localhost:3005/health', ruta: 'services/indicadores' },
   { nombre: 'gateway', args: ['--env-file=apps/gateway/.env', 'apps/gateway/dist/main.js'], salud: 'http://localhost:3000/health' },
   { nombre: 'portal', npm: 'npm run dev -w apps/web', salud: 'http://localhost:5173/' },
 ];
 titulo('Arrancando servicios, gateway y portal');
+// Si el código de un servicio aún no existe, no se arranca ni se espera (el gateway lo trata como no disponible).
+for (let i = PROCESOS.length - 1; i >= 0; i--) {
+  const ruta = PROCESOS[i].ruta;
+  if (ruta && !(existeWorkspace(ruta) && existsSync(join(RAIZ, ruta, 'dist/main.js')))) {
+    console.log(`  ${PROCESOS[i].nombre}: sin código compilado, se omite`);
+    PROCESOS.splice(i, 1);
+  }
+}
 for (const proceso of PROCESOS) {
   if (await responde(proceso.salud)) {
     console.log(`  ${proceso.nombre}: ya responde, se reutiliza`);
@@ -152,6 +169,7 @@ Quality360 está corriendo con datos reales.
   Portal           http://localhost:5173
   Gateway          http://localhost:3000
   Integraciones    http://localhost:3004/health (Jira simulado: ver GUIA-LOCAL.md)
+  Indicadores      http://localhost:3005/health (cron diario 06:00 UTC solo en la nube; local: «Generar snapshot ahora»)
   Supabase Studio  http://127.0.0.1:54323
 
   Contraseña de demo (solo local): ${datos.contrasenaDemo}

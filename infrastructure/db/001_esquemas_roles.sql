@@ -2,13 +2,13 @@
 -- Dueño: q360-infra · Decisión: D3 (informe p. 11) · Reglas no negociables (informe pp. 8-9)
 --
 -- Qué hace este script:
---   1. Crea los 4 esquemas de dominio: organizacion, certificaciones, impedimentos, integraciones.
+--   1. Crea los 5 esquemas de dominio: organizacion, certificaciones, impedimentos, integraciones, indicadores.
 --   2. Crea un rol de LOGIN por servicio (svc_organizacion, svc_certificaciones,
---      svc_impedimentos, svc_integraciones), sin privilegios de superusuario.
+--      svc_impedimentos, svc_integraciones, svc_indicadores), sin privilegios de superusuario.
 --   3. Aplica el mínimo privilegio: cada rol recibe USAGE + CREATE solo sobre su propio
 --      esquema, y privilegios por defecto sobre las tablas que él mismo cree ahí.
 --   4. Revoca explícitamente el acceso de PUBLIC, anon, authenticated y service_role
---      sobre los 4 esquemas de dominio y sobre el esquema public.
+--      sobre los 5 esquemas de dominio y sobre el esquema public.
 --
 -- Cómo se aplica: `npm run db:schemas` (ver infrastructure/README.md). Es IDEMPOTENTE:
 -- puede ejecutarse varias veces sin error (usa IF NOT EXISTS / DO blocks).
@@ -28,6 +28,7 @@ create schema if not exists organizacion;
 create schema if not exists certificaciones;
 create schema if not exists impedimentos;
 create schema if not exists integraciones;
+create schema if not exists indicadores;
 
 comment on schema organizacion is
   'Quality360 · organizacion y seguimiento: usuarios, roles, equipos, celulas, sprints, HDU (dueño: servicio organizacion)';
@@ -37,6 +38,8 @@ comment on schema impedimentos is
   'Quality360 · impedimentos reportados (dueño: servicio impedimentos; E4 fuera de alcance en esta corrida)';
 comment on schema integraciones is
   'Quality360 · integraciones externas y carga semilla (dueño: servicio integraciones)';
+comment on schema indicadores is
+  'Quality360 · snapshots, ejecuciones y umbral de carga de E6 (dueño: servicio indicadores; no guarda datos vivos de otros servicios)';
 
 -- 2. Roles de login por servicio (sin superusuario, sin BYPASSRLS) -----------
 
@@ -54,6 +57,9 @@ begin
   if not exists (select 1 from pg_roles where rolname = 'svc_integraciones') then
     create role svc_integraciones login password 'svc_integraciones_local_dev';
   end if;
+  if not exists (select 1 from pg_roles where rolname = 'svc_indicadores') then
+    create role svc_indicadores login password 'svc_indicadores_local_dev';
+  end if;
 end
 $$;
 
@@ -61,11 +67,12 @@ comment on role svc_organizacion is 'Quality360 · login del servicio organizaci
 comment on role svc_certificaciones is 'Quality360 · login del servicio certificaciones; solo alcanza su propio esquema';
 comment on role svc_impedimentos is 'Quality360 · login del servicio impedimentos; solo alcanza su propio esquema';
 comment on role svc_integraciones is 'Quality360 · login del servicio integraciones; solo alcanza su propio esquema';
+comment on role svc_indicadores is 'Quality360 · login del servicio indicadores; solo alcanza su propio esquema';
 
 -- Cada rol puede conectarse a la base, pero eso no le da acceso a ningún esquema
 -- todavía (el acceso se otorga esquema por esquema más abajo).
 grant connect on database postgres to
-  svc_organizacion, svc_certificaciones, svc_impedimentos, svc_integraciones;
+  svc_organizacion, svc_certificaciones, svc_impedimentos, svc_integraciones, svc_indicadores;
 
 -- 3. Mínimo privilegio: revocar los accesos por defecto -----------------------
 
@@ -76,7 +83,7 @@ revoke all on schema public from public;
 -- PUBLIC no reciben nada en los 4 esquemas de dominio. Esto es una defensa
 -- adicional: la Data API de Supabase nunca debe alcanzar estos esquemas porque
 -- infrastructure/supabase/config.toml no los agrega a `[api].schemas`.
-revoke all on schema organizacion, certificaciones, impedimentos, integraciones
+revoke all on schema organizacion, certificaciones, impedimentos, integraciones, indicadores
   from public, anon, authenticated, service_role;
 
 -- 4. USAGE + CREATE de cada rol solo sobre su propio esquema ------------------
@@ -85,6 +92,7 @@ grant usage, create on schema organizacion to svc_organizacion;
 grant usage, create on schema certificaciones to svc_certificaciones;
 grant usage, create on schema impedimentos to svc_impedimentos;
 grant usage, create on schema integraciones to svc_integraciones;
+grant usage, create on schema indicadores to svc_indicadores;
 
 -- 5. Privilegios por defecto sobre las tablas que cada rol crea en su esquema -
 -- Prisma corre las migraciones de cada servicio conectado con su propio rol
@@ -118,13 +126,19 @@ alter default privileges for role postgres in schema integraciones
 alter default privileges for role postgres in schema integraciones
   grant usage, select on sequences to svc_integraciones;
 
+alter default privileges for role postgres in schema indicadores
+  grant select, insert, update, delete on tables to svc_indicadores;
+alter default privileges for role postgres in schema indicadores
+  grant usage, select on sequences to svc_indicadores;
+
 -- 6. Aislamiento explícito: cada rol NO alcanza los esquemas ajenos -----------
 -- (Redundante con el paso 3 —nadie parte con privilegios—, pero se deja
 -- explícito y a prueba de reordenamientos futuros del script.)
 
-revoke all on schema certificaciones, impedimentos, integraciones from svc_organizacion;
-revoke all on schema organizacion, impedimentos, integraciones from svc_certificaciones;
-revoke all on schema organizacion, certificaciones, integraciones from svc_impedimentos;
-revoke all on schema organizacion, certificaciones, impedimentos from svc_integraciones;
+revoke all on schema certificaciones, impedimentos, integraciones, indicadores from svc_organizacion;
+revoke all on schema organizacion, impedimentos, integraciones, indicadores from svc_certificaciones;
+revoke all on schema organizacion, certificaciones, integraciones, indicadores from svc_impedimentos;
+revoke all on schema organizacion, certificaciones, impedimentos, indicadores from svc_integraciones;
+revoke all on schema organizacion, certificaciones, impedimentos, integraciones from svc_indicadores;
 
 commit;

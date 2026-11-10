@@ -34,6 +34,11 @@ export interface ConfiguracionImpedimentos {
   credencialServicio: string | null;
   /** Habilita `/v1/interno/carga/*`. */
   permitirCargaSemilla: boolean;
+  /**
+   * E6 (D177): credencial de Indicadores para `POST /v1/interno/impedimentos/evaluacion` (solo lectura).
+   * No impide el arranque; `null` hace que esa credencial se rechace siempre con 401.
+   */
+  indicadoresServicioToken: string | null;
 }
 
 function requerido(valor: string | undefined, nombre: string): string {
@@ -99,5 +104,6 @@ export function cargarConfiguracion(entorno: NodeJS.ProcessEnv = process.env): C
     exportacionLimiteFilas: leerEntero(entorno.EXPORTACION_LIMITE_FILAS, 50_000, 'EXPORTACION_LIMITE_FILAS'),
     credencialServicio: entorno.X_Q360_SERVICIO_TOKEN?.trim().length ? entorno.X_Q360_SERVICIO_TOKEN.trim() : null,
     permitirCargaSemilla: leerBooleano(entorno.PERMITIR_CARGA_SEMILLA),
+    indicadoresServicioToken: entorno.INDICADORES_SERVICIO_TOKEN?.trim().length ? entorno.INDICADORES_SERVICIO_TOKEN.trim() : null,
   };
 }

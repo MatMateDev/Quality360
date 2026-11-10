@@ -49,7 +49,8 @@ export type AccionAuditoria =
   | 'ASIGNAR_CELULAS_LIDER'
   | 'EXPORTAR'
   | 'REASIGNAR_QE_RESPONSABLE'
-  | 'ACTUALIZAR_HDU';
+  | 'ACTUALIZAR_HDU'
+  | 'CERRAR_HDU_PARCIAL';
 
 /** Motivo del acceso a una HDU (comun.v1.yaml#/components/schemas/AccesoHdu). */
 export type RelacionAccesoHdu =
@@ -127,6 +128,8 @@ export interface Hdu {
   /** Clave de la issue de Jira (solo origen `JIRA`, D124). */
   readonly claveExterna: string | null;
   readonly urlExterna: string | null;
+  /** E6 (D175, D189): existe su constancia en `cierre_hdu` (se cerró con excepción). */
+  readonly cierreParcial: boolean;
 }
 
 export interface ConteoPorEstado {
@@ -168,7 +171,28 @@ export interface EventoResponsableHdu {
   readonly motivo: string;
 }
 
-export type EventoHistorialHdu = EventoEstadoHdu | EventoAsignacionHdu | EventoResponsableHdu;
+/** Constancia del cierre con excepción (E6, D175): fila de `cierre_hdu`. */
+export interface CierreExcepcion {
+  readonly hduId: string;
+  readonly aprobados: number;
+  readonly pendientes: readonly string[];
+  readonly justificacion: string;
+  readonly actor: Actor;
+  readonly actorRol: Rol;
+  readonly fecha: Date;
+}
+
+/** Cierre con excepción (E6, D189): va justo después del evento `ESTADO` del cierre, con la misma fecha. */
+export interface EventoCierreExcepcionHdu {
+  readonly tipo: 'CIERRE_EXCEPCION';
+  readonly fecha: Date;
+  readonly actor: Actor;
+  readonly aprobados: number;
+  readonly pendientes: readonly string[];
+  readonly justificacion: string;
+}
+
+export type EventoHistorialHdu = EventoEstadoHdu | EventoAsignacionHdu | EventoResponsableHdu | EventoCierreExcepcionHdu;
 
 /** HDU citada en un error o una lista corta (comun.v1.yaml#/components/schemas/HduReferencia). */
 export interface HduReferencia {

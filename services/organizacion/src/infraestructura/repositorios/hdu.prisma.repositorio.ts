@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import type { Prisma } from '#prisma';
 
 import { ConflictoUnicidad } from '../../dominio/errores/conflicto-unicidad.js';
+import { EstadoHduCambiado } from '../../dominio/errores/estado-hdu-cambiado.js';
 import { normalizarCodigoHdu } from '../../dominio/reglas/alta-hdu.js';
 import type { FiltroAmbitoHdu } from '../../dominio/reglas/ambito.js';
 import type {
@@ -10,25 +11,29 @@ import type {
   HduRepositorio,
   ResultadoAsignacionAnalista,
   ResultadoCambioEstado,
+  ResultadoCierreExcepcion,
   ResultadoReasignacionQe,
   ResumenHduAmbito,
 } from '../../dominio/repositorios/hdu.repositorio.js';
 import {
   conteoPorEstadoVacio,
   type Actor,
+  type CierreExcepcion,
   type ConteoPorEstado,
   type EstadoHdu,
   type EventoAsignacionHdu,
+  type EventoCierreExcepcionHdu,
   type EventoEstadoHdu,
   type EventoHistorialHdu,
   type EventoResponsableHdu,
   type Hdu,
   type OpcionesPaginacion,
   type Pagina,
+  type Rol,
   type UsuarioResumen,
 } from '../../dominio/tipos.js';
 import { esErrorUnicidad } from '../prisma/errores-prisma.js';
-import { INCLUYE_SPRINT_VIGENTE, aHduDominio } from '../prisma/mapeadores.js';
+import { INCLUYE_SPRINT_VIGENTE, aCierreDominio, aHduDominio } from '../prisma/mapeadores.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 
 function whereDeAmbito(ambito: FiltroAmbitoHdu): Prisma.HduWhereInput {
@@ -335,12 +340,85 @@ export class HduPrismaRepositorio implements HduRepositorio {
     });
   }
 
+  async cerrarConExcepcion(input: {
+    hduId: string;
+    aprobados: number;
+    pendientes: readonly string[];
+    justificacion: string;
+    actor: Actor;
+    actorRol: Rol;
+  }): Promise<ResultadoCierreExcepcion> {
+    return this.prisma.$transaction(async (tx) => {
+      // Bloquea la fila: el segundo de dos cierres simultáneos espera aquí y ve la HDU ya cerrada.
+      await tx.$queryRaw`SELECT "id_historia" FROM "historia_usuario" WHERE "id_historia" = ${input.hduId}::uuid FOR UPDATE`;
+      const antes = await tx.hdu.findUniqueOrThrow({ where: { id: input.hduId } });
+      if (antes.estado !== 'PENDIENTE_CIERRE') throw new EstadoHduCambiado(antes.estado);
+
+      const fecha = new Date();
+      const actualizada = await tx.hdu.update({
+        where: { id: input.hduId },
+        data: { estado: 'CERRADA', estadoActualizadoEn: fecha },
+        include: INCLUYE_SPRINT_VIGENTE,
+      });
+      const constancia = await tx.cierreHdu.create({
+        data: {
+          hduId: input.hduId,
+          aprobados: input.aprobados,
+          pendientes: [...input.pendientes],
+          justificacion: input.justificacion,
+          actorId: input.actor.id,
+          actorNombre: input.actor.nombre,
+          actorRol: input.actorRol,
+          fecha,
+        },
+      });
+      await tx.hduHistorialEstado.create({
+        data: {
+          hduId: input.hduId,
+          estadoAnterior: antes.estado,
+          estadoNuevo: 'CERRADA',
+          actorTipo: input.actor.tipo,
+          actorId: input.actor.id,
+          actorNombre: input.actor.nombre,
+          fecha,
+        },
+      });
+      const comunes = { actorTipo: input.actor.tipo, actorId: input.actor.id, actorNombre: input.actor.nombre, entidad: 'HDU' as const, entidadId: input.hduId };
+      await tx.auditoria.create({
+        data: { ...comunes, accion: 'CAMBIAR_ESTADO_HDU', antes: { estado: antes.estado }, despues: { estado: 'CERRADA' }, motivo: null },
+      });
+      await tx.auditoria.create({
+        data: {
+          ...comunes,
+          accion: 'CERRAR_HDU_PARCIAL',
+          antes: { estado: antes.estado },
+          despues: { estado: 'CERRADA', aprobados: input.aprobados, pendientes: [...input.pendientes], justificacion: input.justificacion },
+          motivo: null,
+        },
+      });
+      return {
+        // La HDU se leyó antes de insertar la constancia: la marca se fija aquí.
+        hdu: { ...aHduDominio(actualizada), cierreParcial: true },
+        estadoAnterior: antes.estado,
+        fecha,
+        cierre: aCierreDominio(constancia),
+      };
+    });
+  }
+
+  async buscarCierres(hduIds: readonly string[]): Promise<Map<string, CierreExcepcion>> {
+    if (hduIds.length === 0) return new Map();
+    const filas = await this.prisma.cierreHdu.findMany({ where: { hduId: { in: [...hduIds] } } });
+    return new Map(filas.map((fila) => [fila.hduId, aCierreDominio(fila)]));
+  }
+
   async historial(hduId: string): Promise<EventoHistorialHdu[]> {
     const hdu = await this.prisma.hdu.findUniqueOrThrow({ where: { id: hduId } });
-    const [estados, asignaciones, responsables] = await Promise.all([
+    const [estados, asignaciones, responsables, cierre] = await Promise.all([
       this.prisma.hduHistorialEstado.findMany({ where: { hduId }, orderBy: { fecha: 'asc' } }),
       this.prisma.hduHistorialAsignacion.findMany({ where: { hduId }, orderBy: { fecha: 'asc' } }),
       this.prisma.hduHistorialResponsable.findMany({ where: { hduId }, orderBy: { fecha: 'asc' } }),
+      this.prisma.cierreHdu.findUnique({ where: { hduId } }),
     ]);
 
     const idsUsuarios = new Set<string>();
@@ -391,7 +469,23 @@ export class HduPrismaRepositorio implements HduRepositorio {
       motivo: fila.motivo,
     }));
 
-    return [eventoCreacion, ...eventosEstado, ...eventosAsignacion, ...eventosResponsable].sort((a, b) => a.fecha.getTime() - b.fecha.getTime());
+    // El orden de la lista es el desempate (el sort es estable): `CIERRE_EXCEPCION` va justo después del `ESTADO` del cierre.
+    const eventosCierre: EventoCierreExcepcionHdu[] =
+      cierre === null
+        ? []
+        : [
+            {
+              tipo: 'CIERRE_EXCEPCION',
+              fecha: cierre.fecha,
+              actor: { tipo: 'USUARIO', id: cierre.actorId, nombre: cierre.actorNombre },
+              aprobados: cierre.aprobados,
+              pendientes: cierre.pendientes,
+              justificacion: cierre.justificacion,
+            },
+          ];
+    return [eventoCreacion, ...eventosEstado, ...eventosCierre, ...eventosAsignacion, ...eventosResponsable].sort(
+      (a, b) => a.fecha.getTime() - b.fecha.getTime(),
+    );
   }
 
   async resumenAmbitoQe(qeResponsableId: string, analistasSupervisadosIds: readonly string[]): Promise<ResumenHduAmbito> {

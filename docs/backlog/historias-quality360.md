@@ -332,7 +332,7 @@ Quiero que el sistema valide las transiciones de estado de una HDU. Para respeta
 | --- | --- | --- | --- | --- |
 | 1 | Transición válida | La HDU está en Pendiente. | Se solicita pasar a Diseño de pruebas. | Se acepta y registra la transición. |
 | 2 | Transición inválida | La HDU está en Pendiente. | Se solicita pasar a Cerrada. | Se rechaza indicando las transiciones permitidas. |
-| 3 | Cierre con checklist incompleto | Faltan entregables por completar. | Se solicita el estado Cerrada. | Se rechaza hasta completar el checklist. |
+| 3 | Cierre con checklist incompleto | Faltan entregables por completar. | Se solicita el estado Cerrada. | Se rechaza hasta completar el checklist, salvo el cierre con excepción del QE responsable con justificación (E6-B05, D173). |
 
 ### E2-B03 · Analista QA
 

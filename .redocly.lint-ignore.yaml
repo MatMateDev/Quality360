@@ -25,3 +25,8 @@ contracts/integraciones.v1.yaml:
     - '#/servers/1/url'
   operation-4xx-response:
     - '#/paths/~1health/get/responses'
+contracts/indicadores.v1.yaml:
+  no-server-example.com:
+    - '#/servers/1/url'
+  operation-4xx-response:
+    - '#/paths/~1health/get/responses'

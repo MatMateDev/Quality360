@@ -18,24 +18,28 @@ interface Props {
   detalle?: ReactNode;
   /** Texto corto del estado indisponible en contadores de bandeja («No disponible»). Por defecto, el mensaje certificado. */
   mensajeIndisponible?: string;
+  /** `data-testid` del valor; por defecto `contador-<clave>` (E6 pasa `indicador-<clave>`). */
+  testIdValor?: string;
+  /** Clase adicional de la tarjeta (p. ej. `tarjeta-resumen--ancha`). */
+  clase?: string;
 }
 
 /**
  * Tarjeta de resumen. Un valor `ok` en 0 es un dato válido; `indisponible` nunca muestra `0`
  * (muestra «No disponible», D34).
  */
-export function TarjetaMetrica({ id, titulo, estado, valor, onReintentar, clave, atencion = false, detalle, mensajeIndisponible }: Props) {
+export function TarjetaMetrica({ id, titulo, estado, valor, onReintentar, clave, atencion = false, detalle, mensajeIndisponible, testIdValor, clase }: Props) {
   const mostrarAtencion = atencion && estado === "ok" && Number(valor) > 0;
   return (
     <article
-      className={`tarjeta-resumen${mostrarAtencion ? " tarjeta-resumen--atencion" : ""}`}
+      className={`tarjeta-resumen${mostrarAtencion ? " tarjeta-resumen--atencion" : ""}${clase ? ` ${clase}` : ""}`}
       data-testid={`tarjeta-${id}`}
       aria-busy={estado === "cargando"}
     >
       <span className="tarjeta-resumen__titulo">{titulo}</span>
       {estado === "ok" ? (
         <>
-          <strong className="tarjeta-resumen__valor" data-testid={clave ? `contador-${clave}` : undefined}>
+          <strong className="tarjeta-resumen__valor" data-testid={testIdValor ?? (clave ? `contador-${clave}` : undefined)}>
             {valor}
           </strong>
           {detalle ? <div className="tarjeta-resumen__detalle">{detalle}</div> : null}

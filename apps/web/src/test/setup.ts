@@ -4,6 +4,7 @@ import { afterAll, afterEach, beforeAll } from "vitest";
 import { reiniciarSimulacionMock } from "@/auth/mockAuthProvider";
 import { limpiarSesion } from "@/auth/sessionStore";
 import { reiniciarE5 } from "@/mocks/dataE5";
+import { reiniciarE6 } from "@/mocks/dataE6";
 import { reiniciarFuentes } from "@/mocks/dataE7";
 import { server } from "@/mocks/server";
 
@@ -20,6 +21,7 @@ afterEach(async () => {
   reiniciarSimulacionMock();
   reiniciarFuentes();
   reiniciarE5();
+  reiniciarE6();
 });
 
 afterAll(() => server.close());

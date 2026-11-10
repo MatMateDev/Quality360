@@ -37,11 +37,14 @@ export class InternoAplicacion {
    * Bloqueo, conteos y riesgo de un lote de HDU con los datos que ya tiene Organización (D69).
    * Si algún id está fuera del ámbito del usuario, 403 completo y sin datos parciales (D47).
    */
-  async evaluar(hdus: readonly HduParaEvaluacion[], incluirImpedimentos: boolean, solicitante: Solicitante) {
-    const ambito = await this.proveedor.ambito(solicitante.contexto);
-    if (!ambito.todas) {
-      const permitidos = new Set(ambito.hduIds);
-      if (hdus.some((hdu) => !permitidos.has(hdu.hduId))) throw accesoDenegado('lote con una HDU fuera de ámbito');
+  async evaluar(hdus: readonly HduParaEvaluacion[], incluirImpedimentos: boolean, solicitante: Solicitante | null) {
+    // `null` = credencial de Indicadores (E6, D177): lectura global, sin usuario ni ámbito que consultar.
+    if (solicitante !== null) {
+      const ambito = await this.proveedor.ambito(solicitante.contexto);
+      if (!ambito.todas) {
+        const permitidos = new Set(ambito.hduIds);
+        if (hdus.some((hdu) => !permitidos.has(hdu.hduId))) throw accesoDenegado('lote con una HDU fuera de ámbito');
+      }
     }
 
     const ids = hdus.map((hdu) => hdu.hduId);

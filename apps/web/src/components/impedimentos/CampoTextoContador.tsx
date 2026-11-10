@@ -22,6 +22,8 @@ interface Props {
   /** Si se indica, se pasa el foco al control cuando el padre lo pide (primer campo inválido). */
   /** No aplica `maxLength`: se puede pasar del tope y el error aparece al confirmar («Máximo 500 caracteres»). */
   sinTope?: boolean;
+  /** El error se anuncia como `role="alert"` (E6: errores de campo del cierre con excepción). */
+  errorAlerta?: boolean;
   refControl?: React.Ref<HTMLInputElement & HTMLTextAreaElement>;
 }
 
@@ -46,6 +48,7 @@ export function CampoTextoContador({
   testIdError,
   refControl,
   sinTope = false,
+  errorAlerta = false,
 }: Props) {
   const base = useId();
   const idAyuda = `${base}-ayuda`;
@@ -85,7 +88,7 @@ export function CampoTextoContador({
         {valor.length >= max && !sinTope ? `Llegaste al máximo de ${max} caracteres.` : ""}
       </span>
       {error ? (
-        <p className="campo-error" id={idError} data-testid={testIdError}>
+        <p className="campo-error" id={idError} data-testid={testIdError} role={errorAlerta ? "alert" : undefined}>
           {error}
         </p>
       ) : null}

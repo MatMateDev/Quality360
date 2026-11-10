@@ -181,7 +181,7 @@ test.describe("E7-F06 · Bandeja del Auditor", () => {
     });
 
     // E5 (sección 9 del backlog): la pestaña nueva «Integraciones» (6.ª) también se recorre y no debe tener `button[type=submit]` ni acciones de escritura.
-    test("[E7-F06#3] T07: las 4 pestañas, la pestaña Integraciones (E5) y el detalle de E7-H1 no tienen botones ni formularios de escritura", async ({ page, request }) => {
+    test("[E7-F06#3] T07: las 4 pestañas, la pestaña Integraciones (E5), Indicadores (E6) y el detalle de E7-H1 no tienen botones ni formularios de escritura", async ({ page, request }) => {
       const h = await hduFixture(request);
       for (const ruta of ["/auditor", "/auditor/certificados", "/auditor/bitacora", "/auditor/auditoria-usuarios"]) {
         await page.goto(`${env.portalUrl}${ruta}`);
@@ -194,6 +194,11 @@ test.describe("E7-F06 · Bandeja del Auditor", () => {
       await verificarSoloLectura(page, "/auditor/integraciones");
       await expect(page.getByTestId("boton-consultar-jira")).toHaveCount(0);
       await expect(page.getByTestId("selector-archivo")).toHaveCount(0);
+      // E6 (sección 7 del backlog E6): las pantallas de Indicadores del Auditor son de solo lectura (sin editor de umbral, sin snapshots).
+      await page.goto(`${env.portalUrl}/auditor/indicadores`);
+      await expect(page.getByRole("heading", { level: 1 })).toHaveText("Indicadores");
+      await verificarSoloLectura(page, "/auditor/indicadores");
+      await expect(page.getByRole("button", { name: /umbral|snapshot/i })).toHaveCount(0);
       await page.goto(`${env.portalUrl}/hdu/${h["E7-H1"].id}`);
       await expect(page.getByTestId("panel-checklist")).toBeVisible();
       await verificarSoloLectura(page, "detalle E7-H1");

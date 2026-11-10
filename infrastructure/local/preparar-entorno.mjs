@@ -15,6 +15,7 @@ const ARCHIVOS = [
   'services/certificaciones/.env',
   'services/impedimentos/.env',
   'services/integraciones/.env',
+  'services/indicadores/.env',
   'apps/gateway/.env',
   'apps/web/.env.local',
   'infrastructure/seed/mvp/.env.carga',
@@ -32,7 +33,14 @@ const completos = () =>
   readFileSync(join(RAIZ, 'apps/gateway/.env'), 'utf8').includes('INTEGRACIONES_URL=') &&
   // E5 consulta: variables sin valor fijo (vacío = valor por defecto del servicio).
   readFileSync(join(RAIZ, 'services/integraciones/.env'), 'utf8').includes('INTEGRACIONES_CONSULTA_VIGENCIA_MS=') &&
-  readFileSync(join(RAIZ, 'apps/gateway/.env'), 'utf8').includes('LIMITE_TASA_CONSULTA_MAX=');
+  readFileSync(join(RAIZ, 'apps/gateway/.env'), 'utf8').includes('LIMITE_TASA_CONSULTA_MAX=') &&
+  // E6: Indicadores con su credencial de servicio y el secreto del cron (D177, D178); el gateway le reenvía.
+  readFileSync(join(RAIZ, 'services/indicadores/.env'), 'utf8').includes('INDICADORES_SERVICIO_TOKEN=') &&
+  readFileSync(join(RAIZ, 'services/indicadores/.env'), 'utf8').includes('CRON_SECRET=') &&
+  readFileSync(join(RAIZ, 'services/organizacion/.env'), 'utf8').includes('INDICADORES_SERVICIO_TOKEN=') &&
+  readFileSync(join(RAIZ, 'services/certificaciones/.env'), 'utf8').includes('INDICADORES_SERVICIO_TOKEN=') &&
+  readFileSync(join(RAIZ, 'services/impedimentos/.env'), 'utf8').includes('INDICADORES_SERVICIO_TOKEN=') &&
+  readFileSync(join(RAIZ, 'apps/gateway/.env'), 'utf8').includes('INDICADORES_URL=');
 if (!forzar && completos()) {
   console.log('Configuración local ya existe (usa --forzar para regenerarla).');
   process.exit(0);
@@ -79,6 +87,20 @@ const llaveExistente = (() => {
   }
 })();
 const llaveCifrado = llaveExistente ?? randomBytes(32).toString('base64');
+// E6: INDICADORES_SERVICIO_TOKEN (D177) y CRON_SECRET (D178), uno por máquina y solo en .env no versionados.
+// Si ya existen (hex de 32 caracteres o más) se conservan, también con --forzar, para que los cuatro
+// servicios sigan coincidiendo y no se invaliden ejecuciones en curso. El token es el mismo en Organización,
+// Certificaciones, Impedimentos e Indicadores; el CRON_SECRET vive solo en Indicadores.
+const secretoExistente = (ruta, variable) => {
+  try {
+    const m = readFileSync(join(RAIZ, ruta), 'utf8').match(new RegExp(`^${variable}=([0-9a-f]{32,})$`, 'm'));
+    return m ? m[1] : null;
+  } catch {
+    return null;
+  }
+};
+const tokenIndicadores = secretoExistente('services/indicadores/.env', 'INDICADORES_SERVICIO_TOKEN') ?? randomBytes(24).toString('hex');
+const cronSecret = secretoExistente('services/indicadores/.env', 'CRON_SECRET') ?? randomBytes(24).toString('hex');
 const db = (rol, esquema) => `postgresql://${rol}:${rol}_local_dev@127.0.0.1:54322/postgres?schema=${esquema}`;
 const escribir = (ruta, variables) => {
   writeFileSync(join(RAIZ, ruta), Object.entries(variables).map(([k, v]) => `${k}=${v}`).join('\n') + '\n');
@@ -95,6 +117,7 @@ escribir('services/organizacion/.env', {
   X_Q360_SERVICIO_TOKEN: token,
   CERTIFICACIONES_URL: 'http://localhost:3002',
   IMPEDIMENTOS_URL: 'http://localhost:3003',
+  INDICADORES_SERVICIO_TOKEN: tokenIndicadores,
 });
 escribir('services/certificaciones/.env', {
   PORT: 3002,
@@ -105,6 +128,7 @@ escribir('services/certificaciones/.env', {
   ORGANIZACION_URL: 'http://localhost:3001',
   PORTAL_URL: 'http://localhost:5173',
   X_Q360_SERVICIO_TOKEN: token,
+  INDICADORES_SERVICIO_TOKEN: tokenIndicadores,
 });
 escribir('services/impedimentos/.env', {
   PORT: 3003,
@@ -115,6 +139,7 @@ escribir('services/impedimentos/.env', {
   CERTIFICACIONES_URL: 'http://localhost:3002',
   PERMITIR_CARGA_SEMILLA: 'true',
   X_Q360_SERVICIO_TOKEN: token,
+  INDICADORES_SERVICIO_TOKEN: tokenIndicadores,
 });
 escribir('services/integraciones/.env', {
   PORT: 3004,
@@ -131,6 +156,20 @@ escribir('services/integraciones/.env', {
   INTEGRACIONES_CONSULTA_TOPE_ITEMS: '',
   X_Q360_SERVICIO_TOKEN: token,
 });
+escribir('services/indicadores/.env', {
+  PORT: 3005,
+  DATABASE_URL: db('svc_indicadores', 'indicadores'),
+  SUPABASE_URL: api,
+  SUPABASE_JWT_SECRET: sb.JWT_SECRET,
+  ORGANIZACION_URL: 'http://localhost:3001',
+  CERTIFICACIONES_URL: 'http://localhost:3002',
+  IMPEDIMENTOS_URL: 'http://localhost:3003',
+  // Gancho de prueba POST /v1/interno/carga/snapshots (D184): credencial de semilla, solo local.
+  PERMITIR_CARGA_SEMILLA: 'true',
+  X_Q360_SERVICIO_TOKEN: token,
+  INDICADORES_SERVICIO_TOKEN: tokenIndicadores,
+  CRON_SECRET: cronSecret,
+});
 escribir('apps/gateway/.env', {
   PORT: 3000,
   PORTAL_ORIGENES: 'http://localhost:5173',
@@ -142,6 +181,7 @@ escribir('apps/gateway/.env', {
   CERTIFICACIONES_URL: 'http://localhost:3002',
   IMPEDIMENTOS_URL: 'http://localhost:3003',
   INTEGRACIONES_URL: 'http://localhost:3004',
+  INDICADORES_URL: 'http://localhost:3005',
   // D152: cubo propio de la edición de la consulta; vacío = 120 por minuto.
   LIMITE_TASA_CONSULTA_MAX: '',
 });
@@ -156,5 +196,6 @@ escribir('infrastructure/seed/mvp/.env.carga', {
   ORGANIZACION_URL: 'http://localhost:3001',
   IMPEDIMENTOS_URL: 'http://localhost:3003',
   INTEGRACIONES_URL: 'http://localhost:3004',
+  INDICADORES_URL: 'http://localhost:3005',
 });
 console.log('Configuración local lista. Si Organización ya estaba corriendo, reinícialo para que tome el token nuevo.');

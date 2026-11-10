@@ -3,7 +3,7 @@
 Deja la plataforma funcionando en internet con datos reales:
 
 - **Supabase en la nube** (proyecto `ufdnrrpeznwyargzgopu`, región São Paulo): base de datos y login.
-- **Vercel** (plan Hobby, gratis), seis proyectos en la región São Paulo (`gru1`):
+- **Vercel** (plan Hobby, gratis), siete proyectos en la región São Paulo (`gru1`):
 
 | Proyecto Vercel | Root Directory | Qué es |
 | --- | --- | --- |
@@ -11,6 +11,7 @@ Deja la plataforma funcionando en internet con datos reales:
 | `quality360-impedimentos` | `services/impedimentos` | Impedimentos y riesgo por HDU (E4) |
 | `quality360-organizacion` | `services/organizacion` | Usuarios, supervisión y HDU |
 | `quality360-integraciones` | `services/integraciones` | Sincronización con Jira Cloud e importación de CSV/JSON (E5) |
+| `quality360-indicadores` | `services/indicadores` | Indicadores, snapshot diario (Vercel Cron) y exportación CSV/PDF (E6) |
 | `quality360-gateway` | `apps/gateway` | Punto de entrada de la API |
 | `quality360-portal` | `apps/web` | Portal web |
 
@@ -21,6 +22,8 @@ Cada carpeta ya trae su `vercel.json` (instalación desde la raíz del monorepo,
 > **Cambios de base de datos:** las migraciones de `services/*/prisma/migrations` se aplican en Supabase en orden de fecha, cada una precedida de `set local search_path to <esquema>;`, y después los scripts `infrastructure/nube/002` a `005` (RLS y buckets). Hazlo justo antes de publicar el código que las necesita: el código nuevo no funciona con las tablas anteriores, ni al revés.
 >
 > **E5 (Integraciones):** antes de publicar, aplica en este orden `services/organizacion/prisma/migrations/20261029000000_e5_origen_hdu/migration.sql` (esquema `organizacion`), `services/integraciones/prisma/migrations/20261029000000_e5_integracion_jira/migration.sql` (esquema `integraciones`) e `infrastructure/nube/005_rls_integraciones_nube.sql`. Si Supabase estuvo pausado por inactividad, reactívalo primero: con la base pausada, Integraciones responde 503.
+>
+> **E6 (Indicadores):** antes de publicar, aplica en este orden `infrastructure/nube/007_rls_indicadores_nube.sql` (crea el esquema `indicadores` y el rol `svc_indicadores` sin contraseña), `services/organizacion/prisma/migrations/20261104000000_e6_cierre_excepcion/migration.sql` (esquema `organizacion`), `services/indicadores/prisma/migrations/20261104000000_e6_indicadores/migration.sql` (esquema `indicadores`), `infrastructure/nube/002_rls_organizacion_nube.sql` (suma la tabla `cierre_hdu`) y de nuevo `007` (RLS y permisos de las tablas recién creadas). Ambos scripts son idempotentes.
 
 Tiempo estimado: 30 a 40 minutos.
 
@@ -34,7 +37,7 @@ Tiempo estimado: 30 a 40 minutos.
    [guid]::NewGuid().ToString('N')
    ```
 
-   Ejecútalo cuatro veces (una por rol) y guarda las cuatro en tu gestor de contraseñas. No las pegues en el chat ni en el repositorio.
+   Ejecútalo cinco veces (una por rol) y guarda las cinco en tu gestor de contraseñas. No las pegues en el chat ni en el repositorio.
 
 2. En [Supabase](https://supabase.com/dashboard/project/ufdnrrpeznwyargzgopu) abre **SQL Editor** y ejecuta, reemplazando los valores:
 
@@ -43,18 +46,20 @@ Tiempo estimado: 30 a 40 minutos.
    alter role svc_certificaciones with password 'CONTRASEÑA_CERTIFICACIONES';
    alter role svc_impedimentos with password 'CONTRASEÑA_IMPEDIMENTOS';
    alter role svc_integraciones with password 'CONTRASEÑA_INTEGRACIONES';
+   alter role svc_indicadores with password 'CONTRASEÑA_INDICADORES';
    ```
 
 ## Paso 2 · Reunir los datos de conexión (Supabase)
 
 1. En el proyecto, pulsa **Connect** y elige **Transaction pooler** (puerto `6543`). Copia el **host**: algo como `aws-0-sa-east-1.pooler.supabase.com` (puede decir `aws-1-…`).
-2. Arma las cuatro URL de base de datos. El usuario es `rol.idProyecto`:
+2. Arma las cinco URL de base de datos. El usuario es `rol.idProyecto`:
 
    ```
    postgresql://svc_organizacion.ufdnrrpeznwyargzgopu:CONTRASEÑA_ORGANIZACION@HOST:6543/postgres?schema=organizacion&pgbouncer=true&connection_limit=1
    postgresql://svc_certificaciones.ufdnrrpeznwyargzgopu:CONTRASEÑA_CERTIFICACIONES@HOST:6543/postgres?schema=certificaciones&pgbouncer=true&connection_limit=1
    postgresql://svc_impedimentos.ufdnrrpeznwyargzgopu:CONTRASEÑA_IMPEDIMENTOS@HOST:6543/postgres?schema=impedimentos&pgbouncer=true&connection_limit=1
    postgresql://svc_integraciones.ufdnrrpeznwyargzgopu:CONTRASEÑA_INTEGRACIONES@HOST:6543/postgres?schema=integraciones&pgbouncer=true&connection_limit=1
+   postgresql://svc_indicadores.ufdnrrpeznwyargzgopu:CONTRASEÑA_INDICADORES@HOST:6543/postgres?schema=indicadores&pgbouncer=true&connection_limit=1
    ```
 
 3. En **Project Settings > API Keys** copia:
@@ -81,9 +86,16 @@ Tiempo estimado: 30 a 40 minutos.
    - Cópiala directo a las variables de `quality360-integraciones` (paso 3). No la guardes en archivos del repositorio, no la pegues en el chat y no reutilices la del `.env` local.
    - Si algún día la cambias, el token de Jira guardado deja de poder descifrarse (`TOKEN_NO_DESCIFRABLE`) y hay que volver a ingresarlo en el portal.
 
+6. Genera dos valores más para Indicadores (E6), cada uno con el mismo comando del punto 4, y guárdalos aparte:
+
+   - `INDICADORES_SERVICIO_TOKEN` (D177): credencial con la que Indicadores lee de Organización, Certificaciones e Impedimentos. Va **idéntica** en esos tres proyectos y en `quality360-indicadores`.
+   - `CRON_SECRET` (D178): Vercel lo envía al cron diario como `Authorization: Bearer <valor>`. Va **solo** en `quality360-indicadores`, en el entorno **Production** y marcado como *Sensitive*. Sin él, el cron responde siempre 401 y el snapshot diario no corre (el botón «Generar snapshot ahora» del Administrador sigue funcionando).
+
+   Deben ser distintos entre sí y distintos del token del punto 4.
+
 ## Paso 3 · Crear los proyectos en Vercel
 
-Para **cada** fila de la tabla del inicio, en este orden (certificaciones, impedimentos, organización, integraciones, gateway, portal):
+Para **cada** fila de la tabla del inicio, en este orden (certificaciones, impedimentos, organización, integraciones, indicadores, gateway, portal):
 
 1. En [vercel.com/new](https://vercel.com/new), importa el repositorio **MatMateDev/Quality360**.
 2. **Project Name:** el de la tabla.
@@ -103,6 +115,7 @@ Para **cada** fila de la tabla del inicio, en este orden (certificaciones, imped
 | `SUPABASE_SERVICE_ROLE_KEY` | Clave secreta del paso 2: firma subidas y descargas de evidencias y certificados (E3) |
 | `ORGANIZACION_URL` | `https://quality360-organizacion.vercel.app` (ajústala cuando exista) |
 | `PORTAL_URL` | URL real del portal: se imprime en el certificado para verificar el folio |
+| `INDICADORES_SERVICIO_TOKEN` | El del paso 2.6 (E6). Sin él, el snapshot de indicadores queda `FALLIDA` |
 
 ### Variables de `quality360-impedimentos`
 
@@ -116,6 +129,7 @@ Para **cada** fila de la tabla del inicio, en este orden (certificaciones, imped
 | `RIESGO_DIAS_IMPEDIMENTO_ALTO`, `RIESGO_DIAS_SPRINT_ALTO`, `RIESGO_AVANCE_ALTO`, `RIESGO_DIAS_SPRINT_MEDIO`, `RIESGO_AVANCE_MEDIO` | Solo si cambias los umbrales por defecto (D67) |
 | `EXPORTACION_LIMITE_FILAS` | Solo si cambias el límite por defecto (50.000) |
 | `PERMITIR_CARGA_SEMILLA` y `X_Q360_SERVICIO_TOKEN` | Solo mientras se carga la semilla E4, como en Organización; después, `PERMITIR_CARGA_SEMILLA=false` y Redeploy |
+| `INDICADORES_SERVICIO_TOKEN` | El del paso 2.6 (E6) |
 
 > No agregues `Q360_FECHA_REFERENCIA` en la nube.
 
@@ -131,6 +145,7 @@ Para **cada** fila de la tabla del inicio, en este orden (certificaciones, imped
 | `CERTIFICACIONES_URL` | URL real de `quality360-certificaciones` |
 | `IMPEDIMENTOS_URL` | URL real de `quality360-impedimentos`. Sin ella el cierre de una HDU responde 503 (D60) |
 | `IMPEDIMENTOS_TIMEOUT_MS` | Opcional (2000 por defecto) |
+| `INDICADORES_SERVICIO_TOKEN` | El del paso 2.6 (E6) |
 
 ### Variables de `quality360-integraciones`
 
@@ -146,6 +161,23 @@ Agrégalas **antes** de pulsar Deploy:
 
 **No** agregues `NODE_ENV` (Vercel lo define), `INTEGRACIONES_PERMITIR_HOST_PRUEBA` ni `PERMITIR_CARGA_SEMILLA`: son solo para pruebas locales.
 
+### Variables de `quality360-indicadores`
+
+El `vercel.json` de `services/indicadores` declara el cron diario `0 6 * * *` (06:00 UTC; las fechas se cuentan en America/Santiago). El plan Hobby lo permite: un cron por día, con hasta una hora de holgura.
+
+| Variable | Valor |
+| --- | --- |
+| `DATABASE_URL` | URL de `svc_indicadores` del paso 2 (`?schema=indicadores&pgbouncer=true&connection_limit=1`) |
+| `SUPABASE_URL` | `https://ufdnrrpeznwyargzgopu.supabase.co` |
+| `ORGANIZACION_URL` | URL real de `quality360-organizacion`. Sin ella solo `/health` responde |
+| `CERTIFICACIONES_URL` | URL real de `quality360-certificaciones` |
+| `IMPEDIMENTOS_URL` | URL real de `quality360-impedimentos` |
+| `INDICADORES_SERVICIO_TOKEN` | El del paso 2.6, idéntico al de Organización, Certificaciones e Impedimentos |
+| `CRON_SECRET` | El del paso 2.6. Solo **Production**, *Sensitive* |
+| `INDICADORES_UMBRAL_DEFECTO`, `INDICADORES_TOPE_HDU`, `EXPORTACION_LIMITE_FILAS`, `EXPORTACION_PDF_LIMITE_FILAS`, `INDICADORES_FUENTE_TIMEOUT_MS`, `INDICADORES_SNAPSHOT_TIMEOUT_MS` | Solo si cambias los valores por defecto (D172, D178) |
+
+**No** agregues `Q360_FECHA_REFERENCIA`, `PERMITIR_CARGA_SEMILLA` ni `X_Q360_SERVICIO_TOKEN`: son solo para pruebas locales.
+
 ### Variables de `quality360-gateway`
 
 | Variable | Valor |
@@ -157,6 +189,8 @@ Agrégalas **antes** de pulsar Deploy:
 | `IMPEDIMENTOS_TIMEOUT_MS` | Opcional; si falta, vale `TIEMPO_LIMITE_SERVICIO_MS` |
 | `INTEGRACIONES_URL` | URL real de `quality360-integraciones`. **Opcional** (D127): si falta o es inválida, el gateway arranca igual y solo «Integraciones» muestra «No disponible» (503) |
 | `INTEGRACIONES_TIMEOUT_MS` | Opcional (12000 por defecto). Debe ser mayor que `INTEGRACIONES_PRESUPUESTO_MS` de Integraciones |
+| `INDICADORES_URL` | URL real de `quality360-indicadores` (E6). **Opcional** (D179): si falta o es inválida, el gateway arranca igual y solo «Indicadores» (`/v1/indicadores/*` y `/v1/cron/indicadores/snapshot`) responde 503 «No disponible». El gateway **no** lleva `CRON_SECRET` ni `INDICADORES_SERVICIO_TOKEN` |
+| `INDICADORES_TIMEOUT_MS` | Opcional (25000 por defecto, D179). Debe ser menor que el `maxDuration` del gateway (30 s) |
 | `LIMITE_TASA_CONSULTA_MAX` | Opcional (120 por minuto por defecto, D152). Cubo propio de `PATCH /v1/integraciones/jira/consultas/{id}/items`; un valor inválido usa el de por defecto y no impide arrancar |
 | `PORTAL_ORIGENES` | `https://quality360-portal.vercel.app` (ajústala cuando exista) |
 | `CONFIAR_PROXY` | `1` |
@@ -174,15 +208,17 @@ Agrégalas **antes** de pulsar Deploy:
 
 ### Ajustar las URL que no existían aún
 
-- En `quality360-certificaciones`, `quality360-impedimentos` y `quality360-integraciones`, confirma `ORGANIZACION_URL`.
-- En `quality360-gateway`, confirma `PORTAL_ORIGENES` con la URL real del portal, e `IMPEDIMENTOS_URL` e `INTEGRACIONES_URL` con las URL reales de esos proyectos.
+- En `quality360-certificaciones`, `quality360-impedimentos`, `quality360-integraciones` y `quality360-indicadores`, confirma `ORGANIZACION_URL`.
+- En `quality360-gateway`, confirma `PORTAL_ORIGENES` con la URL real del portal, e `IMPEDIMENTOS_URL`, `INTEGRACIONES_URL` e `INDICADORES_URL` con las URL reales de esos proyectos.
 
 Después de cambiar variables, en ese proyecto ve a **Deployments**, abre el último y pulsa **Redeploy**: las variables solo se aplican en un despliegue nuevo.
 
-**Verificación rápida:** abre `https://<gateway>/health`, `https://<organizacion>/health`, `https://<impedimentos>/health` y `https://<integraciones>/health`. Los cuatro deben responder `{"estado":"ok"}`. Además, sin iniciar sesión:
+**Verificación rápida:** abre `https://<gateway>/health`, `https://<organizacion>/health`, `https://<impedimentos>/health`, `https://<integraciones>/health` y `https://<indicadores>/health`. Los cinco deben responder `{"estado":"ok"}`. Además, sin iniciar sesión:
 
 - `https://<gateway>/v1/catalogos/tipos-impedimento` → 401 `NO_AUTENTICADO` (si responde 501, el gateway desplegado es anterior a E4).
 - `https://<gateway>/v1/integraciones/estado` → 401 `NO_AUTENTICADO` (si responde 501, el gateway desplegado es anterior a E5).
+- `https://<gateway>/v1/indicadores/filtros` → 401 `NO_AUTENTICADO` (si responde 404 o 501, el gateway desplegado es anterior a E6).
+- `https://<indicadores>/v1/cron/indicadores/snapshot` sin `Authorization` → 401: el cron nunca queda abierto.
 - `https://<gateway>/v1/interno/impedimentos/evaluacion` y `https://<gateway>/v1/interno/integraciones/hdu/upsert` → 404: las rutas internas no se publican.
 
 Sin sesión el gateway responde 401 antes de mirar la configuración, así que una `IMPEDIMENTOS_URL` o `INTEGRACIONES_URL` faltante solo se nota con sesión: como Administrador, «Integraciones» (o «Impedimentos») muestra «No disponible», y la consulta responde 503 `SERVICIO_NO_DISPONIBLE`. Los logs del gateway en Vercel dicen una vez «INTEGRACIONES_URL no configurada o inválida» (o la de Impedimentos), sin el valor.

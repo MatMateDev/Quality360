@@ -24,7 +24,7 @@ Precedencia: backlog (criterios de aceptación) > informe > este archivo.
 | D8 | Local: Supabase CLI (`npx supabase start`) + Docker Compose. Nube después | Topología de la p. 11 |
 | D9 | Las HDU, células, sprints, asignación de analista e historial de E2 viven en **Organización y seguimiento** | El informe le asigna la organización de HU y sprints. Los ciclos de certificación llegan con E3 a Certificaciones |
 | D10 | Estados de HDU: `PENDIENTE → DISENO_PRUEBAS → EN_EJECUCION → PENDIENTE_CIERRE → CERRADA`, más la reapertura `PENDIENTE_CIERRE → EN_EJECUCION` | E2-B02. Solo avanza un paso; `CERRADA` es terminal |
-| D11 | Pasar a `CERRADA` exige el checklist completo, consultado por API a Certificaciones. En esta corrida esa consulta responde «indisponible», así que el cierre se rechaza con un mensaje explícito | E2-B02 escenario 3, sin inventar datos de E3 |
+| D11 | Pasar a `CERRADA` exige el checklist completo, consultado por API a Certificaciones. En esta corrida esa consulta responde «indisponible», así que el cierre se rechaza con un mensaje explícito. **Modificada por D173 (E6):** el QE responsable puede cerrar con menos de 10 aprobados enviando una justificación (cierre con excepción, sin certificado); sin justificación todo sigue igual | E2-B02 escenario 3, sin inventar datos de E3 |
 | D12 | Acceso fuera del ámbito: **403 `ACCESO_DENEGADO`** con mensaje genérico | E2-F04 escenario 2 pide «acceso denegado» |
 | D13 | Construcción y certificación con **Supabase local**. El proyecto en la nube (`ufdnrrpeznwyargzgopu`) se conecta al final: las migraciones se aplican vía el MCP de Supabase (`.mcp.json`) una vez que el usuario lo autentica, y las claves de nube quedan solo en su `.env` | Las pruebas de QA crean y desactivan usuarios de forma repetida y no deben tocar el proyecto real |
 | D14 | Entrega en `MatMateDev/Quality360` (remoto `quality360`): push de la rama certificada como `main`, solo después del dictamen de `q360-qa` | Decisión del usuario; el remoto está vacío |
@@ -768,3 +768,105 @@ El analista propuso D196–D207. El arquitecto las acepta con los ajustes marcad
 | OBS-D2 | Lote que cierra con una fila en toma | **Se acepta como comportamiento conocido**, coherente con D203 y D205. Si «Confirmar marcadas» omite una fila que está en toma y no le quedan otras pendientes, cierra la consulta `CONFIRMADA` y la purga. La confirmación de esa fila termina igual: la HDU queda creada y su ejecución `HDU` queda registrada, pero el reintento de ese Administrador responde 409 `CONSULTA_NO_ABIERTA` aunque la HDU exista. Mitigación a cargo de `q360-frontend`, sin cambiar el contrato: ante `CONSULTA_NO_ABIERTA` después de un «Confirmar asignación» sin respuesta, el portal dice que la HDU pudo haberse creado y ofrece el Historial (la ejecución «Una HDU») o la búsqueda en la gestión de HDU. Esperar a que terminen las tomas antes de cerrar el lote queda como mejora futura, porque exigiría esperas dentro del presupuesto de 8 s |
 | OBS-D3 | Contadores del lote tras una respuesta perdida | **Defecto conocido de la confirmación en lote** (D140, anterior a este cambio), que se registra y no bloquea. Si Organización escribe un lote de 25 y responde después del tiempo límite, la repetición recibe esas filas como `OMITIDA` `HDU_CREADA_DESPUES`. No hay duplicados (una HDU y una auditoría por código), pero `creadas` de la ejecución y del historial queda corto. Explica el intermitente de E5-B05-T28. Corrección propuesta para una próxima corrida, sin cambiar el contrato: el lote trata `existente.creadaPorEstaConsulta && existente.creadaPorActor` como `CREADA` (repetida), igual que la fila a fila con `repetida` (OD3); la ejecución la cuenta en `creadas`. Responsable: `q360-integraciones`. Hasta entonces, T28 se marca como intermitente conocido |
 | — | Nombre accesible de «Abrir en Jira» | Diseño §2.5: el nombre accesible es «Abrir en Jira: <clave> (se abre en otra pestaña)». Empieza con el texto visible (WCAG 2.5.3) |
+
+# Corrida E6 · Indicadores y dashboards
+
+Detalle, escenarios y casos en `docs/backlog/e6-indicadores-dashboards.md` (10 HDU, 30 escenarios, 117 casos, D153–D175). Diseño en `docs/diseno/e6-indicadores-dashboards.md`. Decisiones del usuario (2026-11-04):
+
+- Servicio nuevo `services/indicadores`, con esquema `indicadores` y rol `svc_indicadores`.
+- Snapshot diario con Vercel Cron (Hobby, `0 6 * * *` UTC, fecha de Santiago), más un botón manual para el Administrador.
+- Umbral de sobrecarga fijado por cada QE.
+- Visibilidad: el QE ve su ámbito amplio, el Líder QA sus células, el Auditor todo en lectura, el Administrador solo los snapshots y el Analista nada.
+- El cierre con excepción vive en Organización.
+
+Contratos: `indicadores.v1.yaml` (nuevo), `gateway.v1.yaml`, `organizacion.v1.yaml`, `certificaciones.v1.yaml`, `impedimentos.v1.yaml` y `comun.v1.yaml`. Todos los cambios son aditivos. Plan: `docs/arquitectura/e6-plan-construccion.md`. ADR 0017.
+
+## Decisiones del arquitecto (contratos y plan, 2026-11-04)
+
+| ID | Decisión | Motivo |
+| --- | --- | --- |
+| D176 | **Organización resuelve el ámbito para Indicadores.** `GET /v1/interno/indicadores/ambito` (token del usuario, 2 s) devuelve el rol, `celulas`, `sprints`, `analistas` (con su QE supervisor vigente), `qes` y las HDU del ámbito (D153), cada una con célula, sprint, analista, QE, estado y `cierreParcial`. Células: el Líder recibe sus células vigentes aunque no tengan HDU; el QE y el Auditor, las células con HDU en su ámbito. Analistas: el QE recibe los supervisados activos más los de las HDU de su ámbito; el Líder, los de las HDU de sus células; el Auditor, todos los activos más los inactivos con alguna HDU no cerrada. Analista y Administrador reciben 403. Indicadores nunca calcula el ámbito por su cuenta | Una sola dueña del ámbito (D18, D32, D57). Evita duplicar las reglas de supervisión |
+| D177 | **El snapshot lee todo con una credencial propia.** Tres rutas aceptan, además de la sesión, la cabecera `X-Q360-Servicio-Token` con el secreto **`INDICADORES_SERVICIO_TOKEN`**, distinto del token de semilla: `GET /v1/interno/indicadores/snapshot` (Organización), `POST /v1/interno/checklist/estados` (Certificaciones) y `POST /v1/interno/impedimentos/evaluacion` (Impedimentos). Solo esas tres y solo en lectura. Si la cabecera falta o no coincide, la respuesta es 401 y la ejecución queda `FALLIDA` con motivo `CONFIGURACION_INVALIDA`. La ejecución manual usa la misma credencial y registra como actor al Administrador, porque el snapshot necesita una vista global que ningún rol de usuario tiene. El gateway sigue quitando esa cabecera de toda petición externa (D126) | El cron no tiene usuario. No se reutiliza el token de semilla, que se apaga en producción (D125) |
+| D178 | **Cron.** `services/indicadores/vercel.json` declara `crons: [{ path: "/v1/cron/indicadores/snapshot", schedule: "0 6 * * *" }]` en el mismo proyecto `quality360-indicadores`. `CRON_SECRET` existe solo en ese proyecto (Production, Sensitive, 32 caracteres aleatorios o más), y Vercel lo envía como `Authorization: Bearer <secreto>`. La comparación es de tiempo constante. Si la variable falta, la ruta responde siempre 401 y nunca queda abierta. La ruta también existe detrás del gateway, sin verificación de sesión: el gateway reenvía `Authorization` tal cual y aplica el límite de escritura. Vercel no reintenta; si la ejecución falla, el Administrador usa «Generar snapshot ahora». Por los arranques en frío, las fuentes del snapshot usan `INDICADORES_SNAPSHOT_TIMEOUT_MS` (8000) con 1 reintento | D163. El cron corre donde está el código, y el secreto no viaja a otros proyectos |
+| D179 | **Gateway → Indicadores.** `INDICADORES_URL` es opcional y no fatal, como en D127/D129. Si falta en producción, las rutas de indicadores responden 503 `SERVICIO_NO_DISPONIBLE` y el resto del gateway funciona; en desarrollo vale `http://localhost:3005`. `INDICADORES_TIMEOUT_MS` es 25000, porque los cálculos consultan varias fuentes. Las rutas se declaran una por una, sin comodín. La exportación se reenvía en binario con `Content-Type`, `Content-Disposition` y `X-Q360-Filas` | Un servicio nuevo no debe poder tumbar el portal |
+| D180 | **Opciones de filtro.** `GET /v1/indicadores/filtros` devuelve las células y sprints con HDU en el ámbito (con los sprints cerrados marcados) y `hduSinSprint`. «Sin sprint» se envía como el literal `sprintId=SIN_SPRINT` (patrón: UUID o `SIN_SPRINT`), y el portal muestra la opción solo si `hduSinSprint > 0`. El semáforo ignora el sprint, porque es por célula. La tendencia con `SIN_SPRINT` responde `sinDatos`, porque el snapshot solo guarda pares con sprint (§5 del backlog) | Brecha 3 del diseño |
+| D181 | **Drill-down del semáforo.** Cada ítem trae `hdu` (referencia), `analista`, `riesgo` (`RiesgoResumen` de E4), `motivos` e `impedimentoPrincipal`. `motivos` tiene 1 o 2 elementos: como máximo uno de riesgo y uno de impedimento. `impedimentoPrincipal` es primero el `ESCALADO` y, si no hay, el más antiguo; es nulo cuando no hay impedimentos. Orden: gravedad del motivo, nivel, días abierto (descendente) y código. QE y Líder reciben 403 fuera de su ámbito; el Auditor recibe 404 si la célula no existe | Brecha 4 del diseño |
+| D182 | **Carga por analista.** Grupos: el QE ve un solo grupo, con su umbral. El Líder y el Auditor ven un grupo por QE supervisor, cada uno con su umbral, más «Sin QE supervisor» (`qe: null`, umbral por defecto). La clave de fila es `analista.id`. `porEstado` y `cumplimiento` **siguen** los filtros; `activas` y `sobrecargado` **no** (3.5 del backlog, que prevalece sobre la brecha 5 del diseño). Orden: sobrecargados primero, activas de mayor a menor, nombre. Las HDU sin analista van en `sinAnalista`, fuera de los grupos | Brechas 5, 6 y 8 del diseño |
+| D183 | **Umbral.** `GET /v1/indicadores/umbral-carga`: el QE lee el suyo, el Líder los de los QE de su ámbito y el Auditor el de cualquier QE (404 si `qeId` no es QE). `PUT`: solo el QE y solo el suyo, con un entero JSON de 1 a 50 (otro tipo da 400 `VALIDACION`; fuera de rango, 400 `VALOR_FUERA_DE_RANGO`). Enviar el mismo valor responde `cambio: false` y no registra evento. El primer evento registra `valorAnterior = 5`. Historial: el QE ve el suyo y el Auditor el de cualquier QE (`qeId` obligatorio); el Líder recibe 403. `tamanoPagina` vale 5 por defecto | D159 y D161. Mínimo privilegio |
+| D184 | **Snapshot.** Cada ejecución escribe el ámbito `TODOS` más `QE:<id>` por cada QE activo con HDU; Organización entrega la lista en `ambitosQe`. Columnas extra respecto de §5 del backlog: `sprint_inicio` y `sprint_fin` en `snapshot_indicadores`; `filas_nuevas` y `filas_actualizadas` en `ejecucion_snapshot`. El motivo suma `CONFIGURACION_INVALIDA` e `INTERRUMPIDA`: una ejecución que lleva más de 5 minutos `EN_CURSO` se cierra como `FALLIDA`/`INTERRUMPIDA` al iniciar la siguiente. La columna `semaforo` se calcula sobre las HDU no cerradas del par, y vale `VERDE` si no hay ninguna. Para fabricar días distintos, el gancho de prueba `POST /v1/interno/carga/snapshots { instante }` (credencial de semilla y `PERMITIR_CARGA_SEMILLA`) registra origen `MANUAL` y actor «Carga de prueba». Las pruebas limpian las tablas como dueño de la base, nunca por API | D162–D165. Pruebas deterministas de tendencia |
+| D185 | **Tendencia.** El ámbito de células sale de `/v1/interno/acceso` (`celulasIds`), sin pedir HDU. `desde` vale por defecto `hasta − 89` días; un rango mayor a 366 días o `desde > hasta` da 400 `VALIDACION`. El máximo de 6 series rige también con filtros, y `totalSeries` informa cuántas había (se acepta la brecha 16). Cada punto usa `suma_avance / hdu_total` del ámbito. Las series se ordenan por nombre de célula y luego por inicio de sprint, de más reciente a más antiguo | D166 y D167 |
+| D186 | **Exportación.** Filas por vista: cumplimiento, una por indicador; semáforo, una por HDU no cerrada más una por cada célula sin HDU no cerradas; carga, una por (grupo, analista) más la de «Sin analista»; tendencia, una por (fecha, serie). El CSV usa **`;`**, igual que D48 (decisión del usuario 2026-11-04: uniformar con E7), con BOM UTF-8, CRLF y la neutralización de D122. El PDF se genera con `pdf-lib`, como en Certificaciones. Orden de validación: 401 → 403 → 400 → cálculo → 503 `INDICADORES_NO_DISPONIBLES` si alguna fuente cayó → 422 `EXPORTACION_EXCEDE_LIMITE` (CSV 50.000 filas, PDF 200) → registro `EXPORTAR` en la auditoría de Organización (`POST /v1/interno/auditoria/exportaciones`, recurso `INDICADORES`; si el registro falla, 503 `SERVICIO_NO_DISPONIBLE` y no se entrega archivo) → archivo `quality360-indicadores-<vista>-AAAAMMDD.<ext>` | D168. No se entrega un archivo con datos parciales ni sin rastro |
+| D187 | **Respuesta de cumplimiento.** Con `sinDatos` (`AMBITO_VACIO` o `FILTRO_SIN_COINCIDENCIAS`), todos los valores son `null` y se informa el motivo; nunca se inventa un 0. Todas las respuestas de lectura llevan `generadoEn`, con la hora del servidor | Brecha 14 del diseño. Una falla nunca se muestra como cero |
+| D188 | **Cadena de llamadas.** Semáforo y drill-down llaman en serie a Organización, luego a Certificaciones (avance) y después a Impedimentos (evaluación con avance). Cumplimiento llama a Organización y después, en paralelo, a Certificaciones e Impedimentos (con `avance: null`), porque solo necesita `bloqueada`. Carga llama a Organización y Certificaciones. Las HDU se piden en lotes de 1000 (`INDICADORES_TOPE_HDU`). Si cae Impedimentos, todas las células quedan `indisponible`. Si cae Certificaciones, la célula queda `ROJO` con `calculoParcial: true` cuando ya se conoce un factor rojo (un impedimento escalado); si no, queda `indisponible` con `alMenos` | D157 y D169. Un rojo conocido no se oculta |
+| D189 | **Contrato del cierre con excepción** (`POST /v1/hdu/{id}/estado` con `justificacion`). Orden de validación: (1) permiso y transición. (2) Checklist: si Certificaciones no responde, 409 `CHECKLIST_NO_DISPONIBLE`, haya o no justificación; con 10 aprobados es el cierre normal y la justificación se ignora. (3) Sin justificación: 409 `CHECKLIST_INCOMPLETO` con `puedeCerrarConExcepcion`. (4) Con justificación, si quien la envía no es el QE responsable: 403 `ACCESO_DENEGADO`. (5) Justificación en blanco: 422 `JUSTIFICACION_REQUERIDA`; largo fuera de 20–500: 400 `VALIDACION`. (6) Impedimentos: 409 `HDU_BLOQUEADA` o 503. El cierre corre en una transacción con `SELECT … FOR UPDATE` y vuelve a verificar `PENDIENTE_CIERRE`. `cierre_hdu` tiene `id_historia` único, y `cierreParcial` se deriva con `EXISTS`, sin columna nueva en `historia_usuario`. Deja dos eventos en el historial (`ESTADO` y `CIERRE_EXCEPCION`) y dos entradas de auditoría (`CAMBIAR_ESTADO_HDU` y `CERRAR_HDU_PARCIAL`). `permisos.cerrarConExcepcion` es `true` solo para el QE responsable con la HDU en `PENDIENTE_CIERRE`; el portal comprueba además que el checklist tenga menos de 10 aprobados | Brecha 2 del diseño. La prueba certificada `e2-hdu.test.ts` (409 `CHECKLIST_NO_DISPONIBLE`) no cambia |
+| D190 | **Un solo supervisor por analista.** El índice único `supervision_analista_id_vigente_key` (E1-F10) impide que un analista tenga dos QE vigentes. Por eso D160 se reescribe: cada QE aplica su umbral a la carga completa del analista, a quien puede ver por ser analista de una HDU de su ámbito aunque no lo supervise (`supervisadoPorMi: false`). Se corrigen E6-F03-T10, E6-B02-T12 y el fixture: ADM1 reasigna H4 a ANA1, en vez de recurrir a una doble supervisión | El backlog suponía algo que el modelo certificado prohíbe |
+| D191 | **Identificadores de prueba con UUID:** `tarjeta-celula-<celulaId>`, `fila-analista-<analistaId>`, y `grupo-qe-<qeId>` o `grupo-qe-sin-qe`. Las pruebas obtienen el id buscando por nombre en la semilla, porque los usuarios no tienen campo «código» | Brecha 8 del diseño |
+| D192 | **Correcciones al texto del backlog E6**, ya aplicadas en el archivo. (a) E6-B05-T06(b) pasa a 409 `CHECKLIST_NO_DISPONIBLE`. (b) El Auditor ve el cierre en el historial de la HDU y el Administrador en `/v1/auditoria`, por lo que E6-B05-T08 se divide en dos. (c) Se precisan las filas de la exportación del semáforo (D186). (d) En E6-B02-T05, los nombres de campo se leen como `porEstado.EN_EJECUCION` y equivalentes. (e) `comun.v1.yaml` suma `VALOR_FUERA_DE_RANGO`, `EJECUCION_EN_CURSO` e `INDICADORES_NO_DISPONIBLES` para Indicadores; el cierre no usa códigos nuevos | Coherencia entre backlog, contrato y código certificado |
+| D193 | **Modelo de datos.** Ver la subsección siguiente | D24: sin FK entre esquemas |
+| D194 | **Despliegue.** Sexto proyecto Vercel, `quality360-indicadores`: raíz `services/indicadores`, región `gru1`, `maxDuration` 30 y puerto local 3005. Variables: `DATABASE_URL` (rol `svc_indicadores`), `ORGANIZACION_URL`, `CERTIFICACIONES_URL`, `IMPEDIMENTOS_URL`, `CRON_SECRET` e `INDICADORES_SERVICIO_TOKEN`; esta última también va en Organización, Certificaciones e Impedimentos. El gateway suma `INDICADORES_URL`. El script de nube es `infrastructure/nube/007_rls_indicadores_nube.sql`, porque el 006 ya existe: crea el esquema y el rol si faltan, habilita RLS sin políticas y aplica los `REVOKE` | Mismo patrón de E4 y E5 |
+| D195 | **Certificación E6.** axe sin violaciones serias en las 5 pantallas nuevas (las cuatro pestañas y la de snapshots) y en el diálogo de cierre, más la regresión de la sección 7 del backlog. Las brechas del diseño se resuelven en la tabla de abajo | D35 |
+
+## Modelo de datos (lo escribe `q360-backend`)
+
+**Indicadores, migración `20261104000000_e6_indicadores`** (solo esquema `indicadores`, sin FK a otro esquema). Crea `snapshot_indicadores`, `ejecucion_snapshot`, `umbral_carga` y `evento_umbral_carga` como en §5 del backlog, con estos agregados:
+
+- `snapshot_indicadores.sprint_inicio date` y `sprint_fin date`, para ordenar las series sin llamar a Organización.
+- `ejecucion_snapshot.filas_nuevas int` y `filas_actualizadas int`, con `filas_escritas = nuevas + actualizadas`. `motivo` admite además `CONFIGURACION_INVALIDA` e `INTERRUMPIDA`.
+- `evento_umbral_carga.valor_anterior smallint NOT NULL`: el primer cambio guarda 5 (D183).
+- `REVOKE DELETE` en `snapshot_indicadores` y `REVOKE UPDATE, DELETE` en `evento_umbral_carga`.
+- Índice único parcial `ejecucion_snapshot (resultado) WHERE resultado = 'EN_CURSO'`.
+
+**Organización, migración `20261104000000_e6_cierre_excepcion`:**
+
+- Tabla `cierre_hdu` con `REVOKE UPDATE, DELETE`. Columnas:
+  - `id`
+  - `id_historia`, único y con FK a `historia_usuario` del mismo esquema
+  - `aprobados smallint CHECK 0–9`
+  - `pendientes text[]`
+  - `justificacion varchar(500)`
+  - `actor_id`, `actor_nombre`, `actor_rol`
+  - `fecha`
+- `ALTER TYPE "AccionAuditoria" ADD VALUE 'CERRAR_HDU_PARCIAL'`.
+- Sin columna nueva en `historia_usuario`.
+
+## Resolución de las brechas del diseño (sección 15)
+
+| Brecha | Resolución |
+| --- | --- |
+| 1 Texto del botón | Se acepta: se conserva «Pasar a Cerrada» y se suma «Cerrar con excepción» |
+| 2 Permiso del botón | `permisos.cerrarConExcepcion` (D189) |
+| 3 Opciones de filtro y «Sin sprint» | `GET /v1/indicadores/filtros` y `SIN_SPRINT` (D180) |
+| 4 Campos del drill-down | D181 |
+| 5 Filtros en la carga | `porEstado` y cumplimiento siguen el filtro; activas y sobrecarga no (D182) |
+| 6 Orden de la carga | Se acepta (D182) |
+| 7 Fecha del punto | Se acepta: el punto no distingue el origen |
+| 8 Clave de fila | `analista.id` (D191) |
+| 9 Pestañas del Auditor fuera de `AuditorLayout` | Se acepta |
+| 10 «Integraciones» en el menú del QE | Se acepta: el menú real la conserva, y la prueba usa el arreglo real con «Indicadores» después de «Impedimentos» |
+| 11 Insignia en el encabezado | Se acepta (es aditiva) |
+| 12 Botón visible desde el inicio | Se acepta |
+| 13 Diálogo único | Se acepta |
+| 14 «Datos al …» | `generadoEn` del servidor (D187) |
+| 15 Contraste de las series | Se acepta; lo confirma axe (D195) |
+| 16 Tope de 6 series con filtro | Se acepta (D185) |
+| 17 Líder y Auditor sin botón | Se acepta |
+
+## Pruebas certificadas afectadas
+
+- Menús exactos de QE, Líder, Auditor y Administrador (E1-F02#3 y E7): se actualiza el arreglo esperado.
+- Matriz de rutas de E7-F01-T04: suma las 4 rutas nuevas.
+- E7-F06 y toda prueba que lea «la última entrada de auditoría»: deben crear su propio evento antes de leer, porque las exportaciones de E6 escriben `EXPORTAR`.
+- `tests/support/contrato.ts`: carga también `indicadores.v1.yaml`.
+- Pruebas del gateway que enumeran rutas o variables obligatorias: suman las de indicadores, con `INDICADORES_URL` como opcional.
+- `apps/web/src/pages/hdu/HduDetailPage.tsx`: el historial debe tratar el evento `CIERRE_EXCEPCION`. Hoy `tsc` falla por el miembro nuevo de la unión.
+- No cambian: `e2-hdu.test.ts` (409 `CHECKLIST_NO_DISPONIBLE`), `e3-acceso-y-cierre.test.ts` ni `e4-impedimentos-organizacion.test.ts`.
+
+## Trazabilidad E6
+
+`npm run contracts:check` cubre 272/272 escenarios, con E6 en 30/30. Cada operación nueva o cambiada lleva `x-roles` y `x-hdu`.
+
+## Preguntas abiertas
+
+1. **Volumen.** Las lecturas no paginan ni guardan caché: cada una consulta las fuentes en lotes de 1000 HDU con 2 s por llamada (`INDICADORES_FUENTE_TIMEOUT_MS`). El snapshot falla con `EXCEDE_TOPE` sobre `INDICADORES_TOPE_HDU`. Alcanza para el MVP; paginar o pre-agregar queda para después.
+2. **Carrera entre cierre e impedimento.** Un impedimento registrado entre la verificación y el `COMMIT` del cierre no lo bloquea, igual que en el cierre normal de E4. Se acepta.
+3. **Separador del CSV.** Resuelto por el usuario (2026-11-04): E6 usa `;`, igual que E7 (D48).

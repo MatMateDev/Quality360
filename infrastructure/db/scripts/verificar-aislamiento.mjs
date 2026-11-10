@@ -20,6 +20,7 @@ const roles = [
   { rol: "svc_certificaciones", password: "svc_certificaciones_local_dev", esquema: "certificaciones" },
   { rol: "svc_impedimentos", password: "svc_impedimentos_local_dev", esquema: "impedimentos" },
   { rol: "svc_integraciones", password: "svc_integraciones_local_dev", esquema: "integraciones" },
+  { rol: "svc_indicadores", password: "svc_indicadores_local_dev", esquema: "indicadores" },
 ];
 
 function psql(rol, password, sql) {

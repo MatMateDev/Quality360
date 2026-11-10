@@ -53,6 +53,15 @@ export class ReasignacionQeDto {
 export class SolicitudCambioEstadoDto {
   @IsIn(ESTADOS)
   estado!: EstadoHdu;
+
+  /**
+   * E6 (D173, D189): solo se evalúa al cerrar con el checklist incompleto. El tope de 2000 es de forma;
+   * la regla de 20 a 500 caracteres (sin espacios de los bordes) se aplica en el caso de uso.
+   */
+  @IsOptional()
+  @IsString()
+  @MaxLength(2000)
+  justificacion?: string | null;
 }
 
 export class ListarHduQueryDto extends PaginacionQueryDto {

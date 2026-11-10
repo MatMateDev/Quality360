@@ -1,0 +1,105 @@
+// Quality360 · Indicadores (E6). Modelo de datos de la Corrida E6 (D161, D162, D164, D184, D193; sección 5 del backlog
+// E6 en docs/backlog/e6-indicadores-dashboards.md y «Modelo de datos» en docs/arquitectura/decisiones-mvp.md).
+//
+// Las tablas viven en el esquema `indicadores` de Postgres (infrastructure/db/001_esquemas_roles.sql): la conexión se
+// hace SIEMPRE con el rol `svc_indicadores`, cuya DATABASE_URL debe incluir `?schema=indicadores`. Sin llaves foráneas
+// hacia otro esquema (regla no negociable 3): `id_celula`, `id_sprint`, `id_qe` y `actor_id` son UUID de Organización.
+//
+// Lo que Prisma no expresa vive en la migración 20261104000000_e6_indicadores:
+//  - snapshot_indicadores: CHECK de enteros >= 0, de la suma `hdu_total = certificadas + cerradas_excepcion + en_curso +
+//    sin_iniciar` y del catálogo de `semaforo`; único (fecha, id_celula, id_sprint, ambito); REVOKE DELETE.
+//  - ejecucion_snapshot: CHECK de catálogo (`origen`, `resultado`, `motivo`), de `filas_escritas = filas_nuevas +
+//    filas_actualizadas` y de `fin` según `resultado`; índice único parcial `ejecucion_en_curso_key`
+//    (resultado) WHERE resultado = 'EN_CURSO' (una sola ejecución activa); REVOKE DELETE.
+//  - umbral_carga: CHECK valor entre 1 y 50.
+//  - evento_umbral_carga: solo inserción, REVOKE UPDATE, DELETE.
+
+generator client {
+  provider = "prisma-client-js"
+  output   = "../generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+/// Foto diaria por fecha × célula × sprint × ámbito (D162). `ambito` es `TODOS` o `QE:<uuid>`. Guarda sumas y conteos,
+/// no solo el promedio, para poder sumar células sin promediar promedios (D167).
+model SnapshotIndicadores {
+  id                    String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  fecha                 DateTime @db.Date
+  idCelula              String   @map("id_celula") @db.Uuid
+  celulaNombre          String   @map("celula_nombre") @db.VarChar(150)
+  idSprint              String   @map("id_sprint") @db.Uuid
+  sprintNombre          String   @map("sprint_nombre") @db.VarChar(150)
+  sprintInicio          DateTime @map("sprint_inicio") @db.Date
+  sprintFin             DateTime @map("sprint_fin") @db.Date
+  ambito                String   @db.VarChar(40)
+  hduTotal              Int      @map("hdu_total")
+  certificadas          Int
+  cerradasExcepcion     Int      @map("cerradas_excepcion")
+  enCurso               Int      @map("en_curso")
+  sinIniciar            Int      @map("sin_iniciar")
+  bloqueadas            Int
+  sumaAvance            Int      @map("suma_avance")
+  cumplimientoPromedio  Decimal? @map("cumplimiento_promedio") @db.Decimal(5, 1)
+  hduRiesgoAlto         Int      @map("hdu_riesgo_alto")
+  hduRiesgoMedio        Int      @map("hdu_riesgo_medio")
+  impedimentosAbiertos  Int      @map("impedimentos_abiertos")
+  impedimentosEscalados Int      @map("impedimentos_escalados")
+  semaforo              String   @db.VarChar(10)
+  idEjecucion           String   @map("id_ejecucion") @db.Uuid
+  generadoEn            DateTime @default(now()) @map("generado_en") @db.Timestamptz(6)
+
+  ejecucion EjecucionSnapshot @relation(fields: [idEjecucion], references: [id])
+
+  @@unique([fecha, idCelula, idSprint, ambito], map: "snapshot_clave_key")
+  @@index([ambito, idSprint, fecha], map: "snapshot_ambito_sprint_fecha_idx")
+  @@map("snapshot_indicadores")
+}
+
+/// Una corrida del snapshot, del cron o manual (D164, D165, D184). No guarda cifras ni datos personales.
+model EjecucionSnapshot {
+  id                String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  fecha             DateTime  @db.Date
+  origen            String    @db.VarChar(10)
+  actorId           String?   @map("actor_id") @db.Uuid
+  actorNombre       String    @map("actor_nombre") @db.VarChar(150)
+  inicio            DateTime  @default(now()) @db.Timestamptz(6)
+  fin               DateTime? @db.Timestamptz(6)
+  resultado         String    @db.VarChar(10)
+  filasEscritas     Int       @default(0) @map("filas_escritas")
+  filasNuevas       Int       @default(0) @map("filas_nuevas")
+  filasActualizadas Int       @default(0) @map("filas_actualizadas")
+  motivo            String?   @db.VarChar(60)
+
+  snapshots SnapshotIndicadores[]
+
+  @@index([inicio(sort: Desc)], map: "ejecucion_inicio_idx")
+  @@map("ejecucion_snapshot")
+}
+
+/// Umbral de sobrecarga de cada QE (D159). Sin fila vale el valor por defecto.
+model UmbralCarga {
+  idQe            String   @id @map("id_qe") @db.Uuid
+  valor           Int      @db.SmallInt
+  actualizadoPor  String   @map("actualizado_por") @db.Uuid
+  actualizadoEn   DateTime @default(now()) @map("actualizado_en") @db.Timestamptz(6)
+
+  @@map("umbral_carga")
+}
+
+/// Historial del umbral, solo inserción (D161). El primer cambio guarda 5 como valor anterior (D183).
+model EventoUmbralCarga {
+  id            String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  idQe          String   @map("id_qe") @db.Uuid
+  valorAnterior Int      @map("valor_anterior") @db.SmallInt
+  valorNuevo    Int      @map("valor_nuevo") @db.SmallInt
+  actorId       String   @map("actor_id") @db.Uuid
+  actorNombre   String   @map("actor_nombre") @db.VarChar(150)
+  fecha         DateTime @default(now()) @db.Timestamptz(6)
+
+  @@index([idQe, fecha(sort: Desc)], map: "evento_umbral_qe_fecha_idx")
+  @@map("evento_umbral_carga")
+}

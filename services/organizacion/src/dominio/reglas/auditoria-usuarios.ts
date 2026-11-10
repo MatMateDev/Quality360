@@ -62,8 +62,9 @@ export function sanitizarCambios(cambios: Record<string, unknown> | null): Recor
   return visible;
 }
 
-export type RecursoExportacion = 'HDU' | 'AUDITORIA_USUARIOS' | 'BITACORA' | 'CERTIFICADOS' | 'IMPEDIMENTOS' | 'GESTION_IMPEDIMENTOS';
+export type RecursoExportacion = 'HDU' | 'AUDITORIA_USUARIOS' | 'BITACORA' | 'CERTIFICADOS' | 'IMPEDIMENTOS' | 'GESTION_IMPEDIMENTOS' | 'INDICADORES';
 export const RECURSOS_EXPORTACION: readonly RecursoExportacion[] = [
+  'INDICADORES',
   'HDU',
   'AUDITORIA_USUARIOS',
   'BITACORA',

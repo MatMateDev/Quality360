@@ -4,6 +4,7 @@ import { AuthNestModule, ResolutorDeAccesoRemoto } from '@quality360/auth-nest';
 import { BandejaController, ChecklistController, VerificacionController } from './api/controladores/checklist.controller.js';
 import { AuditorController, InternoController } from './api/controladores/auditoria-global.controller.js';
 import { SaludController } from './api/controladores/salud.controller.js';
+import { SesionOIndicadoresGuard } from './api/guardias/sesion-o-indicadores.guard.js';
 import { AuditorAplicacion, SeguimientoAplicacion } from './aplicacion/auditoria-global.servicio.js';
 import { ChecklistAplicacion } from './aplicacion/checklist.servicio.js';
 import { CONFIGURACION, type ConfiguracionCertificaciones } from './configuracion.js';
@@ -38,6 +39,7 @@ export class AppModule {
       providers: [
         { provide: CONFIGURACION, useValue: configuracion },
         PrismaService,
+        SesionOIndicadoresGuard,
         OrganizacionCliente,
         ChecklistRepositorio,
         GeneradorCertificadoPdf,

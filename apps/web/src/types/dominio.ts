@@ -379,6 +379,36 @@ export type ErrorConsultaAbierta = components["schemas"]["ErrorConsultaAbierta"]
 export type ErrorConsulta = components["schemas"]["ErrorConsulta"];
 export type ErrorAsignacionesInvalidas = components["schemas"]["ErrorAsignacionesInvalidas"];
 
+// E6 · indicadores y dashboards, cierre con excepción (contracts/indicadores.v1.yaml vía el gateway)
+export type CierreExcepcionHdu = components["schemas"]["CierreExcepcionHdu"];
+export type OpcionesFiltroIndicadores = components["schemas"]["OpcionesFiltroIndicadores"];
+export type OpcionSprintIndicadores = components["schemas"]["OpcionSprintIndicadores"];
+export type IndicadoresCumplimiento = components["schemas"]["IndicadoresCumplimiento"];
+export type ConteoIndicador = components["schemas"]["ConteoIndicador"];
+export type SemaforoIndicadores = components["schemas"]["SemaforoIndicadores"];
+export type SemaforoCelula = components["schemas"]["SemaforoCelula"];
+export type ColorSemaforo = components["schemas"]["ColorSemaforo"];
+export type MotivoSemaforo = components["schemas"]["MotivoSemaforo"];
+export type DrilldownSemaforo = components["schemas"]["DrilldownSemaforo"];
+export type ItemDrilldownSemaforo = components["schemas"]["ItemDrilldownSemaforo"];
+export type CargaIndicadores = components["schemas"]["CargaIndicadores"];
+export type GrupoCarga = components["schemas"]["GrupoCarga"];
+export type FilaCargaAnalista = components["schemas"]["FilaCargaAnalista"];
+export type UmbralCarga = components["schemas"]["UmbralCarga"];
+export type ResultadoUmbralCarga = components["schemas"]["ResultadoUmbralCarga"];
+export type PaginaEventosUmbral = components["schemas"]["PaginaEventosUmbral"];
+export type EventoUmbralCarga = components["schemas"]["EventoUmbralCarga"];
+export type TendenciaIndicadores = components["schemas"]["TendenciaIndicadores"];
+export type SerieTendencia = components["schemas"]["SerieTendencia"];
+export type VistaIndicadores = components["schemas"]["VistaIndicadores"];
+export type FormatoExportacionIndicadores = components["schemas"]["FormatoExportacionIndicadores"];
+export type EjecucionSnapshot = components["schemas"]["EjecucionSnapshot"];
+export type PaginaEjecucionesSnapshot = components["schemas"]["PaginaEjecucionesSnapshot"];
+export type MotivoFalloSnapshot = components["schemas"]["MotivoFalloSnapshot"];
+
+/** Valor del filtro «Sin sprint» (D180). */
+export const SIN_SPRINT = "SIN_SPRINT";
+
 /** Una ruta pedida antes del login solo se reutiliza si pertenece al portal del propio rol (D41). */
 export function rutaPermitidaParaRol(ruta: string, rol: Rol): boolean {
   const duenio = rolDePortal(ruta);

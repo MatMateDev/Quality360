@@ -88,7 +88,7 @@ describe("Guard de rutas por rol [E1-F02, E1-F05, E1-F07, E7-F01 · D41]", () =>
   it("menú por rol: «Bandeja» primero y sin entradas de escritura para Líder y Auditor [E7-F01-T02]", async () => {
     await abrirComo(CUENTAS.LIDER_QA, "/lider");
     const nav = await screen.findByRole("navigation", { name: "Portal" });
-    expect(within(nav).getAllByRole("link").map((a) => a.textContent)).toEqual(["Bandeja", "Perfil"]);
+    expect(within(nav).getAllByRole("link").map((a) => a.textContent)).toEqual(["Bandeja", "Indicadores", "Perfil"]);
     cleanup();
 
     renderApp("/");
@@ -96,13 +96,13 @@ describe("Guard de rutas por rol [E1-F02, E1-F05, E1-F07, E7-F01 · D41]", () =>
     await userEvent.click(await screen.findByRole("button", { name: "Cerrar sesión" }));
     await iniciarSesionUi(CUENTAS.AUDITOR);
     const navAuditor = await screen.findByRole("navigation", { name: "Portal" });
-    expect(within(navAuditor).getAllByRole("link").map((a) => a.textContent)).toEqual(["Bandeja", "Perfil"]);
+    expect(within(navAuditor).getAllByRole("link").map((a) => a.textContent)).toEqual(["Bandeja", "Indicadores", "Perfil"]);
   });
 
   it("menús de los roles ya certificados cambian «Inicio» por «Bandeja» [E1-F02#3, E1-F05#2]", async () => {
     await abrirComo(CUENTAS.QE, "/qe");
     const nav = await screen.findByRole("navigation", { name: "Portal" });
-    expect(within(nav).getAllByRole("link").map((a) => a.textContent)).toEqual(["Bandeja", "Equipo", "Historias supervisadas", "Impedimentos", "Integraciones", "Perfil"]);
+    expect(within(nav).getAllByRole("link").map((a) => a.textContent)).toEqual(["Bandeja", "Equipo", "Historias supervisadas", "Impedimentos", "Indicadores", "Integraciones", "Perfil"]);
     cleanup();
     renderApp("/");
   });

@@ -28,6 +28,20 @@ export interface OpcionesReenvio {
   tiempoLimiteMs?: number;
   /** Ruta pública (`@Publico()`): se reenvía sin `Authorization`. */
   publico?: boolean;
+  /**
+   * Ruta pública del cron (D178): `Authorization` se reenvía tal cual llegó,
+   * sin verificarla; la valida el servicio contra `CRON_SECRET`. Implica
+   * `publico`. Si no llegó, no viaja ninguna.
+   */
+  autorizacionCruda?: boolean;
+}
+
+/** Exportaciones que se transmiten en bytes, sin pasar por JSON (D48, D186). */
+const TIPOS_BINARIOS = ['text/csv', 'application/pdf'];
+
+function autorizacionRecibida(solicitud: SolicitudGateway): string | undefined {
+  const valor = solicitud.headers.authorization;
+  return typeof valor === 'string' && valor.length > 0 ? valor : undefined;
 }
 
 @Injectable()
@@ -59,6 +73,16 @@ export class Reenviador {
     return this.configuracion.tiempoLimiteIntegracionesMs;
   }
 
+  /** Base de Indicadores (E6, D179); `null` si no está configurada. */
+  get indicadoresUrl(): string | null {
+    return this.configuracion.indicadoresUrl;
+  }
+
+  /** Tiempo límite al reenviar a Indicadores (25 s, D179). */
+  get tiempoLimiteIndicadoresMs(): number {
+    return this.configuracion.tiempoLimiteIndicadoresMs;
+  }
+
   /** Identidad ya verificada por `IdentidadGuard`. */
   identidadDe(solicitud: SolicitudGateway): Identidad {
     const identidad = solicitud.identidad;
@@ -84,7 +108,8 @@ export class Reenviador {
       base,
       ruta: opciones.ruta,
       metodo: solicitud.method,
-      token: opciones.publico === true ? null : this.identidadDe(solicitud).token,
+      token: opciones.publico === true || opciones.autorizacionCruda === true ? null : this.identidadDe(solicitud).token,
+      autorizacionCruda: opciones.autorizacionCruda === true ? autorizacionRecibida(solicitud) : undefined,
       traceId: obtenerTraceId(solicitud),
       consulta: opciones.conConsulta === false ? undefined : this.consultaDe(solicitud),
       cuerpo,
@@ -103,9 +128,11 @@ export class Reenviador {
 
   /** Copia estado, `Location` y cuerpo JSON. Nada más viaja de vuelta. */
   escribir(respuesta: Response, servicio: RespuestaServicio): void {
-    // Exportaciones: se transmite el CSV tal cual, con sus cabeceras, sin convertirlo a JSON (D48).
-    if (servicio.estado === 200 && servicio.tipoContenido !== null && servicio.tipoContenido.startsWith('text/csv')) {
-      respuesta.setHeader('content-type', servicio.tipoContenido);
+    // Exportaciones: se transmite el CSV (D48) o el PDF (D186) tal cual, con sus cabeceras,
+    // sin convertirlo a JSON.
+    const tipo = servicio.tipoContenido;
+    if (servicio.estado === 200 && tipo !== null && TIPOS_BINARIOS.some((binario) => tipo.startsWith(binario))) {
+      respuesta.setHeader('content-type', tipo);
       if (servicio.disposicion !== null) respuesta.setHeader('content-disposition', servicio.disposicion);
       if (servicio.filas !== null) respuesta.setHeader('x-q360-filas', servicio.filas);
       respuesta.status(200).send(servicio.bytes);

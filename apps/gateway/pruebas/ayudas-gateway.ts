@@ -109,6 +109,9 @@ export interface OpcionesAppPrueba {
   /** `null` simula `INTEGRACIONES_URL` ausente o inválida (D127). Por defecto, Organización. */
   integracionesUrl?: string | null;
   tiempoLimiteIntegracionesMs?: number;
+  /** `null` simula `INDICADORES_URL` ausente o inválida (D179). Por defecto, Organización. */
+  indicadoresUrl?: string | null;
+  tiempoLimiteIndicadoresMs?: number;
   tiempoLimiteImpedimentosMs?: number;
   fuentes?: Partial<FuentesComposicion>;
   tiempoLimiteFuenteMs?: number;
@@ -130,6 +133,8 @@ export function configuracionPrueba(opciones: OpcionesAppPrueba): ConfiguracionG
     tiempoLimiteImpedimentosMs: opciones.tiempoLimiteImpedimentosMs ?? opciones.tiempoLimiteServicioMs ?? 5000,
     integracionesUrl: opciones.integracionesUrl === undefined ? organizacionUrl : opciones.integracionesUrl,
     tiempoLimiteIntegracionesMs: opciones.tiempoLimiteIntegracionesMs ?? 12_000,
+    indicadoresUrl: opciones.indicadoresUrl === undefined ? organizacionUrl : opciones.indicadoresUrl,
+    tiempoLimiteIndicadoresMs: opciones.tiempoLimiteIndicadoresMs ?? 25_000,
     avisos: [],
     fuentes: {
       usuarios: organizacionUrl,

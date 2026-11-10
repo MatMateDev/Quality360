@@ -9,7 +9,7 @@ import { CABECERA_TRAZA } from '@quality360/auth-nest';
 
 import { CONFIGURACION, type ConfiguracionOrganizacion } from '../../configuracion.js';
 import type { DatosChecklist } from '../../aplicacion/errores-extendidos.js';
-import type { ProveedorChecklist, ResultadoConsultaChecklist } from '../../aplicacion/puertos/proveedor-checklist.js';
+import type { ProveedorChecklist, ResultadoConsultaChecklist, ResultadoPendientesChecklist } from '../../aplicacion/puertos/proveedor-checklist.js';
 
 @Injectable()
 export class ProveedorChecklistHttp implements ProveedorChecklist {
@@ -35,6 +35,31 @@ export class ProveedorChecklistHttp implements ProveedorChecklist {
     } catch (error) {
       const detalle = error instanceof Error ? error.message : 'desconocido';
       this.registro.warn(`Certificaciones no respondió el checklist · hdu=${hduId} · traceId=${traceId} · ${detalle}`);
+      return { disponible: false };
+    }
+  }
+
+  async pendientes(hduId: string, token: string, traceId: string): Promise<ResultadoPendientesChecklist> {
+    const url = `${this.configuracion.certificacionesUrl}/v1/hdu/${hduId}/entregables`;
+    try {
+      const respuesta = await fetch(url, {
+        method: 'GET',
+        headers: { authorization: `Bearer ${token}`, accept: 'application/json', [CABECERA_TRAZA]: traceId },
+        redirect: 'error',
+        signal: AbortSignal.timeout(this.configuracion.certificacionesTimeoutMs),
+      });
+      if (!respuesta.ok) {
+        this.registro.warn(`Entregables no disponibles (${respuesta.status}) · hdu=${hduId} · traceId=${traceId}`);
+        return { disponible: false };
+      }
+      const cuerpo = (await respuesta.json()) as { entregables?: Array<{ clave: string; estado: string; orden?: number }> };
+      if (!Array.isArray(cuerpo.entregables)) return { disponible: false };
+      const ordenados = [...cuerpo.entregables].sort((a, b) => (a.orden ?? 0) - (b.orden ?? 0));
+      const pendientes = ordenados.filter((entregable) => entregable.estado !== 'APROBADO').map((entregable) => entregable.clave);
+      return { disponible: true, aprobados: ordenados.length - pendientes.length, pendientes };
+    } catch (error) {
+      const detalle = error instanceof Error ? error.message : 'desconocido';
+      this.registro.warn(`Certificaciones no respondió los entregables · hdu=${hduId} · traceId=${traceId} · ${detalle}`);
       return { disponible: false };
     }
   }

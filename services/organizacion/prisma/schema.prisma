@@ -74,6 +74,7 @@ enum AccionAuditoria {
   EXPORTAR
   REASIGNAR_QE_RESPONSABLE
   ACTUALIZAR_HDU
+  CERRAR_HDU_PARCIAL
 }
 
 /// Rol (modelo de datos: Rol). Catálogo cerrado que carga la migración
@@ -237,6 +238,7 @@ model Hdu {
   historialEstado      HduHistorialEstado[]
   historialAsignacion  HduHistorialAsignacion[]
   historialResponsable HduHistorialResponsable[]
+  cierre               CierreHdu?
 
   @@index([celulaId])
   @@index([qeResponsableId])
@@ -341,4 +343,22 @@ model Auditoria {
   @@index([actorId, fecha], map: "auditoria_actor_fecha_idx")
   @@index([accion, fecha], map: "auditoria_accion_fecha_idx")
   @@map("auditoria")
+}
+
+/// Constancia del cierre con excepción (E6, D175). Solo inserción (`REVOKE UPDATE, DELETE`),
+/// una por HDU como máximo. Migración 20261104000000_e6_cierre_excepcion.
+model CierreHdu {
+  id            String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  hduId         String   @unique @map("id_historia") @db.Uuid
+  aprobados     Int      @db.SmallInt
+  pendientes    String[]
+  justificacion String   @db.VarChar(500)
+  actorId       String   @map("actor_id")
+  actorNombre   String   @map("actor_nombre")
+  actorRol      String   @map("actor_rol") @db.VarChar(30)
+  fecha         DateTime @default(now()) @db.Timestamptz(6)
+
+  hdu Hdu @relation(fields: [hduId], references: [id])
+
+  @@map("cierre_hdu")
 }

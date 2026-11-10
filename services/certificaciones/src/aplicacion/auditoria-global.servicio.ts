@@ -63,6 +63,14 @@ export class SeguimientoAplicacion {
     return { items: await this.repositorio.seguimientoLote(hduIds) };
   }
 
+  /**
+   * Lectura global con la credencial de Indicadores (E6, D177): sin ámbito que consultar. Un id que Certificaciones no
+   * conoce responde 0 aprobados y sin certificado, como el de una HDU sin ciclo.
+   */
+  async estadosGlobal(hduIds: readonly string[]): Promise<{ items: SeguimientoHdu[] }> {
+    return { items: await this.repositorio.seguimientoLote(hduIds) };
+  }
+
   /** Certificados emitidos y eventos de los últimos 7 días, sobre todo el sistema (solo Auditor). */
   resumenAuditoria(): Promise<{ certificados: number; eventosUltimos7Dias: number }> {
     return this.repositorio.resumenAuditoria(new Date());

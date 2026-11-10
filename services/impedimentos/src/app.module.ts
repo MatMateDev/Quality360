@@ -14,6 +14,7 @@ import { InternoController } from './api/controladores/interno.controller.js';
 import { RiesgoController } from './api/controladores/riesgo.controller.js';
 import { SaludController } from './api/controladores/salud.controller.js';
 import { CargaSemillaGuard } from './api/guardias/carga-semilla.guard.js';
+import { SesionOIndicadoresGuard } from './api/guardias/sesion-o-indicadores.guard.js';
 import { Autorizador } from './aplicacion/autorizador.js';
 import { CargaSemillaAplicacion } from './aplicacion/carga-semilla.servicio.js';
 import { EvaluadorRiesgo } from './aplicacion/evaluador-riesgo.js';
@@ -54,6 +55,7 @@ export class AppModule {
         { provide: CONFIGURACION, useValue: configuracion },
         PrismaService,
         CargaSemillaGuard,
+        SesionOIndicadoresGuard,
         { provide: ProveedorAcceso, useClass: OrganizacionCliente },
         { provide: ProveedorSeguimiento, useClass: CertificacionesCliente },
         { provide: ImpedimentoRepositorio, useClass: ImpedimentoPrismaRepositorio },

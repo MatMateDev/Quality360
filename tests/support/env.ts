@@ -35,6 +35,7 @@ const envOrganizacion = leerDotEnv(path.join(RAIZ_REPO, "services", "organizacio
 const envCertificaciones = leerDotEnv(path.join(RAIZ_REPO, "services", "certificaciones", ".env"));
 const envImpedimentos = leerDotEnv(path.join(RAIZ_REPO, "services", "impedimentos", ".env"));
 const envIntegraciones = leerDotEnv(path.join(RAIZ_REPO, "services", "integraciones", ".env"));
+const envIndicadores = leerDotEnv(path.join(RAIZ_REPO, "services", "indicadores", ".env"));
 
 function requerido(valor: string | undefined, descripcion: string): string {
   if (!valor) {
@@ -94,4 +95,5 @@ export const env = {
   databaseUrlCertificaciones: process.env.DATABASE_URL_CERTIFICACIONES ?? envCertificaciones.DATABASE_URL ?? "",
   databaseUrlIntegraciones: process.env.DATABASE_URL_INTEGRACIONES ?? envIntegraciones.DATABASE_URL ?? "",
   databaseUrlImpedimentos: process.env.DATABASE_URL_IMPEDIMENTOS ?? envImpedimentos.DATABASE_URL ?? "",
+  databaseUrlIndicadores: process.env.DATABASE_URL_INDICADORES ?? envIndicadores.DATABASE_URL ?? "",
 };

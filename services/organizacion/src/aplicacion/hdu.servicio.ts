@@ -4,9 +4,10 @@
  * D11) e historial.
  */
 import { Inject, Injectable } from '@nestjs/common';
-import { ExcepcionQ360, MENSAJES, accesoDenegado, noEncontrado } from '@quality360/auth-nest';
+import { ExcepcionQ360, MENSAJES, accesoDenegado, errorValidacion, noEncontrado } from '@quality360/auth-nest';
 
 import { ConflictoUnicidad } from '../dominio/errores/conflicto-unicidad.js';
+import { EstadoHduCambiado } from '../dominio/errores/estado-hdu-cambiado.js';
 import { normalizarCodigoHdu } from '../dominio/reglas/alta-hdu.js';
 import { celulaPermitidaParaLider, evaluarAccesoHdu, filtroAmbitoHdu } from '../dominio/reglas/ambito.js';
 import { analistaEstaEnEquipo, esAnalistaAsignable } from '../dominio/reglas/asignacion-hdu.js';
@@ -25,6 +26,7 @@ import type {
   Actor,
   AmbitoAcceso,
   Celula,
+  CierreExcepcion,
   EstadoHdu,
   EventoHistorialHdu,
   Hdu,
@@ -58,12 +60,26 @@ export interface HduResumenRespuesta {
   readonly qeResponsable: UsuarioResumen;
   readonly analista: UsuarioResumen | null;
   readonly creadoEn: Date;
+  /** E6 (D175, D189): se cerró con excepción. */
+  readonly cierreParcial: boolean;
+}
+
+/** Constancia del cierre con excepción (comun.v1.yaml#CierreExcepcionHdu). */
+export interface CierreExcepcionRespuesta {
+  readonly aprobados: number;
+  readonly pendientes: string[];
+  readonly justificacion: string;
+  readonly actor: Actor;
+  readonly actorRol: Rol;
+  readonly fecha: Date;
 }
 
 export interface HduDetalleRespuesta extends HduResumenRespuesta {
   readonly creadoPor: Actor;
   readonly transicionesPermitidas: EstadoHdu[];
-  readonly permisos: { cambiarEstado: boolean; asignarAnalista: boolean };
+  readonly permisos: { cambiarEstado: boolean; asignarAnalista: boolean; cerrarConExcepcion?: boolean };
+  /** E6 (D174, D175): la constancia del cierre con excepción, o `null`. */
+  readonly cierre: CierreExcepcionRespuesta | null;
   /** E5 (D108, D124): aditivos y anulables. Solo el detalle los trae; listados y bandejas no cambian. */
   readonly descripcion: string | null;
   readonly origen: OrigenHdu;
@@ -76,6 +92,39 @@ export interface ContextoActor {
   readonly rol: Rol | null;
   readonly actorId: string | null;
   readonly ambito: AmbitoAcceso;
+}
+
+const JUSTIFICACION_MIN = 20;
+const JUSTIFICACION_MAX = 500;
+
+/**
+ * D173, D189: en blanco → 422 `JUSTIFICACION_REQUERIDA`; de 1 a 19 o más de 500 caracteres, después de quitar los
+ * espacios del inicio y del final → 400 `VALIDACION` con `campo: justificacion`.
+ */
+function validarJustificacion(cruda: string): void {
+  const texto = cruda.trim();
+  if (texto.length === 0) {
+    throw new ExcepcionQ360(422, 'JUSTIFICACION_REQUERIDA', {
+      mensaje: MENSAJES.JUSTIFICACION_REQUERIDA,
+      detalles: [{ campo: 'justificacion', codigo: 'REQUERIDO', mensaje: MENSAJES.JUSTIFICACION_REQUERIDA }],
+    });
+  }
+  if (texto.length < JUSTIFICACION_MIN || texto.length > JUSTIFICACION_MAX) {
+    throw errorValidacion([
+      { campo: 'justificacion', codigo: 'LONGITUD_INVALIDA', mensaje: `La justificación debe tener entre ${JUSTIFICACION_MIN} y ${JUSTIFICACION_MAX} caracteres.` },
+    ]);
+  }
+}
+
+function aCierreRespuesta(cierre: CierreExcepcion): CierreExcepcionRespuesta {
+  return {
+    aprobados: cierre.aprobados,
+    pendientes: [...cierre.pendientes],
+    justificacion: cierre.justificacion,
+    actor: cierre.actor,
+    actorRol: cierre.actorRol,
+    fecha: cierre.fecha,
+  };
 }
 
 function catalogoInvalido(): ExcepcionQ360 {
@@ -244,6 +293,7 @@ export class HduAplicacion {
     contexto: ContextoActor,
     actor: Actor,
     solicitud: { token: string; traceId: string },
+    justificacionCruda?: string | null,
   ) {
     const hdu = await this.buscarParaEscritura(id, contexto);
 
@@ -259,19 +309,32 @@ export class HduAplicacion {
     const validacion = validarTransicion(hdu.estado, estadoSolicitado);
     if (!validacion.valida) throw new ErrorTransicionInvalidaHdu(hdu.estado, estadoSolicitado, validacion.transicionesPermitidas);
 
+    let cierreConExcepcion = false;
     if (estadoSolicitado === 'CERRADA') {
       const consulta = await this.checklist.consultar(id, solicitud.token, solicitud.traceId);
       const bloque: BloqueChecklist = consulta.disponible
         ? { fuente: 'certificaciones.checklist', estado: 'ok', datos: consulta.datos }
         : { fuente: 'certificaciones.checklist', estado: 'indisponible' };
       if (!consulta.disponible) throw new ErrorCierreRechazadoHdu('CHECKLIST_NO_DISPONIBLE', bloque);
-      if (!consulta.datos.completo) throw new ErrorCierreRechazadoHdu('CHECKLIST_INCOMPLETO', bloque);
 
-      // Orden de validación: transición (D10) → checklist (D11) → impedimentos (D60, D77). La HDU no cambia.
+      // Es el QE responsable (D18) quien puede cerrar con excepción; el supervisor, el analista y el Administrador no.
+      const esQeResponsable = contexto.rol === 'QE' && contexto.actorId === hdu.qeResponsableId;
+      if (!consulta.datos.completo) {
+        // Orden de validación (D189): transición (D10) → checklist (D11) → justificación → impedimentos (D60, D77).
+        if (justificacionCruda === undefined || justificacionCruda === null) {
+          throw new ErrorCierreRechazadoHdu('CHECKLIST_INCOMPLETO', bloque, esQeResponsable);
+        }
+        if (!esQeResponsable) throw accesoDenegado('solo el QE responsable cierra con excepción');
+        validarJustificacion(justificacionCruda);
+        cierreConExcepcion = true;
+      }
+
       const abiertos = await this.impedimentos.abiertos(id, solicitud.token, solicitud.traceId);
       if (!abiertos.disponible) throw new ErrorImpedimentosNoVerificables();
       if (abiertos.total > 0) throw new ErrorHduBloqueada(abiertos.total, abiertos.items.slice(0, 20));
     }
+
+    if (cierreConExcepcion) return this.cerrarConExcepcion(hdu, justificacionCruda as string, contexto, actor, solicitud);
 
     const resultado = await this.hdus.cambiarEstado({ hduId: id, estadoNuevo: estadoSolicitado, actor });
     return {
@@ -281,7 +344,54 @@ export class HduAplicacion {
       fecha: resultado.fecha,
       actor,
       transicionesPermitidas: transicionesPermitidas(estadoSolicitado),
+      cierre: null,
     };
+  }
+
+  /** Cierre con excepción (E6, D173–D175, D189): las validaciones ya pasaron; aquí se escribe todo en una transacción. */
+  private async cerrarConExcepcion(hdu: Hdu, justificacionCruda: string, contexto: ContextoActor, actor: Actor, solicitud: { token: string; traceId: string }) {
+    const entregables = await this.checklist.pendientes(hdu.id, solicitud.token, solicitud.traceId);
+    if (!entregables.disponible) {
+      throw new ErrorCierreRechazadoHdu('CHECKLIST_NO_DISPONIBLE', { fuente: 'certificaciones.checklist', estado: 'indisponible' });
+    }
+    if (entregables.pendientes.length === 0) {
+      // Entre la consulta del resumen y esta se aprobó el último entregable: es un cierre normal.
+      const resultado = await this.hdus.cambiarEstado({ hduId: hdu.id, estadoNuevo: 'CERRADA', actor });
+      return {
+        hdu: (await this.enriquecerResumen([resultado.hdu]))[0],
+        estadoAnterior: resultado.estadoAnterior,
+        estadoNuevo: 'CERRADA' as const,
+        fecha: resultado.fecha,
+        actor,
+        transicionesPermitidas: transicionesPermitidas('CERRADA'),
+        cierre: null,
+      };
+    }
+    try {
+      const resultado = await this.hdus.cerrarConExcepcion({
+        hduId: hdu.id,
+        aprobados: entregables.aprobados,
+        pendientes: entregables.pendientes,
+        justificacion: justificacionCruda.trim(),
+        actor,
+        actorRol: contexto.rol as Rol,
+      });
+      return {
+        hdu: (await this.enriquecerResumen([resultado.hdu]))[0],
+        estadoAnterior: resultado.estadoAnterior,
+        estadoNuevo: 'CERRADA' as const,
+        fecha: resultado.fecha,
+        actor,
+        transicionesPermitidas: transicionesPermitidas('CERRADA'),
+        cierre: aCierreRespuesta(resultado.cierre),
+      };
+    } catch (error) {
+      // Otro cierre ganó la carrera: la HDU ya no está en PENDIENTE_CIERRE (E6-B05-T11).
+      if (error instanceof EstadoHduCambiado) {
+        throw new ErrorTransicionInvalidaHdu(error.estadoActual, 'CERRADA', transicionesPermitidas(error.estadoActual));
+      }
+      throw error;
+    }
   }
 
   /** Existencia + ámbito de lectura (D12): 404 solo para Administrador; 403 genérico para el resto. */
@@ -313,14 +423,21 @@ export class HduAplicacion {
     const [resumen] = await this.enriquecerResumen([hdu]);
     const rol = contexto.rol ?? 'ADMINISTRADOR';
     const actorId = contexto.actorId ?? '';
-    const permisos = contexto.esServicio
+    const soloLectura = contexto.esServicio || rol === 'LIDER_QA' || rol === 'AUDITOR';
+    const permisos: HduDetalleRespuesta['permisos'] = contexto.esServicio
       ? { cambiarEstado: false, asignarAnalista: false }
       : {
           cambiarEstado: puedeCambiarEstadoHdu(rol, actorId, contexto.ambito, hdu),
           asignarAnalista: puedeAsignarAnalistaHdu(rol, actorId, hdu),
+          // D189: solo el QE responsable con la HDU en PENDIENTE_CIERRE; el portal mira además el checklist.
+          // Para el Líder y el Auditor (solo lectura, D39) se omite, no se envía `false`: las pruebas certificadas de
+          // E7-B02 afirman el objeto exacto `{ cambiarEstado, asignarAnalista }` y la ausencia equivale a `false`.
+          ...(soloLectura ? {} : { cerrarConExcepcion: rol === 'QE' && hdu.qeResponsableId === actorId && hdu.estado === 'PENDIENTE_CIERRE' }),
         };
+    const constancia = hdu.cierreParcial ? ((await this.hdus.buscarCierres([hdu.id])).get(hdu.id) ?? null) : null;
     return {
       ...(resumen as HduResumenRespuesta),
+      cierre: constancia === null ? null : aCierreRespuesta(constancia),
       creadoPor: hdu.creadoPor,
       transicionesPermitidas: permisos.cambiarEstado ? transicionesPermitidas(hdu.estado) : [],
       permisos,
@@ -366,6 +483,7 @@ export class HduAplicacion {
       qeResponsable: resumenUsuario(hdu.qeResponsableId),
       analista: hdu.analistaId === null ? null : resumenUsuario(hdu.analistaId),
       creadoEn: hdu.creadoEn,
+      cierreParcial: hdu.cierreParcial,
     }));
   }
 }

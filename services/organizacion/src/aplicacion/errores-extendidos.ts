@@ -36,6 +36,8 @@ export class ErrorCierreRechazadoHdu extends Error {
   constructor(
     readonly codigo: 'CHECKLIST_INCOMPLETO' | 'CHECKLIST_NO_DISPONIBLE',
     readonly checklist: BloqueChecklist,
+    /** E6 (D173): solo con `CHECKLIST_INCOMPLETO`; `true` si quien pide es el QE responsable. */
+    readonly puedeCerrarConExcepcion?: boolean,
   ) {
     super(
       codigo === 'CHECKLIST_INCOMPLETO'

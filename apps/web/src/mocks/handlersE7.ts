@@ -14,6 +14,7 @@ import {
   seguimientoDe,
 } from "./dataE7";
 import { bloqueImpedimentosBandeja, bloqueoFila, hduBloqueadasIds, riesgoFila } from "./handlersE4";
+import { APROBADOS_SIMULADOS, ENTREGABLES, estadoE6 } from "./dataE6";
 import { ERROR_ACCESO_DENEGADO, ERROR_NO_ENCONTRADO, aCatalogoRef, aHduResumen, aUsuarioResumen, cuerpoError, leerNumero, paginar } from "./utils";
 
 const BASE = env.gatewayUrl;
@@ -651,10 +652,16 @@ export const handlersE7 = [
     if (!hdu) return HttpResponse.json(ERROR_NO_ENCONTRADO(), { status: 404 });
     if (!fuentes.certificaciones) return servicioNoDisponible();
     const s = seguimientoDe(hdu.id);
+    // E6: las HDU que simulan un checklist incompleto o que se cerraron con excepción traen sus 10 entregables.
+    const aprobadosE6 = estadoE6.cierres.get(hdu.id)?.aprobados ?? (hdu.simularChecklistIncompleto ? APROBADOS_SIMULADOS : null);
+    const aprobados = aprobadosE6 ?? s.aprobados;
     return HttpResponse.json({
       hduId: hdu.id,
-      resumen: { hduId: hdu.id, totalEntregables: 10, completados: s.aprobados, porcentajeCumplimiento: s.aprobados * 10, completo: s.aprobados === 10 },
-      entregables: [],
+      resumen: { hduId: hdu.id, totalEntregables: 10, completados: aprobados, porcentajeCumplimiento: aprobados * 10, completo: aprobados === 10 },
+      entregables:
+        aprobadosE6 === null
+          ? []
+          : ENTREGABLES.map((e, i) => ({ clave: e.clave, orden: i + 1, nombre: e.nombre, estado: i < aprobadosE6 ? "APROBADO" : "PENDIENTE", evidencia: null, completado: null, aprobado: null, observacion: null })),
       // Los roles de lectura (Líder, Auditor) nunca reciben permisos de escritura.
       permisos: { puedeMarcar: false, puedeAprobar: false, puedeGenerarCertificado: false },
       certificado: s.certificado

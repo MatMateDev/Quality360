@@ -163,6 +163,9 @@ components:
         | `HDU_YA_ASIGNADA` | 409 / 422 | Esta HDU ya fue asignada a <QE> / <Analista>. (D204; 409 al confirmar una fila, 422 al editar una fila `NUEVA` que ya existe; `ErrorHduYaAsignada`) |
         | `FILA_MODIFICADA` | 409 | Otra persona modificó esta HDU. Revisa los datos actuales y confirma de nuevo. (D202; `ErrorFilaModificada`, trae la fila actual) |
         | `FILA_EN_CURSO` | 409 | Otra persona está confirmando esta HDU ahora. Espera unos segundos y revisa. (D202; la toma de la fila dura como máximo 30 s) |
+        | `VALOR_FUERA_DE_RANGO` | 400 | El umbral debe estar entre 1 y 50. (E6, D159; `detalles[0].campo: valor`) |
+        | `EJECUCION_EN_CURSO` | 409 | Ya hay un snapshot en ejecución. (E6, D164) |
+        | `INDICADORES_NO_DISPONIBLES` | 503 | No se pudo generar el reporte: hay datos no disponibles. (E6, D168) |
         | `DEMASIADAS_SOLICITUDES` | 429 | Demasiadas solicitudes. Intenta más tarde. |
         | `ERROR_INTERNO` | 500 | Ocurrió un error inesperado. |
         | `SERVICIO_NO_DISPONIBLE` | 503 | El servicio no está disponible. Intenta nuevamente. |
@@ -227,6 +230,9 @@ components:
         - HDU_YA_ASIGNADA
         - FILA_MODIFICADA
         - FILA_EN_CURSO
+        - VALOR_FUERA_DE_RANGO
+        - EJECUCION_EN_CURSO
+        - INDICADORES_NO_DISPONIBLES
         - DEMASIADAS_SOLICITUDES
         - ERROR_INTERNO
         - SERVICIO_NO_DISPONIBLE
@@ -282,7 +288,12 @@ components:
               items:
                 $ref: '#/components/schemas/EstadoHdu'
     ErrorCierreRechazado:
-      description: 409 `CHECKLIST_INCOMPLETO` o `CHECKLIST_NO_DISPONIBLE` al solicitar `CERRADA` (E2-B02#3, D11).
+      description: |
+        409 `CHECKLIST_INCOMPLETO` o `CHECKLIST_NO_DISPONIBLE` al solicitar
+        `CERRADA` (E2-B02#3, D11). Desde E6 (D173, D189) el 409
+        `CHECKLIST_INCOMPLETO` trae además `puedeCerrarConExcepcion`.
+        `CHECKLIST_NO_DISPONIBLE` se responde igual con o sin `justificacion`:
+        sin saber cuántos entregables hay aprobados no se puede cerrar.
       allOf:
         - $ref: '#/components/schemas/Error'
         - type: object
@@ -290,6 +301,9 @@ components:
           properties:
             checklist:
               $ref: '#/components/schemas/BloqueChecklist'
+            puedeCerrarConExcepcion:
+              type: boolean
+              description: 'E6 (D173). Solo con `CHECKLIST_INCOMPLETO`: `true` si quien pide es el QE responsable de la HDU (podría reintentar con `justificacion`); `false` para cualquier otra relación. Aditivo.'
     ErrorHduBloqueada:
       description: |
         409 `HDU_BLOQUEADA` al pedir `CERRADA` con impedimentos `ABIERTO` o
@@ -1246,6 +1260,9 @@ components:
             - type: 'null'
         creadoEn:
           $ref: '#/components/schemas/FechaHora'
+        cierreParcial:
+          type: boolean
+          description: 'E6 (D175, D189). `true` si la HDU se cerró con excepción (existe su fila en `cierre_hdu`); `false` en cualquier otro caso. Aditivo: viene en `GET /v1/hdu`, en el detalle, en las bandejas y en toda respuesta que use `HduResumen`; Indicadores lo usa para clasificar (3.2 del backlog E6).'
     PermisosHdu:
       type: object
       description: Acciones que el usuario autenticado puede ejecutar sobre la HDU. Orienta la interfaz; el servicio vuelve a validar. Para Líder QA y Auditor todas son `false` (D32, D39).
@@ -1256,6 +1273,19 @@ components:
           type: boolean
         asignarAnalista:
           type: boolean
+        cerrarConExcepcion:
+          type: boolean
+          description: |
+            E6 (D173, D189). `true` solo si quien consulta es el **QE
+            responsable** y la HDU está en `PENDIENTE_CIERRE`. Organización no
+            conoce el checklist: el portal muestra `boton-cerrar-excepcion`
+            cuando este permiso es `true` **y** el bloque `checklist` trae
+            menos de 10 aprobados (o está `indisponible`, en cuyo caso el
+            botón informa que no se pudo verificar). El QE supervisor, el
+            analista y el Administrador reciben `false`. Al Líder y al Auditor
+            (solo lectura, D39) no se les envía: la ausencia equivale a
+            `false` y conserva el objeto `{ cambiarEstado, asignarAnalista }`
+            que certifica E7-B02. Aditivo.
     HduDetalleBase:
       description: Detalle de HDU según Organización, sin datos de otros servicios.
       allOf:
@@ -1287,6 +1317,42 @@ components:
               type: [string, 'null']
               maxLength: 300
               description: E5 (D124). Enlace a la issue en Jira; el portal puede mostrar «Abrir en Jira» con `rel="noopener noreferrer"`.
+            cierre:
+              description: 'E6 (D174, D175). Constancia del cierre con excepción, o `null` si la HDU no se cerró con excepción (incluido el cierre normal con 10 aprobados). Aditivo.'
+              oneOf:
+                - $ref: '#/components/schemas/CierreExcepcionHdu'
+                - type: 'null'
+    CierreExcepcionHdu:
+      type: object
+      description: |
+        E6 (D175). Registro inmutable de `organizacion.cierre_hdu`: una fila
+        por HDU como máximo. `aprobados` y `pendientes` son los del checklist
+        al momento de cerrar (el avance queda congelado, D174).
+      required: [aprobados, pendientes, justificacion, actor, actorRol, fecha]
+      additionalProperties: false
+      properties:
+        aprobados:
+          type: integer
+          minimum: 0
+          maximum: 9
+        pendientes:
+          type: array
+          description: Claves de los entregables no aprobados al cerrar, en el orden de D15. `aprobados + pendientes.length = 10`. El portal muestra el nombre con el checklist o con la lista fija de D15.
+          minItems: 1
+          maxItems: 10
+          items:
+            $ref: '#/components/schemas/ClaveEntregable'
+        justificacion:
+          type: string
+          minLength: 20
+          maxLength: 500
+          description: Texto plano, ya sin espacios al inicio ni al final.
+        actor:
+          $ref: '#/components/schemas/Actor'
+        actorRol:
+          $ref: '#/components/schemas/Rol'
+        fecha:
+          $ref: '#/components/schemas/FechaHora'
     PaginaHdu:
       type: object
       required: [items, total, pagina, tamanoPagina]
@@ -1429,6 +1495,17 @@ components:
       properties:
         estado:
           $ref: '#/components/schemas/EstadoHdu'
+        justificacion:
+          type: [string, 'null']
+          maxLength: 2000
+          description: |
+            E6 (D173, D189). Solo se evalúa al pedir `CERRADA` con el
+            checklist incompleto (cierre con excepción); en cualquier otro caso
+            se ignora y no se guarda (también con 10 aprobados). El tope de
+            2000 es solo de forma (400 si se supera); la regla de negocio se
+            aplica después de quitar los espacios del inicio y del final: en
+            blanco → 422 `JUSTIFICACION_REQUERIDA`; de 1 a 19 o más de 500
+            caracteres → 400 `VALIDACION` con `campo: justificacion`.
     ResultadoCambioEstado:
       type: object
       required: [hdu, estadoAnterior, estadoNuevo, fecha, actor, transicionesPermitidas]
@@ -1450,6 +1527,11 @@ components:
           description: Transiciones desde el nuevo estado.
           items:
             $ref: '#/components/schemas/EstadoHdu'
+        cierre:
+          description: 'E6 (D189). La constancia si la transición fue un cierre con excepción; `null` en toda otra transición, incluido el cierre normal. Aditivo.'
+          oneOf:
+            - $ref: '#/components/schemas/CierreExcepcionHdu'
+            - type: 'null'
     EventoEstadoHdu:
       type: object
       required: [tipo, fecha, actor, estadoAnterior, estadoNuevo]
@@ -1510,17 +1592,46 @@ components:
           $ref: '#/components/schemas/UsuarioResumen'
         motivo:
           type: string
+    EventoCierreExcepcionHdu:
+      type: object
+      description: |
+        E6 (D175, D189). Cierre con excepción. Va **además** del evento
+        `ESTADO` (`PENDIENTE_CIERRE → CERRADA`) de la misma transición, con la
+        misma `fecha`, inmediatamente después de él. Etiqueta del portal:
+        «Cierre con excepción».
+      required: [tipo, fecha, actor, aprobados, pendientes, justificacion]
+      additionalProperties: false
+      properties:
+        tipo:
+          type: string
+          const: CIERRE_EXCEPCION
+        fecha:
+          $ref: '#/components/schemas/FechaHora'
+        actor:
+          $ref: '#/components/schemas/Actor'
+        aprobados:
+          type: integer
+          minimum: 0
+          maximum: 9
+        pendientes:
+          type: array
+          items:
+            $ref: '#/components/schemas/ClaveEntregable'
+        justificacion:
+          type: string
     EventoHistorialHdu:
       oneOf:
         - $ref: '#/components/schemas/EventoEstadoHdu'
         - $ref: '#/components/schemas/EventoAsignacionHdu'
         - $ref: '#/components/schemas/EventoResponsableHdu'
+        - $ref: '#/components/schemas/EventoCierreExcepcionHdu'
       discriminator:
         propertyName: tipo
         mapping:
           ESTADO: '#/components/schemas/EventoEstadoHdu'
           ASIGNACION: '#/components/schemas/EventoAsignacionHdu'
           QE_RESPONSABLE: '#/components/schemas/EventoResponsableHdu'
+          CIERRE_EXCEPCION: '#/components/schemas/EventoCierreExcepcionHdu'
     HistorialHdu:
       type: object
       required: [hduId, items]
@@ -1723,8 +1834,16 @@ components:
         | `REASIGNAR_QE_RESPONSABLE` | Reasignación de QE responsable (D54) | no |
         | `ACTUALIZAR_HDU` | Actualización de HDU desde integración (E5, D100; antes y después de título, descripción y prioridad) | no |
 
+        | `CERRAR_HDU_PARCIAL` | Cierre con excepción (E6, D175; `despues` con aprobados, pendientes y justificación) | no |
+
         `CREAR_HDU` de una HDU importada guarda `origen` en `despues` (D100).
-      enum: [CREAR_USUARIO, ACTUALIZAR_USUARIO, ACTIVAR_USUARIO, DESACTIVAR_USUARIO, CAMBIAR_ROL, ASIGNAR_SUPERVISOR, CAMBIAR_SUPERVISOR, CREAR_HDU, CAMBIAR_ESTADO_HDU, ASIGNAR_ANALISTA, REASIGNAR_ANALISTA, ASIGNAR_CELULAS_LIDER, EXPORTAR, REASIGNAR_QE_RESPONSABLE, ACTUALIZAR_HDU]
+        Un cierre con excepción deja **dos** entradas en la misma transacción:
+        `CAMBIAR_ESTADO_HDU` (como todo cambio de estado, E2-B04) y
+        `CERRAR_HDU_PARCIAL` (D189). Esta última es de la entidad `HDU`: la
+        lee el Administrador en `GET /v1/auditoria?entidad=HDU&entidadId=…`,
+        no está en la auditoría de usuarios del Auditor, que ve el cierre en
+        el historial de la HDU (`CIERRE_EXCEPCION`).
+      enum: [CREAR_USUARIO, ACTUALIZAR_USUARIO, ACTIVAR_USUARIO, DESACTIVAR_USUARIO, CAMBIAR_ROL, ASIGNAR_SUPERVISOR, CAMBIAR_SUPERVISOR, CREAR_HDU, CAMBIAR_ESTADO_HDU, ASIGNAR_ANALISTA, REASIGNAR_ANALISTA, ASIGNAR_CELULAS_LIDER, EXPORTAR, REASIGNAR_QE_RESPONSABLE, ACTUALIZAR_HDU, CERRAR_HDU_PARCIAL]
     OperacionAuditoriaUsuarios:
       type: string
       description: Subconjunto de `AccionAuditoria` que forma la auditoría de usuarios (entidades `USUARIO`, `SUPERVISION` y `EXPORTACION`). Es el filtro `operacion` del Auditor (D45).
@@ -2540,7 +2659,8 @@ components:
           maximum: 100
     RecursoExportacion:
       type: string
-      enum: [HDU, AUDITORIA_USUARIOS, BITACORA, CERTIFICADOS, IMPEDIMENTOS, GESTION_IMPEDIMENTOS]
+      description: '`INDICADORES` (E6, D168, D186): exportación del dashboard; `filtros` lleva `vista`, `formato` y los filtros aplicados.'
+      enum: [HDU, AUDITORIA_USUARIOS, BITACORA, CERTIFICADOS, IMPEDIMENTOS, GESTION_IMPEDIMENTOS, INDICADORES]
 
     # ------------------------------------------- E7 · ámbitos internos (D47)
     AmbitoLecturaHdu:
@@ -5807,6 +5927,794 @@ components:
           description: Una por fila pedida, en el mismo orden.
           items:
             $ref: '#/components/schemas/ResultadoFilaUpsert'
+
+    # ------------------------------------- E6 · ámbito interno (D176, D177)
+    PersonaActiva:
+      type: object
+      required: [id, nombre, activo]
+      additionalProperties: false
+      properties:
+        id:
+          $ref: '#/components/schemas/Uuid'
+        nombre:
+          type: string
+        activo:
+          type: boolean
+    SprintIndicadores:
+      type: object
+      description: Sprint vigente de la HDU (`historia_sprint` sin `fecha_retiro`) con sus fechas.
+      required: [id, nombre, inicio, fin]
+      additionalProperties: false
+      properties:
+        id:
+          $ref: '#/components/schemas/Uuid'
+        nombre:
+          type: string
+        inicio:
+          $ref: '#/components/schemas/Fecha'
+        fin:
+          $ref: '#/components/schemas/Fecha'
+    HduIndicadores:
+      type: object
+      description: Datos de Organización que Indicadores necesita de cada HDU (sección 3.1 del backlog E6). Célula y sprint son los vigentes (D171).
+      required: [id, codigo, titulo, estado, cierreParcial, celula, sprint, qeResponsable, analista]
+      additionalProperties: false
+      properties:
+        id:
+          $ref: '#/components/schemas/Uuid'
+        codigo:
+          type: string
+        titulo:
+          type: string
+        estado:
+          $ref: '#/components/schemas/EstadoHdu'
+        cierreParcial:
+          type: boolean
+        celula:
+          $ref: '#/components/schemas/CatalogoRef'
+        sprint:
+          description: '`null` si la HDU no tiene sprint vigente (opción «Sin sprint» del filtro, D180).'
+          oneOf:
+            - $ref: '#/components/schemas/SprintIndicadores'
+            - type: 'null'
+        qeResponsable:
+          $ref: '#/components/schemas/Persona'
+        analista:
+          oneOf:
+            - $ref: '#/components/schemas/PersonaActiva'
+            - type: 'null'
+    AnalistaIndicadores:
+      type: object
+      description: Analista que aparece en la vista de carga (D176), con su QE supervisor vigente (a lo sumo uno, E1-F10, D190).
+      required: [id, nombre, activo, supervisor]
+      additionalProperties: false
+      properties:
+        id:
+          $ref: '#/components/schemas/Uuid'
+        nombre:
+          type: string
+        activo:
+          type: boolean
+        supervisor:
+          oneOf:
+            - $ref: '#/components/schemas/Persona'
+            - type: 'null'
+    AmbitoIndicadores:
+      type: object
+      description: |
+        Respuesta de `GET /v1/interno/indicadores/ambito` (D176). Organización
+        es dueña del ámbito (D153): Indicadores no lo recalcula.
+        - `hdu`: QE → donde es responsable o cuyo analista supervisa hoy;
+          Líder QA → de sus células vigentes; Auditor → todas. Cualquier
+          estado, incluida `CERRADA`.
+        - `celulas`: Líder QA → sus células vigentes, tengan o no HDU (así
+          aparece la tarjeta gris «Sin HDU»); QE y Auditor → las células de
+          las HDU de `hdu`. Por nombre.
+        - `analistas`: QE → los que supervisa hoy (activos) más los
+          analistas de las HDU de `hdu`; Líder QA → los analistas de las HDU
+          de `hdu`; Auditor → todos los Analistas QA activos más los
+          inactivos con alguna HDU no cerrada. Un inactivo sin HDU no
+          cerradas en `hdu` no aparece. Por nombre.
+        - `qes`: los QE que quien consulta puede nombrar en el umbral y su
+          historial (D183). QE → él mismo; Líder QA → los responsables de
+          las HDU de `hdu` y los supervisores de `analistas`; Auditor →
+          además, todos los QE activos, tengan o no HDU o equipo (D161).
+          Por nombre.
+      required: [usuario, todas, celulas, hdu, analistas, qes]
+      additionalProperties: false
+      properties:
+        usuario:
+          $ref: '#/components/schemas/PersonaRol'
+        todas:
+          type: boolean
+          description: '`true` solo para el Auditor.'
+        celulas:
+          type: array
+          items:
+            $ref: '#/components/schemas/CatalogoRef'
+        hdu:
+          type: array
+          items:
+            $ref: '#/components/schemas/HduIndicadores'
+        analistas:
+          type: array
+          items:
+            $ref: '#/components/schemas/AnalistaIndicadores'
+        qes:
+          type: array
+          items:
+            $ref: '#/components/schemas/Persona'
+    AmbitoQeSnapshot:
+      type: object
+      required: [qe, hduIds]
+      additionalProperties: false
+      properties:
+        qe:
+          $ref: '#/components/schemas/Persona'
+        hduIds:
+          type: array
+          description: Ámbito D153 del QE en este momento.
+          items:
+            $ref: '#/components/schemas/Uuid'
+    DatosSnapshotOrganizacion:
+      type: object
+      description: |
+        Respuesta de `GET /v1/interno/indicadores/snapshot` (D177): todas las
+        HDU (cualquier estado) y el ámbito de cada QE activo con al menos una
+        HDU. `total` cuenta todas las HDU aunque `hdu` se haya recortado a
+        `limite`; si `total` supera el tope, Indicadores registra la
+        ejecución `FALLIDA` con `EXCEDE_TOPE` (D164).
+      required: [total, hdu, ambitosQe]
+      additionalProperties: false
+      properties:
+        total:
+          type: integer
+          minimum: 0
+        hdu:
+          type: array
+          items:
+            $ref: '#/components/schemas/HduIndicadores'
+        ambitosQe:
+          type: array
+          items:
+            $ref: '#/components/schemas/AmbitoQeSnapshot'
+
+    # ------------------------------------- E6 · indicadores (D153–D172, D176–D195)
+    MotivoSinDatos:
+      type: string
+      description: |
+        Por qué no hay cifras (E6-F01#3, E6-F04#3). Textos del portal:
+        `AMBITO_VACIO` «Aún no tienes HDU en tu ámbito»;
+        `FILTRO_SIN_COINCIDENCIAS` «No hay HDU con esos filtros» (tendencia:
+        «No hay historial para esos filtros»); `SIN_HISTORIAL` «Aún no hay
+        historial».
+      enum: [AMBITO_VACIO, FILTRO_SIN_COINCIDENCIAS, SIN_HISTORIAL]
+    FiltroSprintIndicadores:
+      description: 'UUID de un sprint, o el literal `SIN_SPRINT` para las HDU sin sprint vigente (D180). Otro valor → 400 `VALIDACION` (`campo: sprintId`).'
+      type: string
+      pattern: '^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}|SIN_SPRINT)$'
+      examples: ['5b0c2f0e-8f1e-4c47-9a57-3a0f5d1e2b11', SIN_SPRINT]
+    FiltrosIndicadores:
+      type: object
+      description: Filtros tal como se aplicaron (`null` = todos).
+      required: [celulaId, sprintId]
+      additionalProperties: false
+      properties:
+        celulaId:
+          oneOf:
+            - $ref: '#/components/schemas/Uuid'
+            - type: 'null'
+        sprintId:
+          oneOf:
+            - $ref: '#/components/schemas/FiltroSprintIndicadores'
+            - type: 'null'
+        desde:
+          description: Solo en tendencia.
+          oneOf:
+            - $ref: '#/components/schemas/Fecha'
+            - type: 'null'
+        hasta:
+          description: Solo en tendencia.
+          oneOf:
+            - $ref: '#/components/schemas/Fecha'
+            - type: 'null'
+    ConteoIndicador:
+      type: object
+      description: 'Una cifra con su estado (D169). `valor` es `null` si `estado: indisponible` o si la respuesta trae `sinDatos: true`; nunca 0 en esos casos.'
+      required: [estado, valor]
+      additionalProperties: false
+      properties:
+        estado:
+          $ref: '#/components/schemas/EstadoBloque'
+        valor:
+          type: [integer, 'null']
+          minimum: 0
+    PorcentajeIndicador:
+      type: object
+      description: 'Porcentaje con 1 decimal, mitad hacia arriba (D156). `valor: null` con `estado: ok` = no aplica (sin HDU: «—» o «Sin datos»); con `estado: indisponible` = «No disponible».'
+      required: [estado, valor]
+      additionalProperties: false
+      properties:
+        estado:
+          $ref: '#/components/schemas/EstadoBloque'
+        valor:
+          type: [number, 'null']
+          minimum: 0
+          maximum: 100
+          multipleOf: 0.1
+    IndicadoresCumplimiento:
+      type: object
+      description: |
+        `GET /v1/indicadores/cumplimiento` (E6-B01, secciones 3.2 y 3.3 del
+        backlog E6). Con todas las cifras `ok`: `certificadas +
+        cerradasConExcepcion + enCurso + sinIniciar = hduTotales`.
+        Dependencias (D169): `hduTotales` y `cerradasConExcepcion` solo de
+        Organización; `certificadas`, `enCurso`, `sinIniciar` y
+        `cumplimientoPromedio` de Certificaciones; `bloqueadas` de
+        Impedimentos.
+      required: [generadoEn, filtros, sinDatos, motivoSinDatos, hduTotales, certificadas, cerradasConExcepcion, enCurso, sinIniciar, bloqueadas, cumplimientoPromedio]
+      additionalProperties: false
+      properties:
+        generadoEn:
+          $ref: '#/components/schemas/FechaHora'
+          description: Momento del cálculo (brecha 14 del diseño; «Datos al …»).
+        filtros:
+          $ref: '#/components/schemas/FiltrosIndicadores'
+        sinDatos:
+          type: boolean
+        motivoSinDatos:
+          oneOf:
+            - $ref: '#/components/schemas/MotivoSinDatos'
+            - type: 'null'
+        hduTotales:
+          $ref: '#/components/schemas/ConteoIndicador'
+        certificadas:
+          $ref: '#/components/schemas/ConteoIndicador'
+        cerradasConExcepcion:
+          $ref: '#/components/schemas/ConteoIndicador'
+        enCurso:
+          $ref: '#/components/schemas/ConteoIndicador'
+        sinIniciar:
+          $ref: '#/components/schemas/ConteoIndicador'
+        bloqueadas:
+          $ref: '#/components/schemas/ConteoIndicador'
+        cumplimientoPromedio:
+          $ref: '#/components/schemas/PorcentajeIndicador'
+    OpcionSprintIndicadores:
+      type: object
+      required: [id, nombre, celulaId, inicio, fin, cerrado]
+      additionalProperties: false
+      properties:
+        id:
+          $ref: '#/components/schemas/Uuid'
+        nombre:
+          type: string
+        celulaId:
+          $ref: '#/components/schemas/Uuid'
+        inicio:
+          $ref: '#/components/schemas/Fecha'
+        fin:
+          $ref: '#/components/schemas/Fecha'
+        cerrado:
+          type: boolean
+          description: '`fin` anterior a hoy en `America/Santiago`; el portal agrega «(cerrado)».'
+    OpcionesFiltroIndicadores:
+      type: object
+      description: '`GET /v1/indicadores/filtros` (D180). Solo células y sprints de HDU del ámbito; `hduSinSprint > 0` habilita la opción «Sin sprint» (`sprintId=SIN_SPRINT`).'
+      required: [celulas, sprints, hduSinSprint]
+      additionalProperties: false
+      properties:
+        celulas:
+          type: array
+          items:
+            $ref: '#/components/schemas/CatalogoRef'
+        sprints:
+          type: array
+          description: Por `inicio` descendente.
+          items:
+            $ref: '#/components/schemas/OpcionSprintIndicadores'
+        hduSinSprint:
+          type: integer
+          minimum: 0
+    ColorSemaforo:
+      type: string
+      enum: [ROJO, AMARILLO, VERDE]
+    EstadoSemaforoCelula:
+      type: string
+      description: '`ok` = color concluyente; `indisponible` = una fuente caída impide asegurar el color (nunca VERDE, 3.4); `SIN_HDU` = la célula no tiene HDU en el ámbito (solo Líder QA con una célula asignada sin HDU).'
+      enum: [ok, indisponible, SIN_HDU]
+    SemaforoCelula:
+      type: object
+      description: |
+        Tarjeta de una célula (D157, 3.4). Se calcula con las HDU **no
+        cerradas** del ámbito. `color` es `null` con `SIN_HDU` y con
+        `indisponible`, salvo que haya un factor rojo conocido: entonces
+        `color: ROJO`, `estado: ok` y `calculoParcial: true`. `alMenos:
+        AMARILLO` acompaña a `indisponible` cuando ya hay un factor amarillo
+        confirmado. Los conteos y `riesgoMaximo` son `null` si no se pudieron
+        calcular.
+      required: [celula, estado, color, alMenos, calculoParcial, riesgoMaximo, impedimentosAbiertos, impedimentosEscalados, hduActivas]
+      additionalProperties: false
+      properties:
+        celula:
+          $ref: '#/components/schemas/CatalogoRef'
+        estado:
+          $ref: '#/components/schemas/EstadoSemaforoCelula'
+        color:
+          oneOf:
+            - $ref: '#/components/schemas/ColorSemaforo'
+            - type: 'null'
+        alMenos:
+          type: [string, 'null']
+          enum: [AMARILLO, null]
+        calculoParcial:
+          type: boolean
+        riesgoMaximo:
+          description: Mayor `nivelVigente` entre las HDU no cerradas.
+          oneOf:
+            - $ref: '#/components/schemas/NivelRiesgo'
+            - type: 'null'
+        impedimentosAbiertos:
+          type: [integer, 'null']
+          minimum: 0
+          description: Impedimentos `ABIERTO` (no cuenta los escalados).
+        impedimentosEscalados:
+          type: [integer, 'null']
+          minimum: 0
+        hduActivas:
+          type: integer
+          minimum: 0
+          description: HDU no cerradas de la célula en el ámbito (solo Organización; siempre se conoce).
+    FuentesIndicadores:
+      type: object
+      required: [certificaciones, impedimentos]
+      additionalProperties: false
+      properties:
+        certificaciones:
+          $ref: '#/components/schemas/EstadoBloque'
+        impedimentos:
+          $ref: '#/components/schemas/EstadoBloque'
+    SemaforoIndicadores:
+      type: object
+      description: '`GET /v1/indicadores/semaforo` (E6-B02#1). Orden: ROJO, AMARILLO, VERDE, luego las grises (`SIN_HDU` e `indisponible`); dentro de cada grupo, por nombre de célula.'
+      required: [generadoEn, filtros, sinDatos, motivoSinDatos, fuentes, celulas]
+      additionalProperties: false
+      properties:
+        generadoEn:
+          $ref: '#/components/schemas/FechaHora'
+        filtros:
+          $ref: '#/components/schemas/FiltrosIndicadores'
+        sinDatos:
+          type: boolean
+        motivoSinDatos:
+          oneOf:
+            - $ref: '#/components/schemas/MotivoSinDatos'
+            - type: 'null'
+        fuentes:
+          $ref: '#/components/schemas/FuentesIndicadores'
+        celulas:
+          type: array
+          items:
+            $ref: '#/components/schemas/SemaforoCelula'
+    MotivoSemaforo:
+      type: string
+      description: 'D158. Orden de gravedad: `RIESGO_ALTO`, `IMPEDIMENTO_ESCALADO`, `RIESGO_MEDIO`, `IMPEDIMENTO_ABIERTO`. Etiquetas: «Riesgo alto», «Impedimento escalado», «Riesgo medio», «Impedimento abierto».'
+      enum: [RIESGO_ALTO, IMPEDIMENTO_ESCALADO, RIESGO_MEDIO, IMPEDIMENTO_ABIERTO]
+    ItemDrilldownSemaforo:
+      type: object
+      description: HDU que genera el color de la célula (D158, D181).
+      required: [hdu, analista, riesgo, motivos, impedimentoPrincipal]
+      additionalProperties: false
+      properties:
+        hdu:
+          $ref: '#/components/schemas/HduReferencia'
+        analista:
+          oneOf:
+            - $ref: '#/components/schemas/Persona'
+            - type: 'null'
+        riesgo:
+          $ref: '#/components/schemas/RiesgoResumen'
+        motivos:
+          type: array
+          minItems: 1
+          maxItems: 2
+          description: A lo sumo un motivo de riesgo y uno de impedimento, el más grave de cada tipo, en orden de gravedad.
+          items:
+            $ref: '#/components/schemas/MotivoSemaforo'
+        impedimentoPrincipal:
+          description: El impedimento más grave de la HDU (`ESCALADO` antes que `ABIERTO`; a igual estado, el más antiguo), o `null` si el motivo es solo de riesgo.
+          oneOf:
+            - $ref: '#/components/schemas/ImpedimentoBloqueante'
+            - type: 'null'
+    DrilldownSemaforo:
+      type: object
+      description: |
+        `GET /v1/indicadores/semaforo/{celulaId}/hdu`. Orden de `items`:
+        motivo más grave, nivel vigente (ALTO, MEDIO), días abiertos del
+        impedimento principal (descendente) y código. Célula verde o sin HDU
+        activas: `items: []` («Sin HDU con riesgo ni impedimentos»). Con una
+        fuente caída: solo lo conocido y `calculoParcial: true`.
+      required: [generadoEn, celula, estado, color, calculoParcial, items]
+      additionalProperties: false
+      properties:
+        generadoEn:
+          $ref: '#/components/schemas/FechaHora'
+        celula:
+          $ref: '#/components/schemas/CatalogoRef'
+        estado:
+          $ref: '#/components/schemas/EstadoSemaforoCelula'
+        color:
+          oneOf:
+            - $ref: '#/components/schemas/ColorSemaforo'
+            - type: 'null'
+        calculoParcial:
+          type: boolean
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/ItemDrilldownSemaforo'
+    UmbralAplicado:
+      type: object
+      description: Umbral con el que se evalúa un grupo de la carga (D159, D160). `qe` es `null` en el grupo «Sin QE supervisor», que usa el valor por defecto.
+      required: [qe, valor, porDefecto]
+      additionalProperties: false
+      properties:
+        qe:
+          oneOf:
+            - $ref: '#/components/schemas/Persona'
+            - type: 'null'
+        valor:
+          type: integer
+          minimum: 1
+          maximum: 50
+        porDefecto:
+          type: boolean
+    FilaCargaAnalista:
+      type: object
+      description: |
+        Una fila por analista dentro de su grupo (D160, D182). Clave de la
+        fila: `analista.id` (`fila-analista-<id>`). `porEstado` y
+        `cumplimiento` siguen los filtros; `activas` y `sobrecargado` cuentan
+        siempre todas las HDU no cerradas del analista en el ámbito (3.5).
+        `cumplimiento.valor` es `null` con `estado: ok` si no hay HDU del
+        analista en el filtro («—»).
+      required: [analista, supervisadoPorMi, porEstado, activas, sinHdu, cumplimiento, sobrecargado]
+      additionalProperties: false
+      properties:
+        analista:
+          $ref: '#/components/schemas/PersonaActiva'
+        supervisadoPorMi:
+          type: [boolean, 'null']
+          description: 'Solo para el QE: `false` = «No supervisado por ti». `null` para Líder QA y Auditor.'
+        porEstado:
+          $ref: '#/components/schemas/ConteoPorEstado'
+        activas:
+          type: integer
+          minimum: 0
+        sinHdu:
+          type: boolean
+          description: El analista no tiene ninguna HDU en el ámbito («Sin HDU asignadas»), independiente de los filtros.
+        cumplimiento:
+          $ref: '#/components/schemas/PorcentajeIndicador'
+        sobrecargado:
+          type: boolean
+          description: '`activas > umbral.valor` del grupo.'
+    GrupoCarga:
+      type: object
+      required: [umbral, filas]
+      additionalProperties: false
+      properties:
+        umbral:
+          $ref: '#/components/schemas/UmbralAplicado'
+        filas:
+          type: array
+          description: Sobrecargados primero, luego `activas` descendente y nombre (brecha 6 del diseño).
+          items:
+            $ref: '#/components/schemas/FilaCargaAnalista'
+    FilaSinAnalista:
+      type: object
+      description: HDU del ámbito sin analista asignado. Informativa; no se evalúa contra el umbral.
+      required: [porEstado, activas]
+      additionalProperties: false
+      properties:
+        porEstado:
+          $ref: '#/components/schemas/ConteoPorEstado'
+        activas:
+          type: integer
+          minimum: 0
+    CargaIndicadores:
+      type: object
+      description: |
+        `GET /v1/indicadores/carga` (E6-B02#2, D182). QE: un solo grupo, con
+        su umbral (también para los analistas «No supervisado por ti»).
+        Líder QA y Auditor: un grupo por QE supervisor, por nombre del QE, y
+        al final el grupo «Sin QE supervisor» (`umbral.qe: null`). Un
+        analista tiene a lo sumo un QE supervisor vigente (D190), así que
+        aparece en un solo grupo. `sinDatos` solo con ámbito vacío y sin
+        analistas que mostrar (`AMBITO_VACIO`) o cuando ningún HDU cumple los
+        filtros (`FILTRO_SIN_COINCIDENCIAS`, las filas siguen viniendo).
+      required: [generadoEn, filtros, sinDatos, motivoSinDatos, fuentes, grupos, sinAnalista]
+      additionalProperties: false
+      properties:
+        generadoEn:
+          $ref: '#/components/schemas/FechaHora'
+        filtros:
+          $ref: '#/components/schemas/FiltrosIndicadores'
+        sinDatos:
+          type: boolean
+        motivoSinDatos:
+          oneOf:
+            - $ref: '#/components/schemas/MotivoSinDatos'
+            - type: 'null'
+        fuentes:
+          $ref: '#/components/schemas/FuentesIndicadores'
+        grupos:
+          type: array
+          items:
+            $ref: '#/components/schemas/GrupoCarga'
+        sinAnalista:
+          description: '`null` si todas las HDU del ámbito tienen analista.'
+          oneOf:
+            - $ref: '#/components/schemas/FilaSinAnalista'
+            - type: 'null'
+    UmbralCarga:
+      type: object
+      required: [qe, valor, porDefecto, actualizadoEn, actualizadoPor]
+      additionalProperties: false
+      properties:
+        qe:
+          $ref: '#/components/schemas/Persona'
+        valor:
+          type: integer
+          minimum: 1
+          maximum: 50
+        porDefecto:
+          type: boolean
+          description: '`true` mientras el QE no lo haya fijado nunca (`INDICADORES_UMBRAL_DEFECTO`, 5).'
+        actualizadoEn:
+          oneOf:
+            - $ref: '#/components/schemas/FechaHora'
+            - type: 'null'
+        actualizadoPor:
+          oneOf:
+            - $ref: '#/components/schemas/Persona'
+            - type: 'null'
+    SolicitudUmbralCarga:
+      type: object
+      description: 'Un número JSON entero. `2.5`, `"abc"`, `"5"`, `null` o sin `valor` → 400 `VALIDACION` (`campo: valor`); 0 o 51 → 400 `VALOR_FUERA_DE_RANGO` (`campo: valor`).'
+      required: [valor]
+      additionalProperties: false
+      properties:
+        valor:
+          type: integer
+          minimum: 1
+          maximum: 50
+    ResultadoUmbralCarga:
+      type: object
+      required: [umbral, cambio]
+      additionalProperties: false
+      properties:
+        umbral:
+          $ref: '#/components/schemas/UmbralCarga'
+        cambio:
+          type: boolean
+          description: '`false` si el valor era igual al vigente: no se inserta evento.'
+    EventoUmbralCarga:
+      type: object
+      description: Fila de `evento_umbral_carga` (D161). En el primer cambio, `valorAnterior` es el valor por defecto vigente (5).
+      required: [id, qe, valorAnterior, valorNuevo, actor, fecha]
+      additionalProperties: false
+      properties:
+        id:
+          $ref: '#/components/schemas/Uuid'
+        qe:
+          $ref: '#/components/schemas/Persona'
+        valorAnterior:
+          type: integer
+          minimum: 1
+          maximum: 50
+        valorNuevo:
+          type: integer
+          minimum: 1
+          maximum: 50
+        actor:
+          $ref: '#/components/schemas/Persona'
+        fecha:
+          $ref: '#/components/schemas/FechaHora'
+    PaginaEventosUmbral:
+      type: object
+      required: [items, total, pagina, tamanoPagina]
+      additionalProperties: false
+      properties:
+        items:
+          type: array
+          description: El más reciente primero.
+          items:
+            $ref: '#/components/schemas/EventoUmbralCarga'
+        total:
+          type: integer
+          minimum: 0
+        pagina:
+          type: integer
+          minimum: 1
+        tamanoPagina:
+          type: integer
+          minimum: 1
+          maximum: 100
+    SprintTendencia:
+      type: object
+      description: Datos del sprint copiados en el snapshot más reciente de la serie (D184). `cerrado` = `fin` anterior a hoy en Santiago.
+      required: [id, nombre, inicio, fin, cerrado]
+      additionalProperties: false
+      properties:
+        id:
+          $ref: '#/components/schemas/Uuid'
+        nombre:
+          type: string
+        inicio:
+          $ref: '#/components/schemas/Fecha'
+        fin:
+          $ref: '#/components/schemas/Fecha'
+        cerrado:
+          type: boolean
+    PuntoTendencia:
+      type: object
+      required: [fecha, cumplimiento, hduTotal]
+      additionalProperties: false
+      properties:
+        fecha:
+          $ref: '#/components/schemas/Fecha'
+          description: Fecha de Santiago del snapshot (refleja la madrugada de ese día, D163).
+        cumplimiento:
+          type: number
+          minimum: 0
+          maximum: 100
+          multipleOf: 0.1
+          description: '`suma_avance / hdu_total` con 1 decimal (D167), nunca promedio de promedios.'
+        hduTotal:
+          type: integer
+          minimum: 1
+    SerieTendencia:
+      type: object
+      description: Una serie por (célula, sprint). Los días sin snapshot no tienen punto (hueco, D166).
+      required: [celula, sprint, puntos]
+      additionalProperties: false
+      properties:
+        celula:
+          $ref: '#/components/schemas/CatalogoRef'
+        sprint:
+          $ref: '#/components/schemas/SprintTendencia'
+        puntos:
+          type: array
+          minItems: 1
+          description: Por `fecha` ascendente.
+          items:
+            $ref: '#/components/schemas/PuntoTendencia'
+    TendenciaIndicadores:
+      type: object
+      description: |
+        `GET /v1/indicadores/tendencia` (E6-B03#3, D166, D167, D185). Ámbito:
+        filas `QE:<id>` para el QE; filas `TODOS` de sus células vigentes
+        para el Líder QA (toda su historia, también la anterior a su
+        asignación); filas `TODOS` para el Auditor. A lo sumo 6 series:
+        `totalSeries` informa cuántas cumplían los filtros.
+      required: [generadoEn, filtros, sinDatos, motivoSinDatos, totalSeries, series]
+      additionalProperties: false
+      properties:
+        generadoEn:
+          $ref: '#/components/schemas/FechaHora'
+        filtros:
+          $ref: '#/components/schemas/FiltrosIndicadores'
+        sinDatos:
+          type: boolean
+        motivoSinDatos:
+          oneOf:
+            - $ref: '#/components/schemas/MotivoSinDatos'
+            - type: 'null'
+        totalSeries:
+          type: integer
+          minimum: 0
+        series:
+          type: array
+          maxItems: 6
+          description: Por nombre de célula y luego `sprint.inicio` descendente.
+          items:
+            $ref: '#/components/schemas/SerieTendencia'
+    OrigenSnapshot:
+      type: string
+      description: '`CRON` = Vercel Cron (actor `SISTEMA`); `MANUAL` = «Generar snapshot ahora» del Administrador o carga de prueba.'
+      enum: [CRON, MANUAL]
+    ResultadoSnapshot:
+      type: string
+      enum: [EN_CURSO, EXITOSA, FALLIDA]
+    MotivoFalloSnapshot:
+      type: string
+      description: |
+        D164, D184. Textos del portal (diseño 8.3): `ORGANIZACION_NO_DISPONIBLE`
+        «No respondió el servicio de HDU y equipos»;
+        `CERTIFICACIONES_NO_DISPONIBLE` «No respondió el servicio de avance de
+        entregables»; `IMPEDIMENTOS_NO_DISPONIBLE` «No respondió el servicio de
+        impedimentos»; `EXCEDE_TOPE` «Hay más HDU que el máximo por ejecución
+        (1000)»; `CONFIGURACION_INVALIDA` «Falta configurar la credencial entre
+        servicios» (una fuente rechazó la credencial o falta
+        `INDICADORES_SERVICIO_TOKEN`); `INTERRUMPIDA` «La ejecución no terminó
+        y se dio por abandonada»; `ERROR_INTERNO` «Error interno».
+      enum: [ORGANIZACION_NO_DISPONIBLE, CERTIFICACIONES_NO_DISPONIBLE, IMPEDIMENTOS_NO_DISPONIBLE, EXCEDE_TOPE, CONFIGURACION_INVALIDA, INTERRUMPIDA, ERROR_INTERNO]
+    EjecucionSnapshot:
+      type: object
+      description: Fila de `ejecucion_snapshot` (D165). No trae cifras de indicadores ni nombres de célula.
+      required: [id, fecha, origen, actor, inicio, fin, duracionMs, resultado, filasEscritas, filasNuevas, filasActualizadas, motivo]
+      additionalProperties: false
+      properties:
+        id:
+          $ref: '#/components/schemas/Uuid'
+        fecha:
+          $ref: '#/components/schemas/Fecha'
+        origen:
+          $ref: '#/components/schemas/OrigenSnapshot'
+        actor:
+          type: object
+          required: [id, nombre]
+          additionalProperties: false
+          properties:
+            id:
+              description: '`null` para el cron (`nombre: SISTEMA`).'
+              oneOf:
+                - $ref: '#/components/schemas/Uuid'
+                - type: 'null'
+            nombre:
+              type: string
+        inicio:
+          $ref: '#/components/schemas/FechaHora'
+        fin:
+          oneOf:
+            - $ref: '#/components/schemas/FechaHora'
+            - type: 'null'
+        duracionMs:
+          type: [integer, 'null']
+          minimum: 0
+        resultado:
+          $ref: '#/components/schemas/ResultadoSnapshot'
+        filasEscritas:
+          type: integer
+          minimum: 0
+          description: '`filasNuevas + filasActualizadas`; 0 si `FALLIDA` (todo o nada).'
+        filasNuevas:
+          type: integer
+          minimum: 0
+        filasActualizadas:
+          type: integer
+          minimum: 0
+        motivo:
+          oneOf:
+            - $ref: '#/components/schemas/MotivoFalloSnapshot'
+            - type: 'null'
+    PaginaEjecucionesSnapshot:
+      type: object
+      required: [items, total, pagina, tamanoPagina]
+      additionalProperties: false
+      properties:
+        items:
+          type: array
+          description: Por `inicio` descendente.
+          items:
+            $ref: '#/components/schemas/EjecucionSnapshot'
+        total:
+          type: integer
+          minimum: 0
+        pagina:
+          type: integer
+          minimum: 1
+        tamanoPagina:
+          type: integer
+          minimum: 1
+          maximum: 100
+    VistaIndicadores:
+      type: string
+      enum: [cumplimiento, semaforo, carga, tendencia]
+    FormatoExportacionIndicadores:
+      type: string
+      enum: [csv, pdf]
 
   headers:
     XTraceId:

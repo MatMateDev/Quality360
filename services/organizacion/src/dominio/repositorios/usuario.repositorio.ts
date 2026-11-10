@@ -51,6 +51,10 @@ export interface UsuarioRepositorio {
   listar(filtro: FiltroUsuarios, paginacion: OpcionesPaginacion): Promise<Pagina<Usuario>>;
   listarResumenPorIds(ids: readonly string[]): Promise<UsuarioResumen[]>;
   listarAnalistasActivos(): Promise<UsuarioResumen[]>;
+  /** E6 (D176): usuarios con su estado `activo`, para armar el ámbito de Indicadores sin N+1. */
+  listarEstadoPorIds(ids: readonly string[]): Promise<Array<{ id: string; nombre: string; activo: boolean; rol: Rol }>>;
+  /** E6 (D176): todos los usuarios activos de un rol. */
+  listarActivosPorRol(rol: Rol): Promise<Array<{ id: string; nombre: string }>>;
   contarAdministradoresActivos(): Promise<number>;
   /** Usuarios activos por rol (los 5 roles vienen siempre). */
   contarActivosPorRol(): Promise<Record<Rol, number>>;

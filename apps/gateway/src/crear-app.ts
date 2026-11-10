@@ -10,7 +10,14 @@ import helmet from 'helmet';
 
 import { AppModule } from './app.module.js';
 import { AVISO_URL_OPCIONAL, type ConfiguracionGateway } from './configuracion.js';
-import { RUTA_ARCHIVOS, archivoMuyGrande, lectorCuerpoArchivos, lectoresCuerpoGenerales } from './middlewares/cuerpo.js';
+import {
+  RUTA_ARCHIVOS,
+  RUTAS_INDICADORES,
+  archivoMuyGrande,
+  lectorCuerpoArchivos,
+  lectoresCuerpoGenerales,
+  lectoresCuerpoIndicadores,
+} from './middlewares/cuerpo.js';
 import { manejadorErrores } from './middlewares/errores-express.js';
 import { crearLimitadores } from './middlewares/limite-tasa.js';
 import { quitarCabeceraServicio, sinCache } from './middlewares/seguridad.js';
@@ -55,7 +62,9 @@ export async function crearApp(
     origin: configuracion.origenesPortal,
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['authorization', 'content-type', 'x-trace-id'],
-    exposedHeaders: ['x-trace-id', 'retry-after'],
+    // Content-Disposition y X-Q360-Filas: el portal (otro origen en la nube) los lee
+    // al descargar una exportación (D48, D186); sin exponerlos, llegan como null.
+    exposedHeaders: ['x-trace-id', 'retry-after', 'content-disposition', 'x-q360-filas'],
     credentials: false,
     maxAge: 600,
   });
@@ -68,6 +77,8 @@ export async function crearApp(
   // Cuerpo: 1,5 MB solo en /v1/integraciones/archivos/* (413 ARCHIVO_MUY_GRANDE);
   // el resto, el límite por defecto. Va después del límite de tasa.
   app.use(RUTA_ARCHIVOS, lectorCuerpoArchivos(), archivoMuyGrande);
+  // Indicadores (E6): 4 KB; un cuerpo mayor da 400 VALIDACION abajo.
+  app.use(RUTAS_INDICADORES, ...lectoresCuerpoIndicadores());
   for (const lector of lectoresCuerpoGenerales()) app.use(lector);
   // Los errores de lectura (JSON mal formado, cuerpo demasiado grande) se responden
   // aquí: si llegaran a la capa de excepciones de Nest, un 413 saldría como 500.

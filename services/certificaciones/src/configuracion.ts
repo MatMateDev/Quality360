@@ -15,6 +15,11 @@ export interface ConfiguracionCertificaciones {
   verificador: OpcionesVerificador;
   /** Máximo de filas de una exportación CSV del Auditor (D35, D48, `EXPORTACION_LIMITE_FILAS`). */
   exportacionLimiteFilas: number;
+  /**
+   * E6 (D177): credencial de Indicadores para `POST /v1/interno/checklist/estados` (solo lectura). No impide el
+   * arranque; `null` hace que esa credencial se rechace siempre con 401.
+   */
+  indicadoresServicioToken: string | null;
 }
 
 function requerido(valor: string | undefined, nombre: string): string {
@@ -50,5 +55,6 @@ export function cargarConfiguracion(entorno: NodeJS.ProcessEnv = process.env): C
     portalUrl: leerUrl(entorno.PORTAL_URL, 'http://localhost:5173', 'PORTAL_URL'),
     verificador: opcionesDesdeEntorno(entorno),
     exportacionLimiteFilas: leerEntero(entorno.EXPORTACION_LIMITE_FILAS, 50_000, 'EXPORTACION_LIMITE_FILAS'),
+    indicadoresServicioToken: entorno.INDICADORES_SERVICIO_TOKEN?.trim().length ? entorno.INDICADORES_SERVICIO_TOKEN.trim() : null,
   };
 }

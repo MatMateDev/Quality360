@@ -12,6 +12,8 @@ export interface ConfiguracionOrganizacion {
   supabaseServiceRoleKey: string;
   /** Credencial de servicio a servicio (ADR 0007), cabecera `X-Q360-Servicio-Token`. */
   credencialServicio: string | null;
+  /** E6 (D177): credencial de Indicadores para `GET /v1/interno/indicadores/snapshot`. `null`: esa ruta responde siempre 401. */
+  indicadoresServicioToken: string | null;
   /** Habilita `/v1/interno/carga/*`. */
   permitirCargaSemilla: boolean;
   verificador: OpcionesVerificador;
@@ -62,6 +64,7 @@ export function cargarConfiguracion(entorno: NodeJS.ProcessEnv = process.env): C
     supabaseUrl: requerido(entorno.SUPABASE_URL, 'SUPABASE_URL'),
     supabaseServiceRoleKey: requerido(entorno.SUPABASE_SERVICE_ROLE_KEY, 'SUPABASE_SERVICE_ROLE_KEY'),
     credencialServicio: entorno.X_Q360_SERVICIO_TOKEN?.trim().length ? entorno.X_Q360_SERVICIO_TOKEN.trim() : null,
+    indicadoresServicioToken: entorno.INDICADORES_SERVICIO_TOKEN?.trim().length ? entorno.INDICADORES_SERVICIO_TOKEN.trim() : null,
     permitirCargaSemilla: leerBooleano(entorno.PERMITIR_CARGA_SEMILLA),
     verificador: opcionesDesdeEntorno(entorno),
     certificacionesUrl: leerUrl(entorno.CERTIFICACIONES_URL, 'http://localhost:3002', 'CERTIFICACIONES_URL'),

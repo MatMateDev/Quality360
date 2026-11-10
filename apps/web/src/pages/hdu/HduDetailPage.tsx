@@ -4,10 +4,13 @@ import { Link, useLocation, useParams } from "react-router-dom";
 import { useAuth } from "@/auth/AuthContext";
 import { useAnalistasAsignables } from "@/api/equipo";
 import { useAsignarAnalista, useCambiarEstadoHdu, useDetalleHdu, useHistorialHdu } from "@/api/hdu";
+import { useChecklist } from "@/api/checklist";
 import { useImpedimentosHdu } from "@/api/impedimentos";
 import { AccesoDenegado } from "@/components/AccesoDenegado";
 import { BloqueEstado } from "@/components/BloqueEstado";
 import { ChecklistEntregables } from "@/components/ChecklistEntregables";
+import { BloqueCierreExcepcion, InsigniaCierreExcepcion } from "@/components/cierre/BloqueCierreExcepcion";
+import { DialogoCierreExcepcion, type SalidaCierre } from "@/components/cierre/DialogoCierreExcepcion";
 import { PanelDescripcionHdu } from "@/components/integraciones/PanelDescripcionHdu";
 import { DialogoConfirmacion } from "@/components/DialogoConfirmacion";
 import { DialogoReasignarQe } from "@/components/DialogoReasignarQe";
@@ -27,6 +30,8 @@ interface ErrorEstado {
   codigo: string;
   mensaje: string;
   bloqueo?: ListaImpedimentosBloqueantes;
+  /** E6 (D173): el 409 `CHECKLIST_INCOMPLETO` avisa si el usuario podría cerrar con excepción. */
+  puedeCerrarConExcepcion?: boolean;
 }
 
 /** E2-F04 y E3: detalle de HDU con responsables, estado, célula, sprint, checklist de entregables, cambio de estado e historial. */
@@ -41,6 +46,7 @@ export function HduDetailPage() {
   const asignarAnalista = useAsignarAnalista(id ?? "");
   const cambiarEstado = useCambiarEstadoHdu(id ?? "");
   const impedimentosQuery = useImpedimentosHdu(id);
+  const checklistQuery = useChecklist(id);
   const queryClient = useQueryClient();
 
   const [dialogoAbierto, setDialogoAbierto] = useState(false);
@@ -51,6 +57,11 @@ export function HduDetailPage() {
   const [dialogoQeAbierto, setDialogoQeAbierto] = useState(false);
   const [avisoQe, setAvisoQe] = useState<string | null>(null);
   const [errorEstado, setErrorEstado] = useState<ErrorEstado | null>(null);
+  // E6-F05: el borrador de la justificación vive aquí para conservarse si el cuadro se cierra por un error.
+  const [dialogoCierreAbierto, setDialogoCierreAbierto] = useState(false);
+  const [borradorCierre, setBorradorCierre] = useState("");
+  const [avisoCierre, setAvisoCierre] = useState<{ tipo: "exito" | "aviso"; texto: string } | null>(null);
+  const [enfocarCierre, setEnfocarCierre] = useState(false);
 
   const hayDetalle = Boolean(detalleQuery.data);
   useEffect(() => {
@@ -76,6 +87,41 @@ export function HduDetailPage() {
   // D78: `?impedimento=<id>` resalta la tarjeta; un id que no está en la lista se ignora sin aviso ni error.
   const resaltarId = new URLSearchParams(ubicacion.search).get("impedimento");
   const bloqueoImpedimentos = impedimentosQuery.data?.bloqueada ? impedimentosQuery.data.abiertos + impedimentosQuery.data.escalados : 0;
+
+  // E6-F05 (D189): el botón sale de `permisos.cerrarConExcepcion` y de un checklist con menos de 10 aprobados; con
+  // Certificaciones caída se muestra igual y, al pulsarlo, informa que no se pudo verificar (no se adivinan pendientes).
+  const aprobadosChecklist = hdu.checklist.estado === "ok" ? hdu.checklist.datos.completados : null;
+  const mostrarCerrarExcepcion = hdu.permisos.cerrarConExcepcion === true && hdu.estado === "PENDIENTE_CIERRE" && (aprobadosChecklist === null || aprobadosChecklist < 10);
+  const pendientesCierre = (checklistQuery.data?.entregables ?? []).filter((e) => e.estado !== "APROBADO");
+
+  function abrirCierreExcepcion() {
+    setAvisoCierre(null);
+    setErrorEstado(null);
+    if (aprobadosChecklist === null || !checklistQuery.data) {
+      setErrorEstado({ codigo: "CHECKLIST_NO_DISPONIBLE", mensaje: "No pudimos verificar el checklist de la HDU." });
+      return;
+    }
+    setDialogoCierreAbierto(true);
+  }
+
+  function manejarSalidaCierre(salida: SalidaCierre) {
+    setDialogoCierreAbierto(false);
+    if (salida.tipo === "cerrada") {
+      setBorradorCierre("");
+      setEnfocarCierre(Boolean(salida.resultado.cierre));
+      setAvisoCierre(
+        salida.resultado.cierre
+          ? { tipo: "exito", texto: "HDU cerrada con excepción. Quedó registrada tu justificación." }
+          : { tipo: "exito", texto: "HDU cerrada. El checklist se completó mientras tanto, por eso no quedó como excepción." },
+      );
+    } else if (salida.tipo === "cambio-estado") {
+      setAvisoCierre({ tipo: "aviso", texto: "La HDU ya cambió de estado. Se actualizó la información." });
+      void queryClient.invalidateQueries({ queryKey: ["hdu"] });
+    } else {
+      setAvisoCierre({ tipo: "aviso", texto: "Ya no tienes permiso para esta acción" });
+      void queryClient.invalidateQueries({ queryKey: ["hdu"] });
+    }
+  }
 
   function abrirDialogoAsignar() {
     setAnalistaSeleccionado(hdu.analista?.id ?? "");
@@ -120,7 +166,8 @@ export function HduDetailPage() {
         // Impedimentos no respondió (D60): se distingue de una caída del gateway o de Organización.
         setErrorEstado({ codigo: "IMPEDIMENTOS_NO_DISPONIBLES", mensaje: error.mensaje });
       } else if (error instanceof ErrorApi) {
-        setErrorEstado({ codigo: error.codigo, mensaje: error.mensaje });
+        const cuerpo = error.cuerpo as { puedeCerrarConExcepcion?: boolean } | undefined;
+        setErrorEstado({ codigo: error.codigo, mensaje: error.mensaje, puedeCerrarConExcepcion: cuerpo?.puedeCerrarConExcepcion });
       } else {
         setErrorEstado({ codigo: "ERROR_INTERNO", mensaje: "No fue posible cambiar el estado." });
       }
@@ -156,6 +203,7 @@ export function HduDetailPage() {
             <span>Estado</span>
             <strong>
               <InsigniaEstadoHdu estado={hdu.estado} />
+              {hdu.cierre ? <InsigniaCierreExcepcion /> : null}
             </strong>
           </article>
           <article>
@@ -228,6 +276,14 @@ export function HduDetailPage() {
         <ChecklistEntregables hduId={hdu.id} hduCerrada={hdu.estado === "CERRADA"} />
       </div>
 
+      {/* E6-F05: la constancia va inmediatamente después del checklist, que se conserva visible. */}
+      {avisoCierre ? (
+        <p className={avisoCierre.tipo === "exito" ? "mensaje-exito" : "mensaje-aviso"} role="status" data-testid={avisoCierre.tipo === "exito" ? "mensaje-exito" : "mensaje-aviso"}>
+          {avisoCierre.texto}
+        </p>
+      ) : null}
+      {hdu.cierre ? <BloqueCierreExcepcion hduId={hdu.id} cierre={hdu.cierre} enfocar={enfocarCierre} /> : null}
+
       {/* E5 (D108): después del checklist y antes de los bloques de E4. Texto plano; sin `origen` no se renderiza. */}
       <PanelDescripcionHdu hdu={hdu} />
 
@@ -259,8 +315,25 @@ export function HduDetailPage() {
                   Pasar a {ETIQUETAS_ESTADO_HDU[estado]}
                 </button>
               ))}
+              {mostrarCerrarExcepcion ? (
+                <button
+                  type="button"
+                  className="boton boton--secundario"
+                  data-testid="boton-cerrar-excepcion"
+                  aria-describedby="ayuda-cierre-excepcion"
+                  onClick={abrirCierreExcepcion}
+                  disabled={cambiarEstado.isPending}
+                >
+                  Cerrar con excepción
+                </button>
+              ) : null}
             </div>
           )}
+          {mostrarCerrarExcepcion ? (
+            <p className="campo-ayuda" id="ayuda-cierre-excepcion" data-testid="ayuda-cierre-excepcion">
+              Para cerrar sin completar los 10 entregables usa «Cerrar con excepción». No se emite certificado.
+            </p>
+          ) : null}
           {errorEstado?.codigo === "HDU_BLOQUEADA" ? (
             <ErrorCierreBloqueado bloqueo={errorEstado.bloqueo} />
           ) : errorEstado?.codigo === "IMPEDIMENTOS_NO_DISPONIBLES" ? (
@@ -272,8 +345,23 @@ export function HduDetailPage() {
               {errorEstado.mensaje}
             </p>
           ) : null}
+          {errorEstado?.codigo === "CHECKLIST_INCOMPLETO" && errorEstado.puedeCerrarConExcepcion ? (
+            <p className="mensaje-aviso" role="note" data-testid="aviso-puede-cerrar-excepcion">
+              Como QE responsable puedes cerrarla con excepción justificando la decisión.
+            </p>
+          ) : null}
         </div>
       ) : null}
+
+      <DialogoCierreExcepcion
+        abierto={dialogoCierreAbierto}
+        hduId={hdu.id}
+        pendientes={pendientesCierre}
+        borrador={borradorCierre}
+        onBorrador={setBorradorCierre}
+        onCancelar={() => setDialogoCierreAbierto(false)}
+        onSalida={manejarSalidaCierre}
+      />
 
       <div className="panel">
         <h2>Historial</h2>
@@ -300,6 +388,15 @@ export function HduDetailPage() {
                       {evento.actor.nombre} reasignó el QE responsable (antes {evento.qeAnterior.nombre}) a {evento.qeNuevo.nombre}
                       {` — Motivo: ${evento.motivo}`}.
                     </p>
+                  ) : evento.tipo === "CIERRE_EXCEPCION" ? (
+                    <div data-testid="historial-cierre-excepcion">
+                      <p>
+                        <strong>Cierre con excepción</strong> · {evento.actor.nombre}. {evento.aprobados} de 10 entregables aprobados.
+                      </p>
+                      <p className="historial-justificacion" data-testid="historial-justificacion">
+                        «{evento.justificacion}»
+                      </p>
+                    </div>
                   ) : (
                     <p>
                       {evento.actor.nombre} asignó a {evento.analistaNuevo.nombre}

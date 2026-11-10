@@ -33,7 +33,9 @@ import { handlersE4, verificarImpedimentosCierre } from "./handlersE4";
 import { handlersConsulta } from "./handlersConsulta";
 import { handlersE5 } from "./handlersE5";
 import { handlersE7 } from "./handlersE7";
+import { handlersE6 } from "./handlersE6";
 import { origenesHdu } from "./dataE5";
+import { APROBADOS_SIMULADOS, ENTREGABLES, estadoE6 } from "./dataE6";
 
 const BASE = env.gatewayUrl;
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -64,7 +66,41 @@ function construirHduDetalle(hdu: HduMock, usuario: UsuarioMock) {
     ...aHduResumen(hdu),
     creadoPor: { tipo: "USUARIO" as const, id: creador.id, nombre: creador.nombre },
     transicionesPermitidas: cambiarEstado ? transicionesDesde(hdu.estado) : [],
-    permisos: { cambiarEstado, asignarAnalista: puedeAsignarAnalista(hdu, usuario) },
+    permisos: {
+      cambiarEstado,
+      asignarAnalista: puedeAsignarAnalista(hdu, usuario),
+      // E6 (D173, D189): solo el QE responsable y con la HDU en PENDIENTE_CIERRE.
+      cerrarConExcepcion: usuario.rol === "QE" && hdu.qeResponsableId === usuario.id && hdu.estado === "PENDIENTE_CIERRE",
+    },
+  };
+}
+
+/**
+ * D11: en las corridas anteriores la fuente de checklist del detalle estaba indisponible. E6 solo la habilita para las
+ * HDU que simulan un checklist incompleto o que se cerraron con excepción, para no alterar las pruebas certificadas.
+ */
+function bloqueChecklistDetalle(hdu: HduMock) {
+  const cierre = estadoE6.cierres.get(hdu.id);
+  if (!hdu.simularChecklistIncompleto && !hdu.simularChecklistCompleto && !cierre) return { fuente: "certificaciones.checklist", estado: "indisponible" };
+  const completados = cierre ? cierre.aprobados : hdu.simularChecklistCompleto ? 10 : APROBADOS_SIMULADOS;
+  return {
+    fuente: "certificaciones.checklist",
+    estado: "ok",
+    datos: { hduId: hdu.id, totalEntregables: 10, completados, porcentajeCumplimiento: completados * 10, completo: completados === 10 },
+  };
+}
+
+function cierreDe(hduId: string) {
+  const c = estadoE6.cierres.get(hduId);
+  if (!c) return null;
+  const actor = buscarUsuario(c.actorId)!;
+  return {
+    aprobados: c.aprobados,
+    pendientes: c.pendientes,
+    justificacion: c.justificacion,
+    actor: { tipo: "USUARIO" as const, id: actor.id, nombre: actor.nombre },
+    actorRol: actor.rol,
+    fecha: c.fecha,
   };
 }
 
@@ -665,7 +701,9 @@ export const handlers = [
     return HttpResponse.json({
       ...construirHduDetalle(hdu, actor),
       // D11: la fuente de checklist de Certificaciones siempre responde indisponible en esta corrida.
-      checklist: { fuente: "certificaciones.checklist", estado: "indisponible" },
+      checklist: bloqueChecklistDetalle(hdu),
+      // E6 (D174): constancia del cierre con excepción.
+      cierre: cierreDe(hdu.id),
       // E5 (D108): descripción y origen; una HDU sin entrada simula un servidor que aún no los trae.
       ...(origenesHdu.get(hdu.id) ?? {}),
     });
@@ -757,8 +795,9 @@ export const handlers = [
     }
     if (!puedeCambiarEstado(hdu, actor)) return HttpResponse.json(ERROR_ACCESO_DENEGADO(), { status: 403 });
 
-    const cuerpo = (await request.json()) as { estado?: EstadoHdu };
+    const cuerpo = (await request.json()) as { estado?: EstadoHdu; justificacion?: string | null };
     const solicitado = cuerpo.estado;
+    let cierreExcepcion: { aprobados: number; justificacion: string } | null = null;
     const permitidas = transicionesDesde(hdu.estado);
     if (!solicitado || !permitidas.includes(solicitado)) {
       return HttpResponse.json(
@@ -777,19 +816,35 @@ export const handlers = [
       // Certificaciones siempre está indisponible, salvo el escenario de prueba
       // `simularChecklistIncompleto`, que distingue ambos mensajes de rechazo.
       if (hdu.simularChecklistIncompleto) {
-        return HttpResponse.json(
-          {
-            ...cuerpoError("CHECKLIST_INCOMPLETO", "No se puede cerrar la HDU: el checklist de entregables está incompleto."),
-            checklist: {
-              fuente: "certificaciones.checklist",
-              estado: "ok",
-              datos: { hduId: hdu.id, totalEntregables: 10, completados: 7, porcentajeCumplimiento: 70, completo: false },
+        const justificacion = cuerpo.justificacion;
+        if (justificacion === undefined || justificacion === null) {
+          return HttpResponse.json(
+            {
+              ...cuerpoError("CHECKLIST_INCOMPLETO", "No se puede cerrar la HDU: el checklist de entregables está incompleto."),
+              checklist: {
+                fuente: "certificaciones.checklist",
+                estado: "ok",
+                datos: { hduId: hdu.id, totalEntregables: 10, completados: APROBADOS_SIMULADOS, porcentajeCumplimiento: APROBADOS_SIMULADOS * 10, completo: false },
+              },
+              puedeCerrarConExcepcion: actor.rol === "QE" && hdu.qeResponsableId === actor.id,
             },
-          },
-          { status: 409 },
-        );
+            { status: 409 },
+          );
+        }
+        // D189: con justificación solo el QE responsable; luego 422 (en blanco) o 400 (largo) y por último impedimentos.
+        if (!(actor.rol === "QE" && hdu.qeResponsableId === actor.id)) return HttpResponse.json(ERROR_ACCESO_DENEGADO(), { status: 403 });
+        const limpia = justificacion.trim();
+        if (limpia.length === 0) {
+          return HttpResponse.json(cuerpoError("JUSTIFICACION_REQUERIDA" as never, "La justificación es obligatoria."), { status: 422 });
+        }
+        if (limpia.length < 20 || limpia.length > 500) {
+          return HttpResponse.json(cuerpoError("VALIDACION", "La justificación debe tener entre 20 y 500 caracteres.", [{ campo: "justificacion", codigo: "LONGITUD_INVALIDA", mensaje: "Largo inválido." }]), { status: 400 });
+        }
+        const bloqueoExcepcion = verificarImpedimentosCierre(hdu.id);
+        if (bloqueoExcepcion) return bloqueoExcepcion;
+        cierreExcepcion = { aprobados: APROBADOS_SIMULADOS, justificacion: limpia };
       }
-      if (!hdu.simularChecklistCompleto) {
+      if (!cierreExcepcion && !hdu.simularChecklistCompleto) {
         return HttpResponse.json(
           {
             ...cuerpoError(
@@ -802,8 +857,10 @@ export const handlers = [
         );
       }
       // E4: con el checklist completo, el cierre depende de los impedimentos (el orden es D10, D11 y D77).
-      const bloqueo = verificarImpedimentosCierre(hdu.id);
-      if (bloqueo) return bloqueo;
+      if (!cierreExcepcion) {
+        const bloqueo = verificarImpedimentosCierre(hdu.id);
+        if (bloqueo) return bloqueo;
+      }
     }
 
     const anterior = hdu.estado;
@@ -811,8 +868,13 @@ export const handlers = [
     hdu.estado = solicitado;
     hdu.estadoActualizadoEn = ahora;
     eventosHdu.push({ hduId: hdu.id, tipo: "ESTADO", fecha: ahora, actorId: actor.id, estadoAnterior: anterior, estadoNuevo: solicitado });
+    if (cierreExcepcion) {
+      const pendientes = ENTREGABLES.slice(cierreExcepcion.aprobados).map((e) => e.clave);
+      estadoE6.cierres.set(hdu.id, { aprobados: cierreExcepcion.aprobados, pendientes, justificacion: cierreExcepcion.justificacion, actorId: actor.id, fecha: ahora });
+    }
 
     return HttpResponse.json({
+      cierre: cierreDe(hdu.id),
       hdu: aHduResumen(hdu),
       estadoAnterior: anterior,
       estadoNuevo: solicitado,
@@ -824,6 +886,7 @@ export const handlers = [
 
   ...handlersE7,
   ...handlersE4,
+  ...handlersE6,
 
   http.get(`${BASE}/v1/hdu/:id/historial`, ({ request, params }) => {
     const actor = autenticar(request);
@@ -861,7 +924,22 @@ export const handlers = [
         };
       });
 
-    return HttpResponse.json({ hduId: hdu.id, items });
+    // E6 (D189): el cierre con excepción deja un segundo evento junto al cambio de estado.
+    const cierre = estadoE6.cierres.get(hdu.id);
+    const conCierre: unknown[] = [...items];
+    if (cierre) {
+      const autor = buscarUsuario(cierre.actorId)!;
+      conCierre.push({
+        tipo: "CIERRE_EXCEPCION",
+        fecha: cierre.fecha,
+        actor: { tipo: "USUARIO", id: autor.id, nombre: autor.nombre },
+        aprobados: cierre.aprobados,
+        pendientes: cierre.pendientes,
+        justificacion: cierre.justificacion,
+      });
+    }
+
+    return HttpResponse.json({ hduId: hdu.id, items: conCierre });
   }),
 ];
 

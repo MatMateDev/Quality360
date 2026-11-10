@@ -104,4 +104,28 @@
   --q360-color-fila-lista: var(--q360-color-res-exitosa);
   --q360-color-res-neutra: var(--q360-color-solo-lectura);
   --q360-color-res-neutra-suave: var(--q360-color-solo-lectura-suave);
+
+  /* E6 · semáforo de célula: alias del semáforo de riesgo de E4 (sin hexadecimales nuevos) */
+  --q360-color-semaforo-rojo: var(--q360-color-riesgo-alto);
+  --q360-color-semaforo-rojo-suave: var(--q360-color-riesgo-alto-suave);
+  --q360-color-semaforo-amarillo: var(--q360-color-riesgo-medio);
+  --q360-color-semaforo-amarillo-suave: var(--q360-color-riesgo-medio-suave);
+  --q360-color-semaforo-verde: var(--q360-color-riesgo-bajo);
+  --q360-color-semaforo-verde-suave: var(--q360-color-riesgo-bajo-suave);
+  --q360-color-semaforo-gris: var(--q360-color-indisponible);
+  --q360-color-semaforo-gris-suave: var(--q360-color-indisponible-suave);
+  /* E6 · sobrecarga y cierre con excepción */
+  --q360-color-sobrecarga: var(--q360-color-riesgo-alto);
+  --q360-color-sobrecarga-suave: var(--q360-color-riesgo-alto-suave);
+  --q360-color-cierre-excepcion: var(--q360-color-alerta);
+  --q360-color-cierre-excepcion-suave: var(--q360-color-alerta-suave);
+  /* E6 · series del gráfico (sin significado semántico: el trazo y el marcador distinguen) */
+  --q360-serie-1: var(--q360-color-acento);
+  --q360-serie-2: var(--q360-color-lider);
+  --q360-serie-3: var(--q360-color-auditor);
+  --q360-serie-4: var(--q360-color-imp-abierto);
+  --q360-serie-5: var(--q360-color-exito);
+  --q360-serie-6: var(--q360-color-texto);
+  --q360-grafica-eje: var(--q360-color-texto-terciario);
+  --q360-grafica-rejilla: var(--q360-color-borde);
 }
