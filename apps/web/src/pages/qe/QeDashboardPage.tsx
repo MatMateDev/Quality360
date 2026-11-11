@@ -4,6 +4,7 @@ import { useInicioQe } from "@/api/inicio";
 import { TarjetaMetrica } from "@/components/TarjetaMetrica";
 import { TarjetaContador } from "@/components/bandeja/TarjetaContador";
 import "../../styles/qe-dashboard.css";
+import { useState } from "react";
 
 const ESTADOS_HDU = [
   ["PENDIENTE", "Pendiente"],
@@ -51,6 +52,7 @@ function crearGradienteEstados(cantidades: readonly number[]): string {
 }
 
 export function QeDashboardPage() {
+  const [temaOscuro, setTemaOscuro] = useState(false);
   const inicio = useInicioQe();
   const bandeja = useBandejaQe(null);
 
@@ -94,7 +96,13 @@ export function QeDashboardPage() {
       : undefined;
 
   return (
-    <div className="qe-dashboard">
+    <div
+  className={
+    temaOscuro
+      ? "qe-dashboard qe-dashboard--oscuro"
+      : "qe-dashboard"
+  }
+>
       {/* ENCABEZADO */}
       <header className="qe-dashboard__hero">
         <div>
@@ -109,10 +117,19 @@ export function QeDashboardPage() {
             equipo QA, riesgos e impedimentos.
           </p>
         </div>
-
-        <span className="qe-dashboard__insignia">
-          Analítica E6
+        <div className="qe-dashboard__acciones">
+          <span className="qe-dashboard__insignia">
+            Analítica E6
         </span>
+
+        <button
+            type="button"
+            className="qe-dashboard__boton-tema"
+            onClick={() => setTemaOscuro((actual) => !actual)}
+        >
+          {temaOscuro ? "☀ Modo claro" : "☾ Modo oscuro"}
+        </button>
+      </div>
       </header>
 
       {/* INDICADORES PRINCIPALES */}

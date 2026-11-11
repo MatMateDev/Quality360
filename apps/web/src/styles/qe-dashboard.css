@@ -346,3 +346,120 @@
     text-align: center;
   }
 }
+
+/* E6 - Tema oscuro opcional, inspirado en Jira Cloud */
+
+.qe-dashboard--oscuro {
+  --q360-color-superficie: #22272b;
+  --q360-color-superficie-sutil: #2c333a;
+  --q360-color-texto: #f1f5f9;
+  --q360-color-texto-secundario: #b3beca;
+  --q360-color-borde: #3c4650;
+
+  --q360-color-acento: #85b8ff;
+  --q360-color-acento-hover: #c4dfff;
+  --q360-color-acento-suave: #253247;
+  --q360-color-acento-suave-borde: #456182;
+
+  --q360-color-exito: #59c69f;
+  --q360-color-alerta: #f0b56d;
+  --q360-color-lider: #b5a3f5;
+
+  background: #181c20;
+  color: var(--q360-color-texto);
+  padding: 24px;
+  border-radius: 16px;
+  color-scheme: dark;
+}
+
+.qe-dashboard--oscuro .qe-dashboard__hero {
+  background: linear-gradient(115deg, #253247, #22272b);
+}
+
+.qe-dashboard--oscuro .qe-dashboard__metricas > *,
+.qe-dashboard--oscuro .qe-dashboard__alertas > * {
+  background: var(--q360-color-superficie);
+  border-color: var(--q360-color-borde);
+  color: var(--q360-color-texto);
+}
+
+/* Contraste de las etiquetas interiores de las donas */
+.qe-dashboard--oscuro .qe-dashboard__dona-centro strong {
+  color: #f1f5f9;
+}
+
+.qe-dashboard--oscuro .qe-dashboard__dona-centro span {
+  color: #b3beca;
+}
+
+@media (max-width: 600px) {
+  .qe-dashboard--oscuro {
+    padding: 16px;
+  }
+}
+
+/* E6 - Selector de tema Claro / Oscuro */
+
+.qe-dashboard__acciones {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.qe-dashboard__boton-tema {
+  appearance: none;
+  min-height: 40px;
+  padding: 10px 16px;
+  border: 1px solid var(--q360-color-acento-suave-borde);
+  border-radius: 999px;
+  background: var(--q360-color-superficie);
+  color: var(--q360-color-texto);
+  font: inherit;
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background-color 0.2s, border-color 0.2s;
+}
+
+.qe-dashboard__boton-tema:hover {
+  background: var(--q360-color-acento-suave);
+  border-color: var(--q360-color-acento);
+}
+
+.qe-dashboard__boton-tema:focus-visible {
+  outline: 2px solid var(--q360-color-acento);
+  outline-offset: 3px;
+}
+
+/* Recuperar los colores de los indicadores en modo oscuro */
+
+.qe-dashboard--oscuro .qe-dashboard__metricas > :nth-child(1) {
+  border-top-color: var(--q360-color-acento);
+}
+
+.qe-dashboard--oscuro .qe-dashboard__metricas > :nth-child(2) {
+  border-top-color: #2dd4bf;
+}
+
+.qe-dashboard--oscuro .qe-dashboard__metricas > :nth-child(3) {
+  border-top-color: var(--q360-color-exito);
+}
+
+.qe-dashboard--oscuro .qe-dashboard__metricas > :nth-child(4) {
+  border-top-color: var(--q360-color-lider);
+}
+
+.qe-dashboard--oscuro .qe-dashboard__alertas > :last-child {
+  border-left-color: var(--q360-color-alerta);
+}
+
+/* Adaptación a pantallas pequeñas */
+
+@media (max-width: 600px) {
+  .qe-dashboard__acciones {
+    width: 100%;
+    justify-content: flex-start;
+  }
+}
