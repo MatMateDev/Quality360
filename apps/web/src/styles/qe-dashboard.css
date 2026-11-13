@@ -1,0 +1,465 @@
+﻿/* Quality360 - Dashboard analitico QE (E6) */
+
+.qe-dashboard {
+  display: grid;
+  gap: 24px;
+}
+
+/* Encabezado */
+.qe-dashboard__hero {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  padding: 28px 30px;
+  background: linear-gradient(
+    115deg,
+    var(--q360-color-acento-suave),
+    var(--q360-color-superficie)
+  );
+  border: 1px solid var(--q360-color-acento-suave-borde);
+  border-radius: var(--q360-radio-grande);
+}
+
+.qe-dashboard__hero h1 {
+  margin: 6px 0 8px;
+  color: var(--q360-color-texto);
+  font-size: clamp(24px, 3vw, 32px);
+}
+
+.qe-dashboard__hero p {
+  margin: 0;
+  color: var(--q360-color-texto-secundario);
+}
+
+.qe-dashboard__etiqueta {
+  color: var(--q360-color-acento);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.qe-dashboard__insignia {
+  padding: 10px 16px;
+  color: var(--q360-color-acento-hover);
+  background: var(--q360-color-superficie);
+  border: 1px solid var(--q360-color-acento-suave-borde);
+  border-radius: var(--q360-radio-pastilla);
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+/* Indicadores principales */
+.qe-dashboard__metricas {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.qe-dashboard__metricas > * {
+  min-width: 0;
+  margin: 0;
+  border-top: 4px solid var(--q360-color-acento);
+  box-shadow: 0 3px 14px rgba(23, 32, 51, 0.05);
+}
+
+.qe-dashboard__metricas > :nth-child(2) {
+  border-top-color: #0f766e;
+}
+
+.qe-dashboard__metricas > :nth-child(3) {
+  border-top-color: var(--q360-color-exito);
+}
+
+.qe-dashboard__metricas > :nth-child(4) {
+  border-top-color: var(--q360-color-lider);
+}
+
+/* Paneles */
+.qe-dashboard__contenido {
+  display: grid;
+  grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr);
+  gap: 20px;
+  align-items: start;
+}
+
+.qe-dashboard__panel {
+  min-width: 0;
+  height: 100%;
+  margin: 0;
+  padding: 24px;
+  background: var(--q360-color-superficie);
+  border: 1px solid var(--q360-color-borde);
+  border-radius: var(--q360-radio-grande);
+  box-shadow: 0 3px 14px rgba(23, 32, 51, 0.04);
+}
+
+.qe-dashboard__panel h2 {
+  margin: 0 0 8px;
+  color: var(--q360-color-texto);
+  font-size: 19px;
+}
+
+.qe-dashboard__descripcion {
+  margin: 0 0 24px;
+  color: var(--q360-color-texto-secundario);
+  font-size: 14px;
+}
+
+/* Distribucion por estado */
+.qe-dashboard__estados {
+  display: grid;
+  gap: 18px;
+}
+
+.qe-dashboard__estado {
+  display: grid;
+  gap: 8px;
+}
+
+.qe-dashboard__estado-cabecera {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  color: var(--q360-color-texto);
+  font-size: 14px;
+}
+
+.qe-dashboard__estado strong {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Barras de progreso */
+.qe-dashboard__estado progress {
+  appearance: none;
+  display: block;
+  width: 100%;
+  height: 10px;
+  overflow: hidden;
+  border: 0;
+  border-radius: 999px;
+}
+
+.qe-dashboard__estado progress::-webkit-progress-bar {
+  background: var(--q360-color-superficie-sutil);
+  border-radius: 999px;
+}
+
+.qe-dashboard__estado progress::-webkit-progress-value {
+  background: var(--qe-barra-color, var(--q360-color-acento));
+  border-radius: 999px;
+}
+
+.qe-dashboard__estado progress::-moz-progress-bar {
+  background: var(--qe-barra-color, var(--q360-color-acento));
+  border-radius: 999px;
+}
+
+.qe-dashboard__estado:nth-child(1) {
+  --qe-barra-color: #64748b;
+}
+
+.qe-dashboard__estado:nth-child(2) {
+  --qe-barra-color: var(--q360-color-acento);
+}
+
+.qe-dashboard__estado:nth-child(3) {
+  --qe-barra-color: var(--q360-color-lider);
+}
+
+.qe-dashboard__estado:nth-child(4) {
+  --qe-barra-color: var(--q360-color-alerta);
+}
+
+.qe-dashboard__estado:nth-child(5) {
+  --qe-barra-color: var(--q360-color-exito);
+}
+
+/* Indicadores de riesgo */
+.qe-dashboard__alertas {
+  display: grid;
+  gap: 12px;
+}
+
+.qe-dashboard__alertas > * {
+  min-width: 0;
+  margin: 0;
+}
+
+/* Diseno adaptable */
+@media (max-width: 1050px) {
+  .qe-dashboard__metricas {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .qe-dashboard__contenido {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 600px) {
+  .qe-dashboard__hero {
+    flex-direction: column;
+    align-items: flex-start;
+    padding: 20px;
+  }
+
+  .qe-dashboard__metricas {
+    grid-template-columns: 1fr;
+  }
+
+  .qe-dashboard__panel {
+    padding: 18px;
+  }
+}
+
+/* E6 - Gráfico de dona y distribución de HDU */
+
+.qe-dashboard__distribucion {
+  display: grid;
+  grid-template-columns: 170px minmax(0, 1fr);
+  align-items: center;
+  gap: 24px;
+}
+
+.qe-dashboard__dona {
+  width: 170px;
+  aspect-ratio: 1;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  box-shadow: 0 5px 18px rgba(23, 32, 51, 0.08);
+}
+
+.qe-dashboard__dona-centro {
+  width: 67%;
+  aspect-ratio: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  padding: 8px;
+  border-radius: 50%;
+  background: var(--q360-color-superficie);
+  text-align: center;
+}
+
+.qe-dashboard__dona-centro strong {
+  color: var(--q360-color-texto);
+  font-size: 36px;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.qe-dashboard__dona-centro span {
+  color: var(--q360-color-texto-secundario);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+@media (max-width: 600px) {
+  .qe-dashboard__distribucion {
+    grid-template-columns: 1fr;
+    justify-items: center;
+  }
+
+  .qe-dashboard__estados {
+    width: 100%;
+  }
+}
+
+/* E6 - Segunda dona: certificación y cierre */
+
+.qe-dashboard__cierre {
+  display: grid;
+  grid-template-columns: 140px minmax(0, 1fr);
+  align-items: center;
+  gap: 28px;
+  margin-top: 28px;
+  padding-top: 24px;
+  border-top: 1px solid var(--q360-color-borde);
+}
+
+.qe-dashboard__dona--cierre {
+  width: 140px;
+  flex-shrink: 0;
+}
+
+.qe-dashboard__dona--cierre .qe-dashboard__dona-centro strong {
+  font-size: 28px;
+}
+
+.qe-dashboard__dona--cierre .qe-dashboard__dona-centro span {
+  font-size: 10px;
+}
+
+.qe-dashboard__cierre-detalle {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.qe-dashboard__cierre-detalle h3 {
+  margin: 0 0 6px;
+  color: var(--q360-color-texto);
+  font-size: 18px;
+}
+
+.qe-dashboard__cierre-detalle p {
+  margin: 0;
+  color: var(--q360-color-texto);
+  font-size: 15px;
+}
+
+.qe-dashboard__cierre-detalle p strong {
+  font-size: 20px;
+  font-variant-numeric: tabular-nums;
+}
+
+.qe-dashboard__cierre-detalle span {
+  color: var(--q360-color-texto-secundario);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+/* E6 - Indicadores superiores más visibles */
+
+.qe-dashboard__metricas .tarjeta-resumen__valor {
+  font-size: clamp(32px, 2.5vw, 40px);
+  line-height: 1.2;
+}
+
+/* Adaptación a pantallas pequeñas */
+
+@media (max-width: 600px) {
+  .qe-dashboard__cierre {
+    grid-template-columns: 1fr;
+    justify-items: center;
+    gap: 16px;
+  }
+
+  .qe-dashboard__cierre-detalle {
+    width: 100%;
+    text-align: center;
+  }
+}
+
+/* E6 - Tema oscuro opcional, inspirado en Jira Cloud */
+
+.qe-dashboard--oscuro {
+  --q360-color-superficie: #22272b;
+  --q360-color-superficie-sutil: #2c333a;
+  --q360-color-texto: #f1f5f9;
+  --q360-color-texto-secundario: #b3beca;
+  --q360-color-borde: #3c4650;
+
+  --q360-color-acento: #85b8ff;
+  --q360-color-acento-hover: #c4dfff;
+  --q360-color-acento-suave: #253247;
+  --q360-color-acento-suave-borde: #456182;
+
+  --q360-color-exito: #59c69f;
+  --q360-color-alerta: #f0b56d;
+  --q360-color-lider: #b5a3f5;
+
+  background: #181c20;
+  color: var(--q360-color-texto);
+  padding: 24px;
+  border-radius: 16px;
+  color-scheme: dark;
+}
+
+.qe-dashboard--oscuro .qe-dashboard__hero {
+  background: linear-gradient(115deg, #253247, #22272b);
+}
+
+.qe-dashboard--oscuro .qe-dashboard__metricas > *,
+.qe-dashboard--oscuro .qe-dashboard__alertas > * {
+  background: var(--q360-color-superficie);
+  border-color: var(--q360-color-borde);
+  color: var(--q360-color-texto);
+}
+
+/* Contraste de las etiquetas interiores de las donas */
+.qe-dashboard--oscuro .qe-dashboard__dona-centro strong {
+  color: #f1f5f9;
+}
+
+.qe-dashboard--oscuro .qe-dashboard__dona-centro span {
+  color: #b3beca;
+}
+
+@media (max-width: 600px) {
+  .qe-dashboard--oscuro {
+    padding: 16px;
+  }
+}
+
+/* E6 - Selector de tema Claro / Oscuro */
+
+.qe-dashboard__acciones {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.qe-dashboard__boton-tema {
+  appearance: none;
+  min-height: 40px;
+  padding: 10px 16px;
+  border: 1px solid var(--q360-color-acento-suave-borde);
+  border-radius: 999px;
+  background: var(--q360-color-superficie);
+  color: var(--q360-color-texto);
+  font: inherit;
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background-color 0.2s, border-color 0.2s;
+}
+
+.qe-dashboard__boton-tema:hover {
+  background: var(--q360-color-acento-suave);
+  border-color: var(--q360-color-acento);
+}
+
+.qe-dashboard__boton-tema:focus-visible {
+  outline: 2px solid var(--q360-color-acento);
+  outline-offset: 3px;
+}
+
+/* Recuperar los colores de los indicadores en modo oscuro */
+
+.qe-dashboard--oscuro .qe-dashboard__metricas > :nth-child(1) {
+  border-top-color: var(--q360-color-acento);
+}
+
+.qe-dashboard--oscuro .qe-dashboard__metricas > :nth-child(2) {
+  border-top-color: #2dd4bf;
+}
+
+.qe-dashboard--oscuro .qe-dashboard__metricas > :nth-child(3) {
+  border-top-color: var(--q360-color-exito);
+}
+
+.qe-dashboard--oscuro .qe-dashboard__metricas > :nth-child(4) {
+  border-top-color: var(--q360-color-lider);
+}
+
+.qe-dashboard--oscuro .qe-dashboard__alertas > :last-child {
+  border-left-color: var(--q360-color-alerta);
+}
+
+/* Adaptación a pantallas pequeñas */
+
+@media (max-width: 600px) {
+  .qe-dashboard__acciones {
+    width: 100%;
+    justify-content: flex-start;
+  }
+}

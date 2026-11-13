@@ -31,6 +31,7 @@ import { QeHduListPage } from "@/pages/qe/QeHduListPage";
 import { QeImpedimentosPage } from "@/pages/qe/QeImpedimentosPage";
 import { QeIntegracionesPage } from "@/pages/qe/QeIntegracionesPage";
 import { QeInicioPage } from "@/pages/qe/QeInicioPage";
+import { QeDashboardPage } from "@/pages/qe/QeDashboardPage";
 import { QeRiesgoPage } from "@/pages/qe/QeRiesgoPage";
 
 /** Rutas del portal: `/admin`, `/qe`, `/qa`, `/lider` y `/auditor` guardadas por rol (D6, ADR 0006, D41). */
@@ -66,6 +67,7 @@ export function AppRoutes() {
 
           <Route element={<RequireRole roles={["QE"]} />}>
             <Route path="qe" element={<QeInicioPage />} />
+            <Route path="qe/dashboard" element={<QeDashboardPage />} />
             <Route path="qe/equipo" element={<QeEquipoPage />} />
             <Route path="qe/hdu" element={<QeHduListPage />} />
             <Route path="qe/hdu/nueva" element={<QeHduFormPage />} />
