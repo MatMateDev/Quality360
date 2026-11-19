@@ -240,7 +240,7 @@ describe("acceso por rol a Integraciones [E5-F01-T09, E5-F04-T08]", () => {
   });
 
   it.each([
-    ["Administrador", ADMIN, "/admin", ["Bandeja", "Usuarios", "Supervisión", "Integraciones", "Perfil"]],
+    ["Administrador", ADMIN, "/admin", ["Bandeja", "Dashboard", "Usuarios", "Supervisión", "Integraciones", "Perfil"]],
     ["QE", QE1, "/qe", ["Bandeja", "Dashboard", "Equipo", "Historias supervisadas", "Impedimentos", "Integraciones", "Perfil"]],
     ["Líder", LIDER, "/lider", ["Bandeja", "Perfil"]],
     ["Analista", ANALISTA, "/qa", ["Bandeja", "Mis HDU", "Perfil"]],
