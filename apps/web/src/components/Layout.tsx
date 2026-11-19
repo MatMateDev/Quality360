@@ -14,6 +14,7 @@ interface EnlaceNav {
 const ENLACES_POR_ROL: Record<Rol, EnlaceNav[]> = {
   ADMINISTRADOR: [
     { a: "/admin", etiqueta: "Bandeja", fin: true },
+    { a: "/admin/dashboard", etiqueta: "Dashboard" },
     { a: "/admin/usuarios", etiqueta: "Usuarios" },
     { a: "/admin/supervision", etiqueta: "Supervisión" },
     // E5: sin `fin`, queda activo en las cuatro pestañas de /admin/integraciones.

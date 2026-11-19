@@ -2,6 +2,7 @@ import { Navigate, Route, Routes } from "react-router-dom";
 import { RequireAuth } from "@/auth/RequireAuth";
 import { RequireRole } from "@/auth/RequireRole";
 import { Layout } from "@/components/Layout";
+import { AdminDashboardPage } from "@/pages/admin/AdminDashboardPage";
 import { AdminInicioPage } from "@/pages/admin/AdminInicioPage";
 import { AdminSupervisionPage } from "@/pages/admin/AdminSupervisionPage";
 import { AdminUsuariosPage } from "@/pages/admin/AdminUsuariosPage";
@@ -54,6 +55,7 @@ export function AppRoutes() {
 
           <Route element={<RequireRole roles={["ADMINISTRADOR"]} />}>
             <Route path="admin" element={<AdminInicioPage />} />
+            <Route path="admin/dashboard" element={<AdminDashboardPage />} />
             <Route path="admin/usuarios" element={<AdminUsuariosPage />} />
             <Route path="admin/supervision" element={<AdminSupervisionPage />} />
             {/* E5: cuatro pestañas por ruta; «Conexión» es el índice y no redirige. */}

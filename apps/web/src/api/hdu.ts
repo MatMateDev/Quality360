@@ -1,17 +1,18 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
 import { http } from "@/lib/httpClient";
-import type {
-  AsignacionAnalista,
-  EstadoHdu,
-  HduDetalle,
-  HistorialHdu,
-  NuevaHdu,
-  PaginaHdu,
-  ReasignacionQeResponsable,
-  ResultadoReasignacionQe,
-  ResultadoAsignacion,
-  ResultadoCambioEstado,
-  SolicitudCambioEstado,
+import {
+  ESTADOS_HDU,
+  type AsignacionAnalista,
+  type EstadoHdu,
+  type HduDetalle,
+  type HistorialHdu,
+  type NuevaHdu,
+  type PaginaHdu,
+  type ReasignacionQeResponsable,
+  type ResultadoReasignacionQe,
+  type ResultadoAsignacion,
+  type ResultadoCambioEstado,
+  type SolicitudCambioEstado,
 } from "@/types/dominio";
 
 export interface FiltrosHdu {
@@ -33,6 +34,37 @@ export function useListaHdu(filtros: FiltrosHdu) {
   return useQuery({
     queryKey: ["hdu", "lista", filtros],
     queryFn: () => http.get<PaginaHdu>(`/v1/hdu${construirQuery(filtros)}`),
+  });
+}
+
+export interface ConteoHduPorEstado {
+  isLoading: boolean;
+  isError: boolean;
+  /** Solo cuando respondieron los cinco conteos: nunca se muestra una distribución a medias. */
+  porEstado?: Record<EstadoHdu, number>;
+  refetch: () => void;
+}
+
+/**
+ * Cuántas HDU hay en cada estado dentro del ámbito del usuario (el Administrador ve todas, E2-B03).
+ * Pide solo el total de cada estado (`tamanoPagina=1`), los cinco en paralelo.
+ */
+export function useConteoHduPorEstado(): ConteoHduPorEstado {
+  return useQueries({
+    queries: ESTADOS_HDU.map((estado) => ({
+      queryKey: ["hdu", "conteo", estado],
+      queryFn: () => http.get<PaginaHdu>(`/v1/hdu?estado=${estado}&tamanoPagina=1`),
+    })),
+    combine: (resultados) => ({
+      isLoading: resultados.some((r) => r.isLoading),
+      isError: resultados.some((r) => r.isError),
+      porEstado: resultados.every((r) => r.data !== undefined)
+        ? (Object.fromEntries(ESTADOS_HDU.map((estado, i) => [estado, resultados[i]?.data?.total ?? 0])) as Record<EstadoHdu, number>)
+        : undefined,
+      refetch: () => {
+        for (const r of resultados) void r.refetch();
+      },
+    }),
   });
 }
 

@@ -1,0 +1,102 @@
+/* Quality360 - Dashboard del Administrador (E6). Reutiliza qe-dashboard.css; aquí va solo lo propio. */
+
+/*
+ * Un color fijo por rol, validado para daltonismo (protan y deutan) en claro y en oscuro,
+ * también entre el último y el primero, que se tocan en la dona. En claro, el ámbar y el
+ * aguamarina quedan bajo 3:1 sobre blanco: por eso cada parte lleva nombre y cifra en la lista.
+ */
+.dash-admin {
+  --dash-rol-analista: #2a78d6;
+  --dash-rol-qe: #eb6834;
+  --dash-rol-lider: #6250d6;
+  --dash-rol-admin: #eda100;
+  --dash-rol-auditor: #1baf7a;
+}
+
+.dash-admin.qe-dashboard--oscuro {
+  --dash-rol-analista: #3987e5;
+  --dash-rol-qe: #d95926;
+  --dash-rol-lider: #9085e9;
+  --dash-rol-admin: #c98500;
+  --dash-rol-auditor: #199e70;
+
+  /*
+   * Tokens que el tema oscuro del QE no redefine y que este dashboard sí usa (detalle de las
+   * tarjetas y botón secundario): sin esto quedan en gris oscuro sobre fondo oscuro.
+   * Texto 6,6:1 y borde 3,9:1 sobre la superficie #22272b.
+   */
+  --q360-color-texto-terciario: #9fadbc;
+  --q360-color-borde-fuerte: #738496;
+}
+
+/*
+ * En oscuro, el tema del QE pinta el borde de todas las alertas con el color neutro y solo
+ * devuelve el ámbar a la última (en su panel es la única con atención). Aquí lo lleva cada
+ * tarjeta que requiere atención, y ninguna otra.
+ */
+.dash-admin.qe-dashboard--oscuro .qe-dashboard__alertas > .tarjeta-resumen--atencion {
+  border-left-color: var(--q360-color-alerta);
+}
+
+.dash-admin.qe-dashboard--oscuro .qe-dashboard__alertas > :last-child:not(.tarjeta-resumen--atencion) {
+  border-left-color: var(--q360-color-borde);
+}
+
+/* Dona en SVG: el anillo ocupa el contenedor y la cifra central queda encima. */
+.dash-dona {
+  position: relative;
+}
+
+.dash-dona__svg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.dash-dona .qe-dashboard__dona-centro {
+  position: relative;
+  pointer-events: none;
+}
+
+.dash-dona__segmento {
+  transition: opacity 0.15s ease;
+}
+
+.dash-dona--resaltada .dash-dona__segmento:not(.dash-dona__segmento--activo) {
+  opacity: 0.3;
+}
+
+/* Lista de partes: sin viñetas; la fila activa se resalta junto con su segmento. */
+.dash-leyenda {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.dash-leyenda .qe-dashboard__estado-cabecera > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.dash-leyenda__muestra {
+  flex: none;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+}
+
+.dash-leyenda__fila--activa .qe-dashboard__estado-cabecera {
+  font-weight: 700;
+}
+
+.dash-admin__accion {
+  margin-top: 16px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dash-dona__segmento {
+    transition: none;
+  }
+}
