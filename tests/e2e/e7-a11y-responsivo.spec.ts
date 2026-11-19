@@ -6,17 +6,15 @@ import { hduFixture, type ClaveE7 } from "../support/e7";
 
 const estadoSesion = (clave: ClaveE7) => path.join(import.meta.dirname, "..", ".auth", `e7-${clave}.json`);
 
-/** Las 5 bandejas (más las pestañas del Auditor y el detalle de solo lectura) con la sesión de su rol y la señal de que cargaron. */
+/** Las 4 bandejas (más las pestañas del Auditor y el detalle de solo lectura) con la sesión de su rol y la señal de que cargaron (D208). */
 const PANTALLAS: Array<{ nombre: string; clave: ClaveE7; ruta: string; listo: string }> = [
   { nombre: "bandeja del Analista QA", clave: "ana2", ruta: "/qa", listo: "lista-mis-hdu" },
   { nombre: "bandeja del QE", clave: "qe1", ruta: "/qe", listo: "lista-requiere-accion" },
-  { nombre: "bandeja del Líder QA", clave: "lid1", ruta: "/lider", listo: "lista-hdu-lider" },
   { nombre: "bandeja del Administrador", clave: "adm1", ruta: "/admin", listo: "lista-pendientes" },
   { nombre: "bandeja del Auditor (HDU)", clave: "aud1", ruta: "/auditor", listo: "lista-auditor-hdu" },
   { nombre: "Auditor · Certificados", clave: "aud1", ruta: "/auditor/certificados", listo: "lista-certificados" },
   { nombre: "Auditor · Auditoría de usuarios", clave: "aud1", ruta: "/auditor/auditoria-usuarios", listo: "lista-auditoria-usuarios" },
   { nombre: "Administrador · Usuarios (E7-F07)", clave: "adm1", ruta: "/admin/usuarios", listo: "total-usuarios" },
-  { nombre: "bandeja del Líder QA sin células", clave: "lid2", ruta: "/lider", listo: "estado-vacio-celulas" },
   { nombre: "bandeja del Analista QA sin HDU", clave: "ana4", ruta: "/qa", listo: "estado-vacio-mis-hdu" },
 ];
 
@@ -69,9 +67,9 @@ test.describe("E7 · Accesibilidad (axe) y responsividad de las bandejas", () =>
   }
 
   test.describe("detalle de solo lectura y estados de error", () => {
-    test.use({ storageState: estadoSesion("lid1") });
+    test.use({ storageState: estadoSesion("aud1") });
 
-    test("[E7-A11Y] detalle de HDU del Líder (solo lectura) a 375 px: sin desborde ni violaciones serious/critical", async ({ page, request }) => {
+    test("[E7-A11Y] detalle de HDU del Auditor (solo lectura) a 375 px: sin desborde ni violaciones serious/critical", async ({ page, request }) => {
       const h = await hduFixture(request);
       await page.setViewportSize({ width: 375, height: 800 });
       await page.goto(`${env.portalUrl}/hdu/${h["E7-H7"].id}`);

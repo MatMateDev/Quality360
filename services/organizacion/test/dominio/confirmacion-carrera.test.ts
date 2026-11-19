@@ -51,7 +51,6 @@ describe('upsert en modo confirmación · carrera de unicidad [E5-B05-T21]', () 
       repositorio as never,
       {} as never,
       { listarAnalistasVigentesIds: () => Promise.resolve([IDS.analista]) } as never,
-      {} as never,
     );
     const asignacion = { celulaId: IDS.celula, qeResponsableId: IDS.qe, analistaId: IDS.analista, sprintId: IDS.sprint };
     const fila = (n: number, codigo: string) => ({ fila: n, codigo, titulo: 'T', descripcion: null, prioridad: null, celula: null, sprint: null, qeCorreo: null, claveExterna: codigo, urlExterna: null, operacion: 'CREAR' as const, asignacion });

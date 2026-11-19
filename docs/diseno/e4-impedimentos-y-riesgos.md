@@ -471,6 +471,8 @@ Principio: **grupo `Impedimentos` con `h2`** (clase `.grupo-contadores`) que con
 
 ### 7.3 Líder QA · `/lider` (solo lectura)
 
+> **Retirada en D208** con el rol Líder QA. Los escalados van solo a Administradores y se ven en «Impedimentos escalados a mí» de `/admin`.
+
 ```
  … (certificado: 5 contadores · resumen por célula)
  Impedimentos y riesgo

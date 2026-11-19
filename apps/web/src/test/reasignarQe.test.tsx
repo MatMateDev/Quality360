@@ -69,7 +69,7 @@ describe("Reasignar el QE responsable de una HDU [E7-B05 · solo Administrador]"
     }
   });
 
-  it("el QE, el Analista y el Líder no ven «Reasignar QE responsable» (se oculta, y el backend lo rechaza igual)", async () => {
+  it("el QE y el Analista no ven «Reasignar QE responsable» (se oculta, y el backend lo rechaza igual)", async () => {
     await abrirComo("jose.seguel@quality360.local", `/hdu/${ID.hdu1}`);
     expect(await screen.findByRole("heading", { level: 1, name: "Validación de transferencias" })).toBeInTheDocument();
     expect(screen.queryByTestId("boton-reasignar-qe")).not.toBeInTheDocument();

@@ -222,7 +222,7 @@ test.describe("E5-F02 · Consultar Jira", () => {
     });
   });
 
-  for (const clave of ["qe1", "ana1", "lid1", "aud1"] as const) {
+  for (const clave of ["qe1", "ana1", "aud1"] as const) {
     test.describe(clave.toUpperCase(), () => {
       test.use({ storageState: estadoSesion(clave) });
       test(`[E5-F02#1] T12 (negativo): ${clave.toUpperCase()} recibe acceso denegado en /admin/integraciones y no ve «Consultar Jira» en su propio portal`, async ({ page }) => {

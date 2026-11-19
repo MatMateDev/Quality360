@@ -224,7 +224,7 @@ describe('E5-B02 · errores de Jira y de Organización', () => {
     assert.equal((await consultar({}, 'adm1')).body.mensaje, 'Configura la conexión con Jira antes de consultar.');
     assert.equal((await guardarConfiguracion(m)).status, 200);
     m.jira.llamadas.length = 0;
-    for (const persona of ['qe1', 'qe2', 'ana1', 'lid1', 'aud1'] as const) {
+    for (const persona of ['qe1', 'qe2', 'ana1', 'aud1'] as const) {
       const r = await consultar({}, persona);
       assert.deepEqual([r.status, r.body.codigo], [403, 'ACCESO_DENEGADO'], persona);
     }

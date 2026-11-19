@@ -34,7 +34,6 @@ import { PrismaService } from '../prisma/prisma.service.js';
 function whereDeAmbito(ambito: FiltroAmbitoHdu): Prisma.HduWhereInput {
   if (ambito.tipo === 'TODAS') return {};
   if (ambito.tipo === 'ANALISTA') return { analistaId: ambito.analistaId };
-  if (ambito.tipo === 'CELULAS') return { celulaId: { in: [...ambito.celulaIds] } };
   return { OR: [{ qeResponsableId: ambito.qeResponsableId }, { analistaId: { in: [...ambito.analistasSupervisadosIds] } }] };
 }
 

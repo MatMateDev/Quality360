@@ -72,7 +72,7 @@ export async function crearFixture(app: NestExpressApplication, falsos: Falsos):
       ...base(h.H6, 'DEPENDENCIA', 'API de Pagos sin sandbox', 'ana1', 'qe1'),
       acciones: [
         accion('REGISTRAR', null, 'ABIERTO', 'ana1', haceDias(3), R),
-        accion('ESCALAR', 'ABIERTO', 'ESCALADO', 'qe1', haceDias(1), 'Se escala al Líder', { responsableNuevo: resp('lid1') }),
+        accion('ESCALAR', 'ABIERTO', 'ESCALADO', 'qe1', haceDias(1), 'Se escala al Administrador', { responsableNuevo: resp('adm1') }),
       ],
     }),
     I4: await cargar(app, 'impedimentos', {

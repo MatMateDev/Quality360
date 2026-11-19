@@ -128,7 +128,6 @@ describe('decidirEdicion (D139, D145)', () => {
     analista: ref('a', 'ANA3'),
     sprint: null,
     sprintPropuesto: { sprint: ref('s', 'E5 Sprint 2'), origen: 'JIRA', sprintJiraNoEncontrado: false },
-    celulaSinLiderActivo: false,
     ...extra,
   });
   const editar = (fila: EstadoFila, pedido: Parameters<typeof decidirEdicion>[1], validacion: ValidacionAsignacion | null = valida()) =>
@@ -179,17 +178,17 @@ describe('decidirEdicion (D139, D145)', () => {
     assert.equal(cambio.tipo === 'OK' && cambio.marcada, true);
   });
 
-  it('un sprint explícito queda MANUAL y el aviso de Líder viene de la validación', () => {
+  it('un sprint explícito queda MANUAL y la decisión ya no trae aviso de Líder (D208)', () => {
     const base: EstadoFila = { ...vacia, asignacion: COMPLETA };
-    const d = editar(base, { cambio: { sprintId: 's9' } }, valida({ sprint: ref('s9', 'Otro sprint'), celulaSinLiderActivo: true }));
-    assert.equal(d.tipo === 'OK' && d.asignacion.sprintOrigen === 'MANUAL' && d.asignacion.sprint?.nombre === 'Otro sprint' && d.avisoSinLider, true);
+    const d = editar(base, { cambio: { sprintId: 's9' } }, valida({ sprint: ref('s9', 'Otro sprint') }));
+    assert.equal(d.tipo === 'OK' && d.asignacion.sprintOrigen === 'MANUAL' && d.asignacion.sprint?.nombre === 'Otro sprint' && !('avisoSinLider' in d), true);
   });
 });
 
 describe('analista único, HDU ya asignada y fila en toma (D201, D202, D204)', () => {
   const conQe: EstadoFila = { grupo: 'NUEVA', asignacion: { ...ASIGNACION_VACIA, celula: ref('c', 'CEL-C') }, marcada: false, aplicada: false };
   const validar = (extra: Partial<ValidacionAsignacion> = {}): ValidacionAsignacion => ({
-    errores: [], celula: null, qe: ref('q', 'QE2'), analista: null, sprint: null, sprintPropuesto: null, celulaSinLiderActivo: false,
+    errores: [], celula: null, qe: ref('q', 'QE2'), analista: null, sprint: null, sprintPropuesto: null,
     analistasActivos: 1, analistaPropuesto: ref('a', 'ANA3'), ...extra,
   });
   const editar = (fila: EstadoFila, pedido: Parameters<typeof decidirEdicion>[1], validacion: ValidacionAsignacion | null) =>
@@ -332,7 +331,6 @@ describe('confirmación (D140, D141)', () => {
     qeHduNombre: null,
     cambios: null,
     asignacion: COMPLETA,
-    avisoSinLider: false,
     marcada: true,
     aplicada: false,
     asignadoPor: null,

@@ -119,7 +119,6 @@ export function aItem(fila: FilaSinDetalle, tomaFilaMs: number = TOMA_FILA_MS_DE
     cambios: (fila.cambios as CambiosConsulta | null) ?? null,
     asignacion,
     analistaAuto: fila.analistaAuto,
-    avisoSinLider: fila.avisoSinLider,
     marcada: fila.marcada,
     aplicada: fila.aplicada,
     aplicando: !fila.aplicada && fila.aplicandoDesde !== null && ahora.getTime() - fila.aplicandoDesde.getTime() < tomaFilaMs,
@@ -396,7 +395,6 @@ export class ConsultaPrismaRepositorio extends ConsultaRepositorio {
             sprint_nombre: e.asignacion.sprint?.nombre ?? null,
             sprint_origen: e.asignacion.sprintOrigen,
             analista_auto: e.analistaAuto,
-            aviso_sin_lider: e.avisoSinLider,
             marcada: e.marcada,
             advertencias: e.advertencias,
             asignado_por_id: e.asignadoPor?.id ?? null,
@@ -407,13 +405,13 @@ export class ConsultaPrismaRepositorio extends ConsultaRepositorio {
         await tx.$executeRaw`UPDATE "integraciones"."consulta_item" AS t SET
             celula_id = v.celula_id, qe_id = v.qe_id, analista_id = v.analista_id, sprint_id = v.sprint_id,
             celula_nombre = v.celula_nombre, qe_nombre = v.qe_nombre, analista_nombre = v.analista_nombre, sprint_nombre = v.sprint_nombre,
-            sprint_origen = v.sprint_origen, analista_auto = v.analista_auto, aviso_sin_lider = v.aviso_sin_lider, marcada = v.marcada, advertencias = v.advertencias,
+            sprint_origen = v.sprint_origen, analista_auto = v.analista_auto, marcada = v.marcada, advertencias = v.advertencias,
             asignado_por_id = v.asignado_por_id, asignado_por_nombre = v.asignado_por_nombre, asignado_en = v.asignado_en,
             revision = t.revision + 1
           FROM jsonb_to_recordset(${datos}::jsonb) AS v(
             id uuid, celula_id uuid, qe_id uuid, analista_id uuid, sprint_id uuid,
             celula_nombre varchar, qe_nombre varchar, analista_nombre varchar, sprint_nombre varchar,
-            sprint_origen varchar, analista_auto boolean, aviso_sin_lider boolean, marcada boolean, advertencias jsonb,
+            sprint_origen varchar, analista_auto boolean, marcada boolean, advertencias jsonb,
             asignado_por_id uuid, asignado_por_nombre varchar, asignado_en timestamptz)
           WHERE t.id_item = v.id AND t.id_consulta = ${consultaId}::uuid`;
       }
@@ -556,7 +554,7 @@ export class ConsultaPrismaRepositorio extends ConsultaRepositorio {
         marcada: false,
         aplicandoDesde: null,
         revision: { increment: 1 },
-        ...(limpia.has('celulaId') ? { celulaId: null, celulaNombre: null, avisoSinLider: false } : {}),
+        ...(limpia.has('celulaId') ? { celulaId: null, celulaNombre: null } : {}),
         ...(limpia.has('qeId') ? { qeId: null, qeNombre: null } : {}),
         ...(limpia.has('analistaId') ? { analistaId: null, analistaNombre: null, analistaAuto: false } : {}),
         ...(limpia.has('sprintId') ? { sprintId: null, sprintNombre: null, sprintOrigen: null } : {}),

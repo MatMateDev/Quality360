@@ -8,7 +8,7 @@ interface Props {
   testId: string;
 }
 
-/** Descarga del PDF del certificado por URL firmada (permitida a Líder y Auditor, que no pueden escribir). */
+/** Descarga del PDF del certificado por URL firmada (permitida al Auditor, que no puede escribir). */
 export function BotonDescargaCertificado({ hduId, folio, testId }: Props) {
   const [error, setError] = useState(false);
   const [descargando, setDescargando] = useState(false);

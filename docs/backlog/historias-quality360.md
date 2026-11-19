@@ -471,7 +471,7 @@ Quiero resolver o escalar un impedimento registrando la acción tomada. Para dej
 | # | Criterio | Contexto | Evento | Resultado esperado |
 | --- | --- | --- | --- | --- |
 | 1 | Resolución | El impedimento está abierto y soy el QE responsable de la HDU. | Lo marca como resuelto con un comentario. | Queda Resuelto con su fecha, el comentario aparece en el historial y, si era el último abierto, la HDU deja de estar bloqueada. |
-| 2 | Escalamiento | El impedimento excede mi ámbito. | Lo escala eligiendo a quién y registrando un comentario. | Queda Escalado con el destino como responsable; la HDU sigue bloqueada; el destino lo ve en su bandeja si es Líder o Administrador. |
+| 2 | Escalamiento | El impedimento excede mi ámbito. | Lo escala eligiendo a quién y registrando un comentario. | Queda Escalado con el destino como responsable; la HDU sigue bloqueada; el destino lo ve en su bandeja si es Administrador (D208). |
 | 3 | Reapertura | Un impedimento resuelto vuelve a ocurrir. | Lo reabre indicando el motivo. | Vuelve a Abierto, la HDU queda bloqueada otra vez y el historial anterior se conserva completo. |
 
 ### E4-F04 · Quality Engineer (QE)
@@ -698,7 +698,9 @@ Quiero que el sistema exporte los indicadores del dashboard. Para compartir repo
 
 > Agregada el 2026-10-21; aún no está en `Historias_de_usuario_Quality360.xlsx`. Fuente completa (reglas de negocio, fixture y 100 casos de prueba): `docs/backlog/e7-bandejas-por-rol.md`. Decisiones D28–D53 en `docs/arquitectura/decisiones-mvp.md`.
 
-Bandeja de inicio por rol para Analista QA, QE, Líder QA, Administrador y Auditor; roles de solo lectura, células del Líder y consultas con exportación del Auditor.
+Bandeja de inicio por rol para Analista QA, QE, Administrador y Auditor; rol de solo lectura y consultas con exportación del Auditor.
+
+> 2026-11-18 (D208): se retiró el rol Líder QA. Quedan retirados E7-F04 completa, E7-F07#2, E7-F07#3 y E7-B02#1 (número tachado, se conservan como registro); los demás escenarios ya no mencionan al Líder.
 
 ### E7-F01 · Usuario autenticado
 
@@ -706,8 +708,8 @@ Quiero entrar automáticamente a la bandeja de mi rol y que solo vea las opcione
 
 | # | Criterio | Contexto | Evento | Resultado esperado |
 | --- | --- | --- | --- | --- |
-| 1 | Redirección por rol | El usuario tiene credenciales válidas y un rol asignado. | Inicia sesión. | Es dirigido a la bandeja de su rol: Analista QA a `/qa`, QE a `/qe`, Líder QA a `/lider`, Administrador a `/admin`, Auditor a `/auditor`. La pantalla muestra su nombre y rol. |
-| 2 | Menú según rol | El usuario está en su bandeja. | Revisa el menú. | Solo aparecen las opciones de su rol, con «Bandeja» en primer lugar. El Líder y el Auditor no ven opciones de creación ni de edición. |
+| 1 | Redirección por rol | El usuario tiene credenciales válidas y un rol asignado. | Inicia sesión. | Es dirigido a la bandeja de su rol: Analista QA a `/qa`, QE a `/qe`, Administrador a `/admin`, Auditor a `/auditor`. La pantalla muestra su nombre y rol. |
+| 2 | Menú según rol | El usuario está en su bandeja. | Revisa el menú. | Solo aparecen las opciones de su rol, con «Bandeja» en primer lugar. El Auditor no ve opciones de creación ni de edición. |
 | 3 | Bandeja ajena | El usuario está autenticado con un rol. | Abre por URL la bandeja o una pantalla de otro rol. | Ve «No tienes acceso a esta sección» con el botón «Ir a mi bandeja» y no se carga ningún dato. Sin sesión, lo envían al inicio de sesión y, tras ingresar, llega a su propia bandeja aunque la ruta pedida fuera de otro rol. |
 
 ### E7-F02 · Analista QA
@@ -730,15 +732,17 @@ Quiero una bandeja con lo que requiere mi acción. Para no revisar HDU una por u
 | 2 | Sin pendientes o fuente caída | El QE no tiene acciones, o Certificaciones no responde. | Abre su bandeja. | Sin acciones: «No tienes acciones pendientes» con los contadores en 0. Con Certificaciones caída: los contadores y filas que dependen del checklist dicen «No disponible»; «Sin analista» y el resumen del equipo siguen visibles. |
 | 3 | Acción y ámbito | Hay una HDU de un analista suyo cuyo QE responsable es otro QE. | Usa el botón de una fila y revisa la lista. | El botón lleva a la pantalla de esa acción (aprobaciones, asignación o detalle). La HDU donde otro QE es responsable no aparece en la lista de acciones. |
 
-### E7-F04 · Líder QA
+### E7-F04 · Líder QA (retirada, D208)
+
+> Retirada el 2026-11-18 con el rol Líder QA (D208). Se conserva como registro.
 
 Quiero una bandeja con todas las HDU de las células que tengo a cargo. Para conocer el estado de certificación de mis células sin depender de cada QE.
 
 | # | Criterio | Contexto | Evento | Resultado esperado |
 | --- | --- | --- | --- | --- |
-| 1 | HDU de mis células | El líder tiene dos células con HDU de distintos QE y estados. | Abre su bandeja. | Ve sus células, los contadores, el resumen por célula y la lista de HDU de esas células con QE, analista, avance y certificado. No aparece ninguna HDU de otra célula. |
-| 2 | Sin células o fuente caída | El líder no tiene células vigentes, o Certificaciones no responde. | Abre su bandeja. | Sin células: «Aún no tienes células asignadas. Pide al Administrador que te las asigne», sin tablas ni cifras ficticias. Con Certificaciones caída: avance y certificado dicen «No disponible» y la lista de HDU se mantiene. |
-| 3 | Solo lectura | El líder abre una HDU de su célula. | Revisa la pantalla. | Ve datos, checklist, evidencias y certificado, y puede descargar el certificado. No hay botones para marcar, aprobar, asignar, cambiar estado ni generar certificado. Una HDU de otra célula da acceso denegado. |
+| ~~1~~ | HDU de mis células | El líder tiene dos células con HDU de distintos QE y estados. | Abre su bandeja. | Ve sus células, los contadores, el resumen por célula y la lista de HDU de esas células con QE, analista, avance y certificado. No aparece ninguna HDU de otra célula. |
+| ~~2~~ | Sin células o fuente caída | El líder no tiene células vigentes, o Certificaciones no responde. | Abre su bandeja. | Sin células: «Aún no tienes células asignadas. Pide al Administrador que te las asigne», sin tablas ni cifras ficticias. Con Certificaciones caída: avance y certificado dicen «No disponible» y la lista de HDU se mantiene. |
+| ~~3~~ | Solo lectura | El líder abre una HDU de su célula. | Revisa la pantalla. | Ve datos, checklist, evidencias y certificado, y puede descargar el certificado. No hay botones para marcar, aprobar, asignar, cambiar estado ni generar certificado. Una HDU de otra célula da acceso denegado. |
 
 ### E7-F05 · Administrador
 
@@ -746,9 +750,9 @@ Quiero una bandeja con lo que falta configurar y con mis últimos cambios. Para 
 
 | # | Criterio | Contexto | Evento | Resultado esperado |
 | --- | --- | --- | --- | --- |
-| 1 | Pendientes de configuración | Hay analistas sin QE, líderes sin células y células sin líder. | Abre su bandeja. | Ve los contadores de usuarios (activos con desglose por rol, e inactivos), analistas sin QE, QE sin analistas, líderes sin células, células sin líder y HDU totales, y la lista de pendientes con un botón por fila. |
+| 1 | Pendientes de configuración | Hay analistas sin QE y QE sin analistas. | Abre su bandeja. | Ve los contadores de usuarios (activos con desglose por rol, e inactivos), analistas sin QE, QE sin analistas y HDU totales, y la lista de pendientes con un botón por fila. |
 | 2 | Todo en orden o fuente caída | No hay pendientes, o el servicio de Organización no responde. | Abre su bandeja. | Sin pendientes: «No hay pendientes de configuración» y contadores en 0. Con error: mensaje de error con «Reintentar», sin cifras ficticias (E1-F08#2); los accesos a usuarios, roles y supervisión siguen disponibles. |
-| 3 | Ir a resolver | Hay un líder sin células. | Pulsa «Asignar células» en su fila. | Abre la pantalla de usuarios con ese usuario seleccionado. Los últimos cambios de la bandeja incluyen la asignación recién hecha al volver. |
+| 3 | Ir a resolver | Hay un analista sin QE. | Pulsa «Asignar QE» en su fila. | Abre la pantalla de supervisión con ese analista seleccionado. Los últimos cambios de la bandeja incluyen la asignación recién hecha al volver. |
 
 ### E7-F06 · Auditor
 
@@ -762,33 +766,33 @@ Quiero consultar todas las HDU, checklists, evidencias, certificados, la bitáco
 
 ### E7-F07 · Administrador
 
-Quiero asignar el rol Líder QA o Auditor a un usuario y, para el Líder, elegir sus células. Para definir quién ve qué en las bandejas.
+Quiero asignar el rol Auditor a un usuario. Para definir quién consulta todo sin poder modificar.
 
 | # | Criterio | Contexto | Evento | Resultado esperado |
 | --- | --- | --- | --- | --- |
-| 1 | Asignar rol y células | El Administrador edita un usuario activo. | Elige el rol Líder QA, marca CEL-A y CEL-B y confirma. | El selector ofrece los 5 roles; al elegir Líder QA aparece la lista de células; se pide confirmación y se muestra el resultado. Con Auditor no aparece lista de células. |
-| 2 | Validaciones | El Administrador deja a un Líder sin células, o intenta cambiar de rol a un Líder que aún las tiene. | Guarda. | Un Líder sin células se permite, con el aviso «Este líder no verá ninguna HDU hasta que le asignes células». Cambiar el rol de un Líder con células se rechaza indicando que primero debe quitárselas; no se aplica ningún cambio parcial. |
-| 3 | Reflejo y rastro | El Administrador cambió las células de un Líder. | Consulta el usuario y el historial. | La pantalla muestra las células vigentes y su historial con fechas y quién las asignó; el cambio aparece en la auditoría. |
+| 1 | Asignar rol | El Administrador edita un usuario activo. | Elige el rol Auditor y confirma. | El selector ofrece los 4 roles; se pide confirmación y se muestra el resultado. No aparece lista de células. |
+| ~~2~~ | Validaciones | El Administrador deja a un Líder sin células, o intenta cambiar de rol a un Líder que aún las tiene. | Guarda. | Un Líder sin células se permite, con el aviso «Este líder no verá ninguna HDU hasta que le asignes células». Cambiar el rol de un Líder con células se rechaza indicando que primero debe quitárselas; no se aplica ningún cambio parcial. |
+| ~~3~~ | Reflejo y rastro | El Administrador cambió las células de un Líder. | Consulta el usuario y el historial. | La pantalla muestra las células vigentes y su historial con fechas y quién las asignó; el cambio aparece en la auditoría. |
 
 ### E7-B01 · Administrador
 
-Quiero que el sistema registre los roles Líder QA y Auditor y las células de cada Líder. Para que la visibilidad de cada usuario quede definida y trazable.
+Quiero que el sistema registre el rol Auditor. Para que la visibilidad de cada usuario quede definida y trazable.
 
 | # | Criterio | Contexto | Evento | Resultado esperado |
 | --- | --- | --- | --- | --- |
-| 1 | Catálogo y asignación | Existen usuarios activos y células. | El Administrador asigna el rol Líder QA con dos células. | El catálogo ofrece 5 roles; el usuario queda con rol `LIDER_QA` y dos asignaciones vigentes en `celula_lider`; se registra en la auditoría el rol y las células, con actor y fecha. |
-| 2 | Reglas de integridad | Se envían datos inválidos o incompatibles. | El Administrador confirma. | Un rol fuera del catálogo se rechaza (400 `VALIDACION`, como E1-B08#1). Asignar células a quien no es Líder se rechaza (409 `ROL_INCOMPATIBLE`). Una célula inexistente se rechaza (422). Cambiar el rol de un Líder con células vigentes se rechaza (409 `RELACIONES_INCOMPATIBLES`). Se mantiene la regla del último administrador. Quitar una célula conserva el registro con `fecha_hasta`. |
-| 3 | Solo el Administrador | Un usuario no administrador intenta cambiar roles o células. | Invoca la operación. | Se rechaza con 403 `ACCESO_DENEGADO` y no se modifica nada; sin sesión, 401. |
+| 1 | Catálogo y asignación | Existen usuarios activos. | El Administrador asigna el rol Auditor. | El catálogo ofrece 4 roles; el usuario queda con rol `AUDITOR`; se registra en la auditoría el cambio de rol, con actor y fecha. |
+| 2 | Reglas de integridad | Se envían datos inválidos o incompatibles. | El Administrador confirma. | Un rol fuera del catálogo se rechaza (400 `VALIDACION`, como E1-B08#1). Cambiar el rol de un usuario con analistas, supervisor o HDU abiertas vigentes se rechaza (409 `RELACIONES_INCOMPATIBLES`). Se mantiene la regla del último administrador. |
+| 3 | Solo el Administrador | Un usuario no administrador intenta cambiar roles. | Invoca la operación. | Se rechaza con 403 `ACCESO_DENEGADO` y no se modifica nada; sin sesión, 401. |
 
 ### E7-B02 · Usuario autenticado
 
-Quiero que el sistema limite lo que veo según mi rol y me impida modificar datos si soy Líder QA o Auditor. Para que la consulta sea amplia pero segura.
+Quiero que el sistema limite lo que veo según mi rol y me impida modificar datos si soy Auditor. Para que la consulta sea amplia pero segura.
 
 | # | Criterio | Contexto | Evento | Resultado esperado |
 | --- | --- | --- | --- | --- |
-| 1 | Ámbito del Líder | El líder tiene células vigentes. | Consulta el listado, el detalle, el checklist, las evidencias o el certificado de una HDU. | El listado solo incluye HDU de sus células vigentes. Cualquier recurso de una HDU de otra célula responde 403 `ACCESO_DENEGADO` (D12). Un líder sin células recibe una lista vacía con 200, no un error. |
+| ~~1~~ | Ámbito del Líder | El líder tiene células vigentes. | Consulta el listado, el detalle, el checklist, las evidencias o el certificado de una HDU. | El listado solo incluye HDU de sus células vigentes. Cualquier recurso de una HDU de otra célula responde 403 `ACCESO_DENEGADO` (D12). Un líder sin células recibe una lista vacía con 200, no un error. |
 | 2 | Lectura total del Auditor | Existen HDU de todas las células. | El auditor consulta listado, detalle, checklist, evidencias, certificados e historiales. | Recibe todas las HDU y recursos asociados, incluidos URLs firmadas de corta duración para evidencias y certificados (D20). |
-| 3 | Sin escritura | Un Líder o un Auditor invoca una operación que modifica datos. | Invoca crear o editar HDU, cambiar estado, asignar, marcar, desmarcar, aprobar, rechazar, generar certificado, usuarios, supervisión o células. | Todas responden 403 `ACCESO_DENEGADO`, sin cambios en los datos ni nuevos eventos de bitácora. |
+| 3 | Sin escritura | Un Auditor invoca una operación que modifica datos. | Invoca crear o editar HDU, cambiar estado, asignar, marcar, desmarcar, aprobar, rechazar, generar certificado, usuarios o supervisión. | Todas responden 403 `ACCESO_DENEGADO`, sin cambios en los datos ni nuevos eventos de bitácora. |
 
 ### E7-B03 · Usuario autenticado
 
@@ -797,7 +801,7 @@ Quiero que el sistema entregue la bandeja de mi rol con contadores y lista calcu
 | # | Criterio | Contexto | Evento | Resultado esperado |
 | --- | --- | --- | --- | --- |
 | 1 | Cálculo por ámbito | Cada rol tiene datos en su ámbito. | Solicita `GET /v1/bandeja/<su rol>`. | Devuelve los contadores y la lista de la sección 6 calculados solo con datos de su ámbito; un resultado vacío válido devuelve 0 con estado `ok`. |
-| 2 | Fuente no disponible | Certificaciones no responde. | Solicita la bandeja de Analista, QE, Líder o Auditor. | Los bloques que dependen del checklist vienen con `estado: indisponible` y sin valor; los demás vienen `ok` y la respuesta es 200. Nunca se devuelve 0 por una fuente caída (D34). |
+| 2 | Fuente no disponible | Certificaciones no responde. | Solicita la bandeja de Analista, QE o Auditor. | Los bloques que dependen del checklist vienen con `estado: indisponible` y sin valor; los demás vienen `ok` y la respuesta es 200. Nunca se devuelve 0 por una fuente caída (D34). |
 | 3 | Rol exclusivo | Un usuario pide la bandeja de otro rol, no tiene sesión o está desactivado. | Invoca el endpoint. | Otro rol, incluido el Administrador: 403 `ACCESO_DENEGADO`. Sin sesión o con token inválido: 401 `NO_AUTENTICADO`. Usuario desactivado: 403 `ACCESO_DENEGADO`. |
 
 ### E7-B04 · Auditor
@@ -817,5 +821,5 @@ Quiero reasignar el QE responsable de una HDU. Para liberar a un QE (por ejemplo
 | # | Criterio | Contexto | Evento | Resultado esperado |
 | --- | --- | --- | --- | --- |
 | 1 | Reasignación con motivo | Una HDU abierta tiene un QE responsable y existe otro QE activo. | El Administrador reasigna el QE responsable e indica el motivo. | La HDU queda con el nuevo QE responsable. El historial de la HDU registra el cambio (QE anterior, QE nuevo, motivo, actor y fecha) y la auditoría guarda `REASIGNAR_QE_RESPONSABLE` con antes, después y motivo, en una sola transacción. Si el QE indicado ya era el responsable, responde 200 sin registrar nada. |
-| 2 | Solo el Administrador | Un usuario que no es Administrador intenta reasignar. | Invoca la operación. | Responde 403 `ACCESO_DENEGADO` al QE (también al responsable), al Analista QA, al Líder QA y al Auditor; sin sesión, 401. No cambia nada. |
+| 2 | Solo el Administrador | Un usuario que no es Administrador intenta reasignar. | Invoca la operación. | Responde 403 `ACCESO_DENEGADO` al QE (también al responsable), al Analista QA y al Auditor; sin sesión, 401. No cambia nada. |
 | 3 | Destino inválido o HDU cerrada | El destino no es un QE activo, falta el motivo o la HDU está cerrada. | Invoca la operación. | Destino inexistente, que no es QE o inactivo: 422 `QE_INVALIDO`. Sin motivo: 400 (en blanco: 422 `MOTIVO_REQUERIDO`). HDU cerrada: 409 `HDU_CERRADA`. HDU inexistente: 404. No cambia nada. |

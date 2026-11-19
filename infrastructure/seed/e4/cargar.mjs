@@ -42,15 +42,15 @@ if (!TOKEN || !ANON) {
 }
 
 // Usuarios del fixture E7 que usa E4 (mismos nombres y roles que seed/e7: el alta es idempotente).
+// D208: el escalamiento va al Administrador (el rol Líder QA se retiró).
 const USUARIOS = {
+  adm1: { nombre: 'ADM1 Administrador', rol: 'ADMINISTRADOR' },
   qe1: { nombre: 'QE1 Quality Engineer', rol: 'QE' },
   qe2: { nombre: 'QE2 Quality Engineer', rol: 'QE' },
   ana1: { nombre: 'ANA1 Analista', rol: 'ANALISTA_QA' },
   ana2: { nombre: 'ANA2 Analista', rol: 'ANALISTA_QA' },
   ana3: { nombre: 'ANA3 Analista', rol: 'ANALISTA_QA' },
-  lid1: { nombre: 'LID1 Líder CEL-A y CEL-B', rol: 'LIDER_QA' },
 };
-const CELULAS_LID1 = ['CEL-A', 'CEL-B'];
 
 async function http(base, metodo, ruta, { cuerpo, cabeceras = {} } = {}) {
   const r = await fetch(base + ruta, { method: metodo, headers: { 'content-type': 'application/json', ...cabeceras }, body: cuerpo === undefined ? undefined : JSON.stringify(cuerpo) });
@@ -101,7 +101,6 @@ async function main() {
   const usuarios = {};
   for (const [clave, u] of Object.entries(USUARIOS)) {
     const cuerpo = { nombre: u.nombre, correo: `${clave}@quality360.local`, rol: u.rol, contrasenaInicial: CONTRASENA };
-    if (clave === 'lid1') cuerpo.celulaIds = CELULAS_LID1.map((c) => celulas[c]);
     const j = exigir(await servicio(ORG, 'POST', '/v1/interno/carga/usuarios', cuerpo), `usuario ${clave}`);
     usuarios[clave] = { id: j.usuario.id, nombre: u.nombre, rol: u.rol };
   }

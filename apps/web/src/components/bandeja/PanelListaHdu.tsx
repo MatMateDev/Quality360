@@ -7,7 +7,7 @@ import { Paginacion } from "./Paginacion";
 import { TablaBandeja, type Columna } from "./TablaBandeja";
 
 interface Props {
-  /** Clave de la lista: `mis-hdu`, `hdu-lider`, `auditor-hdu`… */
+  /** Clave de la lista: `mis-hdu`, `auditor-hdu`… */
   clave: string;
   titulo: string;
   descripcion?: string;

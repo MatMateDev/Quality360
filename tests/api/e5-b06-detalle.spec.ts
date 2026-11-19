@@ -187,7 +187,7 @@ test.describe("E5-B06 · Detalle de la HDU en la consulta", () => {
     expect(contratoDetalle(ok.body)).toEqual({ ok: true, errores: [] });
     expect(await solicitudesJira(), "con Jira caído y sin llamadas, el detalle se lee de la base propia").toEqual([]);
     await jiraFalso.modo("NORMAL");
-    for (const clave of ["qe1", "qe2", "ana1", "lid1", "aud1"] as const) {
+    for (const clave of ["qe1", "qe2", "ana1", "aud1"] as const) {
       const r = await obtenerItem(request, c.id, f.id, clave);
       expect([r.status, r.body.codigo], clave).toEqual([403, "ACCESO_DENEGADO"]);
       expect(JSON.stringify(r.body), clave).not.toContain("Detalle completo");

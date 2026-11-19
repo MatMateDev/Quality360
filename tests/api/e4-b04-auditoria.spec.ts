@@ -105,7 +105,7 @@ test.describe("E4-B04 · Auditoría", () => {
     expect(invertido.status).toBe(400);
   });
 
-  test("[E4-B04#2] T05 (negativo): sobre H6 ANA1 recibe 2 entradas (sin la de riesgo), ANA3 403, LID1/AUD1/ADM1 reciben 3 y sin token 401", async ({ request }) => {
+  test("[E4-B04#2] T05 (negativo): sobre H6 ANA1 recibe 2 entradas (sin la de riesgo), ANA3 403, AUD1/ADM1 reciben 3 y sin token 401", async ({ request }) => {
     const h = await hdu(request);
     const ana1 = await gestion(request, "ana1", h.H6.id);
     expect(ana1.status).toBe(200);
@@ -116,7 +116,7 @@ test.describe("E4-B04 · Auditoría", () => {
     expect(soloRiesgo.body.items.every((e) => e.tipo === "IMPEDIMENTO")).toBe(true);
     const ana3 = await gestion(request, "ana3", h.H6.id);
     expect(ana3.status).toBe(403);
-    for (const clave of ["lid1", "aud1", "adm1"] as const) {
+    for (const clave of ["aud1", "adm1"] as const) {
       const r = await gestion(request, clave, h.H6.id);
       expect(r.status, clave).toBe(200);
       expect(r.body.items, clave).toHaveLength(3);
@@ -208,7 +208,7 @@ test.describe("E4-B04 · Auditoría", () => {
     expect(depG.body.total).toBe(2);
   });
 
-  test("[E4-B04#2] T10 (negativo): ADM1, QE1, LID1 y ANA1 reciben 403 en los 4 endpoints del Auditor (16 intentos) y sin token 401", async ({ request }) => {
+  test("[E4-B04#2] T10 (negativo): ADM1, QE1 y ANA1 reciben 403 en los 4 endpoints del Auditor (12 intentos) y sin token 401", async ({ request }) => {
     const rutas = [
       "/v1/auditor/impedimentos",
       "/v1/auditor/gestion-impedimentos",
@@ -216,7 +216,7 @@ test.describe("E4-B04 · Auditoría", () => {
       "/v1/auditor/exportaciones/gestion-impedimentos",
     ];
     let intentos = 0;
-    for (const clave of ["adm1", "qe1", "lid1", "ana1"] as const) {
+    for (const clave of ["adm1", "qe1", "ana1"] as const) {
       for (const ruta of rutas) {
         const r = await api.get<{ codigo: string }>(request, ruta, { token: await tokenE7(clave) });
         expect(r.status, `${clave} ${ruta}`).toBe(403);
@@ -224,7 +224,7 @@ test.describe("E4-B04 · Auditoría", () => {
         intentos += 1;
       }
     }
-    expect(intentos).toBe(16);
+    expect(intentos).toBe(12);
     for (const ruta of rutas) {
       const r = await api.get<{ codigo: string }>(request, ruta);
       expect(r.status, `sin token ${ruta}`).toBe(401);

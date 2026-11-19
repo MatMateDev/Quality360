@@ -24,7 +24,7 @@ import { actorDeSolicitud } from '../guardias/obtener-actor.js';
 import { SesionOServicioGuard, type SolicitudConActor } from '../guardias/sesion-o-servicio.guard.js';
 import { uuidDeRuta } from '../validacion/uuid.js';
 
-const AMBITO_VACIO: AmbitoAcceso = { qeSupervisorId: null, analistasSupervisadosIds: [], celulasIds: [] };
+const AMBITO_VACIO: AmbitoAcceso = { qeSupervisorId: null, analistasSupervisadosIds: [] };
 
 function contextoDeSolicitud(solicitud: SolicitudConActor): ContextoActor {
   if (solicitud.actorServicio === true) return { esServicio: true, rol: null, actorId: null, ambito: AMBITO_VACIO };
@@ -39,7 +39,7 @@ export class HduController {
     private readonly usuarios: UsuariosAplicacion,
   ) {}
 
-  @Roles('ADMINISTRADOR', 'QE', 'ANALISTA_QA', 'LIDER_QA', 'AUDITOR')
+  @Roles('ADMINISTRADOR', 'QE', 'ANALISTA_QA', 'AUDITOR')
   @Get()
   async listar(@AccesoActual() acceso: ResolucionAcceso, @Query() query: ListarHduQueryDto) {
     return this.hdus.listar(
@@ -58,7 +58,7 @@ export class HduController {
     respuesta.status(201).json(creada);
   }
 
-  @Roles('ADMINISTRADOR', 'QE', 'ANALISTA_QA', 'LIDER_QA', 'AUDITOR')
+  @Roles('ADMINISTRADOR', 'QE', 'ANALISTA_QA', 'AUDITOR')
   @Get(':id')
   async detalle(@Param('id') id: string, @AccesoActual() acceso: ResolucionAcceso) {
     return this.hdus.obtener(uuidDeRuta(id), { esServicio: false, rol: acceso.rol, actorId: acceso.usuarioId, ambito: acceso.ambito });
@@ -147,7 +147,7 @@ export class HduController {
     );
   }
 
-  @Roles('ADMINISTRADOR', 'QE', 'ANALISTA_QA', 'LIDER_QA', 'AUDITOR')
+  @Roles('ADMINISTRADOR', 'QE', 'ANALISTA_QA', 'AUDITOR')
   @Get(':id/historial')
   async historial(@Param('id') id: string, @AccesoActual() acceso: ResolucionAcceso) {
     return this.hdus.historial(uuidDeRuta(id), { esServicio: false, rol: acceso.rol, actorId: acceso.usuarioId, ambito: acceso.ambito });

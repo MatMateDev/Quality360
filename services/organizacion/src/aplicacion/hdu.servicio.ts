@@ -8,7 +8,7 @@ import { ExcepcionQ360, MENSAJES, accesoDenegado, noEncontrado } from '@quality3
 
 import { ConflictoUnicidad } from '../dominio/errores/conflicto-unicidad.js';
 import { normalizarCodigoHdu } from '../dominio/reglas/alta-hdu.js';
-import { celulaPermitidaParaLider, evaluarAccesoHdu, filtroAmbitoHdu } from '../dominio/reglas/ambito.js';
+import { evaluarAccesoHdu, filtroAmbitoHdu } from '../dominio/reglas/ambito.js';
 import { analistaEstaEnEquipo, esAnalistaAsignable } from '../dominio/reglas/asignacion-hdu.js';
 import { puedeAsignarAnalistaHdu, puedeCambiarEstadoHdu, puedeReasignarQeResponsable } from '../dominio/reglas/permisos-hdu.js';
 import { transicionesPermitidas, validarTransicion } from '../dominio/reglas/transiciones-hdu.js';
@@ -127,7 +127,7 @@ export class HduAplicacion {
 
     try {
       const creada = await this.hdus.crear({ ...datos, codigo: datos.codigo.trim(), qeResponsableId }, actor);
-      return this.aDetalle(creada, { esServicio: false, rol: 'ADMINISTRADOR', actorId: qeResponsableId, ambito: { qeSupervisorId: null, analistasSupervisadosIds: [], celulasIds: [] } });
+      return this.aDetalle(creada, { esServicio: false, rol: 'ADMINISTRADOR', actorId: qeResponsableId, ambito: { qeSupervisorId: null, analistasSupervisadosIds: [] } });
     } catch (error) {
       if (error instanceof ConflictoUnicidad) throw codigoDuplicado();
       throw error;
@@ -147,8 +147,6 @@ export class HduAplicacion {
   async listar(contexto: ContextoActor, filtro: FiltroHdu, paginacion: OpcionesPaginacion): Promise<Pagina<HduResumenRespuesta>> {
     const rol = contexto.rol ?? 'ADMINISTRADOR';
     const actorId = contexto.actorId ?? '';
-    // Un Líder QA solo filtra por células de su ámbito vigente (E7-B02-T04): otra célula, 403 genérico (D12).
-    if (!celulaPermitidaParaLider(rol, contexto.ambito, filtro.celulaId)) throw accesoDenegado('celulaId fuera del ámbito del líder');
     const ambitoFiltro = filtroAmbitoHdu(rol, actorId, contexto.ambito);
     const pagina = await this.hdus.listarPorAmbito(ambitoFiltro, filtro, paginacion);
     return { ...pagina, items: await this.enriquecerResumen(pagina.items) };

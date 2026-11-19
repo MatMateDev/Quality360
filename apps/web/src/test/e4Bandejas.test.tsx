@@ -9,7 +9,6 @@ import { abrirComo } from "./renderApp";
 const QA1 = "jonathan.choque@quality360.local";
 const QA3 = "camila.rojas@quality360.local";
 const QE1 = "jose.seguel@quality360.local";
-const LIDER = "luis.soto@quality360.local";
 const ADMIN = "admin@quality360.local";
 const AUDITOR = "andrea.mora@quality360.local";
 
@@ -86,29 +85,16 @@ describe("Bandeja del QE: impedimentos [E4-F01-T05]", () => {
   });
 });
 
-describe("Bandeja del Líder: impedimentos [E4-F03-T04]", () => {
-  it("contadores, lista con «Escalado a ti» primero, columnas Bloqueo y Riesgo, sin botones de gestión", async () => {
-    await abrirComo(LIDER, "/lider");
-    expect(await screen.findByTestId("contador-impedimentos-abiertos")).toHaveTextContent("3");
-    expect(screen.getByTestId("contador-hdu-bloqueadas")).toHaveTextContent("3");
-    expect(screen.getByTestId("contador-escalados-a-mi")).toHaveTextContent("1");
-    const lista = await screen.findByTestId("lista-impedimentos");
-    const filas = within(lista).getAllByRole("row").filter((f) => f.getAttribute("data-testid")?.startsWith("fila-impedimento-"));
-    expect(filas[0]).toHaveAttribute("data-testid", `fila-impedimento-${I.i3}`);
-    expect(within(filas[0]!).getByTestId("insignia-escalado-a-mi")).toHaveTextContent("Escalado a ti");
-    expect(within(lista).queryByRole("button")).not.toBeInTheDocument();
-    const fila = await screen.findByTestId(`fila-hdu-${ID.hdu1}`);
-    expect(within(fila).getByTestId(`celda-bloqueo-${ID.hdu1}`)).toHaveTextContent("Bloqueada");
-    expect(within(fila).getByTestId(`celda-riesgo-${ID.hdu1}`)).toHaveTextContent("Alto");
-    expect(screen.getByLabelText("Solo bloqueadas")).toBeInTheDocument();
-  });
-
-  it("un impedimento escalado a un Administrador aparece en su bandeja sin botones [E4-F03-T11]", async () => {
+describe("Bandeja del Administrador: impedimentos escalados [E4-F03-T11 · D208]", () => {
+  it("el impedimento escalado al Administrador aparece en su bandeja sin botones", async () => {
     await abrirComo(ADMIN, "/admin");
     expect(await screen.findByTestId("contador-impedimentos-abiertos")).toHaveTextContent("3");
     expect(screen.getByTestId("contador-hdu-bloqueadas")).toHaveTextContent("3");
     expect(screen.getByTestId("contador-hdu-riesgo-alto")).toHaveTextContent("2");
-    expect(await screen.findByTestId("estado-vacio-impedimentos-escalados")).toHaveTextContent("No tienes impedimentos escalados");
+    // Desde D208 el escalamiento va solo a Administradores: I3 está escalado a Valentina Rojas.
+    const lista = await screen.findByTestId("lista-impedimentos-escalados");
+    expect(within(lista).getByTestId(`fila-impedimento-${I.i3}`)).toBeInTheDocument();
+    expect(within(lista).queryByRole("button")).not.toBeInTheDocument();
     expect(screen.getByTestId("tarjeta-impedimentos-abiertos")).not.toHaveTextContent("Requiere atención");
   });
 });

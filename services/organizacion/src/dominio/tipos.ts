@@ -5,13 +5,13 @@
  */
 
 /** Catálogo cerrado de roles (comun.v1.yaml#/components/schemas/Rol). */
-export type Rol = 'ADMINISTRADOR' | 'QE' | 'ANALISTA_QA' | 'LIDER_QA' | 'AUDITOR';
+export type Rol = 'ADMINISTRADOR' | 'QE' | 'ANALISTA_QA' | 'AUDITOR';
 
-/** Un rol por usuario (D28). `LIDER_QA` y `AUDITOR` son de solo lectura (D32). */
-export const ROLES: readonly Rol[] = ['ADMINISTRADOR', 'QE', 'ANALISTA_QA', 'LIDER_QA', 'AUDITOR'];
+/** Un rol por usuario (D28). `AUDITOR` es de solo lectura (D32); `LIDER_QA` se retiró (D208). */
+export const ROLES: readonly Rol[] = ['ADMINISTRADOR', 'QE', 'ANALISTA_QA', 'AUDITOR'];
 
 /** Roles que nunca modifican datos (D32). */
-export const ROLES_SOLO_LECTURA: readonly Rol[] = ['LIDER_QA', 'AUDITOR'];
+export const ROLES_SOLO_LECTURA: readonly Rol[] = ['AUDITOR'];
 
 export function esRolSoloLectura(rol: Rol): boolean {
   return ROLES_SOLO_LECTURA.includes(rol);
@@ -46,6 +46,7 @@ export type AccionAuditoria =
   | 'CAMBIAR_ESTADO_HDU'
   | 'ASIGNAR_ANALISTA'
   | 'REASIGNAR_ANALISTA'
+  /** Solo en registros anteriores a D208 (retiro del rol Líder QA): ya no se genera. */
   | 'ASIGNAR_CELULAS_LIDER'
   | 'EXPORTAR'
   | 'REASIGNAR_QE_RESPONSABLE'
@@ -57,7 +58,6 @@ export type RelacionAccesoHdu =
   | 'QE_RESPONSABLE'
   | 'QE_SUPERVISOR_DEL_ANALISTA'
   | 'ANALISTA_ASIGNADO'
-  | 'LECTOR_CELULA'
   | 'LECTOR_AUDITORIA';
 
 export interface UsuarioResumen {
@@ -184,16 +184,6 @@ export interface CatalogoRef {
   readonly nombre: string;
 }
 
-/** Una fila de `celula_lider` (D30). Vigente si `hasta` es `null`. */
-export interface AsignacionCelulaLider {
-  readonly id: string;
-  readonly celula: CatalogoRef;
-  readonly desde: Date;
-  readonly hasta: Date | null;
-  readonly asignadoPor: Actor;
-  readonly retiradoPor: Actor | null;
-}
-
 export interface RegistroAuditoria {
   readonly id: string;
   readonly fecha: Date;
@@ -210,8 +200,6 @@ export interface RegistroAuditoria {
 export interface AmbitoAcceso {
   readonly qeSupervisorId: string | null;
   readonly analistasSupervisadosIds: readonly string[];
-  /** Células vigentes de un Líder QA (D30, D47). */
-  readonly celulasIds: readonly string[];
 }
 
 export interface Pagina<T> {

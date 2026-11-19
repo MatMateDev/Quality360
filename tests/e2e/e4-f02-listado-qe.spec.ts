@@ -18,7 +18,7 @@ test.describe("E4-F02 · Listado de impedimentos del QE", () => {
   test.describe("QE1", () => {
     test.use({ storageState: estadoSesion("qe1") });
 
-    test("[E4-F02#1] T01: QE1 ve abiertos 2 y escalados 1; la primera fila es I2 (H1, ANA1, Alto, 6 d, Abierto), la segunda I3 (H6, ANA1, Medio, 3 d, Escalado, responsable LID1); sin I1 ni I4", async ({ page, request }) => {
+    test("[E4-F02#1] T01: QE1 ve abiertos 2 y escalados 1; la primera fila es I2 (H1, ANA1, Alto, 6 d, Abierto), la segunda I3 (H6, ANA1, Medio, 3 d, Escalado, responsable ADM1); sin I1 ni I4", async ({ page, request }) => {
       const i = await imps(request);
       await page.goto(`${env.portalUrl}/qe/impedimentos`);
       await expect(page.getByTestId("pagina-qe-impedimentos")).toBeVisible();
@@ -31,7 +31,7 @@ test.describe("E4-F02 · Listado de impedimentos del QE", () => {
       for (const t of ["E7-H1", "ANA1", "Alto", "6 d", "Abierto"]) await expect(primera).toContainText(t);
       await expect(primera.getByTestId("semaforo-riesgo")).toHaveAttribute("data-nivel", "ALTO");
       await expect(segunda).toHaveAttribute("data-testid", `fila-impedimento-${i.I3.id}`);
-      for (const t of ["E7-H6", "ANA1", "Medio", "3 d", "Escalado", "LID1"]) await expect(segunda).toContainText(t);
+      for (const t of ["E7-H6", "ANA1", "Medio", "3 d", "Escalado", "ADM1"]) await expect(segunda).toContainText(t);
       await expect(segunda.getByTestId("semaforo-riesgo")).toHaveAttribute("data-nivel", "MEDIO");
       await expect(page.getByTestId(`fila-impedimento-${i.I1.id}`)).toHaveCount(0);
       await expect(page.getByTestId(`fila-impedimento-${i.I4.id}`)).toHaveCount(0);
@@ -137,8 +137,8 @@ test.describe("E4-F02 · Listado de impedimentos del QE", () => {
     });
   });
 
-  test("[E4-F02#1] T09 (negativo): ANA1, LID1, ADM1 y AUD1 ven acceso denegado en /qe/impedimentos y /qe/impedimentos/riesgo (8 combinaciones) y ninguna petición de datos responde 200", async ({ browser }) => {
-    for (const clave of ["ana1", "lid1", "adm1", "aud1"] as const) {
+  test("[E4-F02#1] T09 (negativo): ANA1, ADM1 y AUD1 ven acceso denegado en /qe/impedimentos y /qe/impedimentos/riesgo (6 combinaciones) y ninguna petición de datos responde 200", async ({ browser }) => {
+    for (const clave of ["ana1", "adm1", "aud1"] as const) {
       const { contexto, page } = await contextoDe(browser, clave);
       const v = vigilarPeticionesE4(page);
       try {

@@ -10,7 +10,6 @@ import { abrirComo } from "./renderApp";
 
 const QA1 = "jonathan.choque@quality360.local";
 const QE1 = "jose.seguel@quality360.local";
-const LIDER = "luis.soto@quality360.local";
 const ADMIN = "admin@quality360.local";
 const AUDITOR = "andrea.mora@quality360.local";
 
@@ -86,7 +85,7 @@ describe("Panel de riesgo [E4-F04]", () => {
     expect(llamadas).toEqual([]);
   });
 
-  it.each([LIDER, ADMIN, AUDITOR])("%s ve el panel sin «Fijar riesgo» ni «Usar el sugerido» [E4-F04-T09]", async (correo) => {
+  it.each([ADMIN, AUDITOR])("%s ve el panel sin «Fijar riesgo» ni «Usar el sugerido» [E4-F04-T09]", async (correo) => {
     await abrirComo(correo, `/hdu/${ID.hdu1}`);
     const panel = within(await screen.findByTestId("panel-riesgo"));
     await panel.findByTestId("riesgo-sugerido");

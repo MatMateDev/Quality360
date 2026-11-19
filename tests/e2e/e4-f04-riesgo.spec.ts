@@ -143,7 +143,7 @@ test.describe("E4-F04 · Riesgo", () => {
     });
   });
 
-  test("[E4-F04#1] T09 (negativo): ANA1 no tiene panel de riesgo (ni llamada a la API); QE2 ve acceso denegado; LID1, AUD1 y ADM1 ven el panel sin «Fijar riesgo» ni «Usar el sugerido»", async ({ browser, request }) => {
+  test("[E4-F04#1] T09 (negativo): ANA1 no tiene panel de riesgo (ni llamada a la API); QE2 ve acceso denegado; AUD1 y ADM1 ven el panel sin «Fijar riesgo» ni «Usar el sugerido»", async ({ browser, request }) => {
     const h = await hdu(request);
     const ana = await contextoDe(browser, "ana1");
     const v = vigilarPeticionesE4(ana.page);
@@ -170,7 +170,7 @@ test.describe("E4-F04 · Riesgo", () => {
     } finally {
       await qe2.contexto.close();
     }
-    for (const clave of ["lid1", "aud1", "adm1"] as const) {
+    for (const clave of ["aud1", "adm1"] as const) {
       const { contexto, page } = await contextoDe(browser, clave);
       try {
         await page.goto(`${env.portalUrl}/hdu/${h.H1.id}`);

@@ -162,9 +162,9 @@ test.describe("E7-B04 · Bitácora, auditoría de usuarios, certificados y expor
     expect(vistas).toBeGreaterThan(0);
   });
 
-  test("[E7-B04#2] T07: ADM1, QE1, ANA1 y LID1 reciben 403 ACCESO_DENEGADO en las 3 consultas y las 4 exportaciones (28 intentos)", async ({ request }) => {
+  test("[E7-B04#2] T07: ADM1, QE1 y ANA1 reciben 403 ACCESO_DENEGADO en las 3 consultas y las 4 exportaciones (21 intentos)", async ({ request }) => {
     let intentos = 0;
-    for (const clave of ["adm1", "qe1", "ana1", "lid1"] as ClaveE7[]) {
+    for (const clave of ["adm1", "qe1", "ana1"] as ClaveE7[]) {
       const token = await tokenE7(clave);
       for (const recurso of CONSULTAS) {
         const r = await api.get(request, `/v1/auditor/${recurso}`, { token });
@@ -179,7 +179,7 @@ test.describe("E7-B04 · Bitácora, auditoría de usuarios, certificados y expor
         intentos += 1;
       }
     }
-    expect(intentos).toBe(28);
+    expect(intentos).toBe(21);
   });
 
   test("[E7-B04#2] T08: sin token (o con token inválido) los 7 endpoints responden 401 NO_AUTENTICADO", async ({ request }) => {

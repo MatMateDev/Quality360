@@ -21,7 +21,7 @@ export class RiesgoController {
     private readonly listados: ListadosAplicacion,
   ) {}
 
-  @Roles('QE', 'LIDER_QA', 'ADMINISTRADOR', 'AUDITOR')
+  @Roles('QE', 'ADMINISTRADOR', 'AUDITOR')
   @Get('hdu/:hduId/riesgo')
   obtener(@Param('hduId') hduId: string, @IdentidadActual() identidad: Identidad, @AccesoActual() acceso: ResolucionAcceso, @Req() solicitud: Request) {
     return this.riesgo.obtener(uuidDeRuta(hduId, 'hduId'), solicitanteDe(identidad, acceso, solicitud));
@@ -41,7 +41,7 @@ export class RiesgoController {
     return this.riesgo.fijar(previo, leerCambioRiesgo(cuerpo), solicitante);
   }
 
-  @Roles('QE', 'LIDER_QA', 'ADMINISTRADOR', 'AUDITOR')
+  @Roles('QE', 'ADMINISTRADOR', 'AUDITOR')
   @Get('riesgo/hdu')
   listar(@Query() consulta: Consulta, @IdentidadActual() identidad: Identidad, @AccesoActual() acceso: ResolucionAcceso, @Req() solicitud: Request) {
     return this.listados.riesgoPorHdu(leerFiltrosRiesgoHdu(consulta), solicitanteDe(identidad, acceso, solicitud));

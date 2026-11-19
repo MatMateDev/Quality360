@@ -2,7 +2,7 @@ import { expect, test } from "@playwright/test";
 import { env } from "../support/env";
 import { api } from "../support/api";
 import { cumpleContrato } from "../support/contrato";
-import { cuerpoSinTrace, tokenE7, type ClaveE7 } from "../support/e7";
+import { crearUsuarioE7, cuerpoSinTrace, desactivarUsuario, tokenE7, type ClaveE7 } from "../support/e7";
 import { impedimentosCaidoEnOrganizacion, type PilaE4 } from "../support/entornoE4";
 import { conConexion } from "../support/db";
 import { DATABASE_URL_DUENO, contarDb, evaluar, hdu, imps, reiniciarFixtureE4, texto, uid, type AccionApi, type ImpedimentoApi } from "../support/e4";
@@ -53,14 +53,14 @@ test.describe("E4-B02 · Ciclo de vida", () => {
     expect(cumpleContrato("ResultadoAccionImpedimento", r.body).errores).toEqual([]);
   });
 
-  test("[E4-B02#1] T02: QE1 escala I2 a LID1: 200, ESCALADO, responsable LID1 y acción ESCALAR con detalle anterior QE1 / nuevo LID1", async ({ request }) => {
+  test("[E4-B02#1] T02: QE1 escala I2 a ADM1: 200, ESCALADO, responsable ADM1 y acción ESCALAR con detalle anterior QE1 / nuevo ADM1 (D208: solo Administradores)", async ({ request }) => {
     const i = await imps(request);
-    const [qe1, lid1] = [await uid(request, "qe1"), await uid(request, "lid1")];
-    const r = await accionar(request, i.I2.id, "escalar", "qe1", { responsableId: lid1, comentario: "Requiere gestión con TI" });
+    const [qe1, adm1] = [await uid(request, "qe1"), await uid(request, "adm1")];
+    const r = await accionar(request, i.I2.id, "escalar", "qe1", { responsableId: adm1, comentario: "Requiere gestión con TI" });
     expect(r.status).toBe(200);
-    expect(r.body.impedimento).toMatchObject({ estado: "ESCALADO", responsable: { id: lid1, externo: false } });
+    expect(r.body.impedimento).toMatchObject({ estado: "ESCALADO", responsable: { id: adm1, externo: false } });
     expect(r.body.accion.tipo).toBe("ESCALAR");
-    expect(r.body.accion.detalle).toMatchObject({ responsableAnterior: { id: qe1 }, responsableNuevo: { id: lid1 } });
+    expect(r.body.accion.detalle).toMatchObject({ responsableAnterior: { id: qe1 }, responsableNuevo: { id: adm1 } });
     expect(r.body.hdu).toEqual({ bloqueada: true, abiertos: 1 });
     expect(cumpleContrato("ResultadoAccionImpedimento", r.body).errores).toEqual([]);
   });
@@ -98,9 +98,9 @@ test.describe("E4-B02 · Ciclo de vida", () => {
 
   test("[E4-B02#3] T05 (negativo): sobre I4 (RESUELTO) escalar, resolver y seguimiento dan 409 TRANSICION_INVALIDA y sus acciones siguen siendo 2", async ({ request }) => {
     const i = await imps(request);
-    const lid1 = await uid(request, "lid1");
+    const adm1 = await uid(request, "adm1");
     const cuerpos: Array<[string, unknown]> = [
-      ["escalar", { responsableId: lid1, comentario: "Intento de escalar" }],
+      ["escalar", { responsableId: adm1, comentario: "Intento de escalar" }],
       ["resolver", { comentario: "Intento de resolver" }],
       ["seguimiento", { comentario: "Intento de seguimiento" }],
     ];
@@ -116,19 +116,26 @@ test.describe("E4-B02 · Ciclo de vida", () => {
     expect(await accionesDe(i.I4.id)).toBe(2);
   });
 
-  test("[E4-B02#1] T06: I3 (ESCALADO) se escala a ADM1 (sigue ESCALADO, acción con anterior LID1); reabrir un no resuelto da 409; resolver un ESCALADO da 200", async ({ request }) => {
+  test("[E4-B02#1] T06: I3 (ESCALADO a ADM1) se escala a otro Administrador (sigue ESCALADO, acción con anterior ADM1); reabrir un no resuelto da 409; resolver un ESCALADO da 200", async ({ request }) => {
     const i = await imps(request);
-    const [lid1, adm1] = [await uid(request, "lid1"), await uid(request, "adm1")];
-    const e = await accionar(request, i.I3.id, "escalar", "qe1", { responsableId: adm1, comentario: "Se escala a Administración" });
-    expect(e.status).toBe(200);
-    expect(e.body.impedimento).toMatchObject({ estado: "ESCALADO", responsable: { id: adm1 } });
-    expect(e.body.accion.detalle).toMatchObject({ responsableAnterior: { id: lid1 }, responsableNuevo: { id: adm1 } });
-    const reabrir = await accionar<ErrorTransicion>(request, i.I3.id, "reabrir", "qe1", { motivo: "No corresponde" });
-    expect(reabrir.status).toBe(409);
-    expect(reabrir.body.codigo).toBe("TRANSICION_INVALIDA");
-    const resolver = await accionar(request, i.I3.id, "resolver", "qe1", { comentario: "Sandbox entregado" });
-    expect(resolver.status).toBe(200);
-    expect(resolver.body.accion).toMatchObject({ tipo: "RESOLVER", estadoAnterior: "ESCALADO", estado: "RESUELTO" });
+    const adm = await tokenE7("adm1");
+    const adm1 = await uid(request, "adm1");
+    // Desde D208 el escalamiento va solo a Administradores: el destino es un Administrador propio de la prueba.
+    const otro = await crearUsuarioE7(request, adm, "ADMINISTRADOR", { prefijo: "e4-b02-t06" });
+    try {
+      const e = await accionar(request, i.I3.id, "escalar", "qe1", { responsableId: otro.id, comentario: "Se escala a otro Administrador" });
+      expect(e.status).toBe(200);
+      expect(e.body.impedimento).toMatchObject({ estado: "ESCALADO", responsable: { id: otro.id } });
+      expect(e.body.accion.detalle).toMatchObject({ responsableAnterior: { id: adm1 }, responsableNuevo: { id: otro.id } });
+      const reabrir = await accionar<ErrorTransicion>(request, i.I3.id, "reabrir", "qe1", { motivo: "No corresponde" });
+      expect(reabrir.status).toBe(409);
+      expect(reabrir.body.codigo).toBe("TRANSICION_INVALIDA");
+      const resolver = await accionar(request, i.I3.id, "resolver", "qe1", { comentario: "Sandbox entregado" });
+      expect(resolver.status).toBe(200);
+      expect(resolver.body.accion).toMatchObject({ tipo: "RESOLVER", estadoAnterior: "ESCALADO", estado: "RESUELTO" });
+    } finally {
+      await desactivarUsuario(request, adm, otro.id);
+    }
   });
 
   test("[E4-B02#1] T07: QE1 reabre I4: ABIERTO, fechaResolucion null, abiertoDesde = ahora, fechaRegistro sin cambio y acciones REGISTRAR, RESOLVER, REABRIR", async ({ request }) => {
@@ -144,7 +151,7 @@ test.describe("E4-B02 · Ciclo de vida", () => {
     expect(d.body.acciones!.map((a) => a.tipo)).toEqual(["REGISTRAR", "RESOLVER", "REABRIR"]);
   });
 
-  test("[E4-B02#1] T08 (negativo): resolver sin comentario 400, en blanco 422 COMENTARIO_REQUERIDO; escalar sin destino 400; destino ANA1, QE2 y LID2: 422 RESPONSABLE_INVALIDO; I2 no cambia", async ({ request }) => {
+  test("[E4-B02#1] T08 (negativo): resolver sin comentario 400, en blanco 422 COMENTARIO_REQUERIDO; escalar sin destino 400; destino ANA1, QE2 y AUD1: 422 RESPONSABLE_INVALIDO (D208: solo Administradores); I2 no cambia", async ({ request }) => {
     const i = await imps(request);
     const sin = await accionar<{ codigo: string }>(request, i.I2.id, "resolver", "qe1", {});
     expect(sin.status).toBe(400);
@@ -154,7 +161,7 @@ test.describe("E4-B02 · Ciclo de vida", () => {
     expect(blanco.body.codigo).toBe("COMENTARIO_REQUERIDO");
     const sinDestino = await accionar<{ codigo: string }>(request, i.I2.id, "escalar", "qe1", { comentario: "Sin destino" });
     expect(sinDestino.status).toBe(400);
-    for (const clave of ["ana1", "qe2", "lid2"] as const) {
+    for (const clave of ["ana1", "qe2", "aud1"] as const) {
       const r = await accionar<{ codigo: string }>(request, i.I2.id, "escalar", "qe1", { responsableId: await uid(request, clave), comentario: "Destino no permitido" });
       expect(r.status, clave).toBe(422);
       expect(r.body.codigo, clave).toBe("RESPONSABLE_INVALIDO");
@@ -167,7 +174,7 @@ test.describe("E4-B02 · Ciclo de vida", () => {
     expect(d.body.acciones).toHaveLength(1);
   });
 
-  test("[E4-B02#1] T09 (negativo): ANA1, QE2, LID1, AUD1 y ADM1 no pueden resolver, escalar, reabrir ni dar seguimiento (403, 25 combinaciones); sin token 401; los estados no cambian", async ({ request }) => {
+  test("[E4-B02#1] T09 (negativo): ANA1, QE2, AUD1 y ADM1 no pueden resolver, escalar, reabrir ni dar seguimiento (403, 16 combinaciones); sin token 401; los estados no cambian", async ({ request }) => {
     const i = await imps(request);
     const adm1 = await uid(request, "adm1");
     const operaciones: Array<[string, string, unknown]> = [
@@ -176,7 +183,7 @@ test.describe("E4-B02 · Ciclo de vida", () => {
       ["reabrir", i.I4.id, { motivo: "Intento no autorizado" }],
       ["seguimiento", i.I2.id, { comentario: "Intento no autorizado" }],
     ];
-    const roles = ["ana1", "qe2", "lid1", "aud1", "adm1"] as const;
+    const roles = ["ana1", "qe2", "aud1", "adm1"] as const;
     let combinaciones = 0;
     for (const clave of roles) {
       for (const [op, id, body] of operaciones) {
@@ -186,7 +193,7 @@ test.describe("E4-B02 · Ciclo de vida", () => {
         combinaciones += 1;
       }
     }
-    expect(combinaciones).toBe(20);
+    expect(combinaciones).toBe(16);
     for (const [op, id, body] of operaciones) {
       const r = await api.post<{ codigo: string }>(request, `/v1/impedimentos/${id}/${op}`, { body });
       expect(r.status, `sin token ${op}`).toBe(401);

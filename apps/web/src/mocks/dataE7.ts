@@ -1,24 +1,8 @@
 // Datos de referencia de E7 (bandejas por rol) para MSW. Mismo universo que `data.ts`:
-// Líder QA con células, Líder sin células, Auditor, estado de checklist por HDU, certificados,
-// bitácora y auditoría de usuarios. Nada de esto es fuente de datos del portal real.
-import { ID, hdus, usuarios, type UsuarioMock } from "./data";
+// Auditor, estado de checklist por HDU, certificados, bitácora y auditoría de usuarios (el Líder QA
+// se retiró, D208). Nada de esto es fuente de datos del portal real.
+import { ID, hdus, usuarios } from "./data";
 import { reiniciarE4 } from "./dataE4";
-
-export interface CelulaLiderMock {
-  id: string;
-  usuarioId: string;
-  celulaId: string;
-  desde: string;
-  hasta: string | null;
-  asignadoPorId: string;
-}
-
-/** Líder 1 a cargo de Pagos y Clientes; Líder 2 sin células. */
-export const celulasLider: CelulaLiderMock[] = [
-  { id: "f6000000-0000-4000-8000-000000000001", usuarioId: ID.lider1, celulaId: ID.celPagos, desde: "2026-09-01T09:00:00Z", hasta: null, asignadoPorId: ID.admin },
-  { id: "f6000000-0000-4000-8000-000000000002", usuarioId: ID.lider1, celulaId: ID.celClientes, desde: "2026-09-01T09:00:00Z", hasta: null, asignadoPorId: ID.admin },
-  { id: "f6000000-0000-4000-8000-000000000003", usuarioId: ID.lider1, celulaId: ID.celTarjetas, desde: "2026-08-01T09:00:00Z", hasta: "2026-09-01T09:00:00Z", asignadoPorId: ID.admin },
-];
 
 export interface SeguimientoMock {
   aprobados: number;
@@ -92,8 +76,9 @@ export interface RegistroAuditoriaMock {
 }
 
 export const auditoriaUsuarios: RegistroAuditoriaMock[] = [
-  { id: "f8000000-0000-4000-8000-000000000001", fecha: "2026-10-20T10:12:00Z", actorId: ID.admin, operacion: "ASIGNAR_CELULAS_LIDER", usuarioAfectadoId: ID.lider1, antes: { celulas: [] }, despues: { celulas: ["Pagos", "Clientes"] }, motivo: null },
-  { id: "f8000000-0000-4000-8000-000000000002", fecha: "2026-10-19T09:00:00Z", actorId: ID.admin, operacion: "CAMBIAR_ROL", usuarioAfectadoId: ID.lider2, antes: { rol: "ANALISTA_QA" }, despues: { rol: "LIDER_QA" }, motivo: null },
+  // Histórico anterior a D208: la operación y el rol retirados se siguen mostrando con su rótulo.
+  { id: "f8000000-0000-4000-8000-000000000001", fecha: "2026-10-20T10:12:00Z", actorId: ID.admin, operacion: "ASIGNAR_CELULAS_LIDER", usuarioAfectadoId: ID.auditor, antes: { celulas: [] }, despues: { celulas: ["Pagos", "Clientes"] }, motivo: null },
+  { id: "f8000000-0000-4000-8000-000000000002", fecha: "2026-10-19T09:00:00Z", actorId: ID.admin, operacion: "CAMBIAR_ROL", usuarioAfectadoId: ID.auditor, antes: { rol: "LIDER_QA" }, despues: { rol: "AUDITOR" }, motivo: "D208: se retiró el rol Líder QA" },
   // Defensa: un registro con claves prohibidas; el portal no debe mostrarlas jamás (E7-F06-T04).
   { id: "f8000000-0000-4000-8000-000000000003", fecha: "2026-10-18T09:00:00Z", actorId: ID.admin, operacion: "CREAR_USUARIO", usuarioAfectadoId: ID.auditor, antes: null, despues: { nombre: "Andrea Mora", password: "secreto-no-mostrar", accessToken: "tok-no-mostrar", rol: "AUDITOR" }, motivo: null },
 ];
@@ -115,12 +100,11 @@ export function simularFuentes(parcial: Partial<FuentesMock>): void {
   Object.assign(fuentes, parcial);
 }
 
-const celulasLiderInicial = celulasLider.map((c) => ({ ...c }));
 const cantidadUsuariosInicial = usuarios.length;
 const rolesIniciales = new Map(usuarios.map((u) => [u.id, u.rol]));
 const qeIniciales = new Map(hdus.map((h) => [h.id, h.qeResponsableId]));
 
-/** Restaura fuentes, células del líder, roles y QE responsables entre pruebas. */
+/** Restaura fuentes, roles y QE responsables entre pruebas. */
 export function reiniciarFuentes(): void {
   fuentes.certificaciones = true;
   fuentes.pendientesAdmin = true;
@@ -128,7 +112,6 @@ export function reiniciarFuentes(): void {
   fuentes.impedimentos = true;
   reiniciarE4();
   usuarios.splice(cantidadUsuariosInicial);
-  celulasLider.splice(0, celulasLider.length, ...celulasLiderInicial.map((c) => ({ ...c })));
   for (const u of usuarios) {
     const rol = rolesIniciales.get(u.id);
     if (rol) u.rol = rol;
@@ -137,24 +120,5 @@ export function reiniciarFuentes(): void {
     const qe = qeIniciales.get(h.id);
     if (qe) h.qeResponsableId = qe;
     delete h.simularChecklistCompleto;
-  }
-}
-
-export function celulasVigentesDe(usuarioId: string): string[] {
-  return celulasLider.filter((c) => c.usuarioId === usuarioId && c.hasta === null).map((c) => c.celulaId);
-}
-
-
-/** Cierra las células vigentes que ya no están y abre las nuevas (historial con fechas). */
-export function aplicarCelulasLider(usuario: UsuarioMock, celulaIds: string[], actorId: string) {
-  const ahora = new Date().toISOString();
-  for (const asignacion of celulasLider) {
-    if (asignacion.usuarioId === usuario.id && asignacion.hasta === null && !celulaIds.includes(asignacion.celulaId)) asignacion.hasta = ahora;
-  }
-  const vigentes = celulasVigentesDe(usuario.id);
-  for (const celulaId of celulaIds) {
-    if (!vigentes.includes(celulaId)) {
-      celulasLider.push({ id: crypto.randomUUID(), usuarioId: usuario.id, celulaId, desde: ahora, hasta: null, asignadoPorId: actorId });
-    }
   }
 }

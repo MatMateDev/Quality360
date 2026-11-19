@@ -64,7 +64,7 @@ before(async () => {
   app = await crearAppDePrueba({ certificacionesUrl: cert.url, certificacionesTimeoutMs: 1500, impedimentosUrl: imp.url, impedimentosTimeoutMs: 1500 });
   f = await crearFixtureE7(cert);
 
-  // Estado base del fixture E4: I1 (H3), I2 (H1), I3 (H6, escalado a LID1).
+  // Estado base del fixture E4: I1 (H3), I2 (H1), I3 (H6, escalado a ADM1: desde D208 solo se escala a Administradores).
   const riesgo = (nivel: 'BAJO' | 'MEDIO' | 'ALTO', origen: 'MANUAL' | 'SUGERIDO') => ({ nivelVigente: nivel, origen, estado: 'ok' as const, calculoParcial: false });
   imp.evaluaciones.set(f.h.H1.id, { ...evaluacionVacia(f.h.H1.id), bloqueada: true, abiertos: 1, riesgo: riesgo('ALTO', 'SUGERIDO'), nivelSugerido: 'ALTO' });
   imp.evaluaciones.set(f.h.H3.id, { ...evaluacionVacia(f.h.H3.id), bloqueada: true, abiertos: 1, nuevos: 1, riesgo: riesgo('MEDIO', 'SUGERIDO'), nivelSugerido: 'MEDIO' });
@@ -80,7 +80,7 @@ before(async () => {
   imp.impedimentos.push(
     impedimentoDeLote(f.h.H3.id, 'Ambiente QA no responde', 'ABIERTO', f.qe2, 0, true),
     impedimentoDeLote(f.h.H1.id, 'Faltan cuentas de prueba con saldo', 'ABIERTO', f.qe1, 6),
-    impedimentoDeLote(f.h.H6.id, 'API de Pagos sin sandbox', 'ESCALADO', f.lid1, 3),
+    impedimentoDeLote(f.h.H6.id, 'API de Pagos sin sandbox', 'ESCALADO', f.adm1, 3),
   );
 });
 
@@ -92,15 +92,15 @@ after(async () => {
 });
 
 describe('E4-B6 · acceso interno para Impedimentos (D86)', () => {
-  it('[E4-B01#1] incluirCandidatos: registro (QE responsable y supervisor, sin repetir) y escalamiento (Líderes de la célula y Administradores)', async () => {
+  it('[E4-B01#1] incluirCandidatos: registro (QE responsable y supervisor, sin repetir) y escalamiento (Administradores activos, D208)', async () => {
     const h1: Cuerpo = (await http().get(`/v1/interno/hdu/${f.h.H1.id}/acceso?incluirCandidatos=true`).set(como(f.qe1)).expect(200)).body;
     assert.deepEqual(h1.candidatosResponsable.registro, [{ id: f.qe1.id, nombre: 'QE1', rol: 'QE' }]);
-    assert.deepEqual(h1.candidatosResponsable.escalamiento.map((p: Cuerpo) => [p.id, p.rol]).sort(), [[f.adm1.id, 'ADMINISTRADOR'], [f.lid1.id, 'LIDER_QA']].sort());
-    // H8 es de CEL-C, que no tiene líder: solo el Administrador.
+    assert.deepEqual(h1.candidatosResponsable.escalamiento.map((p: Cuerpo) => [p.id, p.rol]), [[f.adm1.id, 'ADMINISTRADOR']]);
+    // La célula ya no cambia nada: H8 (CEL-C) tiene los mismos candidatos.
     const h8: Cuerpo = (await http().get(`/v1/interno/hdu/${f.h.H8.id}/acceso?incluirCandidatos=true`).set(como(f.qe1)).expect(200)).body;
     assert.deepEqual(h8.candidatosResponsable.escalamiento.map((p: Cuerpo) => p.id), [f.adm1.id]);
-    // LID2 (sin células), los QE y los analistas no son candidatos de escalamiento.
-    assert.ok(!h1.candidatosResponsable.escalamiento.some((p: Cuerpo) => [f.lid2.id, f.qe1.id, f.ana1.id].includes(p.id)));
+    // Los QE, los analistas y el Auditor no son candidatos de escalamiento.
+    assert.ok(!h1.candidatosResponsable.escalamiento.some((p: Cuerpo) => [f.qe1.id, f.ana1.id, f.aud1.id].includes(p.id)));
   });
 
   it('[E4-B01#1] sin incluirCandidatos no hay candidatos; un valor inválido es 400; fuera de ámbito no revela nada', async () => {
@@ -112,12 +112,14 @@ describe('E4-B6 · acceso interno para Impedimentos (D86)', () => {
   });
 
   it('[E4-B01#1] solo candidatos activos', async () => {
-    await prisma.usuario.update({ where: { id: f.lid1.id }, data: { activo: false } });
+    const inactivo = await prisma.usuario.create({
+      data: { id: '4e000000-0000-4000-8000-000000000001', nombre: 'ADM inactivo', correo: 'adm.inactivo@quality360.local', activo: false, rol: { connect: { nombre: 'ADMINISTRADOR' } } },
+    });
     try {
       const h1: Cuerpo = (await http().get(`/v1/interno/hdu/${f.h.H1.id}/acceso?incluirCandidatos=true`).set(como(f.qe1)).expect(200)).body;
       assert.deepEqual(h1.candidatosResponsable.escalamiento.map((p: Cuerpo) => p.id), [f.adm1.id]);
     } finally {
-      await prisma.usuario.update({ where: { id: f.lid1.id }, data: { activo: true } });
+      await prisma.usuario.delete({ where: { id: inactivo.id } });
     }
   });
 
@@ -135,9 +137,6 @@ describe('E4-B6 · acceso interno para Impedimentos (D86)', () => {
     assert.deepEqual(admin.items.map((h: Cuerpo) => h.codigo), ['H1', 'H2', 'H3', 'H4', 'H5', 'H6', 'H8']);
     const conCerradas: Cuerpo = (await http().get('/v1/interno/hdu/ambito/detalle?incluirCerradas=true').set(como(f.aud1)).expect(200)).body;
     assert.equal(conCerradas.items.length, 8);
-    const lider: Cuerpo = (await http().get('/v1/interno/hdu/ambito/detalle').set(como(f.lid1)).expect(200)).body;
-    assert.deepEqual(lider.items.map((h: Cuerpo) => h.codigo), ['H1', 'H2', 'H3', 'H5', 'H6']);
-    assert.deepEqual((await http().get('/v1/interno/hdu/ambito/detalle').set(como(f.lid2)).expect(200)).body.items, []);
     await http().get('/v1/interno/hdu/ambito/detalle').set(como(f.ana1)).expect(403);
   });
 
@@ -211,39 +210,18 @@ describe('E4-B8 · bloques de impedimentos en las bandejas (D87)', () => {
     assert.deepEqual([valor(qe2.impedimentos.contadores.impedimentosAbiertos), valor(qe2.impedimentos.contadores.impedimentosNuevos)], [1, 1]);
   });
 
-  it('[E4-F03#2] Líder: contadores, escalados a él primero (D79), bloqueo y riesgo por fila, soloBloqueadas', async () => {
-    const lid1: Cuerpo = (await http().get('/v1/bandeja/lider').set(como(f.lid1)).expect(200)).body;
-    const c = lid1.impedimentos.contadores;
-    assert.deepEqual([valor(c.impedimentosAbiertos), valor(c.hduBloqueadas), valor(c.escaladosAMi)], [3, 3, 1]);
-    const lista: Cuerpo[] = lid1.impedimentos.lista.datos.items;
-    assert.deepEqual(lista.map((i) => i.titulo), ['API de Pagos sin sandbox', 'Faltan cuentas de prueba con saldo', 'Ambiente QA no responde']);
-    assert.equal(lista[0]?.escaladoAMi, true);
-    const h1 = lid1.hdu.datos.items.find((item: Cuerpo) => item.codigo === 'H1');
-    assert.deepEqual([h1.bloqueo.datos, h1.riesgo.fuente, h1.riesgo.datos.nivelVigente], [{ bloqueada: true, abiertos: 1 }, 'impedimentos.riesgo', 'ALTO']);
-
-    const soloBloqueadas: Cuerpo = (await http().get('/v1/bandeja/lider?soloBloqueadas=true').set(como(f.lid1)).expect(200)).body;
-    assert.deepEqual(codigosLista(soloBloqueadas).sort(), ['H1', 'H3', 'H6']);
-  });
-
-  it('[E4-F03#2] Líder sin células: contadores en 0 con ok y lista vacía, sin consultar a Impedimentos', async () => {
-    const antes = imp.lotes.length;
-    const lid2: Cuerpo = (await http().get('/v1/bandeja/lider').set(como(f.lid2)).expect(200)).body;
-    assert.deepEqual([valor(lid2.impedimentos.contadores.impedimentosAbiertos), valor(lid2.impedimentos.contadores.hduBloqueadas), valor(lid2.impedimentos.contadores.escaladosAMi)], [0, 0, 0]);
-    assert.deepEqual([lid2.impedimentos.lista.estado, lid2.impedimentos.lista.datos.items, lid2.impedimentos.lista.datos.total], ['ok', [], 0]);
-    assert.equal(imp.lotes.length, antes);
-  });
-
   it('[E4-F03#2] Administrador y Auditor: contadores; el Administrador ve solo los escalados a él, más antiguos primero', async () => {
     const adm: Cuerpo = (await http().get('/v1/bandeja/admin').set(como(f.adm1)).expect(200)).body;
     assert.deepEqual([valor(adm.impedimentos.contadores.impedimentosAbiertos), valor(adm.impedimentos.contadores.hduBloqueadas), valor(adm.impedimentos.contadores.hduRiesgoAlto)], [3, 3, 1]);
-    assert.deepEqual([adm.impedimentos.escalados.estado, adm.impedimentos.escalados.datos.total], ['ok', 0]);
+    assert.deepEqual([adm.impedimentos.escalados.estado, adm.impedimentos.escalados.datos.total], ['ok', 1]);
+    assert.deepEqual(adm.impedimentos.escalados.datos.items.map((i: Cuerpo) => i.titulo), ['API de Pagos sin sandbox']);
 
     const reciente = impedimentoDeLote(f.h.H8.id, 'Escalado reciente', 'ESCALADO', f.adm1, 1);
     const antiguo = impedimentoDeLote(f.h.H2.id, 'Escalado antiguo', 'ESCALADO', f.adm1, 9);
     imp.impedimentos.push(reciente, antiguo);
     try {
       const conEscalados: Cuerpo = (await http().get('/v1/bandeja/admin').set(como(f.adm1)).expect(200)).body;
-      assert.deepEqual(conEscalados.impedimentos.escalados.datos.items.map((i: Cuerpo) => i.titulo), ['Escalado antiguo', 'Escalado reciente']);
+      assert.deepEqual(conEscalados.impedimentos.escalados.datos.items.map((i: Cuerpo) => i.titulo), ['Escalado antiguo', 'API de Pagos sin sandbox', 'Escalado reciente']);
       assert.equal(conEscalados.impedimentos.escalados.datos.items[0].escaladoAMi, true);
     } finally {
       imp.impedimentos.splice(imp.impedimentos.indexOf(reciente), 1);
@@ -280,8 +258,6 @@ describe('E4-B8 · bloques de impedimentos en las bandejas (D87)', () => {
       assert.deepEqual([qe1.impedimentos.contadores.hduRiesgoAlto.estado, qe1.impedimentos.lista.estado, qe1.contadores.sinAnalista.estado], ['indisponible', 'indisponible', 'ok']);
       assert.ok(qe1.acciones.datos.items.filter((fila: Cuerpo) => fila.tipo === 'CERRAR').every((fila: Cuerpo) => fila.bloqueo.estado === 'indisponible'));
 
-      const lid1: Cuerpo = (await http().get('/v1/bandeja/lider').set(como(f.lid1)).expect(200)).body;
-      assert.deepEqual([lid1.impedimentos.contadores.escaladosAMi.estado, lid1.impedimentos.lista.estado, lid1.hdu.datos.items[0].riesgo.estado], ['indisponible', 'indisponible', 'indisponible']);
       const adm: Cuerpo = (await http().get('/v1/bandeja/admin').set(como(f.adm1)).expect(200)).body;
       assert.deepEqual([adm.impedimentos.contadores.hduRiesgoAlto.estado, adm.impedimentos.escalados.estado], ['indisponible', 'indisponible']);
       const aud: Cuerpo = (await http().get('/v1/bandeja/auditor').set(como(f.aud1)).expect(200)).body;
@@ -289,8 +265,8 @@ describe('E4-B8 · bloques de impedimentos en las bandejas (D87)', () => {
     });
   });
 
-  it('[E7-B03] las 5 bandejas traen el bloque impedimentos', async () => {
-    const rutas: Array<[string, UsuarioDePrueba]> = [['analista', f.ana1], ['qe', f.qe1], ['lider', f.lid1], ['admin', f.adm1], ['auditor', f.aud1]];
+  it('[E7-B03] las 4 bandejas traen el bloque impedimentos', async () => {
+    const rutas: Array<[string, UsuarioDePrueba]> = [['analista', f.ana1], ['qe', f.qe1], ['admin', f.adm1], ['auditor', f.aud1]];
     for (const [ruta, usuario] of rutas) {
       const cuerpo: Cuerpo = (await http().get(`/v1/bandeja/${ruta}`).set(como(usuario)).expect(200)).body;
       assert.ok(cuerpo.impedimentos !== undefined, ruta);

@@ -244,10 +244,10 @@ test.describe("E5-B02 · Consultar Jira", () => {
     expect(await sql("SELECT 1 FROM integraciones.consulta_jira")).toHaveLength(0);
   });
 
-  test("[E5-B02#1] T11 (negativo): QE1, QE2, ANA1, LID1 y AUD1 reciben 403; sin token 401; ADM1 sin configuración 409 JIRA_NO_CONFIGURADO; sin ejecuciones ni llamadas a Jira", async ({ request }) => {
+  test("[E5-B02#1] T11 (negativo): QE1, QE2, ANA1 y AUD1 reciben 403; sin token 401; ADM1 sin configuración 409 JIRA_NO_CONFIGURADO; sin ejecuciones ni llamadas a Jira", async ({ request }) => {
     await estadoConfigBase(request);
     await jiraFalso.limpiarSolicitudes();
-    for (const clave of ["qe1", "qe2", "ana1", "lid1", "aud1"] as const) {
+    for (const clave of ["qe1", "qe2", "ana1", "aud1"] as const) {
       const r = await consultar(request, {}, undefined, clave);
       expect(r.status, clave).toBe(403);
       expect(r.body.codigo).toBe("ACCESO_DENEGADO");

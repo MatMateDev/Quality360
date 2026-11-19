@@ -5,8 +5,6 @@ import type { Usuario } from "@/types/dominio";
 interface Props {
   usuario: Usuario;
   relaciones: Relaciones;
-  /** Abre el diálogo de células con todo desmarcado. */
-  onQuitarCelulas?: () => void;
 }
 
 /**
@@ -14,22 +12,12 @@ interface Props {
  * Con HDU abiertas, un enlace a cada una para reasignarla (el QE responsable lo reasigna el Administrador
  * desde el detalle de la HDU; el analista, también).
  */
-export function MensajeRelaciones({ usuario, relaciones, onQuitarCelulas }: Props) {
-  const { analistasVigentes, supervisorVigente, hduAbiertas, celulasVigentes } = relaciones;
+export function MensajeRelaciones({ usuario, relaciones }: Props) {
+  const { analistasVigentes, supervisorVigente, hduAbiertas } = relaciones;
   const antes = `Antes de cambiar el rol de ${usuario.nombre}`;
   return (
     <div className="campo-error" role="alert" data-testid="error-cambio-rol">
       <ul>
-        {celulasVigentes.length > 0 ? (
-          <li data-testid="relacion-celulas">
-            {antes} debes quitarle sus células ({celulasVigentes.map((c) => c.nombre).join(", ")}).{" "}
-            {onQuitarCelulas ? (
-              <button type="button" className="boton--enlace" data-testid="boton-quitar-celulas" onClick={onQuitarCelulas}>
-                Quitar células
-              </button>
-            ) : null}
-          </li>
-        ) : null}
         {hduAbiertas.total > 0 ? (
           <li data-testid="relacion-hdu-abiertas">
             {antes} debes reasignar sus {hduAbiertas.total} {hduAbiertas.total === 1 ? "HDU abierta" : "HDU abiertas"}:

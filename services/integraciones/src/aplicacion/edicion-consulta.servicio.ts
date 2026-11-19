@@ -118,13 +118,11 @@ export class EdicionConsultaAplicacion {
       if (d.desmarcada && fila.codigo !== null) desmarcadas.push(fila.codigo);
 
       const advertencias = ajustarAdvertencias(fila.advertencias, d.sprintJiraNoEncontrado);
-      const avisoSinLider = comb === null ? fila.avisoSinLider : avisoDe(comb, validacion, fila.avisoSinLider);
       const analistaAutoCambio = d.analistaAuto !== fila.analistaAuto;
       const cambio =
         d.cambioAsignacion ||
         analistaAutoCambio ||
         d.marcada !== fila.marcada ||
-        avisoSinLider !== fila.avisoSinLider ||
         advertencias.length !== fila.advertencias.length;
       if (!cambio) continue;
       // Elegir el mismo analista que puso el servidor también cambia la fila (deja de ser automático) y queda a nombre de quien lo eligió.
@@ -132,8 +130,8 @@ export class EdicionConsultaAplicacion {
       if (reasigna && actor === null) actor = await this.organizacion.perfil(solicitante.contexto, limite());
       const asignadoPor = reasigna ? actor : fila.asignadoPor;
       const asignadoEn = reasigna ? ahora : fila.asignadoEn;
-      ediciones.push({ itemId: fila.id, asignacion: d.asignacion, analistaAuto: d.analistaAuto, avisoSinLider, marcada: d.marcada, advertencias, asignadoPor, asignadoEn });
-      cambiadas.push({ ...fila, asignacion: d.asignacion, analistaAuto: d.analistaAuto, avisoSinLider, marcada: d.marcada, advertencias, asignadoPor, asignadoEn, revision: fila.revision + 1 });
+      ediciones.push({ itemId: fila.id, asignacion: d.asignacion, analistaAuto: d.analistaAuto, marcada: d.marcada, advertencias, asignadoPor, asignadoEn });
+      cambiadas.push({ ...fila, asignacion: d.asignacion, analistaAuto: d.analistaAuto, marcada: d.marcada, advertencias, asignadoPor, asignadoEn, revision: fila.revision + 1 });
     }
 
     // 4) Guardar todo junto; si nada cambió, la versión no sube.
@@ -189,9 +187,3 @@ function ajustarAdvertencias(actuales: AdvertenciaFila[], sprintJiraNoEncontrado
   return sprintJiraNoEncontrado ? [...sin, 'SPRINT_NO_ENCONTRADO'] : sin;
 }
 
-/** El aviso «célula sin líder» sigue a la célula: se recalcula al tocarla y se limpia si se quita. */
-function avisoDe(comb: CombinacionFinal, validacion: ValidacionAsignacion | null, actual: boolean): boolean {
-  if (comb.ids.celulaId === null) return false;
-  if (comb.aValidar.has('celulaId') && validacion !== null) return validacion.celulaSinLiderActivo;
-  return actual;
-}

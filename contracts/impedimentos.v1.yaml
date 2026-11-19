@@ -23,12 +23,11 @@ info:
       | `ANALISTA_ASIGNADO` | Sí | Sí | No | No (D73) | No |
       | `QE_RESPONSABLE` | Sí | Sí | Sí | Sí | Sí |
       | `QE_SUPERVISOR_DEL_ANALISTA` | Sí | No | No | Sí | No |
-      | `LECTOR_CELULA` (Líder QA) | Sí | No | No | Sí | No |
       | `ADMINISTRADOR` | Sí | No | No | Sí | No |
       | `LECTOR_AUDITORIA` (Auditor) | Sí | No | No | Sí | No |
 
       Sin relación: 403 `ACCESO_DENEGADO` con mensaje genérico (D12). Un id
-      inexistente responde 403 al Analista, al QE y al Líder, y 404 al
+      inexistente responde 403 al Analista y al QE, y 404 al
       Administrador y al Auditor, que leen todo (D50).
     - **Orden de validación (D89).** 401 → 403 → 400 → 409 `HDU_CERRADA` →
       422 → 409 `TRANSICION_INVALIDA`. Un intento rechazado no deja registro
@@ -97,7 +96,7 @@ paths:
       tags: [Catálogos]
       summary: Catálogo de tipos de impedimento
       description: Los 9 tipos de D61 en el orden del catálogo, con su etiqueta y la descripción mínima exigida. Cualquier usuario activo.
-      x-roles: [ADMINISTRADOR, QE, ANALISTA_QA, LIDER_QA, AUDITOR]
+      x-roles: [ADMINISTRADOR, QE, ANALISTA_QA, AUDITOR]
       x-hdu: [E4-F01#1, E4-F01#2, E4-B01#1]
       responses:
         '200':
@@ -145,7 +144,7 @@ paths:
         impedimento con `esNuevo` y `operacionesPermitidas` (D75): el portal no
         deduce la relación. Una HDU cerrada conserva y muestra todo su
         historial (E4-B04#3).
-      x-roles: [ADMINISTRADOR, QE, ANALISTA_QA, LIDER_QA, AUDITOR]
+      x-roles: [ADMINISTRADOR, QE, ANALISTA_QA, AUDITOR]
       x-hdu: [E4-F01#1, E4-F03#1, E4-F03#3, E4-B01#2, E4-B02#2, E4-B04#3]
       responses:
         '200':
@@ -255,8 +254,8 @@ paths:
       description: |
         Pantalla `/qe/impedimentos` (E4-F02). Ámbito del rol según
         `GET /v1/interno/hdu/ambito`: QE (responsable o analista supervisado;
-        las filas donde no es responsable traen `soloLectura`), Líder QA (sus
-        células), Administrador y Auditor (todas). Analista QA → 403.
+        las filas donde no es responsable traen `soloLectura`), Administrador
+        y Auditor (todas). Analista QA → 403.
 
         - Por defecto excluye los `RESUELTO` (`incluirResueltos=false`); un
           `estado` explícito manda sobre ese valor.
@@ -268,7 +267,7 @@ paths:
           `diasAbierto:desc`, informado en `orden`. Un filtro `riesgo` en esa
           situación → 503 (no se devuelve una lista mal filtrada).
         - Si Organización no responde → 503. Nunca una lista vacía falsa.
-      x-roles: [QE, LIDER_QA, ADMINISTRADOR, AUDITOR]
+      x-roles: [QE, ADMINISTRADOR, AUDITOR]
       x-hdu: [E4-F02#1, E4-F02#2, E4-F02#3]
       parameters:
         - name: estado
@@ -324,7 +323,7 @@ paths:
       tags: [Impedimentos]
       summary: Detalle de un impedimento con su historial
       description: Quien ve la HDU del impedimento. `acciones` en orden cronológico, más antigua primero (E4-F03, E4-B01-T03).
-      x-roles: [ADMINISTRADOR, QE, ANALISTA_QA, LIDER_QA, AUDITOR]
+      x-roles: [ADMINISTRADOR, QE, ANALISTA_QA, AUDITOR]
       x-hdu: [E4-F03#1, E4-F03#3, E4-B01#1, E4-B04#2]
       responses:
         '200':
@@ -394,10 +393,9 @@ paths:
       summary: Escalar un impedimento
       description: |
         `ABIERTO` o `ESCALADO` → `ESCALADO`. Solo el QE responsable. El
-        destino es un candidato de `ESCALAMIENTO` (Líder QA con la célula
-        vigente o Administrador activo) o un tercero (`responsableNombre`); un
-        QE, un Analista, un Líder sin la célula o el mismo responsable actual
-        → 422 `RESPONSABLE_INVALIDO` (D64). Cambia el responsable y deja
+        destino es un candidato de `ESCALAMIENTO` (Administrador activo, D208)
+        o un tercero (`responsableNombre`); un QE, un Analista o el mismo
+        responsable actual → 422 `RESPONSABLE_INVALIDO` (D64). Cambia el responsable y deja
         `detalle {responsableAnterior, responsableNuevo}` en la acción. Un
         `RESUELTO` → 409 «Un impedimento resuelto solo puede reabrirse»
         (E4-B02#3).
@@ -518,7 +516,7 @@ paths:
         valores y umbrales para la frase del portal (D76). Si Certificaciones
         no responde, la respuesta es 200 con `factoresNoEvaluados` y, si no se
         llega a `ALTO`, `nivelSugerido: null` y `estado: indisponible` (D68).
-      x-roles: [QE, LIDER_QA, ADMINISTRADOR, AUDITOR]
+      x-roles: [QE, ADMINISTRADOR, AUDITOR]
       x-hdu: [E4-F04#1, E4-F04#2, E4-B03#1, E4-B03#2, E4-B03#3]
       responses:
         '200':
@@ -592,7 +590,7 @@ paths:
 
         Si Certificaciones no responde, las HDU con nivel fijado muestran su
         nivel y las demás `indisponible`; un filtro `nivel` → 503 (D46).
-      x-roles: [QE, LIDER_QA, ADMINISTRADOR, AUDITOR]
+      x-roles: [QE, ADMINISTRADOR, AUDITOR]
       x-hdu: [E4-F04#3, E4-F02#1]
       parameters:
         - name: nivel
@@ -646,7 +644,7 @@ paths:
         `IMPEDIMENTO` (D73). Se conserva completo tras el cierre (E4-B04#3).
         El portal lo usa para el historial del panel de riesgo con
         `tipo=RIESGO` (D82).
-      x-roles: [ADMINISTRADOR, QE, ANALISTA_QA, LIDER_QA, AUDITOR]
+      x-roles: [ADMINISTRADOR, QE, ANALISTA_QA, AUDITOR]
       x-hdu: [E4-F04#1, E4-B04#1, E4-B04#2, E4-B04#3]
       parameters:
         - $ref: './comun.v1.yaml#/components/parameters/FiltroDesde'
@@ -913,7 +911,7 @@ paths:
         responde `bloqueada: false` y conteos en 0: es un dato válido.
         Para el Analista QA, `riesgo` y los niveles vienen igual pero
         Organización no los publica (D73).
-      x-roles: [ADMINISTRADOR, QE, ANALISTA_QA, LIDER_QA, AUDITOR]
+      x-roles: [ADMINISTRADOR, QE, ANALISTA_QA, AUDITOR]
       x-hdu: [E4-F01#3, E4-F03#2, E4-B01#2, E4-B02#2]
       requestBody:
         required: true

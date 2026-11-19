@@ -78,8 +78,6 @@ export const ID = {
   qa2: "a1000000-0000-4000-8000-000000000005",
   qa3: "a1000000-0000-4000-8000-000000000006",
   qaInactivo: "a1000000-0000-4000-8000-000000000007",
-  lider1: "a1000000-0000-4000-8000-000000000008",
-  lider2: "a1000000-0000-4000-8000-000000000009",
   auditor: "a1000000-0000-4000-8000-00000000000a",
   celPagos: "b2000000-0000-4000-8000-000000000001",
   celClientes: "b2000000-0000-4000-8000-000000000002",
@@ -170,10 +168,8 @@ export const usuarios: UsuarioMock[] = [
   },
 ];
 
-// E7: Líder QA con células (Pagos y Clientes), Líder sin células y Auditor.
+// E7: Auditor (el rol Líder QA se retiró, D208).
 usuarios.push(
-  { id: ID.lider1, nombre: 'Luis Soto', correo: 'luis.soto@quality360.local', rol: 'LIDER_QA', activo: true, creadoEn: '2026-01-08T09:00:00Z', actualizadoEn: '2026-01-08T09:00:00Z', contrasena: CONTRASENA_DEMO },
-  { id: ID.lider2, nombre: 'Paula Vega', correo: 'paula.vega@quality360.local', rol: 'LIDER_QA', activo: true, creadoEn: '2026-01-08T09:05:00Z', actualizadoEn: '2026-01-08T09:05:00Z', contrasena: CONTRASENA_DEMO },
   { id: ID.auditor, nombre: 'Andrea Mora', correo: 'andrea.mora@quality360.local', rol: 'AUDITOR', activo: true, creadoEn: '2026-01-08T09:10:00Z', actualizadoEn: '2026-01-08T09:10:00Z', contrasena: CONTRASENA_DEMO },
 );
 

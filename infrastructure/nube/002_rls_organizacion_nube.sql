@@ -16,8 +16,8 @@ begin
   foreach t in array array[
     'rol', 'usuario', 'supervision', 'celula', 'sprint', 'historia_usuario', 'historia_sprint',
     'hdu_historial_estado', 'hdu_historial_asignacion', 'auditoria',
-    -- E7 (migración 20261021000000_e7_roles_celula_lider)
-    'celula_lider', 'hdu_historial_responsable'
+    -- E7 (migración 20261021000000_e7_roles_celula_lider; celula_lider se eliminó en D208)
+    'hdu_historial_responsable'
   ] loop
     execute format('alter table organizacion.%I enable row level security', t);
     if not exists (

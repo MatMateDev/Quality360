@@ -23,7 +23,7 @@ import {
 
 type Consulta = Record<string, unknown>;
 
-const ROLES_TODOS = ['ADMINISTRADOR', 'QE', 'ANALISTA_QA', 'LIDER_QA', 'AUDITOR'] as const;
+const ROLES_TODOS = ['ADMINISTRADOR', 'QE', 'ANALISTA_QA', 'AUDITOR'] as const;
 
 function enviarCsv(respuesta: Response, solicitud: Request, exportacion: ExportacionTabular): void {
   respuesta.setHeader('content-type', 'text/csv; charset=utf-8');

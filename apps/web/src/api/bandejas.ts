@@ -12,7 +12,6 @@ import {
   type BandejaAdmin,
   type BandejaAnalista,
   type BandejaAuditor,
-  type BandejaLider,
   type BandejaQe,
   type OperacionAuditoriaUsuarios,
   type PaginaAuditoriaUsuarios,
@@ -126,7 +125,6 @@ const ORDEN_HDU = COLUMNAS_ORDEN;
 
 export const CLAVES_ANALISTA = ["estado", "celula", "sprint", "solo-obs", "solo-bloq", "q"];
 export const CLAVES_QE = ["tipo", "celula", "sprint", "analista", "q"];
-export const CLAVES_LIDER = ["celula", "sprint", "estado", "qe", "analista", "sin-analista", "solo-bloq", "q"];
 export const CLAVES_AUDITOR_HDU = ["celula", "sprint", "estado", "qe", "analista", "certificado", "desde", "hasta", "q"];
 export const CLAVES_CERTIFICADOS = ["desde", "hasta", "emisor", "q"];
 export const CLAVES_BITACORA = ["desde", "hasta", "hdu", "actor", "accion"];
@@ -142,11 +140,6 @@ export function useBandejaAnalista(filtros: FiltrosUrl) {
 export function useBandejaQe(filtros: FiltrosUrl | null) {
   const query = aQueryApi(filtros, { claves: CLAVES_QE });
   return useQuery({ queryKey: ["bandeja", "qe", query], queryFn: () => http.get<BandejaQe>(`/v1/bandeja/qe${query}`) });
-}
-
-export function useBandejaLider(filtros: FiltrosUrl) {
-  const query = aQueryApi(filtros, { claves: CLAVES_LIDER, ordenables: ORDEN_HDU });
-  return useQuery({ queryKey: ["bandeja", "lider", query], queryFn: () => http.get<BandejaLider>(`/v1/bandeja/lider${query}`) });
 }
 
 /** `pagina` y `tamano` paginan «Pendientes de configuración» (DEF-10); el resto de la bandeja no cambia. */

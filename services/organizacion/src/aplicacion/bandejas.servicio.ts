@@ -9,9 +9,8 @@
  * Una falla nunca se convierte en 0 ni en una lista vacía.
  */
 import { Inject, Injectable } from '@nestjs/common';
-import { accesoDenegado, errorValidacion } from '@quality360/auth-nest';
+import { errorValidacion } from '@quality360/auth-nest';
 
-import { celulaPermitidaParaLider } from '../dominio/reglas/ambito.js';
 import {
   accionesPendientesQe,
   actualizadoEn,
@@ -37,19 +36,10 @@ import {
 import { rangoValido, sanitizarCambios } from '../dominio/reglas/auditoria-usuarios.js';
 import { AUDITORIA_REPOSITORIO, type AuditoriaRepositorio } from '../dominio/repositorios/auditoria.repositorio.js';
 import { CATALOGO_REPOSITORIO, type CatalogoRepositorio } from '../dominio/repositorios/catalogo.repositorio.js';
-import { CELULA_LIDER_REPOSITORIO, type CelulaLiderRepositorio } from '../dominio/repositorios/celula-lider.repositorio.js';
 import { HDU_REPOSITORIO, type HduRepositorio } from '../dominio/repositorios/hdu.repositorio.js';
 import { SUPERVISION_REPOSITORIO, type SupervisionRepositorio } from '../dominio/repositorios/supervision.repositorio.js';
 import { USUARIO_REPOSITORIO, type UsuarioRepositorio } from '../dominio/repositorios/usuario.repositorio.js';
-import {
-  conteoPorEstadoVacio,
-  type AmbitoAcceso,
-  type CatalogoRef,
-  type ConteoPorEstado,
-  type Hdu,
-  type Rol,
-  type UsuarioResumen,
-} from '../dominio/tipos.js';
+import { type AmbitoAcceso, type Hdu, type Rol, type UsuarioResumen } from '../dominio/tipos.js';
 import { contarRiesgoAlto, ordenarLista, ordenarPorAntiguedad, type NivelRiesgoBandeja } from '../dominio/reglas/impedimentos-bandeja.js';
 import { HduAplicacion, type HduResumenRespuesta } from './hdu.servicio.js';
 import {
@@ -81,7 +71,7 @@ export interface ConsultaListaHdu extends FiltroFilasHdu {
   readonly tamanoPagina?: number;
   readonly soloConObservaciones?: boolean;
   readonly certificado?: 'con' | 'sin';
-  /** E4 (D87): solo HDU con impedimentos `ABIERTO` o `ESCALADO`. Analista y Líder. */
+  /** E4 (D87): solo HDU con impedimentos `ABIERTO` o `ESCALADO`. Analista. */
   readonly soloBloqueadas?: boolean;
 }
 
@@ -111,7 +101,6 @@ const SEGUIMIENTO = 'certificaciones.checklist';
 const IMPEDIMENTOS = 'impedimentos.impedimentos';
 const RIESGO = 'impedimentos.riesgo';
 const MAXIMO_LISTA_QE = 10;
-const MAXIMO_LISTA_LIDER = 50;
 const MAXIMO_LISTA_ADMIN = 50;
 
 const ok = <D>(fuente: string, datos: D): Bloque<D> => ({ fuente, estado: 'ok', datos });
@@ -134,11 +123,6 @@ const ORDEN_ANALISTA: OrdenHdu = [
   { columna: 'sprint', direccion: 'desc' },
 ];
 const ORDEN_RESPALDO_ANALISTA: OrdenHdu = [{ columna: 'prioridad', direccion: 'desc' }];
-const ORDEN_LIDER: OrdenHdu = [
-  { columna: 'celula', direccion: 'asc' },
-  { columna: 'sprint', direccion: 'desc' },
-  { columna: 'codigo', direccion: 'asc' },
-];
 const ORDEN_AUDITOR: OrdenHdu = [{ columna: 'codigo', direccion: 'asc' }];
 
 // ---------------------------------------------------------------- servicio
@@ -150,7 +134,6 @@ export class BandejasAplicacion {
     @Inject(CATALOGO_REPOSITORIO) private readonly catalogos: CatalogoRepositorio,
     @Inject(USUARIO_REPOSITORIO) private readonly usuarios: UsuarioRepositorio,
     @Inject(SUPERVISION_REPOSITORIO) private readonly supervisionRepo: SupervisionRepositorio,
-    @Inject(CELULA_LIDER_REPOSITORIO) private readonly celulasLider: CelulaLiderRepositorio,
     @Inject(AUDITORIA_REPOSITORIO) private readonly auditoria: AuditoriaRepositorio,
     @Inject(PROVEEDOR_SEGUIMIENTO) private readonly seguimientoProveedor: ProveedorSeguimiento,
     @Inject(PROVEEDOR_IMPEDIMENTOS) private readonly impedimentosProveedor: ProveedorImpedimentos,
@@ -189,7 +172,6 @@ export class BandejasAplicacion {
               { defecto: ORDEN_ANALISTA, respaldo: ORDEN_RESPALDO_ANALISTA, seguimientoPrevio: seguimiento },
             ),
             evaluacion,
-            false,
           );
 
     return {
@@ -286,83 +268,8 @@ export class BandejasAplicacion {
           impedimentosNuevos: evaluacion.disponible ? contador(IMPEDIMENTOS, propias.reduce((total, fila) => total + (evaluacion.porHdu.get(fila.id)?.nuevos ?? 0), 0)) : indisponible(IMPEDIMENTOS),
           hduRiesgoAlto: this.contadorRiesgoAlto(propias, evaluacion),
         },
-        lista: await this.listaImpedimentos(propias, hduPorId, evaluacion, ctx, { maximo: MAXIMO_LISTA_QE, escaladosAMiPrimero: false }),
+        lista: await this.listaImpedimentos(propias, hduPorId, evaluacion, ctx, MAXIMO_LISTA_QE),
       },
-    };
-  }
-
-  // ---------------------------------------------------------------- Líder
-
-  async lider(ctx: ContextoBandeja, consulta: ConsultaListaHdu) {
-    // Fuera de sus células vigentes: 403 genérico (E7-B02-T04, D12).
-    if (!celulaPermitidaParaLider('LIDER_QA', ctx.ambito, consulta.celulaId)) throw accesoDenegado('celulaId fuera de las células del líder');
-
-    const vigentes = (await this.celulasLider.listarVigentes(ctx.usuarioId)).map((fila) => fila.celula);
-    const celulaIds = vigentes.map((celula) => celula.id);
-    const { filas, hduPorId } = await this.cargar(await this.hdus.listarTodasPorAmbito({ tipo: 'CELULAS', celulaIds }));
-    const seguimiento = await this.pedirSeguimiento(filas.map((fila) => fila.id), ctx);
-    const mapa: MapaSeguimiento = seguimiento.disponible ? seguimiento.mapa : new Map();
-
-    const resumenPorCelula = vigentes.map((celula) => {
-      const deCelula = filas.filter((fila) => fila.celulaId === celula.id);
-      const porEstado: ConteoPorEstado = conteoPorEstadoVacio();
-      for (const fila of deCelula) porEstado[fila.estado] += 1;
-      const abiertas = deCelula.filter((fila) => esAbierta(fila.estado));
-      const avance = seguimiento.disponible
-        ? ok(SEGUIMIENTO, {
-            porcentaje:
-              abiertas.length === 0
-                ? null
-                : Math.round((abiertas.reduce((total, fila) => total + (mapa.get(fila.id)?.porcentaje ?? 0), 0) / abiertas.length) * 10) / 10,
-          })
-        : indisponible(SEGUIMIENTO);
-      return { celula, porEstado, avancePromedioAbiertas: avance };
-    });
-
-    // E4 (D87, D79): bloqueo y riesgo por fila, filtro `soloBloqueadas` y bloque de impedimentos (solo lectura).
-    const evaluacion = await this.evaluarImpedimentos(filas, seguimiento, ctx, true);
-    const filtraBloqueadas = consulta.soloBloqueadas === true;
-    const hdu: Bloque<PaginaBandejaHdu> =
-      filtraBloqueadas && !evaluacion.disponible
-        ? indisponible('organizacion.hdu')
-        : this.conBloqueo(
-            await this.bloqueLista(
-              ctx,
-              filtraBloqueadas && evaluacion.disponible ? filas.filter((fila) => evaluacion.porHdu.get(fila.id)?.bloqueada === true) : filas,
-              hduPorId,
-              consulta,
-              { defecto: ORDEN_LIDER, respaldo: ORDEN_LIDER, seguimientoPrevio: seguimiento },
-            ),
-            evaluacion,
-            true,
-          );
-    const bloqueantes = evaluacion.disponible ? evaluacion.impedimentos : [];
-
-    return {
-      impedimentos: {
-        contadores: {
-          impedimentosAbiertos: evaluacion.disponible ? contador(IMPEDIMENTOS, bloqueantes.length) : indisponible(IMPEDIMENTOS),
-          hduBloqueadas: evaluacion.disponible ? contador(IMPEDIMENTOS, filas.filter((fila) => evaluacion.porHdu.get(fila.id)?.bloqueada === true).length) : indisponible(IMPEDIMENTOS),
-          escaladosAMi: evaluacion.disponible
-            ? contador(IMPEDIMENTOS, bloqueantes.filter((impedimento) => impedimento.estado === 'ESCALADO' && impedimento.responsable.id === ctx.usuarioId).length)
-            : indisponible(IMPEDIMENTOS),
-        },
-        lista: await this.listaImpedimentos(filas, hduPorId, evaluacion, ctx, { maximo: MAXIMO_LISTA_LIDER, escaladosAMiPrimero: true }),
-      },
-      rol: 'LIDER_QA' as const,
-      generadaEn: new Date(),
-      celulas: ok('organizacion.celulas', { items: vigentes }),
-      contadores: {
-        celulas: contador('organizacion.celulas', vigentes.length),
-        hduAbiertas: contador('organizacion.hdu', filas.filter((fila) => esAbierta(fila.estado)).length),
-        hduCerradas: contador('organizacion.hdu', filas.filter((fila) => !esAbierta(fila.estado)).length),
-        sinAnalista: contador('organizacion.hdu', filas.filter((fila) => fila.analistaId === null).length),
-        certificados: seguimiento.disponible
-          ? contador(SEGUIMIENTO, filas.filter((fila) => mapa.get(fila.id)?.certificado != null).length)
-          : indisponible(SEGUIMIENTO),
-      },
-      resumenPorCelula: ok('organizacion.hdu', { items: resumenPorCelula }),
-      hdu,
     };
   }
 
@@ -371,22 +278,19 @@ export class BandejasAplicacion {
   async admin(ctx: ContextoBandeja, consulta: { pagina?: number; tamanoPagina?: number }) {
     const pagina = consulta.pagina ?? 1;
     const tamanoPagina = tamanoEfectivo(consulta.tamanoPagina);
-    const [resumen, activosPorRol, analistasSinQe, qeSinAnalistas, lideresSinCelulas, celulasSinLider, hduTotal, ultimos] = await Promise.all([
+    const [resumen, activosPorRol, analistasSinQe, qeSinAnalistas, hduTotal, ultimos] = await Promise.all([
       this.usuarios.resumenAdmin(),
       this.usuarios.contarActivosPorRol(),
       this.supervisionRepo.listarAnalistasActivosSinQe(),
       this.supervisionRepo.listarQeActivosSinAnalistas(),
-      this.celulasLider.lideresActivosSinCelulas(),
-      this.celulasLider.celulasActivasSinLider(),
       this.hdus.contarTodas(),
       this.auditoria.listarUsuarios({}, { pagina: 1, tamanoPagina: 10 }),
     ]);
 
-    const pendientes: Array<{ tipo: TipoPendienteAdmin; usuario: UsuarioResumen | null; celula: CatalogoRef | null }> = [
-      ...analistasSinQe.map((usuario) => ({ tipo: 'ANALISTA_SIN_QE' as const, usuario, celula: null })),
-      ...qeSinAnalistas.map((usuario) => ({ tipo: 'QE_SIN_ANALISTAS' as const, usuario, celula: null })),
-      ...lideresSinCelulas.map((usuario) => ({ tipo: 'LIDER_SIN_CELULAS' as const, usuario, celula: null })),
-      ...celulasSinLider.map((celula) => ({ tipo: 'CELULA_SIN_LIDER' as const, usuario: null, celula })),
+    // D208: sin pendientes de Líder QA ni de células sin líder.
+    const pendientes: Array<{ tipo: TipoPendienteAdmin; usuario: UsuarioResumen }> = [
+      ...analistasSinQe.map((usuario) => ({ tipo: 'ANALISTA_SIN_QE' as const, usuario })),
+      ...qeSinAnalistas.map((usuario) => ({ tipo: 'QE_SIN_ANALISTAS' as const, usuario })),
     ].sort((a, b) => TIPOS_PENDIENTE_ADMIN.indexOf(a.tipo) - TIPOS_PENDIENTE_ADMIN.indexOf(b.tipo));
 
     const totalActivos = Object.values(activosPorRol).reduce((suma, valor) => suma + valor, 0);
@@ -418,8 +322,6 @@ export class BandejasAplicacion {
         usuariosInactivos: contador('organizacion.usuarios', resumen.inactivos),
         analistasSinQe: contador('organizacion.supervision', analistasSinQe.length),
         qeSinAnalistas: contador('organizacion.supervision', qeSinAnalistas.length),
-        lideresSinCelulas: contador('organizacion.usuarios', lideresSinCelulas.length),
-        celulasSinLider: contador('organizacion.celulas', celulasSinLider.length),
         hduTotal: contador('organizacion.hdu', hduTotal),
       },
       pendientes: ok('organizacion.usuarios', {
@@ -577,8 +479,8 @@ export class BandejasAplicacion {
     return item === undefined ? indisponible(IMPEDIMENTOS) : ok(IMPEDIMENTOS, { bloqueada: item.bloqueada, abiertos: item.abiertos });
   }
 
-  /** Agrega `bloqueo` (y `riesgo` en la del Líder) a cada fila de la lista de HDU (D87). */
-  private conBloqueo(bloque: Bloque<PaginaBandejaHdu>, evaluacion: ResultadoEvaluacion, conRiesgo: boolean): Bloque<PaginaBandejaHdu> {
+  /** Agrega `bloqueo` a cada fila de la lista de HDU (D87). */
+  private conBloqueo(bloque: Bloque<PaginaBandejaHdu>, evaluacion: ResultadoEvaluacion): Bloque<PaginaBandejaHdu> {
     if (bloque.estado !== 'ok') return bloque;
     return {
       ...bloque,
@@ -587,9 +489,6 @@ export class BandejasAplicacion {
         items: bloque.datos.items.map((item) => ({
           ...item,
           bloqueo: this.bloqueoDe(evaluacion, item.id),
-          ...(conRiesgo
-            ? { riesgo: evaluacion.disponible && evaluacion.porHdu.has(item.id) ? ok(RIESGO, (evaluacion.porHdu.get(item.id) as { riesgo: unknown }).riesgo) : indisponible(RIESGO) }
-            : {}),
         })),
       },
     };
@@ -606,13 +505,13 @@ export class BandejasAplicacion {
     return total === null ? indisponible(RIESGO) : contador(RIESGO, total);
   }
 
-  /** Lista de impedimentos abiertos o escalados de las HDU dadas, en el orden D74 (D79 con `escaladosAMiPrimero`). */
+  /** Lista de impedimentos abiertos o escalados de las HDU dadas, en el orden D74. */
   private async listaImpedimentos(
     filas: readonly FilaHdu[],
     hduPorId: ReadonlyMap<string, Hdu>,
     evaluacion: ResultadoEvaluacion,
     ctx: ContextoBandeja,
-    opciones: { maximo: number; escaladosAMiPrimero: boolean },
+    maximo: number,
   ): Promise<Bloque<{ items: unknown[]; total: number }>> {
     if (!evaluacion.disponible) return indisponible(IMPEDIMENTOS);
     const delAmbito = new Set(filas.map((fila) => fila.id));
@@ -622,12 +521,9 @@ export class BandejasAplicacion {
     const ordenados = ordenarLista(
       impedimentos.map((impedimento) => ({ ...impedimento, id: impedimento.id, hduId: impedimento.hduId })),
       nivelDe,
-      {
-        riesgoDisponible,
-        ...(opciones.escaladosAMiPrimero ? { primero: (i: ImpedimentoDeLote) => i.estado === 'ESCALADO' && i.responsable.id === ctx.usuarioId } : {}),
-      },
+      { riesgoDisponible },
     );
-    return this.listaDeLote(ordenados, ordenados.length, hduPorId, evaluacion, ctx, opciones.maximo);
+    return this.listaDeLote(ordenados, ordenados.length, hduPorId, evaluacion, ctx, maximo);
   }
 
   /** Arma las filas `ItemImpedimentoBandeja` con los datos de la HDU que Organización ya tiene. */

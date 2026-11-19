@@ -1,6 +1,6 @@
 /**
  * Fixture de la sección 3 del backlog E7: células CEL-A/B/C, usuarios ADM1, QE1, QE2,
- * ANA1–ANA4, LID1, LID2, AUD1 e INACT1, y las HDU H1–H8. Se carga directo en la base local
+ * ANA1–ANA4, AUD1 e INACT1, y las HDU H1–H8 (LID1 y LID2 se retiraron con el rol Líder QA, D208). Se carga directo en la base local
  * con las mismas tablas que usa la API; el estado del checklist lo simula `CertificacionesFalsa`.
  */
 import { crearUsuarioDePrueba, prisma, type UsuarioDePrueba } from './ayudas.js';
@@ -20,8 +20,6 @@ export interface FixtureE7 {
   readonly ana2: UsuarioDePrueba;
   readonly ana3: UsuarioDePrueba;
   readonly ana4: UsuarioDePrueba;
-  readonly lid1: UsuarioDePrueba;
-  readonly lid2: UsuarioDePrueba;
   readonly aud1: UsuarioDePrueba;
   readonly inact1: UsuarioDePrueba;
   readonly celdaA: { id: string; nombre: string };
@@ -41,8 +39,6 @@ export async function crearFixtureE7(certificaciones: CertificacionesFalsa | nul
   const ana2 = await crearUsuarioDePrueba('ANALISTA_QA', { nombre: 'ANA2' });
   const ana3 = await crearUsuarioDePrueba('ANALISTA_QA', { nombre: 'ANA3' });
   const ana4 = await crearUsuarioDePrueba('ANALISTA_QA', { nombre: 'ANA4' });
-  const lid1 = await crearUsuarioDePrueba('LIDER_QA', { nombre: 'LID1' });
-  const lid2 = await crearUsuarioDePrueba('LIDER_QA', { nombre: 'LID2' });
   const aud1 = await crearUsuarioDePrueba('AUDITOR', { nombre: 'AUD1' });
   const inact1 = await crearUsuarioDePrueba('QE', { nombre: 'INACT1', activo: false });
 
@@ -56,11 +52,6 @@ export async function crearFixtureE7(certificaciones: CertificacionesFalsa | nul
 
   for (const [qe, analista] of [[qe1, ana1], [qe1, ana2], [qe2, ana3]] as const) {
     await prisma.supervision.create({ data: { qeId: qe.id, analistaId: analista.id, ...ACTOR } });
-  }
-  for (const celula of [celdaA, celdaB]) {
-    await prisma.celulaLider.create({
-      data: { usuarioId: lid1.id, celulaId: celula.id, asignadoPorTipo: 'USUARIO', asignadoPorId: adm1.id, asignadoPorNombre: adm1.nombre },
-    });
   }
 
   let contador = 0;
@@ -114,5 +105,5 @@ export async function crearFixtureE7(certificaciones: CertificacionesFalsa | nul
     certificaciones.fijar(h.H8.id, { aprobados: 10, porcentaje: 100, listaParaCerrar: true, listaDesde: dia(4), siguienteEntregable: null, certificado: { folio: 'F8', emitidoEn: dia(4) } });
   }
 
-  return { adm1, qe1, qe2, ana1, ana2, ana3, ana4, lid1, lid2, aud1, inact1, celdaA, celdaB, celdaC, sprint, h };
+  return { adm1, qe1, qe2, ana1, ana2, ana3, ana4, aud1, inact1, celdaA, celdaB, celdaC, sprint, h };
 }

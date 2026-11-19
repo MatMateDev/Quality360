@@ -6,7 +6,7 @@ import { CatalogosAplicacion } from '../../aplicacion/catalogos.servicio.js';
 import { ROLES, type Rol } from '../../dominio/tipos.js';
 import { TransformBooleanoQuery } from '../dto/comunes.dto.js';
 
-const ROLES_TODOS = ['ADMINISTRADOR', 'QE', 'ANALISTA_QA', 'LIDER_QA', 'AUDITOR'] as const;
+const ROLES_TODOS = ['ADMINISTRADOR', 'QE', 'ANALISTA_QA', 'AUDITOR'] as const;
 
 class SprintsQueryDto {
   @IsOptional()

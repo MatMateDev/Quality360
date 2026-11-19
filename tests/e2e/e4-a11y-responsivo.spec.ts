@@ -46,12 +46,11 @@ test.beforeAll(async () => {
 });
 
 test.describe("E4 · accesibilidad y responsividad", () => {
-  test("[E4-A11Y] detalle de HDU como Analista asignado, QE responsable, Líder, Administrador y Auditor (con «HDU bloqueada») y como QE supervisor no responsable", async ({ browser, request }) => {
+  test("[E4-A11Y] detalle de HDU como Analista asignado, QE responsable, Administrador y Auditor (con «HDU bloqueada») y como QE supervisor no responsable", async ({ browser, request }) => {
     const h = await hdu(request);
     const vistas: Array<[ClaveE7, string]> = [
       ["ana1", "detalle · Analista asignado"],
       ["qe1", "detalle · QE responsable"],
-      ["lid1", "detalle · Líder"],
       ["adm1", "detalle · Administrador"],
       ["aud1", "detalle · Auditor"],
     ];
@@ -192,11 +191,10 @@ test.describe("E4 · accesibilidad y responsividad", () => {
     }
   });
 
-  test("[E4-A11Y] las 5 bandejas con sus bloques de E4 y las dos vistas de la pestaña Impedimentos del Auditor", async ({ browser }) => {
+  test("[E4-A11Y] las 4 bandejas con sus bloques de E4 y las dos vistas de la pestaña Impedimentos del Auditor", async ({ browser }) => {
     const pantallas: Array<[ClaveE7, string, string, string]> = [
       ["ana1", "/qa", "bandeja del Analista con bloqueo", '[data-testid="contador-impedimentos-abiertos"]'],
       ["qe1", "/qe", "bandeja del QE con impedimentos", '[data-testid="lista-impedimentos"]'],
-      ["lid1", "/lider", "bandeja del Líder con impedimentos", '[data-testid="lista-impedimentos"]'],
       ["adm1", "/admin", "bandeja del Administrador con impedimentos", '[data-testid="contador-impedimentos-abiertos"]'],
       ["aud1", "/auditor", "bandeja del Auditor con impedimentos", '[data-testid="contador-impedimentos-abiertos"]'],
       ["aud1", "/auditor/impedimentos", "Auditor · vista Impedimentos", '[data-testid="lista-auditor-impedimentos"]'],

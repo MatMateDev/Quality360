@@ -216,7 +216,6 @@ describe("DEF-08 · ?usuario=<id> fuera de la página 1", () => {
               correo: "jose.seguel@quality360.local",
               rol: "QE",
               activo: true,
-              celulasVigentes: [],
               creadoEn: "2026-01-08T09:00:00Z",
               actualizadoEn: "2026-01-08T09:00:00Z",
             },
@@ -227,8 +226,8 @@ describe("DEF-08 · ?usuario=<id> fuera de la página 1", () => {
         });
       }),
     );
-    await abrirComo(ADMIN, `/admin/usuarios?usuario=${ID.lider1}`);
-    const fila = await screen.findByTestId(`fila-usuario-${ID.lider1}`);
+    await abrirComo(ADMIN, `/admin/usuarios?usuario=${ID.qa1}`);
+    const fila = await screen.findByTestId(`fila-usuario-${ID.qa1}`);
     expect(fila).toHaveAttribute("aria-current", "true");
     expect(within(fila).getByTestId("usuario-fuera-de-pagina")).toBeInTheDocument();
     // Está antes que las filas de la página.
@@ -238,9 +237,9 @@ describe("DEF-08 · ?usuario=<id> fuera de la página 1", () => {
   });
 
   it("si el usuario ya está en la página, no se duplica", async () => {
-    await abrirComo(ADMIN, `/admin/usuarios?usuario=${ID.lider1}`);
-    await screen.findByTestId(`fila-usuario-${ID.lider1}`);
-    expect(screen.getAllByTestId(`fila-usuario-${ID.lider1}`)).toHaveLength(1);
+    await abrirComo(ADMIN, `/admin/usuarios?usuario=${ID.qa1}`);
+    await screen.findByTestId(`fila-usuario-${ID.qa1}`);
+    expect(screen.getAllByTestId(`fila-usuario-${ID.qa1}`)).toHaveLength(1);
     expect(screen.queryByTestId("usuario-fuera-de-pagina")).not.toBeInTheDocument();
   });
 });
@@ -249,13 +248,13 @@ describe("DEF-10 · pendientes del Administrador con total y paginación", () =>
   function pendientes(): Array<Record<string, unknown>> {
     const usuario = (n: number) => ({ id: `e0000000-0000-4000-8000-${String(n).padStart(12, "0")}`, nombre: `Analista ${String(n).padStart(2, "0")}`, correo: `a${n}@q.local`, rol: "ANALISTA_QA" });
     return [
-      ...Array.from({ length: 28 }, (_, i) => ({ tipo: "ANALISTA_SIN_QE", usuario: usuario(i + 1), celula: null })),
-      { tipo: "LIDER_SIN_CELULAS", usuario: { ...usuario(99), nombre: "Líder Sin Celdas", rol: "LIDER_QA" }, celula: null },
-      { tipo: "CELULA_SIN_LIDER", usuario: null, celula: { id: ID.celPagos, nombre: "Pagos" } },
+      ...Array.from({ length: 28 }, (_, i) => ({ tipo: "ANALISTA_SIN_QE", usuario: usuario(i + 1) })),
+      { tipo: "QE_SIN_ANALISTAS", usuario: { ...usuario(98), nombre: "QE Sin Equipo 1", rol: "QE" } },
+      { tipo: "QE_SIN_ANALISTAS", usuario: { ...usuario(99), nombre: "QE Sin Equipo 2", rol: "QE" } },
     ];
   }
 
-  it("informa el total, pagina y alcanza «Líder sin células» y «Célula sin líder» [DEF-10]", async () => {
+  it("informa el total, pagina y alcanza los últimos pendientes («QE sin analistas») [DEF-10]", async () => {
     const todos = pendientes();
     const valor = (v: number) => ({ fuente: "organizacion.usuarios", estado: "ok", datos: { valor: v } });
     server.use(
@@ -267,12 +266,10 @@ describe("DEF-10 · pendientes del Administrador con total y paginación", () =>
           rol: "ADMINISTRADOR",
           generadaEn: "2026-10-21T10:00:00Z",
           contadores: {
-            usuariosActivos: { fuente: "organizacion.usuarios", estado: "ok", datos: { valor: 1, porRol: { ADMINISTRADOR: 1, QE: 0, ANALISTA_QA: 0, LIDER_QA: 0, AUDITOR: 0 } } },
+            usuariosActivos: { fuente: "organizacion.usuarios", estado: "ok", datos: { valor: 1, porRol: { ADMINISTRADOR: 1, QE: 0, ANALISTA_QA: 0, AUDITOR: 0 } } },
             usuariosInactivos: valor(0),
             analistasSinQe: valor(28),
-            qeSinAnalistas: valor(0),
-            lideresSinCelulas: valor(1),
-            celulasSinLider: valor(1),
+            qeSinAnalistas: valor(2),
             hduTotal: valor(0),
           },
           pendientes: {
@@ -290,11 +287,11 @@ describe("DEF-10 · pendientes del Administrador con total y paginación", () =>
     expect(screen.getByTestId("total-pendientes")).toHaveTextContent("30 pendientes en total");
     expect(within(lista).getAllByRole("row")).toHaveLength(26); // encabezado + 25
     expect(screen.getByTestId("paginacion-pendientes")).toHaveTextContent("Mostrando 1–25 de 30");
-    expect(within(lista).queryByText("Célula sin líder")).not.toBeInTheDocument();
+    expect(within(lista).queryByText("QE sin analistas")).not.toBeInTheDocument();
 
     await user.click(screen.getByTestId("pagina-siguiente-pendientes"));
-    expect(await within(await screen.findByTestId("lista-pendientes")).findByText("Célula sin líder")).toBeInTheDocument();
-    expect(within(screen.getByTestId("lista-pendientes")).getByText("Líder sin células")).toBeInTheDocument();
+    expect(await within(await screen.findByTestId("lista-pendientes")).findByText("QE Sin Equipo 2")).toBeInTheDocument();
+    expect(within(screen.getByTestId("lista-pendientes")).getAllByText("QE sin analistas")).toHaveLength(2);
     expect(screen.getByTestId("paginacion-pendientes")).toHaveTextContent("Mostrando 26–30 de 30");
   });
 

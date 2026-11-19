@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // Fixture E7 (sección 3 de docs/backlog/e7-bandejas-por-rol.md): células CEL-A/B/C, usuarios
-// ADM1, QE1, QE2, ANA1-ANA4, LID1, LID2, AUD1 e INACT1, y las HDU H1-H8 con el estado de su
+// ADM1, QE1, QE2, ANA1-ANA4, AUD1 e INACT1 (sin Líder QA desde D208), y las HDU H1-H8 con el estado de su
 // checklist. Idempotente: se puede repetir sin duplicar ni retroceder nada.
 //
 // Uso:  npm run seed:e7
@@ -49,8 +49,6 @@ const USUARIOS = [
   { clave: 'ana2', nombre: 'ANA2 Analista', rol: 'ANALISTA_QA' },
   { clave: 'ana3', nombre: 'ANA3 Analista', rol: 'ANALISTA_QA' },
   { clave: 'ana4', nombre: 'ANA4 Analista sin QE', rol: 'ANALISTA_QA' },
-  { clave: 'lid1', nombre: 'LID1 Líder CEL-A y CEL-B', rol: 'LIDER_QA', celulas: ['CEL-A', 'CEL-B'] },
-  { clave: 'lid2', nombre: 'LID2 Líder sin células', rol: 'LIDER_QA', celulas: [] },
   { clave: 'aud1', nombre: 'AUD1 Auditor', rol: 'AUDITOR' },
   { clave: 'inact1', nombre: 'INACT1 QE desactivado', rol: 'QE', activo: false },
 ].map((u) => ({ ...u, correo: `${u.clave}@quality360.local` }));
@@ -199,7 +197,6 @@ async function main() {
   for (const u of USUARIOS) {
     const cuerpo = { nombre: u.nombre, correo: u.correo, rol: u.rol, contrasenaInicial: CONTRASENA };
     if (u.activo === false) cuerpo.activo = false;
-    if (u.celulas?.length) cuerpo.celulaIds = u.celulas.map((c) => ids.celula[c]);
     const j = exigir(await servicio('POST', '/v1/interno/carga/usuarios', cuerpo), `usuario ${u.clave}`);
     ids.usuario[u.clave] = j.usuario.id;
   }

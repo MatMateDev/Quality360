@@ -35,7 +35,7 @@ const ACCESO_ACTIVO: ResolucionAcceso = {
   usuarioId: SUB,
   rol: 'ANALISTA_QA',
   activo: true,
-  ambito: { qeSupervisorId: null, analistasSupervisadosIds: [], celulasIds: [] },
+  ambito: { qeSupervisorId: null, analistasSupervisadosIds: [] },
 };
 
 /** Resolutor de prueba: sustituye a Organización. */
@@ -69,10 +69,10 @@ class ControladorPrueba {
     return { rol: acceso.rol };
   }
 
-  @Roles('LIDER_QA', 'AUDITOR')
+  @Roles('AUDITOR')
   @Get('solo-lectura')
-  soloLectura(@AccesoActual() acceso: ResolucionAcceso): { rol: string; celulasIds: readonly string[] } {
-    return { rol: acceso.rol, celulasIds: acceso.ambito.celulasIds };
+  soloLectura(@AccesoActual() acceso: ResolucionAcceso): { rol: string } {
+    return { rol: acceso.rol };
   }
 
   @Roles('ADMINISTRADOR')
@@ -208,17 +208,13 @@ describe('AccesoGuard', () => {
     assert.equal(respuesta.body.codigo, 'ACCESO_DENEGADO');
   });
 
-  it('los 5 roles son válidos: LIDER_QA y AUDITOR entran a rutas de lectura y no a las de administrador (E7-B01)', async () => {
+  it('los 4 roles son válidos: AUDITOR entra a rutas de lectura y no a las de administrador (E7-B01, D208)', async () => {
     const token = await firmarConLlave(llaveRsa);
     const autorizacion = `Bearer ${token}`;
-    resolutor.resolucion = { ...ACCESO_ACTIVO, rol: 'LIDER_QA', ambito: { qeSupervisorId: null, analistasSupervisadosIds: [], celulasIds: ['c1'] } };
-    const lider = await http().get('/solo-lectura').set('authorization', autorizacion);
-    assert.equal(lider.status, 200);
-    assert.deepEqual(lider.body, { rol: 'LIDER_QA', celulasIds: ['c1'] });
-    assert.equal((await http().get('/solo-admin').set('authorization', autorizacion)).status, 403);
-
     resolutor.resolucion = { ...ACCESO_ACTIVO, rol: 'AUDITOR' };
-    assert.equal((await http().get('/solo-lectura').set('authorization', autorizacion)).status, 200);
+    const auditor = await http().get('/solo-lectura').set('authorization', autorizacion);
+    assert.equal(auditor.status, 200);
+    assert.deepEqual(auditor.body, { rol: 'AUDITOR' });
     assert.equal((await http().get('/solo-admin').set('authorization', autorizacion)).status, 403);
 
     resolutor.resolucion = { ...ACCESO_ACTIVO, rol: 'ADMINISTRADOR' };

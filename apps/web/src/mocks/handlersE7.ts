@@ -3,18 +3,9 @@ import { env } from "@/lib/env";
 import { ESTADOS_HDU, ROLES_CATALOGO, ETIQUETAS_ROL, ROLES_SOLO_LECTURA, type EstadoHdu } from "@/types/dominio";
 import { autenticar, esUsuarioMock, exigirRol } from "./comun";
 import { analistasVigentesDe, buscarUsuario, celulas, hdus, supervisorVigenteDe, usuarios, type HduMock, type UsuarioMock } from "./data";
-import {
-  aplicarCelulasLider,
-  auditoriaUsuarios,
-  bitacora,
-  celulasLider,
-  celulasVigentesDe,
-  certificados,
-  fuentes,
-  seguimientoDe,
-} from "./dataE7";
-import { bloqueImpedimentosBandeja, bloqueoFila, hduBloqueadasIds, riesgoFila } from "./handlersE4";
-import { ERROR_ACCESO_DENEGADO, ERROR_NO_ENCONTRADO, aCatalogoRef, aHduResumen, aUsuarioResumen, cuerpoError, leerNumero, paginar } from "./utils";
+import { auditoriaUsuarios, bitacora, certificados, fuentes, seguimientoDe } from "./dataE7";
+import { bloqueImpedimentosBandeja, bloqueoFila, hduBloqueadasIds } from "./handlersE4";
+import { ERROR_NO_ENCONTRADO, aHduResumen, aUsuarioResumen, cuerpoError, leerNumero, paginar } from "./utils";
 
 const BASE = env.gatewayUrl;
 const ID_EMISOR = "a1000000-0000-4000-8000-000000000002";
@@ -63,7 +54,7 @@ function seguimientoBloque(hdu: HduMock) {
   };
 }
 
-/** Campos aditivos de E4 por fila (D87): `bloqueo` en Analista y Líder, `riesgo` solo en el Líder. */
+/** Campos aditivos de E4 por fila (D87): `bloqueo`. La bandeja del Líder QA, la única con `riesgo`, se retiró (D208). */
 type ExtraFila = (hdu: HduMock) => Record<string, unknown>;
 
 function itemBandeja(hdu: HduMock, extra?: ExtraFila) {
@@ -260,41 +251,6 @@ export const handlersE7 = [
     });
   }),
 
-  // ---------------------------------------------------------- células del líder
-  http.get(`${BASE}/v1/usuarios/:id/celulas-lider`, ({ request, params }) => {
-    const actor = autenticar(request);
-    if (!esUsuarioMock(actor)) return actor;
-    const denegado = exigir(actor, "ADMINISTRADOR");
-    if (denegado) return denegado;
-    const usuario = buscarUsuario(String(params.id));
-    if (!usuario) return HttpResponse.json(ERROR_NO_ENCONTRADO(), { status: 404 });
-    return HttpResponse.json(cuerpoCelulasLider(usuario));
-  }),
-
-  http.put(`${BASE}/v1/usuarios/:id/celulas-lider`, async ({ request, params }) => {
-    const actor = autenticar(request);
-    if (!esUsuarioMock(actor)) return actor;
-    const denegado = exigir(actor, "ADMINISTRADOR");
-    if (denegado) return denegado;
-    const usuario = buscarUsuario(String(params.id));
-    if (!usuario) return HttpResponse.json(ERROR_NO_ENCONTRADO(), { status: 404 });
-    if (usuario.rol !== "LIDER_QA") {
-      return HttpResponse.json(cuerpoError("ROL_INCOMPATIBLE", "Este usuario no es Líder QA."), { status: 409 });
-    }
-    const cuerpo = (await request.json()) as { celulaIds?: string[] };
-    const ids = cuerpo.celulaIds ?? [];
-    if (ids.some((id) => !celulas.some((c) => c.id === id))) {
-      return HttpResponse.json(
-        cuerpoError("CATALOGO_INVALIDO", "Alguna de las células indicadas no existe.", [
-          { campo: "celulaIds", codigo: "NO_EXISTE", mensaje: "Alguna de las células indicadas no existe." },
-        ]),
-        { status: 422 },
-      );
-    }
-    aplicarCelulasLider(usuario, ids, actor.id);
-    return HttpResponse.json(cuerpoCelulasLider(usuario));
-  }),
-
   // ------------------------------------------------------------------ bandejas
   http.get(`${BASE}/v1/bandeja/analista`, ({ request }) => {
     const actor = autenticar(request);
@@ -407,65 +363,6 @@ export const handlersE7 = [
     });
   }),
 
-  http.get(`${BASE}/v1/bandeja/lider`, ({ request }) => {
-    const actor = autenticar(request);
-    if (!esUsuarioMock(actor)) return actor;
-    const denegado = exigir(actor, "LIDER_QA");
-    if (denegado) return denegado;
-    const url = new URL(request.url);
-    const misCelulas = celulasVigentesDe(actor.id);
-    const p = leerParams(url);
-    if (p.celulaId && !misCelulas.includes(p.celulaId)) return HttpResponse.json(ERROR_ACCESO_DENEGADO(), { status: 403 });
-
-    const ambito = hdus.filter((h) => misCelulas.includes(h.celulaId));
-    let lista = filtrar(ambito, p);
-    if (url.searchParams.get("sinAnalista") === "true") lista = lista.filter((h) => !h.analistaId);
-    const soloBloqueadasLider = url.searchParams.get("soloBloqueadas") === "true";
-    if (soloBloqueadasLider && fuentes.impedimentos) lista = lista.filter((h) => hduBloqueadasIds().has(h.id));
-
-    return HttpResponse.json({
-      rol: "LIDER_QA",
-      generadaEn: new Date().toISOString(),
-      celulas: {
-        fuente: "organizacion.celulas",
-        estado: "ok",
-        datos: { items: misCelulas.map((id) => aCatalogoRef(celulas.find((c) => c.id === id)!)).sort((a, b) => a.nombre.localeCompare(b.nombre)) },
-      },
-      contadores: {
-        celulas: contadorOrg(misCelulas.length),
-        hduAbiertas: contadorOrg(ambito.filter(esAbierta).length),
-        hduCerradas: contadorOrg(ambito.filter((h) => !esAbierta(h)).length),
-        sinAnalista: contadorOrg(ambito.filter((h) => !h.analistaId).length),
-        certificados: contadorCert(ambito.filter((h) => seguimientoDe(h.id).certificado).length),
-      },
-      resumenPorCelula: {
-        fuente: "organizacion.hdu",
-        estado: "ok",
-        datos: {
-          items: misCelulas.map((id) => {
-            const delas = ambito.filter((h) => h.celulaId === id);
-            const porEstado = { PENDIENTE: 0, DISENO_PRUEBAS: 0, EN_EJECUCION: 0, PENDIENTE_CIERRE: 0, CERRADA: 0 };
-            for (const h of delas) porEstado[h.estado] += 1;
-            const abiertas = delas.filter(esAbierta);
-            const prom = abiertas.length ? Math.round(abiertas.reduce((t, h) => t + seguimientoDe(h.id).aprobados * 10, 0) / abiertas.length) : null;
-            return {
-              celula: aCatalogoRef(celulas.find((c) => c.id === id)!),
-              porEstado,
-              avancePromedioAbiertas: fuentes.certificaciones
-                ? { fuente: "certificaciones.checklist", estado: "ok", datos: { porcentaje: prom } }
-                : bloqueIndisponible("certificaciones.checklist"),
-            };
-          }),
-        },
-      },
-      hdu:
-        soloBloqueadasLider && !fuentes.impedimentos
-          ? bloqueIndisponible("organizacion.hdu")
-          : bloqueLista(lista, url, "celula:asc", (h) => ({ bloqueo: bloqueoFila(h.id), riesgo: riesgoFila(h) })),
-      impedimentos: bloqueImpedimentosBandeja(actor, ambito),
-    });
-  }),
-
   http.get(`${BASE}/v1/bandeja/admin`, ({ request }) => {
     const actor = autenticar(request);
     if (!esUsuarioMock(actor)) return actor;
@@ -473,18 +370,14 @@ export const handlersE7 = [
     if (denegado) return denegado;
 
     const activos = usuarios.filter((u) => u.activo);
-    const porRol = { ADMINISTRADOR: 0, QE: 0, ANALISTA_QA: 0, LIDER_QA: 0, AUDITOR: 0 };
+    const porRol = { ADMINISTRADOR: 0, QE: 0, ANALISTA_QA: 0, AUDITOR: 0 };
     for (const u of activos) porRol[u.rol] += 1;
     const analistasSinQe = activos.filter((u) => u.rol === "ANALISTA_QA" && !supervisorVigenteDe(u.id));
     const qeSinAnalistas = activos.filter((u) => u.rol === "QE" && analistasVigentesDe(u.id).length === 0);
-    const lideresSinCelulas = activos.filter((u) => u.rol === "LIDER_QA" && celulasVigentesDe(u.id).length === 0);
-    const celulasSinLider = celulas.filter((c) => !celulasLider.some((l) => l.celulaId === c.id && l.hasta === null && buscarUsuario(l.usuarioId)?.activo));
 
     const pendientes = [
-      ...analistasSinQe.map((u) => ({ tipo: "ANALISTA_SIN_QE", usuario: aUsuarioResumen(u), celula: null })),
-      ...qeSinAnalistas.map((u) => ({ tipo: "QE_SIN_ANALISTAS", usuario: aUsuarioResumen(u), celula: null })),
-      ...lideresSinCelulas.map((u) => ({ tipo: "LIDER_SIN_CELULAS", usuario: aUsuarioResumen(u), celula: null })),
-      ...celulasSinLider.map((c) => ({ tipo: "CELULA_SIN_LIDER", usuario: null, celula: aCatalogoRef(c) })),
+      ...analistasSinQe.map((u) => ({ tipo: "ANALISTA_SIN_QE", usuario: aUsuarioResumen(u) })),
+      ...qeSinAnalistas.map((u) => ({ tipo: "QE_SIN_ANALISTAS", usuario: aUsuarioResumen(u) })),
     ];
 
     return HttpResponse.json({
@@ -495,8 +388,6 @@ export const handlersE7 = [
         usuariosInactivos: { fuente: "organizacion.usuarios", estado: "ok", datos: { valor: usuarios.length - activos.length } },
         analistasSinQe: { fuente: "organizacion.supervision", estado: "ok", datos: { valor: analistasSinQe.length } },
         qeSinAnalistas: { fuente: "organizacion.supervision", estado: "ok", datos: { valor: qeSinAnalistas.length } },
-        lideresSinCelulas: { fuente: "organizacion.usuarios", estado: "ok", datos: { valor: lideresSinCelulas.length } },
-        celulasSinLider: { fuente: "organizacion.celulas", estado: "ok", datos: { valor: celulasSinLider.length } },
         hduTotal: contadorOrg(hdus.length),
       },
       pendientes: fuentes.pendientesAdmin
@@ -643,7 +534,7 @@ export const handlersE7 = [
     );
   }),
 
-  // ---------------------- lectura del checklist (solo lectura para Líder y Auditor, D39)
+  // ---------------------- lectura del checklist (solo lectura para el Auditor, D39)
   http.get(`${BASE}/v1/hdu/:id/entregables`, ({ request, params }) => {
     const actor = autenticar(request);
     if (!esUsuarioMock(actor)) return actor;
@@ -655,7 +546,7 @@ export const handlersE7 = [
       hduId: hdu.id,
       resumen: { hduId: hdu.id, totalEntregables: 10, completados: s.aprobados, porcentajeCumplimiento: s.aprobados * 10, completo: s.aprobados === 10 },
       entregables: [],
-      // Los roles de lectura (Líder, Auditor) nunca reciben permisos de escritura.
+      // El rol de solo lectura (Auditor) nunca recibe permisos de escritura.
       permisos: { puedeMarcar: false, puedeAprobar: false, puedeGenerarCertificado: false },
       certificado: s.certificado
         ? { folio: s.certificado.folio, emitido: { id: ID_EMISOR, nombre: "Jose Seguel", fecha: s.certificado.emitidoEn }, huellaSha256: "a3f1c9d4" }
@@ -722,23 +613,3 @@ export const handlersE7 = [
     return HttpResponse.json({ cambio, hdu: aHduResumen(hdu), qeAnterior: aUsuarioResumen(anterior), qeNuevo: aUsuarioResumen(destino), motivo });
   }),
 ];
-
-function cuerpoCelulasLider(usuario: UsuarioMock) {
-  const mapa = (c: (typeof celulasLider)[number]) => {
-    const asignador = buscarUsuario(c.asignadoPorId)!;
-    return {
-      id: c.id,
-      celula: aCatalogoRef(celulas.find((x) => x.id === c.celulaId)!),
-      desde: c.desde,
-      hasta: c.hasta,
-      asignadoPor: { tipo: "USUARIO" as const, id: asignador.id, nombre: asignador.nombre },
-      retiradoPor: c.hasta ? { tipo: "USUARIO" as const, id: asignador.id, nombre: asignador.nombre } : null,
-    };
-  };
-  const propias = celulasLider.filter((c) => c.usuarioId === usuario.id);
-  return {
-    usuario: aUsuarioResumen(usuario),
-    vigentes: propias.filter((c) => c.hasta === null).map(mapa).sort((a, b) => a.celula.nombre.localeCompare(b.celula.nombre)),
-    historial: propias.map(mapa),
-  };
-}

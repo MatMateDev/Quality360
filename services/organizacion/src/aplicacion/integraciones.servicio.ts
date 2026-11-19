@@ -25,7 +25,6 @@ import {
   type ErrorAsignacion,
   type PropuestaSprint,
 } from '../dominio/reglas/asignacion-hdu.js';
-import { CELULA_LIDER_REPOSITORIO, type CelulaLiderRepositorio } from '../dominio/repositorios/celula-lider.repositorio.js';
 import { HDU_REPOSITORIO, type HduRepositorio } from '../dominio/repositorios/hdu.repositorio.js';
 import { SUPERVISION_REPOSITORIO, type SupervisionRepositorio } from '../dominio/repositorios/supervision.repositorio.js';
 import { CATALOGO_REPOSITORIO, type CatalogoRepositorio } from '../dominio/repositorios/catalogo.repositorio.js';
@@ -77,7 +76,6 @@ export interface AsignacionValidada {
   analista: { id: string; nombre: string } | null;
   sprint: { id: string; nombre: string } | null;
   sprintPropuesto: SprintPropuestoRespuesta | null;
-  celulaSinLiderActivo: boolean;
   /** Solo con `proponerAnalista` y QE válido (D201); `null` en otro caso. */
   analistasActivos: number | null;
   analistaPropuesto: { id: string; nombre: string } | null;
@@ -168,7 +166,6 @@ export class IntegracionesAplicacion {
     @Inject(INTEGRACION_HDU_REPOSITORIO) private readonly repositorio: IntegracionHduRepositorio,
     @Inject(HDU_REPOSITORIO) private readonly hdus: HduRepositorio,
     @Inject(SUPERVISION_REPOSITORIO) private readonly supervision: SupervisionRepositorio,
-    @Inject(CELULA_LIDER_REPOSITORIO) private readonly lideres: CelulaLiderRepositorio,
   ) {}
 
   /**
@@ -219,7 +216,6 @@ export class IntegracionesAplicacion {
     const sprints = new Map<string, Promise<Sprint | null>>();
     const usuarios = new Map<string, Promise<Usuario | null>>();
     const equipos = new Map<string, Promise<string[]>>();
-    const lideres = new Map<string, Promise<boolean>>();
     const activos = new Map<string, Promise<Array<{ id: string; nombre: string; correo: string }>>>();
     const porNombre = new Map<string, Promise<Sprint | null>>();
     const celula = (id: string) => memo(celulas, id, () => this.catalogos.buscarCelula(id));
@@ -269,7 +265,6 @@ export class IntegracionesAplicacion {
       }
 
       const celulaValida = celulaEnc !== null && !fallo('celulaId') ? celulaEnc : null;
-      const sinLider = celulaValida === null ? false : !(await memo(lideres, celulaValida.id, async () => (await this.lideres.lideresActivosDeCelula(celulaValida.id)).length > 0));
       resultados.push({
         ref: a.ref,
         valida: errores.length === 0,
@@ -279,7 +274,6 @@ export class IntegracionesAplicacion {
         analista: analista !== null && !fallo('analistaId') ? persona(analista) : null,
         sprint: sprintEnc !== null && !fallo('sprintId') ? { id: sprintEnc.id, nombre: sprintEnc.nombre } : null,
         sprintPropuesto: propuesto,
-        celulaSinLiderActivo: sinLider,
         analistasActivos,
         analistaPropuesto,
       });

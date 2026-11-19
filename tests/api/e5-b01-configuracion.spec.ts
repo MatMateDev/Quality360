@@ -181,14 +181,14 @@ test.describe("E5-B01 · Configuración segura de Jira", () => {
     await jiraFalso.modo("NORMAL");
   });
 
-  test("[E5-B01#3] T08 (negativo): QE1, QE2, ANA1, LID1 y AUD1 reciben 403 ACCESO_DENEGADO idéntico en PUT, GET y probar; sin token 401; la configuración no cambia", async ({ request }) => {
+  test("[E5-B01#3] T08 (negativo): QE1, QE2, ANA1 y AUD1 reciben 403 ACCESO_DENEGADO idéntico en PUT, GET y probar; sin token 401; la configuración no cambia", async ({ request }) => {
     await estadoConfigBase(request);
     const antes = await CFG();
     const cuerpo = await cuerpoConfigBase(request, { proyecto: "BIG" });
     const cuerpoProbar = await cuerpoPrueba(request, { proyecto: "BIG" });
     await jiraFalso.limpiarSolicitudes();
     const cuerpos = new Set<string>();
-    for (const clave of ["qe1", "qe2", "ana1", "lid1", "aud1"] as const) {
+    for (const clave of ["qe1", "qe2", "ana1", "aud1"] as const) {
       const token = await tk(clave);
       const rs = [
         await api.put(request, PUT, { token, body: cuerpo }),

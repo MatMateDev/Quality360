@@ -90,7 +90,6 @@ function itemBase(posicion: number, grupo: GrupoConsulta, codigo: string, parcia
     aplicando: false,
     aplicacion: null,
     yaAsignada: null,
-    avisoSinLider: false,
     asignadoPor: null,
     asignadoEn: null,
     ...parcial,

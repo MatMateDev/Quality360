@@ -24,7 +24,7 @@ export interface HduParaCertificacion {
   readonly analista: Persona | null;
 }
 
-export type RolUsuario = 'ADMINISTRADOR' | 'QE' | 'ANALISTA_QA' | 'LIDER_QA' | 'AUDITOR';
+export type RolUsuario = 'ADMINISTRADOR' | 'QE' | 'ANALISTA_QA' | 'AUDITOR';
 
 export interface ActorHdu extends Persona {
   readonly rol: RolUsuario;

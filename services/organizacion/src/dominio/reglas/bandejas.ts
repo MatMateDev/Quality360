@@ -255,10 +255,6 @@ export function ordenarAcciones(acciones: readonly AccionPendiente[]): AccionPen
 
 // ------------------------------------------------------------- Admin: pendientes
 
-export type TipoPendienteAdmin = 'ANALISTA_SIN_QE' | 'QE_SIN_ANALISTAS' | 'LIDER_SIN_CELULAS' | 'CELULA_SIN_LIDER';
-export const TIPOS_PENDIENTE_ADMIN: readonly TipoPendienteAdmin[] = [
-  'ANALISTA_SIN_QE',
-  'QE_SIN_ANALISTAS',
-  'LIDER_SIN_CELULAS',
-  'CELULA_SIN_LIDER',
-];
+/** D51; los pendientes del Líder QA y de células sin líder se retiraron con el rol (D208). */
+export type TipoPendienteAdmin = 'ANALISTA_SIN_QE' | 'QE_SIN_ANALISTAS';
+export const TIPOS_PENDIENTE_ADMIN: readonly TipoPendienteAdmin[] = ['ANALISTA_SIN_QE', 'QE_SIN_ANALISTAS'];

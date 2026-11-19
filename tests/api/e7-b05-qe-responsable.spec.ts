@@ -78,11 +78,11 @@ test.describe("E7-B05 · Reasignación del QE responsable de una HDU", () => {
     }
   });
 
-  test("[E7-B05#2] T02: el QE responsable, otro QE, un analista, un Líder y un Auditor reciben 403 ACCESO_DENEGADO; sin sesión, 401", async ({ request }) => {
+  test("[E7-B05#2] T02: el QE responsable, otro QE, un analista y un Auditor reciben 403 ACCESO_DENEGADO; sin sesión, 401", async ({ request }) => {
     const e = await escenario(request, "b05-t02");
     try {
       const intentos: Array<[string, string | undefined]> = [["QE responsable", e.tokenA]];
-      for (const clave of ["qe2", "ana3", "lid1", "aud1"] as ClaveE7[]) intentos.push([clave, await tokenE7(clave)]);
+      for (const clave of ["qe2", "ana3", "aud1"] as ClaveE7[]) intentos.push([clave, await tokenE7(clave)]);
       for (const [quien, token] of intentos) {
         const r = await api.put(request, `/v1/hdu/${e.hdu.id}/qe-responsable`, { token, body: { qeResponsableId: e.qeB.id, motivo: "Intento no autorizado" } });
         expect(r.status, quien).toBe(403);
@@ -110,7 +110,7 @@ test.describe("E7-B05 · Reasignación del QE responsable de una HDU", () => {
 
       for (const [nombre, destino] of [
         ["analista (ANA1)", await ids("ana1@quality360.local")],
-        ["líder (LID1)", await ids("lid1@quality360.local")],
+        ["auditor (AUD1)", await ids("aud1@quality360.local")],
         ["QE desactivado (INACT1)", await ids("inact1@quality360.local")],
         ["id inexistente", "00000000-0000-4000-8000-0000000000bb"],
       ] as const) {
@@ -202,7 +202,7 @@ test.describe("E7-B05 · Reasignación del QE responsable de una HDU", () => {
     const inactivos = await api.get<{ items: Array<{ correo: string }> }>(request, "/v1/catalogos/personas?rol=QE&activo=false", { token: adm });
     expect(inactivos.status).toBe(200);
     expect(inactivos.body.items.map((p) => p.correo)).toContain("inact1@quality360.local");
-    for (const clave of ["qe1", "ana1", "lid1", "aud1"] as ClaveE7[]) {
+    for (const clave of ["qe1", "ana1", "aud1"] as ClaveE7[]) {
       const x = await api.get(request, "/v1/catalogos/personas?rol=QE", { token: await tokenE7(clave) });
       expect(x.status, clave).toBe(403);
       expect(x.body).toMatchObject({ codigo: "ACCESO_DENEGADO" });

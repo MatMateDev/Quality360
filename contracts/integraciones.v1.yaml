@@ -29,8 +29,8 @@ info:
       Organización (token propagado). Escribir (configurar, probar,
       consultar, asignar, confirmar, descartar, vista previa, importar): solo
       `ADMINISTRADOR`; también **leer la consulta** (borrador, D142). Leer el
-      historial: `ADMINISTRADOR`, `QE` y `AUDITOR`. `LIDER_QA` y `ANALISTA_QA`:
-      403 en todo. Un id de ejecución inexistente: 404 al Administrador y al
+      historial: `ADMINISTRADOR`, `QE` y `AUDITOR`. `ANALISTA_QA`: 403 en
+      todo. Un id de ejecución inexistente: 404 al Administrador y al
       Auditor, 403 al QE (D50, D106). Una consulta inexistente: 404 al
       Administrador, 403 al resto.
     - **Dos pasos (D132).** «Consultar Jira» es lo único que llama a Jira;
@@ -617,7 +617,6 @@ paths:
                       aplicando: false
                       aplicacion: null
                       yaAsignada: null
-                      avisoSinLider: false
                       asignadoPor: { id: 0b9a6a2e-7c6f-4d4b-9a3e-1f2d3c4b5a69, nombre: Admin Uno }
                       asignadoEn: '2026-11-05T13:20:00Z'
                     detalle:
@@ -1376,7 +1375,6 @@ components:
                     idHistoria: 8a7b6c5d-4e3f-4a2b-9c1d-0e9f8a7b6c5d
                     qe: Marta Díaz
                     analista: null
-                  avisoSinLider: false
                   asignadoPor: null
                   asignadoEn: null
             filaModificada:
@@ -1419,7 +1417,6 @@ components:
                   aplicando: false
                   aplicacion: null
                   yaAsignada: null
-                  avisoSinLider: false
                   asignadoPor: { id: 1a2b3c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d, nombre: Admin Dos }
                   asignadoEn: '2026-11-05T13:25:00Z'
             filaEnCurso:

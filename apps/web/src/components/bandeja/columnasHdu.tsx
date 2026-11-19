@@ -3,14 +3,13 @@ import { Link } from "react-router-dom";
 import { formatearFecha } from "@/lib/formato";
 import type { ItemBandejaHdu } from "@/types/dominio";
 import { InsigniaEstadoHdu, InsigniaPrioridad } from "../Etiquetas";
-import { RiesgoDeBloque } from "../impedimentos/CeldaRiesgo";
 import { InsigniaBloqueo } from "../impedimentos/Insignias";
 import { CeldaAvance, CeldaNoDisponible, InsigniaObservaciones } from "./Celdas";
 import type { Columna } from "./TablaBandeja";
 
 type Col = Columna<ItemBandejaHdu>;
 
-/** Columnas comunes de las listas de HDU de las bandejas (Analista, Líder, Auditor). */
+/** Columnas comunes de las listas de HDU de las bandejas (Analista y Auditor). */
 export function columnasHdu(desde: string) {
   const codigo: Col = {
     id: "codigo",
@@ -68,7 +67,7 @@ export function columnasHdu(desde: string) {
         <span data-testid={`celda-certificado-${h.id}`}>—</span>
       ),
   };
-  // E4 (D87): columnas aditivas, siempre al final. «Bloqueo» en Analista y Líder; «Riesgo» solo en el Líder (D73, D80).
+  // E4 (D87): columna aditiva, siempre al final. «Bloqueo» en el Analista (D73, D80).
   const bloqueo: Col = {
     id: "bloqueo",
     titulo: "Bloqueo",
@@ -80,14 +79,5 @@ export function columnasHdu(desde: string) {
         <span data-testid={`celda-bloqueo-${h.id}`}>{h.bloqueo.datos.bloqueada ? <InsigniaBloqueo abiertos={h.bloqueo.datos.abiertos} /> : "—"}</span>
       ),
   };
-  const riesgo: Col = {
-    id: "riesgo",
-    titulo: "Riesgo",
-    render: (h) => (
-      <span data-testid={`celda-riesgo-${h.id}`}>
-        <RiesgoDeBloque bloque={h.riesgo} />
-      </span>
-    ),
-  };
-  return { bloqueo, riesgo, codigo, titulo, celula, sprint, prioridad, estado, avance, siguiente, observaciones, actualizada, qe, analista, certificado };
+  return { bloqueo, codigo, titulo, celula, sprint, prioridad, estado, avance, siguiente, observaciones, actualizada, qe, analista, certificado };
 }

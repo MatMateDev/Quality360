@@ -658,7 +658,7 @@ test.describe("E5-B07 · Asignación por HDU", () => {
     }
   });
 
-  test("[E5-B07#14] T15: permisos y orden de validación: 401 → 403 → 404 → 400/422 de estructura → 410 → 409; 403 a QE, Líder, Analista y Auditor; sin secretos; las 2 rutas nuevas pasan el gateway real", async ({ request }) => {
+  test("[E5-B07#14] T15: permisos y orden de validación: 401 → 403 → 404 → 400/422 de estructura → 410 → 409; 403 a QE, Analista y Auditor; sin secretos; las 2 rutas nuevas pasan el gateway real", async ({ request }) => {
     await prepararDetalle(request);
     const p = await pares(request);
     const c = (await consultarOk(request)).consulta;
@@ -666,7 +666,7 @@ test.describe("E5-B07 · Asignación por HDU", () => {
     const ruta = `${CONSULTAS}/${c.id}/items/${f.id}/confirmaciones`;
     expect((await api.post<any>(request, ruta, { body: { revision: f.revision } })).status).toBe(401);
     expect((await api.post<any>(request, ruta, { token: "token-invalido", body: { revision: f.revision } })).status).toBe(401);
-    for (const clave of ["qe1", "qe2", "ana1", "lid1", "aud1"] as const) {
+    for (const clave of ["qe1", "qe2", "ana1", "aud1"] as const) {
       const r = await confirmarFila(request, c.id, f.id, f.revision, { clave });
       expect([r.status, r.body.codigo], clave).toEqual([403, "ACCESO_DENEGADO"]);
       // 403 antes que 404: ni siquiera con ids ajenos.
@@ -789,7 +789,7 @@ test.describe("E5-B07 · Asignación por HDU", () => {
     expect(soloLote.body.items.map((e: any) => e.id)).not.toContain(ej.id);
     const malFiltro = await ejecuciones(request, "alcance=OTRO");
     expect(malFiltro.status).toBe(400);
-    // El historial es de Administrador, QE y Auditor (D106); el detalle por fila, solo de Administrador y Auditor; Líder y Analista, nada.
+    // El historial es de Administrador, QE y Auditor (D106); el detalle por fila, solo de Administrador y Auditor; el Analista, nada.
     const qe = await ejecuciones(request, "alcance=HDU", "qe1");
     expect(qe.status).toBe(200);
     // D106: QE1 no es el responsable de QTY-1 (es de QE2): la fila se cuenta como oculta; QE2 sí la ve.
@@ -800,6 +800,6 @@ test.describe("E5-B07 · Asignación por HDU", () => {
     const detQe2 = await detalleEjecucion(request, ej.id, "tamanoPagina=100", "qe2");
     expect(detQe2.body.items).toHaveLength(1);
     expect(detQe2.body.filasOcultas).toBe(0);
-    for (const clave of ["lid1", "ana1"] as const) expect((await ejecuciones(request, "alcance=HDU", clave)).status, clave).toBe(403);
+    for (const clave of ["ana1"] as const) expect((await ejecuciones(request, "alcance=HDU", clave)).status, clave).toBe(403);
   });
 });

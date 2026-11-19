@@ -28,7 +28,6 @@ import {
   transicionesDesde,
 } from "./utils";
 import { analistaEnEquipoDe, autenticar, esUsuarioMock, exigirRol } from "./comun";
-import { aplicarCelulasLider, celulasVigentesDe } from "./dataE7";
 import { handlersE4, verificarImpedimentosCierre } from "./handlersE4";
 import { handlersConsulta } from "./handlersConsulta";
 import { handlersE5 } from "./handlersE5";
@@ -40,13 +39,12 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 
 function estaEnAmbito(hdu: HduMock, usuario: UsuarioMock): boolean {
   if (usuario.rol === "ADMINISTRADOR" || usuario.rol === "AUDITOR") return true;
-  if (usuario.rol === "LIDER_QA") return celulasVigentesDe(usuario.id).includes(hdu.celulaId);
   if (usuario.rol === "ANALISTA_QA") return hdu.analistaId === usuario.id;
   return hdu.qeResponsableId === usuario.id || analistaEnEquipoDe(usuario.id, hdu.analistaId ?? "");
 }
 
 function puedeCambiarEstado(hdu: HduMock, usuario: UsuarioMock): boolean {
-  if (usuario.rol === "LIDER_QA" || usuario.rol === "AUDITOR") return false;
+  if (usuario.rol === "AUDITOR") return false;
   if (usuario.rol === "ADMINISTRADOR") return true;
   if (usuario.rol === "ANALISTA_QA") return hdu.analistaId === usuario.id;
   return estaEnAmbito(hdu, usuario);
@@ -68,7 +66,7 @@ function construirHduDetalle(hdu: HduMock, usuario: UsuarioMock) {
   };
 }
 
-/** D43: el 409 trae siempre las 4 claves y las informa todas a la vez. */
+/** D43: el 409 trae siempre las 3 claves y las informa todas a la vez (sin células desde D208). */
 function cuerpoRelaciones(usuario: UsuarioMock, incluirHduAbiertas: boolean) {
   const analistas = usuario.rol === "QE" ? analistasVigentesDe(usuario.id).map((r) => aUsuarioResumen(buscarUsuario(r.analistaId)!)) : [];
   const supervisor = usuario.rol === "ANALISTA_QA" ? supervisorVigenteDe(usuario.id) : undefined;
@@ -77,8 +75,6 @@ function cuerpoRelaciones(usuario: UsuarioMock, incluirHduAbiertas: boolean) {
         (h) => h.estado !== "CERRADA" && (usuario.rol === "QE" ? h.qeResponsableId === usuario.id : usuario.rol === "ANALISTA_QA" ? h.analistaId === usuario.id : false),
       )
     : [];
-  const celulasVig =
-    usuario.rol === "LIDER_QA" ? celulasVigentesDe(usuario.id).map((id) => aCatalogoRef(celulas.find((c) => c.id === id)!)).sort((a, b) => a.nombre.localeCompare(b.nombre)) : [];
   return {
     analistasVigentes: analistas,
     supervisorVigente: supervisor ? aUsuarioResumen(buscarUsuario(supervisor.qeId)!) : null,
@@ -86,12 +82,11 @@ function cuerpoRelaciones(usuario: UsuarioMock, incluirHduAbiertas: boolean) {
       total: abiertas.length,
       items: abiertas.slice(0, 20).map((h) => ({ id: h.id, codigo: h.codigo, titulo: h.titulo, estado: h.estado })),
     },
-    celulasVigentes: celulasVig,
   };
 }
 
 function hayRelaciones(r: ReturnType<typeof cuerpoRelaciones>): boolean {
-  return r.analistasVigentes.length > 0 || r.supervisorVigente !== null || r.hduAbiertas.total > 0 || r.celulasVigentes.length > 0;
+  return r.analistasVigentes.length > 0 || r.supervisorVigente !== null || r.hduAbiertas.total > 0;
 }
 
 function usuarioAAudiencia(usuario: UsuarioMock) {
@@ -105,12 +100,6 @@ function usuarioAAudiencia(usuario: UsuarioMock) {
     activo: usuario.activo,
     supervisorVigente: usuario.rol === "ANALISTA_QA" && qe ? aUsuarioResumen(qe) : null,
     analistasVigentes: usuario.rol === "QE" ? analistasVigentesDe(usuario.id).length : 0,
-    celulasVigentes:
-      usuario.rol === "LIDER_QA"
-        ? celulasVigentesDe(usuario.id)
-            .map((id) => aCatalogoRef(celulas.find((c) => c.id === id)!))
-            .sort((a, b) => a.nombre.localeCompare(b.nombre))
-        : [],
     creadoEn: usuario.creadoEn,
     actualizadoEn: usuario.actualizadoEn,
   };
@@ -138,7 +127,7 @@ export const handlers = [
     if (denegado) return denegado;
 
     const activos = usuarios.filter((u) => u.activo);
-    const porRol = { ADMINISTRADOR: 0, QE: 0, ANALISTA_QA: 0, LIDER_QA: 0, AUDITOR: 0 };
+    const porRol = { ADMINISTRADOR: 0, QE: 0, ANALISTA_QA: 0, AUDITOR: 0 };
     for (const usuario of usuarios) porRol[usuario.rol] += 1;
 
     const analistasQaActivos = usuarios.filter((u) => u.rol === "ANALISTA_QA" && u.activo);
@@ -320,7 +309,7 @@ export const handlers = [
     const denegado = exigirRol(actor, "ADMINISTRADOR");
     if (denegado) return denegado;
 
-    const cuerpo = (await request.json()) as { nombre?: string; correo?: string; rol?: Rol; celulaIds?: string[] };
+    const cuerpo = (await request.json()) as { nombre?: string; correo?: string; rol?: Rol };
     const detalles: { campo: string; codigo: "REQUERIDO" | "FORMATO_INVALIDO" | "VALOR_NO_PERMITIDO"; mensaje: string }[] = [];
     const nombre = cuerpo.nombre?.trim() ?? "";
     const correo = cuerpo.correo?.trim().toLowerCase() ?? "";
@@ -353,7 +342,6 @@ export const handlers = [
       contrasena: "",
     };
     usuarios.push(nuevo);
-    if (nuevo.rol === "LIDER_QA") aplicarCelulasLider(nuevo, cuerpo.celulaIds ?? [], actor.id);
     return HttpResponse.json(usuarioAAudiencia(nuevo), { status: 201, headers: { Location: `/v1/usuarios/${nuevo.id}` } });
   }),
 
@@ -418,7 +406,7 @@ export const handlers = [
     const usuario = buscarUsuario(String(params.id));
     if (!usuario) return HttpResponse.json(ERROR_NO_ENCONTRADO(), { status: 404 });
 
-    const cuerpo = (await request.json()) as { rol?: Rol; celulaIds?: string[] };
+    const cuerpo = (await request.json()) as { rol?: Rol };
     if (!cuerpo.rol || !ROLES_CATALOGO.includes(cuerpo.rol)) {
       return HttpResponse.json(
         cuerpoError("VALIDACION", "Selecciona un rol válido.", [
@@ -428,26 +416,9 @@ export const handlers = [
       );
     }
 
-    if (cuerpo.rol === usuario.rol && cuerpo.rol !== "LIDER_QA") return HttpResponse.json(usuarioAAudiencia(usuario));
+    if (cuerpo.rol === usuario.rol) return HttpResponse.json(usuarioAAudiencia(usuario));
 
-    // D43: catálogo (400) -> célula existente (422) -> último administrador (409) -> relaciones (409).
-    const celulaIds = cuerpo.celulaIds ?? [];
-    if (celulaIds.length > 0 && cuerpo.rol !== "LIDER_QA") {
-      return HttpResponse.json(
-        cuerpoError("VALIDACION", "Solo un Líder QA puede tener células.", [
-          { campo: "celulaIds", codigo: "NO_PERMITIDO", mensaje: "Solo un Líder QA puede tener células." },
-        ]),
-        { status: 400 },
-      );
-    }
-    if (celulaIds.some((id) => !celulas.some((c) => c.id === id))) {
-      return HttpResponse.json(
-        cuerpoError("CATALOGO_INVALIDO", "Alguna de las células indicadas no existe.", [
-          { campo: "celulaIds", codigo: "NO_EXISTE", mensaje: "Alguna de las células indicadas no existe." },
-        ]),
-        { status: 422 },
-      );
-    }
+    // D43: catálogo (400) -> último administrador (409) -> relaciones (409).
     if (usuario.rol === "ADMINISTRADOR" && cuerpo.rol !== usuario.rol) {
       const otrosAdminsActivos = usuarios.some((u) => u.rol === "ADMINISTRADOR" && u.activo && u.id !== usuario.id);
       if (!otrosAdminsActivos) {
@@ -467,8 +438,6 @@ export const handlers = [
       }
     }
 
-    // D42: rol + células en una sola operación.
-    aplicarCelulasLider(usuario, cuerpo.rol === "LIDER_QA" ? celulaIds : [], actor.id);
     usuario.rol = cuerpo.rol;
     usuario.actualizadoEn = new Date().toISOString();
     return HttpResponse.json(usuarioAAudiencia(usuario));

@@ -9,7 +9,6 @@ import { after, before, describe, it } from 'node:test';
 
 import type { Actor } from '../../src/dominio/tipos.js';
 import { PrismaService } from '../../src/infraestructura/prisma/prisma.service.js';
-import { CelulaLiderPrismaRepositorio } from '../../src/infraestructura/repositorios/celula-lider.prisma.repositorio.js';
 import { HduPrismaRepositorio } from '../../src/infraestructura/repositorios/hdu.prisma.repositorio.js';
 import { UsuarioPrismaRepositorio } from '../../src/infraestructura/repositorios/usuario.prisma.repositorio.js';
 import { crearUsuarioDePrueba, limpiarBaseDeDatos, prisma } from '../ayudas.js';
@@ -36,7 +35,7 @@ describe('DEF-E5C-05 · SQL crudas de Organización sin search_path del esquema'
     await assert.rejects(sinEsquema.$queryRawUnsafe('SELECT 1 FROM usuario'), /usuario|42P01/);
   });
 
-  it('bloqueos de usuario (cambiar rol, reemplazar células) y de historia (sprint vigente, reasignar QE) funcionan', async () => {
+  it('bloqueos de usuario (cambiar rol) y de historia (sprint vigente, reasignar QE) funcionan', async () => {
     const admin = await crearUsuarioDePrueba('ADMINISTRADOR', { nombre: 'Admin DEF' });
     const qe1 = await crearUsuarioDePrueba('QE', { nombre: 'QE uno' });
     const qe2 = await crearUsuarioDePrueba('QE', { nombre: 'QE dos' });
@@ -63,15 +62,10 @@ describe('DEF-E5C-05 · SQL crudas de Organización sin search_path del esquema'
     const cambio = await new UsuarioPrismaRepositorio(sinEsquema).cambiarRolAtomico({
       id: qe1.id,
       rolNuevo: 'QE',
-      celulaIds: undefined,
       actor,
       decidir: () => ({ tipo: 'SIN_CAMBIO' }),
     });
     assert.notEqual(cambio.tipo, 'RECHAZADO');
-
-    // celula-lider.prisma: FOR UPDATE sobre "usuario"; un QE no es Líder QA
-    const reemplazo = await new CelulaLiderPrismaRepositorio(sinEsquema).reemplazar({ usuarioId: qe1.id, celulaIds: [celula.id], actor });
-    assert.equal(reemplazo.tipo, 'ROL_INCOMPATIBLE');
 
     // hdu.prisma: FOR UPDATE sobre "historia_usuario"
     const hduRepo = new HduPrismaRepositorio(sinEsquema);

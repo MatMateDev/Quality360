@@ -44,28 +44,27 @@ describe('GET /v1/impedimentos', () => {
     assert.deepEqual(ids((await como(app, 'qe1', 'get', '/v1/impedimentos?estado=RESUELTO')).body), [f.i.I4]);
   });
 
-  it('[E4-F02#3] filtro por célula, tipo y búsqueda; un Líder no filtra por una célula ajena', async () => {
+  it('[E4-F02#3] filtro por célula, tipo y búsqueda', async () => {
     assert.deepEqual(ids((await como(app, 'qe1', 'get', `/v1/impedimentos?celulaId=${CELULA_A.id}`)).body), [f.i.I2]);
     assert.deepEqual(ids((await como(app, 'qe1', 'get', '/v1/impedimentos?tipo=DEPENDENCIA')).body), [f.i.I3]);
     assert.deepEqual(ids((await como(app, 'qe1', 'get', '/v1/impedimentos?q=sandbox')).body), [f.i.I3]);
     assert.deepEqual((await como(app, 'qe1', 'get', '/v1/impedimentos?q=zzzz')).body.items, []);
-    assert.equal((await como(app, 'lid1', 'get', '/v1/impedimentos?celulaId=0ce00000-0000-4000-8000-0000000000ff')).status, 403);
     assert.equal((await como(app, 'qe1', 'get', '/v1/impedimentos?orden=color:asc')).status, 400);
   });
 
-  it('[E4-F02#1] el ámbito: QE ajeno, Líder, Administrador y Auditor; el Analista, 403', async () => {
+  it('[E4-F02#1] el ámbito: QE ajeno, Administrador y Auditor (solo lectura); el Analista, 403', async () => {
     assert.deepEqual(ids((await como(app, 'qe2', 'get', '/v1/impedimentos')).body), [f.i.I1]);
     assert.equal((await como(app, 'qe2', 'get', '/v1/impedimentos')).body.contadores.nuevos, 1);
-    const lider = await como(app, 'lid1', 'get', '/v1/impedimentos');
-    assert.deepEqual(ids(lider.body).sort(), [f.i.I1, f.i.I2, f.i.I3].sort());
-    assert.ok(lider.body.items.every((i: { soloLectura: boolean; operacionesPermitidas: unknown[] }) => i.soloLectura && i.operacionesPermitidas.length === 0));
+    const auditor = await como(app, 'aud1', 'get', '/v1/impedimentos');
+    assert.deepEqual(ids(auditor.body).sort(), [f.i.I1, f.i.I2, f.i.I3].sort());
+    assert.ok(auditor.body.items.every((i: { soloLectura: boolean; operacionesPermitidas: unknown[] }) => i.soloLectura && i.operacionesPermitidas.length === 0));
     for (const persona of ['adm1', 'aud1'] as const) assert.equal((await como(app, persona, 'get', '/v1/impedimentos')).status, 200);
     assert.equal((await como(app, 'ana1', 'get', '/v1/impedimentos')).status, 403);
     assert.equal((await como(app, null, 'get', '/v1/impedimentos')).status, 401);
   });
 
   it('[E4-F02#2] sin impedimentos en el ámbito: lista vacía con contadores en 0', async () => {
-    const r = await como(app, 'lid2', 'get', '/v1/impedimentos');
+    const r = await como(app, 'qe3', 'get', '/v1/impedimentos');
     assert.deepEqual([r.status, r.body.items, r.body.contadores], [200, [], { abiertos: 0, escalados: 0, nuevos: 0 }]);
   });
 
@@ -132,9 +131,9 @@ describe('GET /v1/riesgo/hdu', () => {
 
 describe('POST /v1/interno/impedimentos/evaluacion', () => {
   it('[E4-B01#2] el lote con una HDU fuera de ámbito es 403 completo; dentro, datos y lista', async () => {
-    const fuera = await como(app, 'lid1', 'post', '/v1/interno/impedimentos/evaluacion', lote(f.h.H1, f.h.H4));
+    const fuera = await como(app, 'qe2', 'post', '/v1/interno/impedimentos/evaluacion', lote(f.h.H1, f.h.H4));
     assert.equal(fuera.status, 403);
-    const r = await como(app, 'lid1', 'post', '/v1/interno/impedimentos/evaluacion', { ...lote(f.h.H1, f.h.H6, f.h.H3), incluirImpedimentos: true });
+    const r = await como(app, 'aud1', 'post', '/v1/interno/impedimentos/evaluacion', { ...lote(f.h.H1, f.h.H6, f.h.H3), incluirImpedimentos: true });
     assert.equal(r.status, 200);
     const [h1, h6, h3] = r.body.items;
     assert.deepEqual([h1.hduId, h1.bloqueada, h1.abiertos, h1.nivelSugerido], [f.h.H1.id, true, 1, 'ALTO']);
@@ -169,7 +168,7 @@ describe('catálogo y carga semilla', () => {
     const registro = await como(app, 'ana1', 'get', `/v1/hdu/${f.h.H1.id}/impedimentos/responsables?proposito=REGISTRO`);
     assert.deepEqual([registro.body.items.map((p: { id: string }) => p.id), registro.body.preseleccionadoId], [[PERSONAS.qe1.id], PERSONAS.qe1.id]);
     const escalamiento = await como(app, 'qe1', 'get', `/v1/hdu/${f.h.H1.id}/impedimentos/responsables?proposito=ESCALAMIENTO`);
-    assert.deepEqual([escalamiento.body.items.map((p: { id: string }) => p.id), escalamiento.body.preseleccionadoId], [[PERSONAS.lid1.id, PERSONAS.adm1.id], null]);
+    assert.deepEqual([escalamiento.body.items.map((p: { id: string }) => p.id), escalamiento.body.preseleccionadoId], [[PERSONAS.adm1.id], null]);
     assert.equal((await como(app, 'ana1', 'get', `/v1/hdu/${f.h.H1.id}/impedimentos/responsables?proposito=ESCALAMIENTO`)).status, 403);
     assert.equal((await como(app, 'qe1', 'get', `/v1/hdu/${f.h.H1.id}/impedimentos/responsables`)).status, 400);
   });

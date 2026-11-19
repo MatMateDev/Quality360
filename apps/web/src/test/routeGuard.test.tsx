@@ -10,7 +10,6 @@ import { abrirComo, iniciarSesionUi, renderApp, renderAppConEstado } from "./ren
 const CUENTAS: Record<Rol, string> = {
   ANALISTA_QA: "jonathan.choque@quality360.local",
   QE: "jose.seguel@quality360.local",
-  LIDER_QA: "luis.soto@quality360.local",
   ADMINISTRADOR: "admin@quality360.local",
   AUDITOR: "andrea.mora@quality360.local",
 };
@@ -18,7 +17,6 @@ const CUENTAS: Record<Rol, string> = {
 const ETIQUETA_PORTAL: Record<Rol, string> = {
   ANALISTA_QA: "Portal Analista QA",
   QE: "Portal QE",
-  LIDER_QA: "Portal Líder QA",
   ADMINISTRADOR: "Portal Administrador",
   AUDITOR: "Portal Auditor",
 };
@@ -26,7 +24,6 @@ const ETIQUETA_PORTAL: Record<Rol, string> = {
 const RUTA_EJEMPLO: Record<Rol, string> = {
   ANALISTA_QA: "/qa",
   QE: "/qe/equipo",
-  LIDER_QA: "/lider",
   ADMINISTRADOR: "/admin/usuarios",
   AUDITOR: "/auditor/bitacora",
 };
@@ -59,18 +56,21 @@ describe("Guard de rutas por rol [E1-F02, E1-F05, E1-F07, E7-F01 · D41]", () =>
   it("el acceso denegado no dispara ninguna petición de datos del portal ajeno [E7-F01-T04]", async () => {
     const peticiones: string[] = [];
     server.events.on("request:start", ({ request }) => peticiones.push(new URL(request.url).pathname));
-    await abrirComo(CUENTAS.LIDER_QA, "/admin");
+    await abrirComo(CUENTAS.AUDITOR, "/admin");
     await screen.findByTestId("acceso-denegado");
     expect(peticiones.some((p) => p.startsWith("/v1/inicio/admin") || p.startsWith("/v1/bandeja/admin") || p === "/v1/usuarios")).toBe(false);
     server.events.removeAllListeners();
   });
 
-  it("el Administrador no entra a /lider ni /auditor, y el Auditor no entra a /admin [E7-F01-T04]", async () => {
+  it("el Administrador no entra a /auditor (el Auditor a /admin, en la prueba anterior) [E7-F01-T04]", async () => {
     await abrirComo(CUENTAS.ADMINISTRADOR, "/auditor");
     expect(await screen.findByTestId("acceso-denegado")).toBeInTheDocument();
-    cleanup();
-    renderApp("/lider");
-    expect(await screen.findByTestId("acceso-denegado")).toBeInTheDocument();
+  });
+
+  it("un enlace antiguo a /lider lleva a la bandeja propia, sin acceso denegado: el portal se retiró [D208]", async () => {
+    await abrirComo(CUENTAS.ADMINISTRADOR, "/lider");
+    expect(await screen.findByText("Portal Administrador")).toBeInTheDocument();
+    expect(screen.queryByTestId("acceso-denegado")).not.toBeInTheDocument();
   });
 
   it.each(Object.keys(CUENTAS) as Rol[])("%s: cada portal ajeno responde acceso denegado y el propio abre su bandeja", async (rol) => {
@@ -85,16 +85,8 @@ describe("Guard de rutas por rol [E1-F02, E1-F05, E1-F07, E7-F01 · D41]", () =>
     }
   });
 
-  it("menú por rol: «Bandeja» primero y sin entradas de escritura para Líder y Auditor [E7-F01-T02]", async () => {
-    await abrirComo(CUENTAS.LIDER_QA, "/lider");
-    const nav = await screen.findByRole("navigation", { name: "Portal" });
-    expect(within(nav).getAllByRole("link").map((a) => a.textContent)).toEqual(["Bandeja", "Perfil"]);
-    cleanup();
-
-    renderApp("/");
-    // Cambio de sesión: se vuelve a entrar como Auditor.
-    await userEvent.click(await screen.findByRole("button", { name: "Cerrar sesión" }));
-    await iniciarSesionUi(CUENTAS.AUDITOR);
+  it("menú por rol: «Bandeja» primero y sin entradas de escritura para el Auditor [E7-F01-T02]", async () => {
+    await abrirComo(CUENTAS.AUDITOR, "/auditor");
     const navAuditor = await screen.findByRole("navigation", { name: "Portal" });
     expect(within(navAuditor).getAllByRole("link").map((a) => a.textContent)).toEqual(["Bandeja", "Perfil"]);
   });
@@ -121,20 +113,20 @@ describe("Guard de rutas por rol [E1-F02, E1-F05, E1-F07, E7-F01 · D41]", () =>
 
   it("rutaPermitidaParaRol: las rutas compartidas valen para todos y las de otro portal no", () => {
     expect(rutaPermitidaParaRol("/hdu/abc", "AUDITOR")).toBe(true);
-    expect(rutaPermitidaParaRol("/perfil", "LIDER_QA")).toBe(true);
+    expect(rutaPermitidaParaRol("/perfil", "ANALISTA_QA")).toBe(true);
     expect(rutaPermitidaParaRol("/auditor/bitacora", "AUDITOR")).toBe(true);
-    expect(rutaPermitidaParaRol("/lider", "AUDITOR")).toBe(false);
+    expect(rutaPermitidaParaRol("/admin/usuarios", "AUDITOR")).toBe(false);
   });
 
   it("un 403 vuelve a consultar /v1/me y, si el rol cambió, lleva a la nueva bandeja con aviso [E7-F01-T07]", async () => {
     await abrirComo(CUENTAS.QE, "/qe");
     await screen.findByTestId("bandeja-qe");
 
-    // El Administrador le cambió el rol mientras tenía la sesión abierta: /v1/me ya responde Líder QA.
+    // El Administrador le cambió el rol mientras tenía la sesión abierta: /v1/me ya responde Auditor.
     server.use(
       http.get(`${env.gatewayUrl}/v1/me`, ({ request }) => {
         const id = request.headers.get("Authorization")?.replace("Bearer mock-token:", "");
-        return HttpResponse.json({ id, nombre: "Jose Seguel", correo: CUENTAS.QE, rol: "LIDER_QA" });
+        return HttpResponse.json({ id, nombre: "Jose Seguel", correo: CUENTAS.QE, rol: "AUDITOR" });
       }),
       http.get(`${env.gatewayUrl}/v1/inicio/qe`, () =>
         HttpResponse.json({ codigo: "ACCESO_DENEGADO", mensaje: "No tienes acceso a este recurso.", traceId: "t", detalles: [] }, { status: 403 }),
@@ -144,6 +136,6 @@ describe("Guard de rutas por rol [E1-F02, E1-F05, E1-F07, E7-F01 · D41]", () =>
     await userEvent.click(screen.getByRole("link", { name: "Bandeja" }));
 
     expect(await screen.findByTestId("aviso-rol-cambio")).toHaveTextContent("Tu rol cambió. Te llevamos a tu nueva bandeja.");
-    expect(await screen.findByTestId("bandeja-lider")).toBeInTheDocument();
+    expect(await screen.findByTestId("bandeja-auditor")).toBeInTheDocument();
   });
 });

@@ -21,7 +21,7 @@ import {
   leerPaginacion,
 } from '../validacion-auditor.js';
 
-const ROLES_TODOS = ['ADMINISTRADOR', 'QE', 'ANALISTA_QA', 'LIDER_QA', 'AUDITOR'] as const;
+const ROLES_TODOS = ['ADMINISTRADOR', 'QE', 'ANALISTA_QA', 'AUDITOR'] as const;
 
 function contexto(identidad: Identidad | undefined, solicitud: Request): ContextoSolicitud {
   if (identidad === undefined) throw noAutenticado('ruta sin identidad verificada');

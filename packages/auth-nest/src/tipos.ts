@@ -7,10 +7,10 @@
  */
 
 /** Catálogo cerrado de roles (`comun.v1.yaml#/components/schemas/Rol`). */
-export type Rol = 'ADMINISTRADOR' | 'QE' | 'ANALISTA_QA' | 'LIDER_QA' | 'AUDITOR';
+export type Rol = 'ADMINISTRADOR' | 'QE' | 'ANALISTA_QA' | 'AUDITOR';
 
-/** Un rol por usuario (D28). `LIDER_QA` y `AUDITOR` son de solo lectura (D32). */
-export const ROLES: readonly Rol[] = ['ADMINISTRADOR', 'QE', 'ANALISTA_QA', 'LIDER_QA', 'AUDITOR'];
+/** Un rol por usuario (D28). `AUDITOR` es de solo lectura (D32); `LIDER_QA` se retiró (D208). */
+export const ROLES: readonly Rol[] = ['ADMINISTRADOR', 'QE', 'ANALISTA_QA', 'AUDITOR'];
 
 export function esRol(valor: unknown): valor is Rol {
   return typeof valor === 'string' && (ROLES as readonly string[]).includes(valor);
@@ -41,8 +41,6 @@ export interface AmbitoAcceso {
   readonly qeSupervisorId: string | null;
   /** Analistas vigentes si el rol es `QE`; si no, vacío. */
   readonly analistasSupervisadosIds: readonly string[];
-  /** Células vigentes si el rol es `LIDER_QA` (D30, D47); si no, vacío. */
-  readonly celulasIds: readonly string[];
 }
 
 /** Rol vigente, estado y ámbito que resuelve Organización en cada solicitud. */

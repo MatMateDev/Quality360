@@ -1,4 +1,4 @@
-import type { DecisionCambioRol, RelacionesUsuario } from '../reglas/rol-celulas.js';
+import type { DecisionCambioRol, RelacionesUsuario } from '../reglas/cambio-rol.js';
 import type { Actor, OpcionesPaginacion, Pagina, Rol, Usuario, UsuarioResumen } from '../tipos.js';
 
 export interface FiltroUsuarios {
@@ -13,8 +13,6 @@ export interface DatosNuevoUsuario {
   readonly correo: string;
   readonly rol: Rol;
   readonly activo: boolean;
-  /** Células iniciales de un Líder QA (D42); se abren en la misma transacción. */
-  readonly celulaIds?: readonly string[];
 }
 
 export interface CambiosUsuario {
@@ -52,10 +50,10 @@ export interface UsuarioRepositorio {
   listarResumenPorIds(ids: readonly string[]): Promise<UsuarioResumen[]>;
   listarAnalistasActivos(): Promise<UsuarioResumen[]>;
   contarAdministradoresActivos(): Promise<number>;
-  /** Usuarios activos por rol (los 5 roles vienen siempre). */
+  /** Usuarios activos por rol (los 4 roles vienen siempre). */
   contarActivosPorRol(): Promise<Record<Rol, number>>;
 
-  /** Crea el registro y audita `CREAR_USUARIO` (y `ASIGNAR_CELULAS_LIDER` si trae células) en la misma transacción. */
+  /** Crea el registro y audita `CREAR_USUARIO` en la misma transacción. */
   crear(datos: DatosNuevoUsuario, actor: Actor): Promise<Usuario>;
   /** Actualiza datos/estado y audita (`ACTUALIZAR_USUARIO`, `ACTIVAR_USUARIO` o `DESACTIVAR_USUARIO`). */
   actualizar(id: string, cambios: CambiosUsuario, actor: Actor): Promise<Usuario>;
@@ -63,14 +61,12 @@ export interface UsuarioRepositorio {
   /**
    * Cambio de rol atómico (D42): bloquea la fila del usuario (`SELECT … FOR UPDATE`),
    * lee sus relaciones, deja que `decidir` resuelva (último administrador, relaciones
-   * incompatibles) y, si procede, cambia el rol, fija las células del Líder y audita
-   * `CAMBIAR_ROL` y `ASIGNAR_CELULAS_LIDER`. O se aplica todo o no se aplica nada.
+   * incompatibles) y, si procede, cambia el rol y audita `CAMBIAR_ROL`. O se aplica
+   * todo o no se aplica nada.
    */
   cambiarRolAtomico(input: {
     id: string;
     rolNuevo: Rol;
-    /** `undefined` = no tocar las células; con `LIDER_QA`, el conjunto que debe quedar vigente. */
-    celulaIds: readonly string[] | undefined;
     actor: Actor;
     decidir: (instantanea: InstantaneaCambioRol) => DecisionCambioRol;
   }): Promise<ResultadoCambioRol>;

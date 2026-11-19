@@ -112,66 +112,19 @@ describe('Cálculo por ámbito [E7-B03#1]', () => {
     assert.ok(todas.acciones.datos.items.every((a: Cuerpo) => ['H1', 'H5', 'H6', 'H8'].includes(a.hdu.codigo)));
   });
 
-  it('[E7-B03-T04] LID1: células 2, abiertas 5, cerradas 1, sin analista 1, certificados 1; lista de 6 HDU', async () => {
-    const lid1: Cuerpo = (await http().get('/v1/bandeja/lider').set(como(f.lid1)).expect(200)).body;
-    assert.equal(lid1.rol, 'LIDER_QA');
-    assert.deepEqual(lid1.celulas.datos.items.map((c: Cuerpo) => c.nombre), ['CEL-A', 'CEL-B']);
-    assert.deepEqual(
-      [valor(lid1.contadores.celulas), valor(lid1.contadores.hduAbiertas), valor(lid1.contadores.hduCerradas), valor(lid1.contadores.sinAnalista), valor(lid1.contadores.certificados)],
-      [2, 5, 1, 1, 1],
-    );
-    assert.deepEqual(codigosLista(lid1), ['H1', 'H2', 'H5', 'H7', 'H3', 'H6'], 'célula, luego sprint más reciente, luego código');
-    assert.equal(lid1.hdu.datos.total, 6);
-    const resumen = lid1.resumenPorCelula.datos.items as Cuerpo[];
-    const celdaA = resumen.find((fila) => fila.celula.nombre === 'CEL-A');
-    assert.deepEqual(celdaA.porEstado, { PENDIENTE: 1, DISENO_PRUEBAS: 0, EN_EJECUCION: 2, PENDIENTE_CIERRE: 0, CERRADA: 1 });
-    // Avance promedio de las abiertas de CEL-A: H1 30, H2 10 y H5 0.
-    assert.equal(celdaA.avancePromedioAbiertas.datos.porcentaje, 13.3);
-    const celdaB = resumen.find((fila) => fila.celula.nombre === 'CEL-B');
-    assert.equal(celdaB.avancePromedioAbiertas.datos.porcentaje, 40);
-  });
-
-  it('[E7-B03-T05] LID1 con estado=CERRADA ve solo H7', async () => {
-    const respuesta: Cuerpo = (await http().get('/v1/bandeja/lider?estado=CERRADA').set(como(f.lid1)).expect(200)).body;
-    assert.deepEqual(codigosLista(respuesta), ['H7']);
-    assert.equal(valor(respuesta.contadores.hduAbiertas), 5, 'los contadores no dependen de los filtros');
-  });
-
-  it('Líder: filtra por QE, por analista y «sin analista»; celulaId ajena da 403; sin células, todo en 0 con ok', async () => {
-    const deQe1: Cuerpo = (await http().get(`/v1/bandeja/lider?qeId=${f.qe1.id}`).set(como(f.lid1)).expect(200)).body;
-    assert.deepEqual(codigosLista(deQe1).sort(), ['H1', 'H2', 'H5', 'H6']);
-    const sinAnalista: Cuerpo = (await http().get('/v1/bandeja/lider?sinAnalista=true').set(como(f.lid1)).expect(200)).body;
-    assert.deepEqual(codigosLista(sinAnalista), ['H5']);
-    const conAnalista: Cuerpo = (await http().get('/v1/bandeja/lider?sinAnalista=false').set(como(f.lid1)).expect(200)).body;
-    assert.equal(conAnalista.hdu.datos.total, 6, 'sinAnalista=false no filtra');
-    const ajena = await http().get(`/v1/bandeja/lider?celulaId=${f.celdaC.id}`).set(como(f.lid1));
-    assert.equal(ajena.status, 403);
-
-    const lid2: Cuerpo = (await http().get('/v1/bandeja/lider').set(como(f.lid2)).expect(200)).body;
-    assert.deepEqual(lid2.celulas.datos.items, []);
-    assert.equal(lid2.contadores.celulas.datos.valor, 0);
-    assert.equal(lid2.contadores.certificados.estado, 'ok');
-    assert.equal(lid2.contadores.certificados.datos.valor, 0);
-    assert.deepEqual(lid2.resumenPorCelula.datos.items, []);
-    assert.deepEqual(lid2.hdu.datos.items, []);
-  });
-
-  it('[E7-B03-T06] ADM1: 10 activos (1/2/4/2/1), 1 inactivo, ANA4 sin QE, LID2 sin células, CEL-C sin líder y 8 HDU', async () => {
+  it('[E7-B03-T06] ADM1: 8 activos (1/2/4/1), 1 inactivo, ANA4 sin QE y 8 HDU; sin contadores ni pendientes de Líder (D208)', async () => {
     const admin: Cuerpo = (await http().get('/v1/bandeja/admin').set(como(f.adm1)).expect(200)).body;
     assert.equal(admin.rol, 'ADMINISTRADOR');
     const c = admin.contadores;
-    assert.deepEqual(c.usuariosActivos.datos, { valor: 10, porRol: { ADMINISTRADOR: 1, QE: 2, ANALISTA_QA: 4, LIDER_QA: 2, AUDITOR: 1 } });
+    assert.deepEqual(c.usuariosActivos.datos, { valor: 8, porRol: { ADMINISTRADOR: 1, QE: 2, ANALISTA_QA: 4, AUDITOR: 1 } });
     assert.equal(valor(c.usuariosInactivos), 1);
     assert.equal(valor(c.analistasSinQe), 1);
     assert.equal(valor(c.qeSinAnalistas), 0);
-    assert.equal(valor(c.lideresSinCelulas), 1);
-    assert.equal(valor(c.celulasSinLider), 1);
+    assert.equal('lideresSinCelulas' in c, false);
+    assert.equal('celulasSinLider' in c, false);
     assert.equal(valor(c.hduTotal), 8);
-    assert.deepEqual(
-      admin.pendientes.datos.items.map((p: Cuerpo) => [p.tipo, p.usuario?.nombre ?? null, p.celula?.nombre ?? null]),
-      [['ANALISTA_SIN_QE', 'ANA4', null], ['LIDER_SIN_CELULAS', 'LID2', null], ['CELULA_SIN_LIDER', null, 'CEL-C']],
-    );
-    assert.equal(admin.pendientes.datos.total, 3);
+    assert.deepEqual(admin.pendientes.datos.items, [{ tipo: 'ANALISTA_SIN_QE', usuario: { id: f.ana4.id, nombre: 'ANA4', correo: f.ana4.correo } }]);
+    assert.equal(admin.pendientes.datos.total, 1);
   });
 
   it('[E7-B03-T07] AUD1: hdu-total 8, certificados 2 y contadores de 7 días consistentes con la bitácora y la auditoría', async () => {
@@ -207,26 +160,26 @@ describe('Cálculo por ámbito [E7-B03#1]', () => {
   });
 
   it('[E7-B03-T08] tamanoPagina=1000 se recorta a 100 y la respuesta informa el tamaño efectivo', async () => {
-    const respuesta: Cuerpo = (await http().get('/v1/bandeja/lider?tamanoPagina=1000').set(como(f.lid1)).expect(200)).body;
+    const respuesta: Cuerpo = (await http().get('/v1/bandeja/auditor?tamanoPagina=1000').set(como(f.aud1)).expect(200)).body;
     assert.equal(respuesta.hdu.datos.tamanoPagina, 100);
-    const pequeno: Cuerpo = (await http().get('/v1/bandeja/lider?tamanoPagina=2&pagina=2').set(como(f.lid1)).expect(200)).body;
+    const pequeno: Cuerpo = (await http().get('/v1/bandeja/auditor?tamanoPagina=2&pagina=2').set(como(f.aud1)).expect(200)).body;
     assert.equal(pequeno.hdu.datos.tamanoPagina, 2);
     assert.equal(pequeno.hdu.datos.pagina, 2);
-    assert.equal(pequeno.hdu.datos.total, 6);
-    assert.deepEqual(codigosLista(pequeno), ['H5', 'H7']);
-    const porDefecto: Cuerpo = (await http().get('/v1/bandeja/lider').set(como(f.lid1)).expect(200)).body;
+    assert.equal(pequeno.hdu.datos.total, 8);
+    assert.deepEqual(codigosLista(pequeno), ['H3', 'H4']);
+    const porDefecto: Cuerpo = (await http().get('/v1/bandeja/auditor').set(como(f.aud1)).expect(200)).body;
     assert.equal(porDefecto.hdu.datos.tamanoPagina, 25);
   });
 
   it('valida los parámetros: orden con columna inválida, q de 1 carácter y parámetros ajenos a la bandeja dan 400', async () => {
-    const orden = await http().get('/v1/bandeja/lider?orden=inventada:asc').set(como(f.lid1));
+    const orden = await http().get('/v1/bandeja/auditor?orden=inventada:asc').set(como(f.aud1));
     assert.equal(orden.status, 400);
     assert.equal(orden.body.codigo, 'VALIDACION');
-    await http().get('/v1/bandeja/lider?orden=codigo').set(como(f.lid1)).expect(400);
-    await http().get('/v1/bandeja/lider?q=a').set(como(f.lid1)).expect(400);
+    await http().get('/v1/bandeja/auditor?orden=codigo').set(como(f.aud1)).expect(400);
+    await http().get('/v1/bandeja/auditor?q=a').set(como(f.aud1)).expect(400);
     await http().get('/v1/bandeja/qe?estado=PENDIENTE').set(como(f.qe1)).expect(400);
     await http().get('/v1/bandeja/analista?soloConObservaciones=quizas').set(como(f.ana1)).expect(400);
-    const buscada: Cuerpo = (await http().get('/v1/bandeja/lider?q=h3').set(como(f.lid1)).expect(200)).body;
+    const buscada: Cuerpo = (await http().get('/v1/bandeja/auditor?q=h3').set(como(f.aud1)).expect(200)).body;
     assert.deepEqual(codigosLista(buscada), ['H3']);
   });
 
@@ -252,10 +205,10 @@ describe('Filtros y orden que dependen de Certificaciones [E7-F02#3]', () => {
   });
 
   it('un orden que depende de Certificaciones cae al de respaldo y se informa en `orden`', async () => {
-    const respuesta: Cuerpo = await conCertificacionesCaida(async () => (await http().get('/v1/bandeja/lider?orden=avance:desc').set(como(f.lid1)).expect(200)).body);
+    const respuesta: Cuerpo = await conCertificacionesCaida(async () => (await http().get('/v1/bandeja/auditor?orden=avance:desc').set(como(f.aud1)).expect(200)).body);
     assert.equal(respuesta.hdu.estado, 'ok');
-    assert.equal(respuesta.hdu.datos.orden, 'celula:asc,sprint:desc,codigo:asc');
-    assert.equal(respuesta.hdu.datos.items.length, 6);
+    assert.equal(respuesta.hdu.datos.orden, 'codigo:asc');
+    assert.equal(respuesta.hdu.datos.items.length, 8);
   });
 });
 
@@ -279,7 +232,7 @@ describe('Fuente no disponible [E7-B03#2]', () => {
     assert.equal(asignar.acciones.datos.calculoParcial, true);
   });
 
-  it('[E7-B03-T10] ANA1, LID1 y AUD1 con Certificaciones detenido: 200, observaciones, aprobación, avance y certificado indisponibles; las listas siguen', async () => {
+  it('[E7-B03-T10] ANA1 y AUD1 con Certificaciones detenido: 200, observaciones, aprobación, avance y certificado indisponibles; las listas siguen', async () => {
     await conCertificacionesCaida(async () => {
       const ana1: Cuerpo = (await http().get('/v1/bandeja/analista').set(como(f.ana1)).expect(200)).body;
       assert.equal(ana1.contadores.conObservaciones.estado, 'indisponible');
@@ -288,13 +241,6 @@ describe('Fuente no disponible [E7-B03#2]', () => {
       assert.deepEqual(codigosLista(ana1), ['H1', 'H6']);
       assert.equal(ana1.hdu.datos.items[0].seguimiento.estado, 'indisponible');
       assert.equal(ana1.hdu.datos.orden, 'prioridad:desc');
-
-      const lid1: Cuerpo = (await http().get('/v1/bandeja/lider').set(como(f.lid1)).expect(200)).body;
-      assert.equal(lid1.contadores.certificados.estado, 'indisponible');
-      assert.equal(lid1.contadores.hduAbiertas.datos.valor, 5);
-      assert.equal(lid1.resumenPorCelula.datos.items[0].avancePromedioAbiertas.estado, 'indisponible');
-      assert.equal(lid1.hdu.datos.items.length, 6);
-      assert.equal(lid1.hdu.datos.items[0].seguimiento.estado, 'indisponible');
 
       const aud1: Cuerpo = (await http().get('/v1/bandeja/auditor').set(como(f.aud1)).expect(200)).body;
       assert.equal(aud1.contadores.certificados.estado, 'indisponible');
@@ -331,12 +277,11 @@ describe('Rol exclusivo [E7-B03#3]', () => {
   const rutas: Array<[string, () => UsuarioDePrueba]> = [
     ['analista', () => f.ana1],
     ['qe', () => f.qe1],
-    ['lider', () => f.lid1],
     ['admin', () => f.adm1],
     ['auditor', () => f.aud1],
   ];
 
-  it('[E7-B03-T12] cada rol recibe 403 ACCESO_DENEGADO, con cuerpo idéntico, en los 4 endpoints que no son suyos (20 combinaciones)', async () => {
+  it('[E7-B03-T12] cada rol recibe 403 ACCESO_DENEGADO, con cuerpo idéntico, en los 3 endpoints que no son suyos (12 combinaciones)', async () => {
     const cuerpos: string[] = [];
     let combinaciones = 0;
     for (const [rutaPropia, usuario] of rutas) {
@@ -350,15 +295,19 @@ describe('Rol exclusivo [E7-B03#3]', () => {
         combinaciones += 1;
       }
     }
-    assert.equal(combinaciones, 20);
-    assert.equal(new Set(cuerpos).size, 1, 'el cuerpo es el mismo en las 20');
+    assert.equal(combinaciones, 12);
+    assert.equal(new Set(cuerpos).size, 1, 'el cuerpo es el mismo en las 12');
   });
 
   it('el Administrador no abre las bandejas de otros roles (D33)', async () => {
-    for (const ruta of ['analista', 'qe', 'lider', 'auditor']) await http().get(`/v1/bandeja/${ruta}`).set(como(f.adm1)).expect(403);
+    for (const ruta of ['analista', 'qe', 'auditor']) await http().get(`/v1/bandeja/${ruta}`).set(como(f.adm1)).expect(403);
   });
 
-  it('[E7-B03-T13] sin token o con token inválido: 401 NO_AUTENTICADO en las 5 rutas', async () => {
+  it('la bandeja del Líder QA ya no existe (D208)', async () => {
+    await http().get('/v1/bandeja/lider').set(como(f.aud1)).expect(404);
+  });
+
+  it('[E7-B03-T13] sin token o con token inválido: 401 NO_AUTENTICADO en las 4 rutas', async () => {
     for (const [ruta] of rutas) {
       const sinToken = await http().get(`/v1/bandeja/${ruta}`);
       assert.equal(sinToken.status, 401, ruta);
@@ -376,21 +325,17 @@ describe('Rol exclusivo [E7-B03#3]', () => {
 });
 
 describe('Resolución de pendientes del Administrador [E7-F05#2]', () => {
-  it('[E7-F05#2] tras asignar QE a ANA4, células a LID2 y líder a CEL-C, no quedan pendientes y los últimos cambios lo reflejan', async () => {
+  it('[E7-F05#2] tras asignar QE a ANA4 no quedan pendientes y los últimos cambios lo reflejan', async () => {
     await http().put(`/v1/analistas/${f.ana4.id}/supervisor`).set(como(f.adm1)).send({ qeId: f.qe1.id }).expect(200);
-    await http().put(`/v1/usuarios/${f.lid2.id}/celulas-lider`).set(como(f.adm1)).send({ celulaIds: [f.celdaC.id] }).expect(200);
     const admin: Cuerpo = (await http().get('/v1/bandeja/admin').set(como(f.adm1)).expect(200)).body;
     assert.deepEqual(admin.pendientes.datos, { items: [], total: 0, pagina: 1, tamanoPagina: 25 });
-    for (const clave of ['analistasSinQe', 'qeSinAnalistas', 'lideresSinCelulas', 'celulasSinLider']) {
+    for (const clave of ['analistasSinQe', 'qeSinAnalistas']) {
       assert.equal(admin.contadores[clave].datos.valor, 0, clave);
     }
     const primero = admin.ultimosCambios.datos.items[0];
-    assert.equal(primero.operacion, 'ASIGNAR_CELULAS_LIDER');
+    assert.equal(primero.operacion, 'ASIGNAR_SUPERVISOR');
     assert.equal(primero.actor.id, f.adm1.id);
-    assert.equal(primero.usuarioAfectado.id, f.lid2.id);
+    assert.equal(primero.usuarioAfectado.id, f.ana4.id, 'en supervisión el usuario afectado es el analista');
     assert.ok(admin.ultimosCambios.datos.items.length <= 10);
-    const segundo = admin.ultimosCambios.datos.items[1];
-    assert.equal(segundo.operacion, 'ASIGNAR_SUPERVISOR');
-    assert.equal(segundo.usuarioAfectado.id, f.ana4.id, 'en supervisión el usuario afectado es el analista');
   });
 });

@@ -297,9 +297,9 @@ describe('E5-B03#3 · transacción y modo estricto (D125)', () => {
 });
 
 describe('E5-B03 · acceso y destino', () => {
-  it('E5-B03-T11 QE, Analista, Líder y Auditor: 403 en vista previa e importación; sin token 401; no se crean HDU ni ejecuciones', async () => {
+  it('E5-B03-T11 QE, Analista y Auditor: 403 en vista previa e importación; sin token 401; no se crean HDU ni ejecuciones', async () => {
     await conConfiguracion();
-    for (const persona of ['qe1', 'ana1', 'lid1', 'aud1'] as const) {
+    for (const persona of ['qe1', 'ana1', 'aud1'] as const) {
       for (const ruta of [VISTA_PREVIA, IMPORTAR]) {
         const r = await m.pedir('post', ruta, persona, archivo(VALIDAS));
         assert.equal(r.status, 403, `${persona} ${ruta}`);

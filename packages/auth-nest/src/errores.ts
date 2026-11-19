@@ -18,7 +18,6 @@ export type CodigoError =
   | 'CODIGO_HDU_DUPLICADO'
   | 'ULTIMO_ADMINISTRADOR'
   | 'RELACIONES_INCOMPATIBLES'
-  | 'ROL_INCOMPATIBLE'
   | 'EXPORTACION_EXCEDE_LIMITE'
   // E5 · integración con Jira y archivos (comun.v1.yaml#CodigoError)
   | 'JIRA_NO_CONFIGURADO'
@@ -83,7 +82,6 @@ export const MENSAJES: Readonly<Record<CodigoError, string>> = Object.freeze({
   CODIGO_HDU_DUPLICADO: 'Ya existe una HDU con ese identificador.',
   ULTIMO_ADMINISTRADOR: 'La plataforma debe conservar al menos un administrador activo.',
   RELACIONES_INCOMPATIBLES: 'Resuelve las relaciones de supervisión antes de continuar.',
-  ROL_INCOMPATIBLE: 'El usuario no tiene el rol Líder QA.',
   EXPORTACION_EXCEDE_LIMITE: 'La exportación supera las 50.000 filas. Acota los filtros.',
   JIRA_NO_CONFIGURADO: 'Configura la conexión con Jira antes de consultar.',
   INTEGRACION_EN_CURSO: 'Ya hay una consulta o confirmación en curso.',

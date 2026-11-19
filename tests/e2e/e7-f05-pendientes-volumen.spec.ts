@@ -34,7 +34,7 @@ test.describe("E7-F05 · Pendientes de configuración con volumen", () => {
       expect(
         informaTotal || hayPaginacion,
         `La bandeja tiene ${total} pendientes, muestra ${filas} y no informa el total ni ofrece paginación: ` +
-          `los últimos (p. ej. «Líder sin células» y «Célula sin líder») quedan ocultos en silencio.`,
+          `los últimos (p. ej. «QE sin analistas») quedan ocultos en silencio.`,
       ).toBe(true);
     } finally {
       for (const u of creados) await desactivarUsuario(request, adm, u.id);

@@ -48,11 +48,11 @@ describe('E4-B04 · gestión', () => {
     assert.equal((await historial('qe1', f.h.H6.id, '?desde=hoy')).status, 400);
   });
 
-  it('[E4-B04#2] T05: el analista asignado no ve el riesgo; otro analista 403; Líder, Auditor y Administrador ven todo', async () => {
+  it('[E4-B04#2] T05: el analista asignado no ve el riesgo; otro analista 403; Auditor y Administrador ven todo', async () => {
     assert.deepEqual(acciones((await historial('ana1', f.h.H6.id)).body), ['REGISTRAR', 'ESCALAR']);
     assert.deepEqual((await historial('ana1', f.h.H6.id, '?tipo=RIESGO')).body.items, []);
     assert.equal((await historial('ana3', f.h.H6.id)).status, 403);
-    for (const persona of ['lid1', 'aud1', 'adm1'] as const) assert.equal((await historial(persona, f.h.H6.id)).body.items.length, 3, persona);
+    for (const persona of ['aud1', 'adm1'] as const) assert.equal((await historial(persona, f.h.H6.id)).body.items.length, 3, persona);
     assert.equal((await historial(null, f.h.H6.id)).status, 401);
     assert.deepEqual(acciones((await historial('qe1', f.h.H6.id, '?tipo=RIESGO')).body), ['FIJAR_RIESGO']);
   });
@@ -118,9 +118,9 @@ describe('E4-B04 · gestión', () => {
     assert.ok(riesgo.body.items.every((e: { tipo: string }) => e.tipo === 'RIESGO'));
   });
 
-  it('[E4-B04#2] T10: Administrador, QE, Líder y Analista reciben 403 en las 4 rutas del Auditor; sin token, 401', async () => {
+  it('[E4-B04#2] T10: Administrador, QE y Analista reciben 403 en las 4 rutas del Auditor; sin token, 401', async () => {
     const rutas = ['/v1/auditor/impedimentos', '/v1/auditor/gestion-impedimentos', '/v1/auditor/exportaciones/impedimentos', '/v1/auditor/exportaciones/gestion-impedimentos'];
-    for (const persona of ['adm1', 'qe1', 'lid1', 'ana1'] as const) {
+    for (const persona of ['adm1', 'qe1', 'ana1'] as const) {
       for (const ruta of rutas) assert.equal((await como(app, persona, 'get', ruta)).status, 403, `${persona} ${ruta}`);
     }
     for (const ruta of rutas) assert.equal((await como(app, null, 'get', ruta)).status, 401, ruta);

@@ -20,7 +20,7 @@ export interface ElementoLista {
 /**
  * Orden D74 de las listas: riesgo vigente de la HDU (Alto, Medio, Bajo) y luego días abiertos de mayor
  * a menor. Si el riesgo de alguna HDU está indisponible se ordena solo por días (D74). Con
- * `primero`, los elementos que cumplen el predicado van antes (los escalados al Líder, D79).
+ * `primero`, los elementos que cumplen el predicado van antes (D79).
  */
 export function ordenarLista<T extends ElementoLista>(
   items: readonly T[],

@@ -17,7 +17,7 @@ import { leerFiltrosImpedimentos, leerProposito } from '../validacion/consultas.
 
 type Consulta = Record<string, unknown>;
 
-const ROLES_TODOS = ['ADMINISTRADOR', 'QE', 'ANALISTA_QA', 'LIDER_QA', 'AUDITOR'] as const;
+const ROLES_TODOS = ['ADMINISTRADOR', 'QE', 'ANALISTA_QA', 'AUDITOR'] as const;
 
 @UseFilters(FiltroTransicionImpedimento)
 @Controller('v1')
@@ -67,7 +67,7 @@ export class ImpedimentosController {
     return this.impedimentos.candidatos(uuidDeRuta(hduId, 'hduId'), proposito, solicitanteDe(identidad, acceso, solicitud));
   }
 
-  @Roles('QE', 'LIDER_QA', 'ADMINISTRADOR', 'AUDITOR')
+  @Roles('QE', 'ADMINISTRADOR', 'AUDITOR')
   @Get('impedimentos')
   listar(@Query() consulta: Consulta, @IdentidadActual() identidad: Identidad, @AccesoActual() acceso: ResolucionAcceso, @Req() solicitud: Request) {
     return this.listados.impedimentosDelAmbito(leerFiltrosImpedimentos(consulta), solicitanteDe(identidad, acceso, solicitud));

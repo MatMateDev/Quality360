@@ -1,5 +1,4 @@
 import { useEffect, useRef, useState } from "react";
-import { useCelulas } from "@/api/catalogos";
 import {
   useActualizarUsuario,
   useCambiarRolUsuario,
@@ -9,12 +8,10 @@ import {
   type FiltrosUsuarios,
 } from "@/api/usuarios";
 import { BloqueEstado } from "@/components/BloqueEstado";
-import { DialogoCelulasLider } from "@/components/DialogoCelulasLider";
 import { DialogoConfirmacion } from "@/components/DialogoConfirmacion";
 import { InsigniaActivo, InsigniaRol } from "@/components/Etiquetas";
 import { MensajeRelaciones } from "@/components/MensajeRelaciones";
 import { relacionesDe } from "@/lib/relaciones";
-import { SelectorCelulas } from "@/components/SelectorCelulas";
 import { BarraFiltros, type CampoFiltro } from "@/components/bandeja/BarraFiltros";
 import { MensajeExito } from "@/components/bandeja/Estructura";
 import { Paginacion } from "@/components/bandeja/Paginacion";
@@ -25,8 +22,8 @@ import { ETIQUETAS_ROL, ROLES_CATALOGO, type Rol, type Usuario } from "@/types/d
 const ROL_VALIDO = (valor: string): Rol | undefined => ROLES_CATALOGO.find((r) => r === valor);
 
 /**
- * F09 + E7-F07: listar y buscar (paginado), alta, edición, cambio de rol con células en una sola operación (D42),
- * células del Líder con historial y activar/desactivar, siempre con confirmación previa.
+ * F09 + E7-F07: listar y buscar (paginado), alta, edición, cambio de rol y activar/desactivar, siempre con
+ * confirmación previa. Las células del Líder QA se retiraron con el rol (D208).
  * Acepta `?usuario=<id>`, `?rol=<ROL>` y `?nuevo=1` (D44, sin ellos la pantalla es la certificada).
  */
 export function AdminUsuariosPage() {
@@ -38,8 +35,6 @@ export function AdminUsuariosPage() {
     tamanoPagina: url.tamano,
   };
   const usuariosQuery = useUsuarios(filtros);
-  const celulasQuery = useCelulas();
-  const catalogo = celulasQuery.data?.items ?? [];
 
   const crearUsuario = useCrearUsuario();
   const actualizarUsuario = useActualizarUsuario();
@@ -49,7 +44,6 @@ export function AdminUsuariosPage() {
 
   const [dialogoCrearAbierto, setDialogoCrearAbierto] = useState(false);
   const [nuevoUsuario, setNuevoUsuario] = useState({ nombre: "", correo: "", rol: "ANALISTA_QA" as Rol });
-  const [celulasNuevo, setCelulasNuevo] = useState<string[]>([]);
   const [erroresCrear, setErroresCrear] = useState<Record<string, string>>({});
 
   const [usuarioEditando, setUsuarioEditando] = useState<Usuario | null>(null);
@@ -58,11 +52,7 @@ export function AdminUsuariosPage() {
 
   const [usuarioCambioRol, setUsuarioCambioRol] = useState<Usuario | null>(null);
   const [rolSeleccionado, setRolSeleccionado] = useState<Rol>("ANALISTA_QA");
-  const [celulasRol, setCelulasRol] = useState<string[]>([]);
   const [errorRol, setErrorRol] = useState<unknown>(null);
-
-  const [usuarioCelulas, setUsuarioCelulas] = useState<Usuario | null>(null);
-  const [celulasVacio, setCelulasVacio] = useState(false);
 
   const [usuarioCambioEstado, setUsuarioCambioEstado] = useState<Usuario | null>(null);
   const [errorEstadoAcceso, setErrorEstadoAcceso] = useState<string | null>(null);
@@ -70,13 +60,6 @@ export function AdminUsuariosPage() {
   // ---- preselección por URL (D44) ----
   const idUsuarioUrl = url.get("usuario") || null;
   const usuarioUrl = useUsuario(idUsuarioUrl);
-  const yaAbierto = useRef<string | null>(null);
-  useEffect(() => {
-    if (usuarioUrl.data && yaAbierto.current !== usuarioUrl.data.id) {
-      yaAbierto.current = usuarioUrl.data.id;
-      if (usuarioUrl.data.rol === "LIDER_QA") setUsuarioCelulas(usuarioUrl.data);
-    }
-  }, [usuarioUrl.data]);
 
   const nuevoUrl = url.get("nuevo") === "1";
   const nuevoAbierto = useRef(false);
@@ -105,16 +88,8 @@ export function AdminUsuariosPage() {
     },
   ];
 
-  function nombresCelulas(ids: string[]): string {
-    return ids
-      .map((id) => catalogo.find((c) => c.id === id)?.nombre ?? id)
-      .sort((a, b) => a.localeCompare(b))
-      .join(", ");
-  }
-
   function abrirCrear() {
     setNuevoUsuario({ nombre: "", correo: "", rol: "ANALISTA_QA" });
-    setCelulasNuevo([]);
     setErroresCrear({});
     setDialogoCrearAbierto(true);
   }
@@ -127,15 +102,9 @@ export function AdminUsuariosPage() {
     if (Object.keys(errores).length > 0) return;
 
     try {
-      await crearUsuario.mutateAsync(
-        nuevoUsuario.rol === "LIDER_QA" ? { ...nuevoUsuario, celulaIds: celulasNuevo } : nuevoUsuario,
-      );
+      await crearUsuario.mutateAsync(nuevoUsuario);
       setDialogoCrearAbierto(false);
-      setExito(
-        nuevoUsuario.rol === "LIDER_QA" && celulasNuevo.length > 0
-          ? `${nuevoUsuario.nombre} se registró como Líder QA con ${nombresCelulas(celulasNuevo)}.`
-          : `${nuevoUsuario.nombre} se registró como ${ETIQUETAS_ROL[nuevoUsuario.rol]}.`,
-      );
+      setExito(`${nuevoUsuario.nombre} se registró como ${ETIQUETAS_ROL[nuevoUsuario.rol]}.`);
     } catch (error) {
       if (error instanceof ErrorApi && error.detalles.length > 0) {
         const nuevos: Record<string, string> = {};
@@ -166,7 +135,6 @@ export function AdminUsuariosPage() {
   function abrirCambioRol(usuario: Usuario) {
     setUsuarioCambioRol(usuario);
     setRolSeleccionado(usuario.rol);
-    setCelulasRol(usuario.rol === "LIDER_QA" ? usuario.celulasVigentes.map((c) => c.id) : []);
     setErrorRol(null);
   }
 
@@ -174,25 +142,15 @@ export function AdminUsuariosPage() {
     if (!usuarioCambioRol) return;
     setErrorRol(null);
     try {
-      // D42: rol y células viajan juntos; el servidor los aplica en una transacción o no aplica nada.
-      await cambiarRolUsuario.mutateAsync({
-        id: usuarioCambioRol.id,
-        body: rolSeleccionado === "LIDER_QA" ? { rol: rolSeleccionado, celulaIds: celulasRol } : { rol: rolSeleccionado },
-      });
-      setExito(
-        rolSeleccionado === "LIDER_QA" && celulasRol.length > 0
-          ? `${usuarioCambioRol.nombre} ahora es Líder QA con ${nombresCelulas(celulasRol)}.`
-          : `${usuarioCambioRol.nombre} ahora es ${ETIQUETAS_ROL[rolSeleccionado]}.`,
-      );
+      await cambiarRolUsuario.mutateAsync({ id: usuarioCambioRol.id, body: { rol: rolSeleccionado } });
+      setExito(`${usuarioCambioRol.nombre} ahora es ${ETIQUETAS_ROL[rolSeleccionado]}.`);
       setUsuarioCambioRol(null);
     } catch (error) {
       setErrorRol(error);
-      if (error instanceof ErrorApi && error.status === 422) void celulasQuery.refetch();
     }
   }
 
   function textoErrorRol(error: unknown): string {
-    if (error instanceof ErrorApi && error.status === 422) return "Alguna de las células seleccionadas ya no existe. Actualizamos la lista.";
     if (error instanceof ErrorApi && error.status >= 500) return "No fue posible guardar. Intenta nuevamente.";
     return error instanceof ErrorApi ? error.mensaje : "No fue posible cambiar el rol.";
   }
@@ -213,7 +171,6 @@ export function AdminUsuariosPage() {
   }
 
   const relacionesError = relacionesDe(errorRol);
-  const cambiaALider = rolSeleccionado === "LIDER_QA";
 
   const usuarioFueraDePagina =
     usuarioUrl.data && usuariosQuery.data && !usuariosQuery.data.items.some((u) => u.id === usuarioUrl.data!.id) ? usuarioUrl.data : null;
@@ -236,21 +193,6 @@ export function AdminUsuariosPage() {
                           <td>
                             <InsigniaRol rol={usuario.rol} />
                           </td>
-                          <td data-testid={`celulas-usuario-${usuario.id}`}>
-                            {usuario.rol !== "LIDER_QA" ? (
-                              "—"
-                            ) : usuario.celulasVigentes.length === 0 ? (
-                              <span className="badge badge-observacion">▲ Sin células</span>
-                            ) : (
-                              <ul className="chips" style={{ margin: 0 }}>
-                                {usuario.celulasVigentes.map((c) => (
-                                  <li className="chip" key={c.id}>
-                                    {c.nombre}
-                                  </li>
-                                ))}
-                              </ul>
-                            )}
-                          </td>
                           <td>
                             <InsigniaActivo activo={usuario.activo} />
                           </td>
@@ -262,19 +204,6 @@ export function AdminUsuariosPage() {
                               <button type="button" className="boton--enlace" onClick={() => abrirCambioRol(usuario)}>
                                 Cambiar rol
                               </button>
-                              {usuario.rol === "LIDER_QA" ? (
-                                <button
-                                  type="button"
-                                  className="boton--enlace"
-                                  data-testid={`boton-celulas-${usuario.id}`}
-                                  onClick={() => {
-                                    setCelulasVacio(false);
-                                    setUsuarioCelulas(usuario);
-                                  }}
-                                >
-                                  Células
-                                </button>
-                              ) : null}
                               <button type="button" className="boton--enlace" onClick={() => abrirCambioEstado(usuario)}>
                                 {usuario.activo ? "Desactivar" : "Activar"}
                               </button>
@@ -289,7 +218,7 @@ export function AdminUsuariosPage() {
       <div className="encabezado">
         <p className="etiqueta">Portal Administrador</p>
         <h1>Usuarios</h1>
-        <p>Registro, datos, rol, células y acceso de cada participante.</p>
+        <p>Registro, datos, rol y acceso de cada participante.</p>
       </div>
 
       {exito ? <MensajeExito mensaje={exito} onCerrar={() => setExito(null)} /> : null}
@@ -328,7 +257,6 @@ export function AdminUsuariosPage() {
                       <th scope="col">Nombre</th>
                       <th scope="col">Correo</th>
                       <th scope="col">Rol</th>
-                      <th scope="col">Células</th>
                       <th scope="col">Acceso</th>
                       <th scope="col">Acciones</th>
                     </tr>
@@ -408,7 +336,6 @@ export function AdminUsuariosPage() {
             ))}
           </select>
         </div>
-        {nuevoUsuario.rol === "LIDER_QA" ? <SelectorCelulas celulas={catalogo} seleccionadas={celulasNuevo} onChange={setCelulasNuevo} /> : null}
       </DialogoConfirmacion>
 
       {/* Edición */}
@@ -442,7 +369,7 @@ export function AdminUsuariosPage() {
         </div>
       </DialogoConfirmacion>
 
-      {/* Cambio de rol (con células si el nuevo rol es Líder QA) */}
+      {/* Cambio de rol */}
       <DialogoConfirmacion
         abierto={Boolean(usuarioCambioRol)}
         testId="dialogo-cambio-rol"
@@ -466,40 +393,19 @@ export function AdminUsuariosPage() {
             ))}
           </select>
         </div>
-        {cambiaALider ? <SelectorCelulas celulas={catalogo} seleccionadas={celulasRol} onChange={setCelulasRol} /> : null}
         {usuarioCambioRol && rolSeleccionado !== usuarioCambioRol.rol ? (
           <p role="status" data-testid="resumen-cambio-rol">
             Cambiará de {ETIQUETAS_ROL[usuarioCambioRol.rol]} a {ETIQUETAS_ROL[rolSeleccionado]}.
-            {cambiaALider ? ` Células que tendrá: ${celulasRol.length > 0 ? nombresCelulas(celulasRol) : "ninguna"}.` : ""}
           </p>
         ) : null}
         {relacionesError && usuarioCambioRol ? (
-          <MensajeRelaciones
-            usuario={usuarioCambioRol}
-            relaciones={relacionesError}
-            onQuitarCelulas={() => {
-              setCelulasVacio(true);
-              setUsuarioCelulas(usuarioCambioRol);
-              setUsuarioCambioRol(null);
-            }}
-          />
+          <MensajeRelaciones usuario={usuarioCambioRol} relaciones={relacionesError} />
         ) : errorRol ? (
           <p className="campo-error" role="alert" data-testid="error-cambio-rol">
             {textoErrorRol(errorRol)}
           </p>
         ) : null}
       </DialogoConfirmacion>
-
-      {/* Células del líder */}
-      <DialogoCelulasLider
-        usuario={usuarioCelulas}
-        vacioInicial={celulasVacio}
-        onCerrar={() => {
-          setUsuarioCelulas(null);
-          setCelulasVacio(false);
-        }}
-        onGuardado={setExito}
-      />
 
       {/* Activar / desactivar */}
       <DialogoConfirmacion

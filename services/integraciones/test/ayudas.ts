@@ -24,7 +24,6 @@ export const PERSONAS = {
   qe1: { id: '0e500000-0000-4000-8000-000000000002', nombre: 'Carla QE', rol: 'QE' },
   qe2: { id: '0e500000-0000-4000-8000-000000000003', nombre: 'Marcos QE', rol: 'QE' },
   ana1: { id: '0e500000-0000-4000-8000-000000000004', nombre: 'Ana Analista', rol: 'ANALISTA_QA' },
-  lid1: { id: '0e500000-0000-4000-8000-000000000005', nombre: 'Lidia Líder', rol: 'LIDER_QA' },
   aud1: { id: '0e500000-0000-4000-8000-000000000006', nombre: 'Aurelio Auditor', rol: 'AUDITOR' },
   inact1: { id: '0e500000-0000-4000-8000-000000000007', nombre: 'Ines Inactiva', rol: 'QE' },
   adm2: { id: '0e500000-0000-4000-8000-000000000008', nombre: 'Pablo Admin', rol: 'ADMINISTRADOR' },
@@ -176,7 +175,7 @@ export async function iniciarOrganizacionFalsa(): Promise<OrganizacionFalsa> {
         if (estado.accesoCaido) return enviar(500, { codigo: 'ERROR_INTERNO' });
         if (clave === undefined) return enviar(403, { codigo: 'ACCESO_DENEGADO' });
         const p = PERSONAS[clave];
-        return enviar(200, { usuarioId: p.id, rol: p.rol, activo: !inactivas.has(clave), ambito: { qeSupervisorId: null, analistasSupervisadosIds: [], celulasIds: [] } });
+        return enviar(200, { usuarioId: p.id, rol: p.rol, activo: !inactivas.has(clave), ambito: { qeSupervisorId: null, analistasSupervisadosIds: [] } });
       }
       if (estado.caida) return enviar(500, { codigo: 'ERROR_INTERNO' });
       if (clave === undefined) return enviar(403, { codigo: 'ACCESO_DENEGADO' });
@@ -395,7 +394,6 @@ function validarAsignacionFalsa(a: Record<string, unknown>, inactivas: Set<Clave
     analista: persona(claveAna, 'analistaId'),
     sprint: sprint === null || falla('sprintId') ? null : { id: sprint.id, nombre: sprint.nombre },
     sprintPropuesto,
-    celulaSinLiderActivo: celula !== null && celula.id === CELULA_A.id,
   };
 }
 

@@ -6,7 +6,8 @@ import { impedimentosCaidoEnOrganizacion, certificacionesCaidaEnImpedimentos, ty
 import { diasCalendario, hdu, imps, reiniciarFixtureE4, texto, uid, type ImpedimentoApi } from "../support/e4";
 
 /**
- * E4 · bloques de las 5 bandejas (D87), listados del QE, Líder, Administrador y Auditor, catálogo y candidatos,
+ * E4 · bloques de las 4 bandejas (D87), listados del QE, Administrador y Auditor, catálogo y candidatos (el Líder QA
+ * se retiró en D208 y el escalamiento va solo a Administradores: I3 está escalado a ADM1),
  * y valores absolutos del fixture (sección 7). El fixture se recarga antes del archivo y entre los casos que escriben.
  */
 test.describe.configure({ mode: "serial" });
@@ -28,8 +29,8 @@ interface Bandeja {
     escalados?: Lista;
   };
 }
-const TIPOS = { ana1: "analista", ana2: "analista", ana3: "analista", ana4: "analista", qe1: "qe", qe2: "qe", lid1: "lider", lid2: "lider", adm1: "admin", aud1: "auditor" } as const;
-const ESQUEMA = { analista: "BandejaAnalista", qe: "BandejaQe", lider: "BandejaLider", admin: "BandejaAdmin", auditor: "BandejaAuditor" } as const;
+const TIPOS = { ana1: "analista", ana2: "analista", ana3: "analista", ana4: "analista", qe1: "qe", qe2: "qe", adm1: "admin", aud1: "auditor" } as const;
+const ESQUEMA = { analista: "BandejaAnalista", qe: "BandejaQe", admin: "BandejaAdmin", auditor: "BandejaAuditor" } as const;
 
 async function bandeja(request: Parameters<typeof api.get>[0], clave: keyof typeof TIPOS, query = "", baseURL?: string) {
   const tipo = TIPOS[clave];
@@ -57,8 +58,6 @@ test.describe("E4 · valores absolutos de los contadores del fixture", () => {
     ana4: { impedimentosAbiertos: 0 },
     qe1: { impedimentosAbiertos: 2, impedimentosNuevos: 0, hduRiesgoAlto: 2 },
     qe2: { impedimentosAbiertos: 1, impedimentosNuevos: 1, hduRiesgoAlto: 0 },
-    lid1: { impedimentosAbiertos: 3, hduBloqueadas: 3, escaladosAMi: 1 },
-    lid2: { impedimentosAbiertos: 0, hduBloqueadas: 0, escaladosAMi: 0 },
     adm1: { impedimentosAbiertos: 3, hduBloqueadas: 3, hduRiesgoAlto: 2 },
     aud1: { impedimentosAbiertos: 3, hduBloqueadas: 3 },
   };
@@ -113,38 +112,24 @@ test.describe("E4 · bloques de bandeja (D87, D71)", () => {
     expect(solo.hdu!.datos!.items.map((f) => f.codigo.replace("E7-", "")).sort()).toEqual(["H1", "H6"]);
   });
 
-  test("[E4-F03#2] Líder: LID1 ve 3 impedimentos (el escalado a él primero), columnas Bloqueo y Riesgo, soloBloqueadas = H1, H3, H6; LID2 contadores 0 con lista vacía", async ({ request }) => {
-    const b = await bandeja(request, "lid1", "q=E7-H&tamanoPagina=100");
-    expect(codigos(b.impedimentos.lista)).toEqual(["H6", "H1", "H3"]);
-    expect(b.impedimentos.lista!.datos!.items[0]).toMatchObject({ escaladoAMi: true, estado: "ESCALADO" });
-    const por = Object.fromEntries(b.hdu!.datos!.items.map((f) => [f.codigo.replace("E7-", ""), f]));
-    expect(por.H1.bloqueo?.datos?.bloqueada).toBe(true);
-    expect(por.H1.riesgo?.datos?.nivelVigente).toBe("ALTO");
-    expect(por.H6.riesgo?.datos?.nivelVigente).toBe("MEDIO");
-    expect(por.H7.riesgo?.datos?.nivelVigente).toBeNull(); // Sin evaluar
-    const solo = await bandeja(request, "lid1", "q=E7-H&soloBloqueadas=true&tamanoPagina=100");
-    expect(solo.hdu!.datos!.items.map((f) => f.codigo.replace("E7-", "")).sort()).toEqual(["H1", "H3", "H6"]);
-    const l2 = await bandeja(request, "lid2");
-    expect(l2.impedimentos.lista).toMatchObject({ estado: "ok", datos: { total: 0, items: [] } });
-  });
-
-  test("[E4-F03#2] Administrador y Auditor: ADM1 no tiene escalados a él (lista vacía ok); el Auditor solo trae contadores", async ({ request }) => {
+  test("[E4-F03#2] Administrador y Auditor: ADM1 tiene escalado a él I3 (D208); el Auditor solo trae contadores", async ({ request }) => {
+    const i = await imps(request);
     const a = await bandeja(request, "adm1");
-    expect(a.impedimentos.escalados).toMatchObject({ estado: "ok", datos: { total: 0, items: [] } });
+    expect(a.impedimentos.escalados).toMatchObject({ estado: "ok", datos: { total: 1 } });
+    expect(a.impedimentos.escalados?.datos?.items.map((x) => x.id)).toEqual([i.I3.id]);
+    expect(a.impedimentos.escalados?.datos?.items[0]).toMatchObject({ escaladoAMi: true, estado: "ESCALADO" });
     const u = await bandeja(request, "aud1");
     expect(Object.keys(u.impedimentos)).toEqual(["contadores"]);
   });
 
-  test("[E4-F03#2] T11 (API): al escalar I2 a ADM1, su bandeja lista I2 en escalados y el contador de LID1 de escalados a él no cambia", async ({ request }) => {
+  test("[E4-F03#2] T11 (API): al escalar I2 a ADM1, su bandeja lista I2 junto a I3 en escalados, todos marcados como escalados a él", async ({ request }) => {
     const i = await imps(request);
     const adm1 = await uid(request, "adm1");
     const e = await api.post(request, `/v1/impedimentos/${i.I2.id}/escalar`, { token: await tokenE7("qe1"), body: { responsableId: adm1, comentario: "Se escala a Administración" } });
     expect(e.status).toBe(200);
     const a = await bandeja(request, "adm1");
-    expect(a.impedimentos.escalados?.datos?.items.map((x) => x.id)).toEqual([i.I2.id]);
-    expect(a.impedimentos.escalados?.datos?.items[0].escaladoAMi).toBe(true);
-    const l = await bandeja(request, "lid1");
-    expect(num(l.impedimentos.contadores.escaladosAMi)).toBe(1);
+    expect(a.impedimentos.escalados?.datos?.items.map((x) => x.id).sort()).toEqual([i.I2.id, i.I3.id].sort());
+    expect(a.impedimentos.escalados?.datos?.items.every((x) => x.escaladoAMi)).toBe(true);
     await reiniciarFixtureE4();
   });
 
@@ -167,16 +152,16 @@ test.describe("E4 · bloques de bandeja (D87, D71)", () => {
   });
 });
 
-test.describe("E4 · listados (QE, Líder, Administrador, Auditor) y catálogos", () => {
+test.describe("E4 · listados (QE, Administrador, Auditor) y catálogos", () => {
   const cods = (p: Pagina) => p.items.map((i) => i.hdu.codigo.replace("E7-", ""));
 
-  test("[E4-F02#1] T01: QE1 lista I2 (6 d, ALTO) e I3 (3 d, MEDIO, responsable LID1) con contadores 2/1/0; no están I1 ni I4; con incluirResueltos, I4 va última", async ({ request }) => {
+  test("[E4-F02#1] T01: QE1 lista I2 (6 d, ALTO) e I3 (3 d, MEDIO, responsable ADM1) con contadores 2/1/0; no están I1 ni I4; con incluirResueltos, I4 va última", async ({ request }) => {
     const r = await listar(request, "qe1");
     expect(r.status).toBe(200);
     expect(cumpleContrato("PaginaImpedimentos", r.body).errores).toEqual([]);
     expect(cods(r.body)).toEqual(["H1", "H6"]);
     expect(r.body.items.map((i) => [i.diasAbierto, i.riesgo.nivelVigente, i.estado])).toEqual([[6, "ALTO", "ABIERTO"], [3, "MEDIO", "ESCALADO"]]);
-    expect(r.body.items[1].responsable.nombre).toContain("LID1");
+    expect(r.body.items[1].responsable.nombre).toContain("ADM1");
     expect(r.body.contadores).toEqual({ abiertos: 2, escalados: 1, nuevos: 0 });
     const con = await listar(request, "qe1", "incluirResueltos=true");
     expect(cods(con.body)).toEqual(["H1", "H6", "H2"]);
@@ -206,11 +191,11 @@ test.describe("E4 · listados (QE, Líder, Administrador, Auditor) y catálogos"
     expect(cods((await listar(request, "qe1", "riesgo=ALTO")).body)).toEqual(["H1"]);
   });
 
-  test("[E4-F02#1] T09 (API): ANA1 recibe 403 en el listado del QE; LID1, ADM1 y AUD1 reciben su ámbito (3 / 3 / 5 con resueltos), solo lectura", async ({ request }) => {
+  test("[E4-F02#1] T09 (API): ANA1 recibe 403 en el listado del QE; ADM1 y AUD1 reciben su ámbito (3 / 5 con resueltos), solo lectura", async ({ request }) => {
     const a = await listar(request, "ana1");
     expect(a.status).toBe(403);
     expect(a.body).toMatchObject({ codigo: "ACCESO_DENEGADO" });
-    for (const [clave, esperado] of [["lid1", 3], ["adm1", 3], ["aud1", 3]] as const) {
+    for (const [clave, esperado] of [["adm1", 3], ["aud1", 3]] as const) {
       const r = await listar(request, clave);
       expect(r.status, clave).toBe(200);
       expect(r.body.total, clave).toBe(esperado);
@@ -242,35 +227,32 @@ test.describe("E4 · listados (QE, Líder, Administrador, Auditor) y catálogos"
     expect(cerradas.body.items[0].riesgo.nivelVigente).toBeNull();
     // El Analista no ve la pestaña: 403.
     expect((await riesgo("ana1")).status).toBe(403);
-    // El Líder, el Administrador y el Auditor sí leen (API); solo lectura.
-    for (const clave of ["lid1", "adm1", "aud1"] as const) {
+    // El Administrador y el Auditor sí leen (API); solo lectura.
+    for (const clave of ["adm1", "aud1"] as const) {
       const r = await riesgo(clave);
       expect(r.status, clave).toBe(200);
       expect(r.body.items.every((i) => i.soloLectura), clave).toBe(true);
     }
   });
 
-  test("[E4-F01#1] candidatos y catálogo: REGISTRO de H1 = QE1 (una vez, preseleccionado); ESCALAMIENTO de H1/H3/H6 = LID1 y ADM1, de H8 solo ADM1; el catálogo trae los 9 tipos", async ({ request }) => {
+  test("[E4-F01#1] candidatos y catálogo: REGISTRO de H1 = QE1 (una vez, preseleccionado); ESCALAMIENTO de H1/H3/H6/H8 = solo Administradores (D208); el catálogo trae los 9 tipos", async ({ request }) => {
     const h = await hdu(request);
-    const [qe1, lid1, adm1] = [await uid(request, "qe1"), await uid(request, "lid1"), await uid(request, "adm1")];
+    const [qe1, adm1] = [await uid(request, "qe1"), await uid(request, "adm1")];
     const reg = await api.get<{ items: Array<{ id: string }>; preseleccionadoId: string | null }>(request, `/v1/hdu/${h.H1.id}/impedimentos/responsables?proposito=REGISTRO`, { token: await tokenE7("ana1") });
     expect(reg.status).toBe(200);
     expect(cumpleContrato("CandidatosResponsable", reg.body).errores).toEqual([]);
     expect(reg.body.items.map((i) => i.id)).toEqual([qe1]);
     expect(reg.body.preseleccionadoId).toBe(qe1);
-    for (const x of [h.H1, h.H3, h.H6]) {
+    for (const x of [h.H1, h.H3, h.H6, h.H8]) {
       const clave: ClaveE7 = x === h.H3 ? "qe2" : "qe1";
       const esc = await api.get<{ items: Array<{ id: string; rol: string }> }>(request, `/v1/hdu/${x.id}/impedimentos/responsables?proposito=ESCALAMIENTO`, { token: await tokenE7(clave) });
-      // Con la semilla MVP encima puede haber más Administradores (p. ej. Patricia): deben estar LID1 y ADM1 y ningún otro rol.
-      const ids = esc.body.items.map((i) => i.id);
-      expect(ids, x.codigo).toEqual(expect.arrayContaining([lid1, adm1]));
-      expect(esc.body.items.every((i) => ["LIDER_QA", "ADMINISTRADOR"].includes((i as { rol: string }).rol)), x.codigo).toBe(true);
+      expect(esc.status, x.codigo).toBe(200);
+      // Con la semilla MVP encima puede haber más Administradores (p. ej. Patricia): debe estar ADM1 y ningún otro rol.
+      expect(esc.body.items.map((i) => i.id), x.codigo).toContain(adm1);
+      expect(esc.body.items.every((i) => i.rol === "ADMINISTRADOR"), x.codigo).toBe(true);
     }
-    const h8 = await api.get<{ items: Array<{ id: string; rol: string }> }>(request, `/v1/hdu/${h.H8.id}/impedimentos/responsables?proposito=ESCALAMIENTO`, { token: await tokenE7("qe1") });
-    expect(h8.body.items.map((i) => i.id)).toContain(adm1);
-    expect(h8.body.items.every((i) => (i as { rol: string }).rol === "ADMINISTRADOR")).toBe(true); // CEL-C no tiene líder
     // Solo el Analista asignado y el QE responsable consultan candidatos.
-    for (const clave of ["lid1", "aud1", "adm1", "qe2"] as const) {
+    for (const clave of ["aud1", "adm1", "qe2"] as const) {
       expect((await api.get(request, `/v1/hdu/${h.H1.id}/impedimentos/responsables?proposito=REGISTRO`, { token: await tokenE7(clave) })).status, clave).toBe(403);
     }
     const cat = await api.get<{ items: Array<{ codigo: string }> }>(request, "/v1/catalogos/tipos-impedimento", { token: await tokenE7("ana4") });
@@ -284,7 +266,6 @@ test.describe("E4 · listados (QE, Líder, Administrador, Auditor) y catálogos"
     const esperado: Record<string, { puedeRegistrar: boolean; puedeGestionar: boolean; puedeVerRiesgo: boolean; puedeFijarRiesgo: boolean } | 403> = {
       ana1: { puedeRegistrar: true, puedeGestionar: false, puedeVerRiesgo: false, puedeFijarRiesgo: false },
       qe1: { puedeRegistrar: true, puedeGestionar: true, puedeVerRiesgo: true, puedeFijarRiesgo: true },
-      lid1: { puedeRegistrar: false, puedeGestionar: false, puedeVerRiesgo: true, puedeFijarRiesgo: false },
       adm1: { puedeRegistrar: false, puedeGestionar: false, puedeVerRiesgo: true, puedeFijarRiesgo: false },
       aud1: { puedeRegistrar: false, puedeGestionar: false, puedeVerRiesgo: true, puedeFijarRiesgo: false },
       qe2: 403,
@@ -326,8 +307,8 @@ test.describe("E4 · fuentes caídas en las bandejas y listados (D46, D87, regla
       expect(cumpleContrato("BandejaQe", b).errores).toEqual([]);
     });
 
-    test("[E4-F01#3] Analista, Líder, Administrador y Auditor: contadores de impedimentos indisponibles; con soloBloqueadas la lista de HDU queda indisponible (no vacía)", async ({ request }) => {
-      for (const clave of ["ana1", "lid1", "adm1", "aud1"] as const) {
+    test("[E4-F01#3] Analista, Administrador y Auditor: contadores de impedimentos indisponibles; con soloBloqueadas la lista de HDU queda indisponible (no vacía)", async ({ request }) => {
+      for (const clave of ["ana1", "adm1", "aud1"] as const) {
         const b = await bandeja(request, clave, "", pila.gatewayUrl);
         for (const [k, c] of Object.entries(b.impedimentos.contadores)) {
           expect(c.estado, `${clave}.${k}`).toBe("indisponible");
@@ -335,7 +316,7 @@ test.describe("E4 · fuentes caídas en las bandejas y listados (D46, D87, regla
         }
         expect(cumpleContrato(ESQUEMA[TIPOS[clave]], b).errores, clave).toEqual([]);
       }
-      for (const clave of ["ana1", "lid1"] as const) {
+      for (const clave of ["ana1"] as const) {
         const s = await bandeja(request, clave, "soloBloqueadas=true", pila.gatewayUrl);
         expect(s.hdu?.estado, `${clave} soloBloqueadas`).toBe("indisponible");
         expect(s.hdu?.datos).toBeUndefined();

@@ -9,7 +9,6 @@ export function solicitanteDe(identidad: Identidad | undefined, acceso: Resoluci
   return {
     usuarioId: acceso.usuarioId,
     rol: acceso.rol,
-    celulasIds: acceso.ambito.celulasIds,
     contexto: { token: identidad.token, traceId: obtenerTraceId(solicitud as never) },
   };
 }

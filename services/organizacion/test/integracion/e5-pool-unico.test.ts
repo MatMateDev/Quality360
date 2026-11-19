@@ -9,7 +9,6 @@ import { IntegracionesAplicacion, type SolicitudUpsert } from '../../src/aplicac
 import type { FilaUpsert } from '../../src/dominio/reglas/upsert-hdu.js';
 import type { Actor } from '../../src/dominio/tipos.js';
 import { PrismaService } from '../../src/infraestructura/prisma/prisma.service.js';
-import { CelulaLiderPrismaRepositorio } from '../../src/infraestructura/repositorios/celula-lider.prisma.repositorio.js';
 import { HduPrismaRepositorio } from '../../src/infraestructura/repositorios/hdu.prisma.repositorio.js';
 import { SupervisionPrismaRepositorio } from '../../src/infraestructura/repositorios/supervision.prisma.repositorio.js';
 import { CatalogoPrismaRepositorio } from '../../src/infraestructura/repositorios/catalogo.prisma.repositorio.js';
@@ -43,7 +42,6 @@ const aplicacion = new IntegracionesAplicacion(
   new IntegracionHduPrismaRepositorio(prisma),
   new HduPrismaRepositorio(prisma),
   new SupervisionPrismaRepositorio(prisma),
-  new CelulaLiderPrismaRepositorio(prisma),
 );
 const corrida = randomUUID();
 const sufijo = corrida.replaceAll('-', '').slice(0, 12);

@@ -149,9 +149,9 @@ test.describe("E4-B03 · Riesgo", () => {
     expect(await filasRiesgo(h.H1.id)).toBe(antes);
   });
 
-  test("[E4-B03#3] T09 (negativo): PUT 403 para QE2, ANA1, LID1, AUD1 y ADM1; GET 403 para QE2 y ANA1 y 200 para LID1, AUD1 y ADM1; sin token 401", async ({ request }) => {
+  test("[E4-B03#3] T09 (negativo): PUT 403 para QE2, ANA1, AUD1 y ADM1; GET 403 para QE2 y ANA1 y 200 para AUD1 y ADM1; sin token 401", async ({ request }) => {
     const h = await hdu(request);
-    for (const clave of ["qe2", "ana1", "lid1", "aud1", "adm1"] as const) {
+    for (const clave of ["qe2", "ana1", "aud1", "adm1"] as const) {
       const r = await api.put<{ codigo: string }>(request, `/v1/hdu/${h.H1.id}/riesgo`, { token: await tokenE7(clave), body: { nivel: "ALTO", justificacion: "Intento no autorizado" } });
       expect(r.status, `PUT ${clave}`).toBe(403);
       expect(r.body.codigo).toBe("ACCESO_DENEGADO");
@@ -161,7 +161,7 @@ test.describe("E4-B03 · Riesgo", () => {
       expect(r.status, `GET ${clave}`).toBe(403);
       expect(r.body.codigo).toBe("ACCESO_DENEGADO");
     }
-    for (const clave of ["lid1", "aud1", "adm1"] as const) {
+    for (const clave of ["aud1", "adm1"] as const) {
       const r = await api.get<Riesgo>(request, `/v1/hdu/${h.H1.id}/riesgo`, { token: await tokenE7(clave) });
       expect(r.status, `GET ${clave}`).toBe(200);
       expect(r.body.permisos.puedeFijarRiesgo, `${clave} no puede fijar`).toBe(false);

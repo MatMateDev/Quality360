@@ -292,7 +292,7 @@ describe('E5-B06#6, #7, #9 · leer el detalle, retención y consulta anterior', 
     const llamadasJira = m.jira.llamadas.length;
     const llamadasOrg = org.llamadas.filter((l) => !l.endsWith('/v1/interno/acceso')).length;
     assert.equal((await detalleDe(id, itemId, null)).status, 401);
-    for (const persona of ['qe1', 'ana1', 'lid1', 'aud1'] as const) assert.equal((await detalleDe(id, itemId, persona)).status, 403, persona);
+    for (const persona of ['qe1', 'ana1', 'aud1'] as const) assert.equal((await detalleDe(id, itemId, persona)).status, 403, persona);
     assert.equal((await detalleDe(id, itemId, 'adm2')).status, 200, 'otro Administrador también lo lee');
     assert.equal(m.jira.llamadas.length, llamadasJira);
     assert.equal(org.llamadas.filter((l) => !l.endsWith('/v1/interno/acceso')).length, llamadasOrg);

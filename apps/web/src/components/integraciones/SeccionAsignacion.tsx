@@ -1,6 +1,6 @@
 import { Link } from "react-router-dom";
 import { esIndisponible } from "@/api/integraciones";
-import { TEXTO_NO_SE_PUDO_GUARDAR, TEXTO_SIN_LIDER, TEXTO_SIN_ANALISTAS, TEXTO_SPRINT_JIRA_AUSENTE, textoAnalistaAutomatico, textoCreada, textoEligeAnalista, textoFalta } from "@/lib/mensajesAsignacion";
+import { TEXTO_NO_SE_PUDO_GUARDAR, TEXTO_SIN_ANALISTAS, TEXTO_SPRINT_JIRA_AUSENTE, textoAnalistaAutomatico, textoCreada, textoEligeAnalista, textoFalta } from "@/lib/mensajesAsignacion";
 import { AlertaHduYaAsignada } from "./AlertaHduYaAsignada";
 import { SelectorAsignacion } from "./SelectorAsignacion";
 import type { FilaAsignacion } from "./useAsignacionFila";
@@ -173,11 +173,6 @@ export function SeccionAsignacion({ fila, origen, soloLectura = false, conAlerta
           {item.advertencias.includes("SPRINT_NO_ENCONTRADO") && celulaId ? (
             <span className="chip-advertencia" data-testid="aviso-sprint-no-encontrado">
               <span aria-hidden="true">!</span> {TEXTO_SPRINT_JIRA_AUSENTE}
-            </span>
-          ) : null}
-          {item.avisoSinLider ? (
-            <span className="mensaje-aviso" role="note" data-testid="aviso-sin-lider">
-              <span aria-hidden="true">!</span> {TEXTO_SIN_LIDER}
             </span>
           ) : null}
         </p>

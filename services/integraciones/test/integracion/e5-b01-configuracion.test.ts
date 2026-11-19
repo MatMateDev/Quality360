@@ -343,12 +343,12 @@ describe('E5-B01 · validaciones', () => {
 });
 
 describe('E5-B01#3 · solo el Administrador', () => {
-  it('E5-B01-T08 QE, Analista, Líder y Auditor: 403 ACCESO_DENEGADO en PUT, GET y probar, con cuerpo idéntico; sin token 401; nada cambia', async () => {
+  it('E5-B01-T08 QE, Analista y Auditor: 403 ACCESO_DENEGADO en PUT, GET y probar, con cuerpo idéntico; sin token 401; nada cambia', async () => {
     m = await montar({ org });
     await guardarConfiguracion(m);
     const antes = await filaConfiguracion();
     const cuerpos = new Set<string>();
-    for (const persona of ['qe1', 'ana1', 'lid1', 'aud1'] as const) {
+    for (const persona of ['qe1', 'ana1', 'aud1'] as const) {
       for (const [metodo, ruta, cuerpo] of [
         ['put', '/v1/integraciones/jira/configuracion', configuracionBase({ proyecto: 'BIG' })],
         ['get', '/v1/integraciones/jira/configuracion', undefined],

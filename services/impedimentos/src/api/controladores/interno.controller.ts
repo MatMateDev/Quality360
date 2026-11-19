@@ -11,7 +11,7 @@ import { solicitanteDe } from '../solicitante.js';
 import { uuidDeRuta } from '../validacion/cuerpos.js';
 import { leerEvaluacion } from '../validacion/consultas.js';
 
-const ROLES_TODOS = ['ADMINISTRADOR', 'QE', 'ANALISTA_QA', 'LIDER_QA', 'AUDITOR'] as const;
+const ROLES_TODOS = ['ADMINISTRADOR', 'QE', 'ANALISTA_QA', 'AUDITOR'] as const;
 
 @Controller('v1/interno')
 export class InternoController {

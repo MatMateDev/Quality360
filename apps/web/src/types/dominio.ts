@@ -75,10 +75,8 @@ export type BloqueListaHdu = components["schemas"]["BloqueListaHdu"];
 export type BandejaAnalista = components["schemas"]["BandejaAnalista"];
 export type BandejaQe = components["schemas"]["BandejaQe"];
 export type AccionPendienteQe = components["schemas"]["AccionPendienteQe"];
-export type BandejaLider = components["schemas"]["BandejaLider"];
 export type BandejaAdmin = components["schemas"]["BandejaAdmin"];
 export type BandejaAuditor = components["schemas"]["BandejaAuditor"];
-export type ResumenCelulaLider = components["schemas"]["ResumenCelulaLider"];
 export type PendienteConfiguracion = components["schemas"]["PendienteConfiguracion"];
 export type RegistroAuditoriaUsuario = components["schemas"]["RegistroAuditoriaUsuario"];
 export type PaginaAuditoriaUsuarios = components["schemas"]["PaginaAuditoriaUsuarios"];
@@ -86,19 +84,17 @@ export type PaginaBitacoraGlobal = components["schemas"]["PaginaBitacoraGlobal"]
 export type EventoBitacoraGlobal = components["schemas"]["EventoBitacoraGlobal"];
 export type PaginaCertificadosAuditoria = components["schemas"]["PaginaCertificadosAuditoria"];
 export type CertificadoAuditoria = components["schemas"]["CertificadoAuditoria"];
-export type CelulasLider = components["schemas"]["CelulasLider"];
-export type SolicitudCelulasLider = components["schemas"]["SolicitudCelulasLider"];
 export type ErrorRelacionesIncompatibles = components["schemas"]["ErrorRelacionesIncompatibles"];
 
 /** Reasignación del QE responsable de una HDU (E7-B05, D54, solo Administrador). */
 export type ReasignacionQeResponsable = components["schemas"]["ReasignacionQeResponsable"];
 export type ResultadoReasignacionQe = components["schemas"]["ResultadoReasignacionQe"];
 
-/** Orden de los selectores de rol (diseño E7 §3.1). */
-export const ROLES_CATALOGO: Rol[] = ["ANALISTA_QA", "QE", "LIDER_QA", "ADMINISTRADOR", "AUDITOR"];
+/** Orden de los selectores de rol (diseño E7 §3.1; el Líder QA se retiró, D208). */
+export const ROLES_CATALOGO: Rol[] = ["ANALISTA_QA", "QE", "ADMINISTRADOR", "AUDITOR"];
 
 /** Roles de solo lectura (D32): sin ninguna acción de escritura en el portal. */
-export const ROLES_SOLO_LECTURA: Rol[] = ["LIDER_QA", "AUDITOR"];
+export const ROLES_SOLO_LECTURA: Rol[] = ["AUDITOR"];
 
 export const ESTADOS_HDU: EstadoHdu[] = [
   "PENDIENTE",
@@ -121,7 +117,6 @@ export const ETIQUETAS_ROL: Record<Rol, string> = {
   ADMINISTRADOR: "Administrador",
   QE: "QE",
   ANALISTA_QA: "Analista QA",
-  LIDER_QA: "Líder QA",
   AUDITOR: "Auditor",
 };
 
@@ -165,7 +160,8 @@ export const ETIQUETAS_OPERACION: Record<OperacionAuditoriaUsuarios, string> = {
   CAMBIAR_ROL: "Cambio de rol",
   ASIGNAR_SUPERVISOR: "Asignación de supervisor",
   CAMBIAR_SUPERVISOR: "Cambio de supervisor",
-  ASIGNAR_CELULAS_LIDER: "Asignación de células",
+  // Solo aparece en registros anteriores a D208 (retiro del rol Líder QA).
+  ASIGNAR_CELULAS_LIDER: "Células de Líder QA (rol retirado)",
   EXPORTAR: "Exportación",
 };
 
@@ -193,8 +189,6 @@ export function rutaPortal(rol: Rol): string {
       return "/admin";
     case "QE":
       return "/qe";
-    case "LIDER_QA":
-      return "/lider";
     case "AUDITOR":
       return "/auditor";
     default:
@@ -206,7 +200,6 @@ const ROL_POR_PORTAL: Record<string, Rol> = {
   admin: "ADMINISTRADOR",
   qe: "QE",
   qa: "ANALISTA_QA",
-  lider: "LIDER_QA",
   auditor: "AUDITOR",
 };
 
@@ -255,7 +248,6 @@ export type PaginaGestionImpedimentos = components["schemas"]["PaginaGestionImpe
 export type ItemImpedimentoBandeja = components["schemas"]["ItemImpedimentoBandeja"];
 export type BloqueListaImpedimentos = components["schemas"]["BloqueListaImpedimentos"];
 export type BloqueBloqueoFila = components["schemas"]["BloqueBloqueoFila"];
-export type BloqueRiesgoFila = components["schemas"]["BloqueRiesgoFila"];
 
 export const TIPOS_IMPEDIMENTO: TipoImpedimento[] = [
   "AMBIENTE",

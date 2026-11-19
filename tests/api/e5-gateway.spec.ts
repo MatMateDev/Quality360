@@ -16,12 +16,12 @@ test.afterAll(async () => {
 });
 
 test.describe("E5 · Gateway hacia Integraciones", () => {
-  test("[E5-GW#1] el gateway real ya no responde 501 en /v1/integraciones/*: 200 para el Administrador, 401 sin token, 403 para el Líder", async ({ request }) => {
+  test("[E5-GW#1] el gateway real ya no responde 501 en /v1/integraciones/*: 200 para el Administrador, 401 sin token, 403 para el Analista", async ({ request }) => {
     for (const ruta of ["/v1/integraciones/estado", "/v1/integraciones/ejecuciones", "/v1/integraciones/jira/configuracion"]) {
       const r = await api.get<any>(request, ruta, { token: await tk("adm1"), baseURL: GATEWAY_REAL });
       expect(r.status, ruta).toBe(200);
       expect((await api.get<any>(request, ruta, { baseURL: GATEWAY_REAL })).status, `${ruta} sin token`).toBe(401);
-      expect((await api.get<any>(request, ruta, { token: await tk("lid1"), baseURL: GATEWAY_REAL })).status, `${ruta} líder`).toBe(403);
+      expect((await api.get<any>(request, ruta, { token: await tk("ana1"), baseURL: GATEWAY_REAL })).status, `${ruta} analista`).toBe(403);
     }
     const nueva = await api.get<any>(request, "/v1/integraciones/ruta-que-no-existe", { token: await tk("adm1"), baseURL: GATEWAY_REAL });
     expect(nueva.status).not.toBe(501);

@@ -6,6 +6,8 @@ Base visual revisada (estado actual del portal): `apps/web/src/styles/tokens.css
 
 Notación: «cert.» = elemento ya certificado, **no se modifica** (texto, `data-testid`, ruta).
 
+> **Retiro del rol Líder QA (D208, 2026-11-18).** Quedan retirados la bandeja `/lider` (2.3), la columna, la acción y el diálogo de células de la sección 3 (3.3) y los contadores y pendientes de líder y de célula de la bandeja del Administrador. `?usuario=<id>` solo resalta la fila. Detalle en `docs/arquitectura/decisiones-mvp.md` (D208).
+
 ---
 
 ## 1. Principios y patrón común de bandeja
@@ -298,6 +300,8 @@ La bandeja no ejecuta ninguna acción. Nombre accesible: «Aprobar entregables d
 
 ### 2.3 Líder QA · `/lider` (E7-F04) — solo lectura
 
+> **Retirada en D208.**
+
 **Wireframe 1280**
 
 ```
@@ -507,6 +511,8 @@ Se reutiliza `DialogoConfirmacion`. El flujo ocurre en un solo diálogo, con con
 - El resumen previo lista **lo que cambiará**: rol, células agregadas y células quitadas. Es la confirmación explícita de lo que el servidor aplicará.
 
 ### 3.3 Diálogo «Células de {nombre}» (acción «Células» y `?usuario=`)
+
+> **Retirado en D208.** `?usuario=<id>` solo resalta la fila del usuario.
 
 ```
 ┌ Células de Luis Soto ────────────────────────────────────┐

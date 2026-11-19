@@ -84,9 +84,9 @@ describe('Reasignar el QE responsable [E7-B05#1]', () => {
 });
 
 describe('Solo el Administrador [E7-B05#2]', () => {
-  it('[E7-B05-T02] el QE (incluso el responsable), el analista, el Líder y el Auditor reciben 403 y nada cambia', async () => {
+  it('[E7-B05-T02] el QE (incluso el responsable), el analista y el Auditor reciben 403 y nada cambia', async () => {
     const antes = (await prisma.hdu.findUniqueOrThrow({ where: { id: f.h.H3.id } })).qeResponsableId;
-    for (const usuario of [f.qe2, f.qe1, f.ana3, f.lid1, f.aud1]) {
+    for (const usuario of [f.qe2, f.qe1, f.ana3, f.aud1]) {
       const respuesta = await http().put(ruta(f.h.H3.id)).set(como(usuario)).send({ qeResponsableId: f.qe1.id, motivo: 'Intento no autorizado' });
       assert.equal(respuesta.status, 403, usuario.nombre);
       assert.equal(respuesta.body.codigo, 'ACCESO_DENEGADO');
@@ -104,7 +104,7 @@ describe('Destino inválido o HDU cerrada [E7-B05#3]', () => {
   const reasignar = (hduId: string, cuerpo: object) => http().put(ruta(hduId)).set(como(f.adm1)).send(cuerpo);
 
   it('[E7-B05-T03] un destino que no es QE, está inactivo o no existe se rechaza con 422 QE_INVALIDO', async () => {
-    for (const destino of [f.ana1.id, f.lid1.id, f.inact1.id, '00000000-0000-4000-8000-0000000000bb']) {
+    for (const destino of [f.ana1.id, f.aud1.id, f.inact1.id, '00000000-0000-4000-8000-0000000000bb']) {
       const respuesta = await reasignar(f.h.H3.id, { qeResponsableId: destino, motivo: 'Destino inválido' });
       assert.equal(respuesta.status, 422, destino);
       assert.equal(respuesta.body.codigo, 'QE_INVALIDO');
@@ -142,11 +142,11 @@ describe('GET /v1/catalogos/personas [D54]', () => {
     const inactivos = await http().get('/v1/catalogos/personas?rol=QE&activo=false').set(como(f.adm1)).expect(200);
     assert.deepEqual(inactivos.body.items.map((p: { nombre: string }) => p.nombre), ['INACT1']);
     const todos = await http().get('/v1/catalogos/personas').set(como(f.adm1)).expect(200);
-    assert.equal(todos.body.items.length, 10);
+    assert.equal(todos.body.items.length, 8); // 8 activos del fixture E7 tras D208 (sin LID1 ni LID2)
     await http().get('/v1/catalogos/personas?rol=SUPERVISOR').set(como(f.adm1)).expect(400);
   });
 
   it('solo el Administrador lo consulta: trae correos', async () => {
-    for (const usuario of [f.qe1, f.ana1, f.lid1, f.aud1]) await http().get('/v1/catalogos/personas').set(como(usuario)).expect(403);
+    for (const usuario of [f.qe1, f.ana1, f.aud1]) await http().get('/v1/catalogos/personas').set(como(usuario)).expect(403);
   });
 });

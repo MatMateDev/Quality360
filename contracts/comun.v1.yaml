@@ -33,14 +33,14 @@ info:
     | 400 | `VALIDACION`: esquema, obligatorios, formato o valor fuera de catálogo. `detalles[]` indica cada campo. |
     | 401 | `NO_AUTENTICADO` (sin token o token inválido) o `SESION_EXPIRADA` (token vencido). |
     | 403 | `ACCESO_DENEGADO`: rol no permitido, usuario inactivo o recurso fuera del ámbito. Mensaje genérico (D12). |
-    | 404 | `NO_ENCONTRADO`: solo en recursos administrativos. Para QE, Analista QA y Líder QA, una HDU inexistente responde 403 igual que una fuera de ámbito. |
+    | 404 | `NO_ENCONTRADO`: solo en recursos administrativos. Para QE y Analista QA, una HDU inexistente responde 403 igual que una fuera de ámbito. |
     | 409 | Conflicto con el estado actual: duplicados, transición inválida, cierre rechazado, último administrador, relaciones incompatibles, rol incompatible. |
     | 422 | Regla de negocio sobre datos bien formados: motivo requerido, supervisión inválida, analista fuera del equipo, catálogo inexistente, exportación que excede el límite. |
 
-    ## Roles de solo lectura (E7, D32)
+    ## Rol de solo lectura (E7, D32)
 
-    `LIDER_QA` y `AUDITOR` nunca figuran en `x-roles` de una operación que
-    modifica datos: «denegar por defecto». Toda operación nueva que escriba
+    `AUDITOR` nunca figura en `x-roles` de una operación que modifica
+    datos: «denegar por defecto». El rol `LIDER_QA` se retiró (D208). Toda operación nueva que escriba
     debe listar explícitamente sus roles. Las exportaciones del Auditor son
     `GET` y solo escriben su propio registro de auditoría.
     | 429 | `DEMASIADAS_SOLICITUDES` (límite de tasa del gateway). |
@@ -69,10 +69,10 @@ components:
       type: string
       description: |
         Catálogo cerrado de roles (D28). Un rol por usuario. El rol vigente se
-        lee siempre desde Organización, nunca desde el token (D4). `LIDER_QA` y
-        `AUDITOR` son de solo lectura (D32): ninguna operación que modifica
-        datos los incluye en `x-roles`.
-      enum: [ADMINISTRADOR, QE, ANALISTA_QA, LIDER_QA, AUDITOR]
+        lee siempre desde Organización, nunca desde el token (D4). `AUDITOR`
+        es de solo lectura (D32): ninguna operación que modifica datos lo
+        incluye en `x-roles`. `LIDER_QA` se retiró del catálogo (D208).
+      enum: [ADMINISTRADOR, QE, ANALISTA_QA, AUDITOR]
     EstadoHdu:
       type: string
       description: |
@@ -113,8 +113,7 @@ components:
         | `CORREO_DUPLICADO` | 409 | Ya existe un usuario con ese correo. |
         | `CODIGO_HDU_DUPLICADO` | 409 | Ya existe una HDU con ese identificador. |
         | `ULTIMO_ADMINISTRADOR` | 409 | La plataforma debe conservar al menos un administrador activo. |
-        | `RELACIONES_INCOMPATIBLES` | 409 | Resuelve las relaciones de supervisión antes de continuar. (Con HDU abiertas o células vigentes, el mensaje las nombra; ver `ErrorRelacionesIncompatibles`, D31, D40, D43.) |
-        | `ROL_INCOMPATIBLE` | 409 | El usuario no tiene el rol Líder QA. |
+        | `RELACIONES_INCOMPATIBLES` | 409 | Resuelve las relaciones de supervisión antes de continuar. (Con HDU abiertas, el mensaje las nombra; ver `ErrorRelacionesIncompatibles`, D40, D43.) |
         | `TRANSICION_INVALIDA` | 409 | La HDU no puede pasar a ese estado. (En impedimentos: «Un impedimento resuelto solo puede reabrirse» o «El impedimento ya cambió de estado», ver `ErrorTransicionImpedimento`.) |
         | `CHECKLIST_INCOMPLETO` | 409 | No se puede cerrar la HDU: el checklist de entregables está incompleto. |
         | `CHECKLIST_NO_DISPONIBLE` | 409 | No se puede cerrar la HDU: el checklist de entregables no está disponible para verificarse. |
@@ -178,7 +177,6 @@ components:
         - CODIGO_HDU_DUPLICADO
         - ULTIMO_ADMINISTRADOR
         - RELACIONES_INCOMPATIBLES
-        - ROL_INCOMPATIBLE
         - TRANSICION_INVALIDA
         - CHECKLIST_INCOMPLETO
         - CHECKLIST_NO_DISPONIBLE
@@ -344,7 +342,7 @@ components:
           properties:
             relaciones:
               type: object
-              required: [analistasVigentes, supervisorVigente, hduAbiertas, celulasVigentes]
+              required: [analistasVigentes, supervisorVigente, hduAbiertas]
               properties:
                 hduAbiertas:
                   type: object
@@ -364,11 +362,6 @@ components:
                       maxItems: 20
                       items:
                         $ref: '#/components/schemas/HduReferencia'
-                celulasVigentes:
-                  type: array
-                  description: Células vigentes de un Líder QA, que deben quitarse antes de cambiarle el rol (D31).
-                  items:
-                    $ref: '#/components/schemas/CatalogoRef'
                 analistasVigentes:
                   type: array
                   description: Analistas que el QE supervisa hoy y que deben reasignarse.
@@ -861,7 +854,7 @@ components:
           $ref: '#/components/schemas/Rol'
     Usuario:
       type: object
-      required: [id, nombre, correo, rol, activo, supervisorVigente, analistasVigentes, celulasVigentes, creadoEn, actualizadoEn]
+      required: [id, nombre, correo, rol, activo, supervisorVigente, analistasVigentes, creadoEn, actualizadoEn]
       additionalProperties: false
       properties:
         id:
@@ -884,11 +877,6 @@ components:
           type: integer
           minimum: 0
           description: Analistas que supervisa hoy. Solo aplica a `QE`; 0 para otros roles.
-        celulasVigentes:
-          type: array
-          description: Células vigentes si el rol es `LIDER_QA`, ordenadas por nombre; vacío para otros roles (D30, D44).
-          items:
-            $ref: '#/components/schemas/CatalogoRef'
         creadoEn:
           $ref: '#/components/schemas/FechaHora'
         actualizadoEn:
@@ -929,8 +917,6 @@ components:
           description: Se normaliza a minúsculas. Único sin distinguir mayúsculas.
         rol:
           $ref: '#/components/schemas/Rol'
-        celulaIds:
-          $ref: '#/components/schemas/CelulaIdsLider'
     ActualizacionUsuario:
       type: object
       description: Cambia datos o estado de acceso. El rol se cambia con `PUT /v1/usuarios/{id}/rol`.
@@ -952,29 +938,13 @@ components:
     CambioRol:
       type: object
       description: |
-        Cambio de rol atómico (D42). Con `rol: LIDER_QA`, `celulaIds` fija sus
-        células vigentes en la misma transacción que el rol: o se aplica todo o
-        nada. Omitido o vacío = Líder sin células (permitido, E7-F07#2). Si el
-        usuario ya es Líder QA, `celulaIds` reemplaza sus células igual que
-        `PUT /v1/usuarios/{id}/celulas-lider`.
+        Cambio de rol atómico (D42): el rol y su auditoría se aplican en una
+        transacción, o no se aplica nada.
       required: [rol]
       additionalProperties: false
       properties:
         rol:
           $ref: '#/components/schemas/Rol'
-        celulaIds:
-          $ref: '#/components/schemas/CelulaIdsLider'
-    CelulaIdsLider:
-      type: array
-      description: |
-        Células a cargo de un Líder QA (D30, D42). Solo se acepta con
-        `rol: LIDER_QA`; con otro rol y una lista no vacía, 400 `VALIDACION`
-        con `{campo: celulaIds, codigo: NO_PERMITIDO}`. Una célula inexistente,
-        422 `CATALOGO_INVALIDO` con `{campo: celulaIds[i], codigo: NO_EXISTE}`.
-      uniqueItems: true
-      maxItems: 50
-      items:
-        $ref: '#/components/schemas/Uuid'
 
     # ------------------------------------------------------------ supervisión
     AsignacionSupervisor:
@@ -1143,14 +1113,13 @@ components:
         inactivos: {type: integer, minimum: 0}
         porRol:
           type: object
-          description: Usuarios por rol; los 5 roles vienen siempre (D28).
-          required: [ADMINISTRADOR, QE, ANALISTA_QA, LIDER_QA, AUDITOR]
+          description: Usuarios por rol; los 4 roles vienen siempre (D28, D208).
+          required: [ADMINISTRADOR, QE, ANALISTA_QA, AUDITOR]
           additionalProperties: false
           properties:
             ADMINISTRADOR: {type: integer, minimum: 0}
             QE: {type: integer, minimum: 0}
             ANALISTA_QA: {type: integer, minimum: 0}
-            LIDER_QA: {type: integer, minimum: 0}
             AUDITOR: {type: integer, minimum: 0}
     ResumenSupervisionAdmin:
       type: object
@@ -1248,7 +1217,7 @@ components:
           $ref: '#/components/schemas/FechaHora'
     PermisosHdu:
       type: object
-      description: Acciones que el usuario autenticado puede ejecutar sobre la HDU. Orienta la interfaz; el servicio vuelve a validar. Para Líder QA y Auditor todas son `false` (D32, D39).
+      description: Acciones que el usuario autenticado puede ejecutar sobre la HDU. Orienta la interfaz; el servicio vuelve a validar. Para el Auditor todas son `false` (D32, D39).
       required: [cambiarEstado, asignarAnalista]
       additionalProperties: false
       properties:
@@ -1545,13 +1514,13 @@ components:
           type: boolean
         relacion:
           description: |
-            Motivo del acceso, o `null` si no se permite (D18). `LECTOR_CELULA`
-            (Líder QA, HDU de sus células vigentes) y `LECTOR_AUDITORIA`
-            (Auditor, todas) solo permiten leer y descargar: nunca marcar,
-            desmarcar, aprobar, rechazar, certificar ni cambiar la HDU (D32).
+            Motivo del acceso, o `null` si no se permite (D18).
+            `LECTOR_AUDITORIA` (Auditor, todas las HDU) solo permite leer y
+            descargar: nunca marcar, desmarcar, aprobar, rechazar, certificar
+            ni cambiar la HDU (D32).
           oneOf:
             - type: string
-              enum: [ADMINISTRADOR, QE_RESPONSABLE, QE_SUPERVISOR_DEL_ANALISTA, ANALISTA_ASIGNADO, LECTOR_CELULA, LECTOR_AUDITORIA]
+              enum: [ADMINISTRADOR, QE_RESPONSABLE, QE_SUPERVISOR_DEL_ANALISTA, ANALISTA_ASIGNADO, LECTOR_AUDITORIA]
             - type: 'null'
         actor:
           description: Solo si `permitido`. Quién consulta, para registrar su nombre (E3-B01#1).
@@ -1564,8 +1533,8 @@ components:
             Solo si `permitido` y se pidió `incluirCandidatos=true` (E4, D86).
             Personas activas para el responsable de un impedimento (tabla 3.5
             del backlog E4): `registro` = QE responsable y QE supervisor
-            vigente del analista (sin repetir); `escalamiento` = Líderes QA
-            con la célula de la HDU vigente y Administradores activos.
+            vigente del analista (sin repetir); `escalamiento` =
+            Administradores activos (D208).
           type: object
           required: [registro, escalamiento]
           additionalProperties: false
@@ -1714,7 +1683,7 @@ components:
         | `CAMBIAR_ROL` | Cambio de rol | sí |
         | `ASIGNAR_SUPERVISOR` | Asignación de supervisor | sí |
         | `CAMBIAR_SUPERVISOR` | Cambio de supervisor | sí |
-        | `ASIGNAR_CELULAS_LIDER` | Asignación de células | sí |
+        | `ASIGNAR_CELULAS_LIDER` | Asignación de células a un Líder QA. Solo en registros anteriores a D208: el rol se retiró y ya no se genera | sí |
         | `EXPORTAR` | Exportación | sí |
         | `CREAR_HDU` | Registro de HDU | no |
         | `CAMBIAR_ESTADO_HDU` | Cambio de estado de HDU | no |
@@ -1753,10 +1722,10 @@ components:
           $ref: '#/components/schemas/Rol'
         nombre:
           type: string
-          description: Analista QA, QE, Líder QA, Administrador o Auditor.
+          description: Analista QA, QE, Administrador o Auditor.
         soloLectura:
           type: boolean
-          description: Verdadero para `LIDER_QA` y `AUDITOR` (D32).
+          description: Verdadero para `AUDITOR` (D32).
     ListaRoles:
       type: object
       required: [items]
@@ -1764,69 +1733,20 @@ components:
       properties:
         items:
           type: array
-          description: 'Los 5 roles en el orden del selector: Analista QA, QE, Líder QA, Administrador, Auditor.'
-          minItems: 5
-          maxItems: 5
+          description: 'Los 4 roles en el orden del selector: Analista QA, QE, Administrador, Auditor (D208).'
+          minItems: 4
+          maxItems: 4
           items:
             $ref: '#/components/schemas/RolCatalogo'
     ConteoPorRol:
       type: object
-      required: [ADMINISTRADOR, QE, ANALISTA_QA, LIDER_QA, AUDITOR]
+      required: [ADMINISTRADOR, QE, ANALISTA_QA, AUDITOR]
       additionalProperties: false
       properties:
         ADMINISTRADOR: {type: integer, minimum: 0}
         QE: {type: integer, minimum: 0}
         ANALISTA_QA: {type: integer, minimum: 0}
-        LIDER_QA: {type: integer, minimum: 0}
         AUDITOR: {type: integer, minimum: 0}
-    AsignacionCelulaLider:
-      type: object
-      description: Una fila de `organizacion.celula_lider` (D30). Vigente si `hasta` es `null`.
-      required: [id, celula, desde, hasta, asignadoPor, retiradoPor]
-      additionalProperties: false
-      properties:
-        id:
-          $ref: '#/components/schemas/Uuid'
-        celula:
-          $ref: '#/components/schemas/CatalogoRef'
-        desde:
-          $ref: '#/components/schemas/FechaHora'
-        hasta:
-          oneOf:
-            - $ref: '#/components/schemas/FechaHora'
-            - type: 'null'
-        asignadoPor:
-          $ref: '#/components/schemas/Actor'
-        retiradoPor:
-          description: Quién la quitó; `null` mientras está vigente.
-          oneOf:
-            - $ref: '#/components/schemas/Actor'
-            - type: 'null'
-    CelulasLider:
-      type: object
-      required: [usuario, vigentes, historial]
-      additionalProperties: false
-      properties:
-        usuario:
-          $ref: '#/components/schemas/UsuarioResumen'
-        vigentes:
-          type: array
-          description: Asignaciones vigentes, ordenadas por nombre de célula.
-          items:
-            $ref: '#/components/schemas/AsignacionCelulaLider'
-        historial:
-          type: array
-          description: Todas las asignaciones, vigentes y terminadas, de la más reciente a la más antigua por `desde` (E7-F07#3).
-          items:
-            $ref: '#/components/schemas/AsignacionCelulaLider'
-    SolicitudCelulasLider:
-      type: object
-      description: Conjunto completo de células vigentes que debe quedar. Lista vacía = quitar todas.
-      required: [celulaIds]
-      additionalProperties: false
-      properties:
-        celulaIds:
-          $ref: '#/components/schemas/CelulaIdsLider'
 
     # --------------------------------------------------------- E7 · bandejas
     Contador:
@@ -2009,10 +1929,7 @@ components:
               $ref: '#/components/schemas/BloqueSeguimiento'
             bloqueo:
               $ref: '#/components/schemas/BloqueBloqueoFila'
-              description: E4 (D87). Solo en las bandejas del Analista QA y del Líder QA.
-            riesgo:
-              $ref: '#/components/schemas/BloqueRiesgoFila'
-              description: E4 (D87). Solo en la bandeja del Líder QA (D73, D80).
+              description: E4 (D87). Solo en la bandeja del Analista QA.
     PaginaBandejaHdu:
       type: object
       required: [items, total, pagina, tamanoPagina, orden]
@@ -2174,112 +2091,20 @@ components:
             - $ref: '#/components/schemas/BloqueIndisponible'
         impedimentos:
           $ref: '#/components/schemas/ImpedimentosBandejaQe'
-    ResumenCelulaLider:
-      type: object
-      required: [celula, porEstado, avancePromedioAbiertas]
-      additionalProperties: false
-      properties:
-        celula:
-          $ref: '#/components/schemas/CatalogoRef'
-        porEstado:
-          $ref: '#/components/schemas/ConteoPorEstado'
-        avancePromedioAbiertas:
-          oneOf:
-            - type: object
-              required: [fuente, estado, datos]
-              additionalProperties: false
-              properties:
-                fuente: {type: string, const: certificaciones.checklist}
-                estado: {type: string, const: ok}
-                datos:
-                  type: object
-                  required: [porcentaje]
-                  additionalProperties: false
-                  properties:
-                    porcentaje:
-                      type: [number, 'null']
-                      minimum: 0
-                      maximum: 100
-                      description: '`null` si la célula no tiene HDU abiertas.'
-            - $ref: '#/components/schemas/BloqueIndisponible'
-    BandejaLider:
-      type: object
-      description: Sin células vigentes, `celulas.datos.items` viene vacío, los contadores en 0 con `ok` y las listas vacías (E7-B02#1); el portal muestra el mensaje de «sin células».
-      required: [rol, generadaEn, celulas, contadores, resumenPorCelula, hdu, impedimentos]
-      additionalProperties: false
-      properties:
-        rol:
-          type: string
-          const: LIDER_QA
-        generadaEn:
-          $ref: '#/components/schemas/FechaHora'
-        celulas:
-          oneOf:
-            - type: object
-              required: [fuente, estado, datos]
-              additionalProperties: false
-              properties:
-                fuente: {type: string, const: organizacion.celulas}
-                estado: {type: string, const: ok}
-                datos: {$ref: '#/components/schemas/ListaCelulas'}
-            - $ref: '#/components/schemas/BloqueIndisponible'
-        contadores:
-          type: object
-          required: [celulas, hduAbiertas, hduCerradas, sinAnalista, certificados]
-          additionalProperties: false
-          properties:
-            celulas:
-              $ref: '#/components/schemas/Contador'
-            hduAbiertas:
-              $ref: '#/components/schemas/Contador'
-            hduCerradas:
-              $ref: '#/components/schemas/Contador'
-            sinAnalista:
-              $ref: '#/components/schemas/Contador'
-            certificados:
-              $ref: '#/components/schemas/Contador'
-              description: HDU de sus células con certificado (Certificaciones).
-        resumenPorCelula:
-          oneOf:
-            - type: object
-              required: [fuente, estado, datos]
-              additionalProperties: false
-              properties:
-                fuente: {type: string, const: organizacion.hdu}
-                estado: {type: string, const: ok}
-                datos:
-                  type: object
-                  required: [items]
-                  additionalProperties: false
-                  properties:
-                    items:
-                      type: array
-                      items:
-                        $ref: '#/components/schemas/ResumenCelulaLider'
-            - $ref: '#/components/schemas/BloqueIndisponible'
-        hdu:
-          $ref: '#/components/schemas/BloqueListaHdu'
-        impedimentos:
-          $ref: '#/components/schemas/ImpedimentosBandejaLider'
     TipoPendienteAdmin:
       type: string
-      enum: [ANALISTA_SIN_QE, QE_SIN_ANALISTAS, LIDER_SIN_CELULAS, CELULA_SIN_LIDER]
+      description: 'Los pendientes de Líder QA y de células sin líder se retiraron con el rol (D208).'
+      enum: [ANALISTA_SIN_QE, QE_SIN_ANALISTAS]
     PendienteConfiguracion:
       type: object
-      description: '`usuario` en los tres primeros tipos; `celula` solo en `CELULA_SIN_LIDER`. Solo usuarios activos.'
-      required: [tipo, usuario, celula]
+      description: Solo usuarios activos.
+      required: [tipo, usuario]
       additionalProperties: false
       properties:
         tipo:
           $ref: '#/components/schemas/TipoPendienteAdmin'
         usuario:
-          oneOf:
-            - $ref: '#/components/schemas/UsuarioResumen'
-            - type: 'null'
-        celula:
-          oneOf:
-            - $ref: '#/components/schemas/CatalogoRef'
-            - type: 'null'
+          $ref: '#/components/schemas/UsuarioResumen'
     BandejaAdmin:
       type: object
       description: Todo sale de Organización; no depende de Certificaciones (E7-B03-T11).
@@ -2293,7 +2118,7 @@ components:
           $ref: '#/components/schemas/FechaHora'
         contadores:
           type: object
-          required: [usuariosActivos, usuariosInactivos, analistasSinQe, qeSinAnalistas, lideresSinCelulas, celulasSinLider, hduTotal]
+          required: [usuariosActivos, usuariosInactivos, analistasSinQe, qeSinAnalistas, hduTotal]
           additionalProperties: false
           properties:
             usuariosActivos:
@@ -2303,10 +2128,6 @@ components:
             analistasSinQe:
               $ref: '#/components/schemas/Contador'
             qeSinAnalistas:
-              $ref: '#/components/schemas/Contador'
-            lideresSinCelulas:
-              $ref: '#/components/schemas/Contador'
-            celulasSinLider:
               $ref: '#/components/schemas/Contador'
             hduTotal:
               $ref: '#/components/schemas/Contador'
@@ -2549,8 +2370,7 @@ components:
         HDU que el usuario del token puede leer. `todas: true` para
         Administrador y Auditor (`hduIds` vacío); para los demás, la lista
         explícita: Analista QA (asignadas), QE (responsable o de un analista
-        que supervisa hoy), Líder QA (de sus células vigentes; vacía si no
-        tiene).
+        que supervisa hoy).
       required: [usuarioId, rol, todas, hduIds]
       additionalProperties: false
       properties:
@@ -3173,7 +2993,7 @@ components:
               $ref: '#/components/schemas/RiesgoResumen'
             soloLectura:
               type: boolean
-              description: Verdadero si quien consulta no es el QE responsable de la HDU (QE supervisor, Líder, Administrador, Auditor). El portal muestra «Solo lectura».
+              description: Verdadero si quien consulta no es el QE responsable de la HDU (QE supervisor, Administrador, Auditor). El portal muestra «Solo lectura».
     PaginaImpedimentos:
       type: object
       required: [items, total, pagina, tamanoPagina, orden, contadores]
@@ -3535,18 +3355,6 @@ components:
                   type: integer
                   minimum: 0
         - $ref: '#/components/schemas/BloqueIndisponible'
-    BloqueRiesgoFila:
-      description: Riesgo vigente de una fila de HDU (columna «Riesgo» del Líder).
-      oneOf:
-        - type: object
-          required: [fuente, estado, datos]
-          additionalProperties: false
-          properties:
-            fuente: {type: string, const: impedimentos.riesgo}
-            estado: {type: string, const: ok}
-            datos:
-              $ref: '#/components/schemas/RiesgoResumen'
-        - $ref: '#/components/schemas/BloqueIndisponible'
     ItemImpedimentoBandeja:
       type: object
       description: Fila de impedimento en una bandeja. Organización la arma con la evaluación de Impedimentos y sus propios datos de la HDU.
@@ -3644,26 +3452,6 @@ components:
         lista:
           $ref: '#/components/schemas/BloqueListaImpedimentos'
           description: Hasta 10, orden D74 (riesgo vigente y días abiertos).
-    ImpedimentosBandejaLider:
-      type: object
-      description: Solo lectura. Sin células, contadores en 0 con `ok` y lista vacía.
-      required: [contadores, lista]
-      additionalProperties: false
-      properties:
-        contadores:
-          type: object
-          required: [impedimentosAbiertos, hduBloqueadas, escaladosAMi]
-          additionalProperties: false
-          properties:
-            impedimentosAbiertos:
-              $ref: '#/components/schemas/Contador'
-            hduBloqueadas:
-              $ref: '#/components/schemas/Contador'
-            escaladosAMi:
-              $ref: '#/components/schemas/Contador'
-        lista:
-          $ref: '#/components/schemas/BloqueListaImpedimentos'
-          description: Todos los abiertos y escalados de sus células, hasta 50; los escalados a él primero y luego orden D74 (D79).
     ImpedimentosBandejaAdmin:
       type: object
       description: Solo consulta (D57, D83). No altera los bloques certificados ni su independencia de Certificaciones.
@@ -4800,7 +4588,7 @@ components:
         respuesta cruda de Jira. Los textos de Jira (`titulo`, `descripcion`,
         `sprintJira`, `referencia`, `cambios`) se devuelven tal cual: el portal
         los muestra como texto, nunca como HTML.
-      required: [id, posicion, grupo, revision, codigo, titulo, descripcion, prioridad, sprintJira, urlExterna, referencia, advertencias, motivo, idHistoria, origenHdu, hdu, cambios, asignacion, analistaAuto, completa, faltantes, marcada, marcable, aplicada, aplicando, aplicacion, yaAsignada, avisoSinLider, asignadoPor, asignadoEn]
+      required: [id, posicion, grupo, revision, codigo, titulo, descripcion, prioridad, sprintJira, urlExterna, referencia, advertencias, motivo, idHistoria, origenHdu, hdu, cambios, asignacion, analistaAuto, completa, faltantes, marcada, marcable, aplicada, aplicando, aplicacion, yaAsignada, asignadoPor, asignadoEn]
       additionalProperties: false
       properties:
         id:
@@ -4908,9 +4696,6 @@ components:
           oneOf:
             - $ref: '#/components/schemas/YaAsignada'
             - type: 'null'
-        avisoSinLider:
-          type: boolean
-          description: 'La célula elegida no tiene Líder activo (`aviso-sin-lider`, informativo, D138).'
         asignadoPor:
           oneOf:
             - $ref: '#/components/schemas/Persona'
@@ -5538,7 +5323,7 @@ components:
           enum: [QE_INVALIDO, ANALISTA_INVALIDO, ANALISTA_FUERA_DE_EQUIPO, CATALOGO_INVALIDO]
     AsignacionValidada:
       type: object
-      required: [ref, valida, errores, celula, qeResponsable, analista, sprint, sprintPropuesto, celulaSinLiderActivo]
+      required: [ref, valida, errores, celula, qeResponsable, analista, sprint, sprintPropuesto]
       additionalProperties: false
       properties:
         ref:
@@ -5571,9 +5356,6 @@ components:
           oneOf:
             - $ref: '#/components/schemas/SprintPropuesto'
             - type: 'null'
-        celulaSinLiderActivo:
-          type: boolean
-          description: La célula no tiene Líder QA activo vigente (aviso, no error).
         analistasActivos:
           type: [integer, 'null']
           minimum: 0
@@ -5885,7 +5667,7 @@ components:
       name: celulaId
       in: query
       required: false
-      description: Para el Líder QA, solo una de sus células vigentes; otra responde 403 `ACCESO_DENEGADO` (E7-B02#1).
+      description: Filtra por célula.
       schema:
         $ref: '#/components/schemas/Uuid'
     FiltroSprint:

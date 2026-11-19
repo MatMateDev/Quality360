@@ -27,8 +27,8 @@ export const PERSONAS = {
   ana2: { id: '0e400000-0000-4000-8000-000000000005', nombre: 'Beatriz Analista', rol: 'ANALISTA_QA' },
   ana3: { id: '0e400000-0000-4000-8000-000000000006', nombre: 'Camilo Analista', rol: 'ANALISTA_QA' },
   ana4: { id: '0e400000-0000-4000-8000-000000000007', nombre: 'Daniela Analista', rol: 'ANALISTA_QA' },
-  lid1: { id: '0e400000-0000-4000-8000-000000000008', nombre: 'Lidia Líder', rol: 'LIDER_QA' },
-  lid2: { id: '0e400000-0000-4000-8000-000000000009', nombre: 'Laura Líder sin células', rol: 'LIDER_QA' },
+  /** QE sin HDU ni analistas: su ámbito está vacío (E4-F02#2). */
+  qe3: { id: '0e400000-0000-4000-8000-00000000000b', nombre: 'Quintín QE sin HDU', rol: 'QE' },
   aud1: { id: '0e400000-0000-4000-8000-00000000000a', nombre: 'Aurelio Auditor', rol: 'AUDITOR' },
 } as const;
 
@@ -42,8 +42,6 @@ const CLAVE_POR_ID = new Map<string, ClavePersona>((Object.keys(PERSONAS) as Cla
 export const CELULA_A = { id: '0ce00000-0000-4000-8000-00000000000a', nombre: 'CEL-A' };
 export const CELULA_B = { id: '0ce00000-0000-4000-8000-00000000000b', nombre: 'CEL-B' };
 export const CELULA_C = { id: '0ce00000-0000-4000-8000-00000000000c', nombre: 'CEL-C' };
-/** Células vigentes del Líder `lid1`. */
-export const CELULAS_DE_LID1 = [CELULA_A.id, CELULA_B.id];
 
 export async function firmarToken(sub: string): Promise<string> {
   const ahora = Math.floor(Date.now() / 1000);
@@ -122,7 +120,6 @@ function relacionCon(clave: ClavePersona, hdu: HduFalsa): string | null {
   const persona: Persona = PERSONAS[clave];
   if (persona.rol === 'ADMINISTRADOR') return 'ADMINISTRADOR';
   if (persona.rol === 'AUDITOR') return 'LECTOR_AUDITORIA';
-  if (persona.rol === 'LIDER_QA') return clave === 'lid1' && CELULAS_DE_LID1.includes(hdu.celula.id) ? 'LECTOR_CELULA' : null;
   if (hdu.qeResponsable === clave) return 'QE_RESPONSABLE';
   if (hdu.analista === clave) return 'ANALISTA_ASIGNADO';
   if (hdu.analista !== null && SUPERVISOR_DE[hdu.analista] === clave) return 'QE_SUPERVISOR_DEL_ANALISTA';
@@ -193,7 +190,6 @@ export async function iniciarFalsos(): Promise<Falsos> {
           ambito: {
             qeSupervisorId: persona.rol === 'ANALISTA_QA' && SUPERVISOR_DE[clave] !== undefined ? PERSONAS[SUPERVISOR_DE[clave] as ClavePersona].id : null,
             analistasSupervisadosIds: supervisados,
-            celulasIds: clave === 'lid1' ? CELULAS_DE_LID1 : [],
           },
         });
       }
@@ -228,7 +224,8 @@ export async function iniciarFalsos(): Promise<Falsos> {
         const cuerpo: Record<string, unknown> = { hduId: hdu.id, permitido: true, relacion, actor: personaRol(clave), hdu: vista(hdu) };
         if (url.searchParams.get('incluirCandidatos') === 'true') {
           const registro = [hdu.qeResponsable, ...(hdu.analista !== null && SUPERVISOR_DE[hdu.analista] !== undefined ? [SUPERVISOR_DE[hdu.analista] as ClavePersona] : [])];
-          const escalamiento: ClavePersona[] = [...(CELULAS_DE_LID1.includes(hdu.celula.id) ? (['lid1'] as ClavePersona[]) : []), 'adm1'];
+          // Desde D208 solo los Administradores activos son candidatos de escalamiento.
+          const escalamiento: ClavePersona[] = ['adm1'];
           cuerpo.candidatosResponsable = {
             registro: [...new Set(registro)].map(personaRol),
             escalamiento: escalamiento.map(personaRol),

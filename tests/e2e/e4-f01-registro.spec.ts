@@ -177,10 +177,10 @@ test.describe("E4-F01 · Registro de impedimentos", () => {
     });
   });
 
-  test("[E4-F01#1] T07 (negativo): LID1, AUD1 y ADM1 ven I1 en H3 sin botón de registro; QE1 y ANA1 (ajenos a H3) ven acceso denegado", async ({ browser, request }) => {
+  test("[E4-F01#1] T07 (negativo): AUD1 y ADM1 ven I1 en H3 sin botón de registro; QE1 y ANA1 (ajenos a H3) ven acceso denegado", async ({ browser, request }) => {
     await reiniciarFixtureE4();
     const [h, i] = [await hdu(request), await imps(request)];
-    for (const clave of ["lid1", "aud1", "adm1"] as const) {
+    for (const clave of ["aud1", "adm1"] as const) {
       const { contexto, page } = await contextoDe(browser, clave);
       try {
         await page.goto(`${env.portalUrl}/hdu/${h.H3.id}`);
