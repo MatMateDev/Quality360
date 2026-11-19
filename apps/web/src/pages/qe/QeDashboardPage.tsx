@@ -5,6 +5,8 @@ import { TarjetaMetrica } from "@/components/TarjetaMetrica";
 import { TarjetaContador } from "@/components/bandeja/TarjetaContador";
 import "../../styles/qe-dashboard.css";
 import { useState } from "react";
+import { DistribucionDona } from "@/components/dashboard/Distribucion";
+import "../../styles/admin-dashboard.css";
 
 const ESTADOS_HDU = [
   ["PENDIENTE", "Pendiente"],
@@ -22,37 +24,12 @@ const COLORES_ESTADOS = [
   "var(--q360-color-alerta)",
   "var(--q360-color-exito)",
 ] as const;
-
-// Construye un gráfico de dona con los valores de HDU.
-function crearGradienteEstados(cantidades: readonly number[]): string {
-  const total = cantidades.reduce(
-    (suma, cantidad) => suma + cantidad,
-    0,
-  );
-
-  if (total === 0) {
-    return "var(--q360-color-borde)";
-  }
-
-  let acumulado = 0;
-
-  const segmentos = cantidades.map((cantidad, indice) => {
-    const desde = (acumulado / total) * 100;
-
-    acumulado += cantidad;
-
-    const hasta = (acumulado / total) * 100;
-    const color =
-      COLORES_ESTADOS[indice] ?? "var(--q360-color-acento)";
-
-    return `${color} ${desde}% ${hasta}%`;
-  });
-
-  return `conic-gradient(${segmentos.join(", ")})`;
-}
-
+  const RADIO_CIERRE = 41.75;
+  const CIRCUNFERENCIA_CIERRE = 2 * Math.PI * RADIO_CIERRE;
 export function QeDashboardPage() {
   const [temaOscuro, setTemaOscuro] = useState(false);
+  const [segmentoCierreActivo, setSegmentoCierreActivo] =
+  useState<"cerradas" | "noCerradas" | null>(null);
   const inicio = useInicioQe();
   const bandeja = useBandejaQe(null);
 
@@ -84,18 +61,17 @@ export function QeDashboardPage() {
     cerradas !== undefined
       ? Math.round((cerradas / total) * 100)
       : undefined;
+// Longitud de los segmentos de la dona interactiva.
+const longitudCerradas =
+  total !== undefined &&
+  total > 0 &&
+  cerradas !== undefined
+    ? (cerradas / total) * CIRCUNFERENCIA_CIERRE
+    : 0;
 
-  // Distribución de los cinco estados.
-  const gradienteEstados =
-    datosHdu && datosHdu.hduEnAmbito > 0
-      ? crearGradienteEstados(
-          ESTADOS_HDU.map(
-            ([clave]) => datosHdu.porEstado[clave],
-          ),
-        )
-      : undefined;
-
-  return (
+  const longitudNoCerradas =
+    CIRCUNFERENCIA_CIERRE - longitudCerradas;
+ return (
     <div
   className={
     temaOscuro
@@ -118,10 +94,6 @@ export function QeDashboardPage() {
           </p>
         </div>
         <div className="qe-dashboard__acciones">
-          <span className="qe-dashboard__insignia">
-            Analítica E6
-        </span>
-
         <button
             type="button"
             className="qe-dashboard__boton-tema"
@@ -223,80 +195,111 @@ export function QeDashboardPage() {
           ) : datosHdu.hduEnAmbito === 0 ? (
             <p>No hay HDU para mostrar.</p>
           ) : (
-            <div className="qe-dashboard__distribucion">
-              {/* GRÁFICO DE DONA */}
-              <div
-                className="qe-dashboard__dona"
-                style={{ background: gradienteEstados }}
-                aria-hidden="true"
-              >
-                <div className="qe-dashboard__dona-centro">
-                  <strong>{datosHdu.hduEnAmbito}</strong>
-                  <span>HDU supervisadas</span>
-                </div>
-              </div>
-
-              {/* BARRAS Y LEYENDA DE ESTADOS */}
-              <div className="qe-dashboard__estados">
-                {ESTADOS_HDU.map(([clave, etiqueta]) => {
-                  const cantidad =
-                    datosHdu.porEstado[clave];
-
-                  const totalHdu =
-                    datosHdu.hduEnAmbito;
-
-                  const porcentaje = Math.round(
-                    (cantidad / totalHdu) * 100,
-                  );
-
-                  return (
-                    <div
-                      key={clave}
-                      className="qe-dashboard__estado"
-                    >
-                      <div className="qe-dashboard__estado-cabecera">
-                        <span>{etiqueta}</span>
-
-                        <strong
-                          data-testid={`e6-estado-${clave}`}
-                        >
-                          {cantidad} ({porcentaje}%)
-                        </strong>
-                      </div>
-
-                      <progress
-                        value={cantidad}
-                        max={totalHdu}
-                        aria-label={`HDU ${etiqueta}`}
-                      />
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          )}
+      <DistribucionDona
+        id="e6-estado"
+        titulo="Distribución de HDU por estado"
+        unidad="HDU supervisadas"
+        partes={ESTADOS_HDU.map(([clave, etiqueta], indice) => ({
+          clave,
+          etiqueta,
+          valor: datosHdu.porEstado[clave],
+          color:
+            COLORES_ESTADOS[indice] ??
+          "var(--q360-color-acento)",
+      }))}
+    />
+  )}
           {/* SEGUNDA DONA: TASA DE CIERRE */}
           {tasaCierre !== undefined &&
             total !== undefined &&
             cerradas !== undefined && (
               <div className="qe-dashboard__cierre">
-                <div
-                  className="qe-dashboard__dona qe-dashboard__dona--cierre"
-                  style={{
-                    background: `conic-gradient(
-                      var(--q360-color-exito) 0% ${tasaCierre}%,
-                      var(--q360-color-borde) ${tasaCierre}% 100%
-                    )`,
-                  }}
-                  aria-hidden="true"
-                >
-                  <div className="qe-dashboard__dona-centro">
-                    <strong>{tasaCierre}%</strong>
-                    <span>Tasa de cierre</span>
-                  </div>
-                </div>
+      <div
+        className={`qe-dashboard__dona qe-dashboard__dona--cierre dash-dona${
+        segmentoCierreActivo ? " dash-dona--resaltada" : ""
+      }`}
+  >
+      <svg
+        className="dash-dona__svg"
+        viewBox="0 0 100 100"
+        role="group"
+        aria-label={`Tasa de cierre: ${cerradas} de ${total} HDU cerradas, ${tasaCierre}%`}
+  >
+        <g transform="rotate(-90 50 50)">
+          {cerradas > 0 && (
+          <circle
+            className={`dash-dona__segmento${
+            segmentoCierreActivo === "cerradas"
+              ? " dash-dona__segmento--activo"
+              : ""
+          }`}
+          cx="50"
+          cy="50"
+          r={RADIO_CIERRE}
+          fill="none"
+          stroke="var(--q360-color-exito)"
+          strokeWidth="16.5"
+          strokeDasharray={`${longitudCerradas} ${
+            CIRCUNFERENCIA_CIERRE - longitudCerradas
+          }`}
+          tabIndex={0}
+          aria-label={`Cerradas: ${cerradas} HDU, ${tasaCierre}%`}
+          onMouseEnter={() => setSegmentoCierreActivo("cerradas")}
+          onMouseLeave={() => setSegmentoCierreActivo(null)}
+          onFocus={() => setSegmentoCierreActivo("cerradas")}
+          onBlur={() => setSegmentoCierreActivo(null)}
+        />
+      )}
 
-                <div className="qe-dashboard__cierre-detalle">
+      {total > cerradas && (
+        <circle
+          className={`dash-dona__segmento${
+            segmentoCierreActivo === "noCerradas"
+              ? " dash-dona__segmento--activo"
+              : ""
+          }`}
+          cx="50"
+          cy="50"
+          r={RADIO_CIERRE}
+          fill="none"
+          stroke="var(--q360-color-borde)"
+          strokeWidth="16.5"
+          strokeDasharray={`${longitudNoCerradas} ${
+            CIRCUNFERENCIA_CIERRE - longitudNoCerradas
+          }`}
+          strokeDashoffset={-longitudCerradas}
+          tabIndex={0}
+          aria-label={`No cerradas: ${total - cerradas} HDU, ${
+            100 - tasaCierre
+          }%`}
+          onMouseEnter={() => setSegmentoCierreActivo("noCerradas")}
+          onMouseLeave={() => setSegmentoCierreActivo(null)}
+          onFocus={() => setSegmentoCierreActivo("noCerradas")}
+          onBlur={() => setSegmentoCierreActivo(null)}
+        />
+      )}
+    </g>
+  </svg>
+
+  <div className="qe-dashboard__dona-centro" aria-hidden="true">
+    <strong>
+      {segmentoCierreActivo === "cerradas"
+        ? cerradas
+        : segmentoCierreActivo === "noCerradas"
+          ? total - cerradas
+          : `${tasaCierre}%`}
+    </strong>
+
+    <span>
+      {segmentoCierreActivo === "cerradas"
+        ? `Cerradas · ${tasaCierre}%`
+        : segmentoCierreActivo === "noCerradas"
+          ? `No cerradas · ${100 - tasaCierre}%`
+          : "Tasa de cierre"}
+    </span>
+  </div>
+</div>
+               <div className="qe-dashboard__cierre-detalle">
                   <h3>Certificación y cierre</h3>
 
                
