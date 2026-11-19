@@ -385,7 +385,6 @@ export interface EdicionDeFila {
   readonly itemId: string;
   readonly asignacion: ItemConsulta['asignacion'];
   readonly analistaAuto: boolean;
-  readonly avisoSinLider: boolean;
   readonly marcada: boolean;
   readonly advertencias: AdvertenciaFila[];
   readonly asignadoPor: Persona | null;

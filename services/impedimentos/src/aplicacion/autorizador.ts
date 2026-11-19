@@ -12,8 +12,6 @@ import { ProveedorAcceso, type AccesoHdu, type ContextoSolicitud } from './puert
 export interface Solicitante {
   readonly usuarioId: string;
   readonly rol: RolUsuario;
-  /** Células vigentes del Líder QA (vacío en los demás roles). */
-  readonly celulasIds: readonly string[];
   readonly contexto: ContextoSolicitud;
 }
 

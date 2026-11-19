@@ -73,7 +73,7 @@
 }
 
 .qe-dashboard__metricas > :nth-child(4) {
-  border-top-color: var(--q360-color-lider);
+  border-top-color: var(--q360-color-violeta);
 }
 
 /* Paneles */
@@ -166,7 +166,7 @@
 }
 
 .qe-dashboard__estado:nth-child(3) {
-  --qe-barra-color: var(--q360-color-lider);
+  --qe-barra-color: var(--q360-color-violeta);
 }
 
 .qe-dashboard__estado:nth-child(4) {
@@ -363,7 +363,7 @@
 
   --q360-color-exito: #59c69f;
   --q360-color-alerta: #f0b56d;
-  --q360-color-lider: #b5a3f5;
+  --q360-color-violeta: #b5a3f5;
 
   background: #181c20;
   color: var(--q360-color-texto);
@@ -448,7 +448,7 @@
 }
 
 .qe-dashboard--oscuro .qe-dashboard__metricas > :nth-child(4) {
-  border-top-color: var(--q360-color-lider);
+  border-top-color: var(--q360-color-violeta);
 }
 
 .qe-dashboard--oscuro .qe-dashboard__alertas > :last-child {

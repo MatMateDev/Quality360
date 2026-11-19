@@ -1,6 +1,7 @@
 /** Tipos del dominio de impedimentos y riesgo. Sin dependencias de Nest, Prisma ni HTTP. */
 
-export type RolUsuario = 'ADMINISTRADOR' | 'QE' | 'ANALISTA_QA' | 'LIDER_QA' | 'AUDITOR';
+/** Los 4 roles vigentes; `LIDER_QA` se retiró (D208). */
+export type RolUsuario = 'ADMINISTRADOR' | 'QE' | 'ANALISTA_QA' | 'AUDITOR';
 
 export type EstadoHdu = 'PENDIENTE' | 'DISENO_PRUEBAS' | 'EN_EJECUCION' | 'PENDIENTE_CIERRE' | 'CERRADA';
 
@@ -10,7 +11,6 @@ export type RelacionHdu =
   | 'QE_RESPONSABLE'
   | 'QE_SUPERVISOR_DEL_ANALISTA'
   | 'ANALISTA_ASIGNADO'
-  | 'LECTOR_CELULA'
   | 'LECTOR_AUDITORIA';
 
 export const TIPOS_IMPEDIMENTO = [

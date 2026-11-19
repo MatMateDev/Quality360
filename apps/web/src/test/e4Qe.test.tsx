@@ -148,7 +148,7 @@ describe("/qe/impedimentos/riesgo [E4-F04#3]", () => {
 });
 
 describe("Acceso por rol a las pantallas del QE [E4-F02-T09]", () => {
-  const cuentas = ["jonathan.choque@quality360.local", "luis.soto@quality360.local", "admin@quality360.local", "andrea.mora@quality360.local"];
+  const cuentas = ["jonathan.choque@quality360.local", "admin@quality360.local", "andrea.mora@quality360.local"];
   const rutas = ["/qe/impedimentos", "/qe/impedimentos/riesgo"];
   const combinaciones = cuentas.flatMap((c) => rutas.map((r) => [c, r] as const));
   it.each(combinaciones)("%s en %s ve acceso denegado", async (correo, ruta) => {

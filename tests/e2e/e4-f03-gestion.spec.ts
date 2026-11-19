@@ -56,18 +56,18 @@ test.describe("E4-F03 · Gestión del QE responsable", () => {
       expect(d.body.estado).toBe("ABIERTO");
     });
 
-    test("[E4-F03#2] T03: QE1 escala I2 a LID1 con comentario: queda Escalado con responsable LID1, H1 sigue bloqueada y el historial muestra la acción de escalamiento", async ({ page, request }) => {
+    test("[E4-F03#2] T03: QE1 escala I2 a ADM1 con comentario: queda Escalado con responsable ADM1, H1 sigue bloqueada y el historial muestra la acción de escalamiento", async ({ page, request }) => {
       const [h, i] = [await hdu(request), await imps(request)];
       await abrirDetalle(page, h.H1.id);
       await page.getByTestId(`boton-escalar-${i.I2.id}`).click();
       const dialogo = page.getByTestId("dialogo-escalar");
-      await page.getByTestId("campo-destino-escalamiento").selectOption(await uid(request, "lid1"));
+      await page.getByTestId("campo-destino-escalamiento").selectOption(await uid(request, "adm1"));
       await page.getByTestId("campo-comentario-impedimento").fill("Requiere gestión con TI");
       await dialogo.getByRole("button", { name: "Confirmar escalamiento" }).click();
-      await expect(page.getByTestId("mensaje-exito-impedimento")).toContainText("escalado a LID1");
+      await expect(page.getByTestId("mensaje-exito-impedimento")).toContainText("escalado a ADM1");
       const tarjeta = page.getByTestId(`impedimento-${i.I2.id}`);
       await expect(page.getByTestId(`estado-impedimento-${i.I2.id}`)).toHaveAttribute("data-estado", "ESCALADO");
-      await expect(tarjeta).toContainText("LID1");
+      await expect(tarjeta).toContainText("ADM1");
       await expect(page.getByTestId("hdu-bloqueada")).toBeVisible();
       await page.getByTestId(`boton-ver-historial-${i.I2.id}`).click();
       const historial = page.getByTestId(`historial-impedimento-${i.I2.id}`);
@@ -75,19 +75,18 @@ test.describe("E4-F03 · Gestión del QE responsable", () => {
       await expect(historial).toContainText(/Escaló/);
     });
 
-    test("[E4-F03#2] T05 (negativo): el selector de «Escalar» ofrece LID1, ADM1 y «Otro (nombre)»; no ofrece QE1, QE2, ANA1–ANA4 ni LID2", async ({ page, request }) => {
+    test("[E4-F03#2] T05 (negativo): el selector de «Escalar» ofrece ADM1 y «Otro (nombre)»; no ofrece QE1, QE2, ANA1–ANA4 ni AUD1 (solo Administradores, D208)", async ({ page, request }) => {
       const [h, i] = [await hdu(request), await imps(request)];
       await abrirDetalle(page, h.H1.id);
       await page.getByTestId(`boton-escalar-${i.I2.id}`).click();
       await expect(page.getByTestId("dialogo-escalar")).toBeVisible();
-      await expect.poll(async () => page.getByTestId("campo-destino-escalamiento").locator("option").count()).toBeGreaterThanOrEqual(4); // «Selecciona…», LID1, ADM1, «Otro»
+      await expect.poll(async () => page.getByTestId("campo-destino-escalamiento").locator("option").count()).toBeGreaterThanOrEqual(3); // «Selecciona…», ADM1, «Otro»
       const opciones = (await page.getByTestId("campo-destino-escalamiento").locator("option").allTextContents()).map((t) => t.trim());
-      expect(opciones.some((t) => t.startsWith("LID1"))).toBe(true);
       expect(opciones.some((t) => t.startsWith("ADM1"))).toBe(true);
       expect(opciones.some((t) => t.startsWith("Otro"))).toBe(true);
-      // Solo Líderes y Administradores (con la semilla MVP puede haber más de uno), «Selecciona…» y «Otro».
-      for (const t of opciones.filter((o) => !o.startsWith("Selecciona") && !o.startsWith("Otro"))) expect(t, t).toMatch(/· (Líder QA|Administrador)$/);
-      for (const prohibido of ["QE1", "QE2", "ANA1", "ANA2", "ANA3", "ANA4", "LID2"]) {
+      // Solo Administradores (con la semilla MVP puede haber más de uno), «Selecciona…» y «Otro».
+      for (const t of opciones.filter((o) => !o.startsWith("Selecciona") && !o.startsWith("Otro"))) expect(t, t).toMatch(/· Administrador$/);
+      for (const prohibido of ["QE1", "QE2", "ANA1", "ANA2", "ANA3", "ANA4", "AUD1"]) {
         expect(opciones.some((t) => t.startsWith(prohibido)), `no debe ofrecer ${prohibido}`).toBe(false);
       }
       // Sin destino elegido, «Confirmar» pide uno y no cambia nada.
@@ -145,7 +144,7 @@ test.describe("E4-F03 · Gestión del QE responsable", () => {
       await expect(page.getByTestId(`estado-impedimento-${i.I2.id}`)).toHaveAttribute("data-estado", "RESUELTO");
     });
 
-    test("[E4-F03#2] T11: QE1 escala I2 a ADM1 y la bandeja de ADM1 lista I2 en «escalados a mí», sin botones de gestión", async ({ page, browser, request }) => {
+    test("[E4-F03#2] T11: QE1 escala I2 a ADM1 y la bandeja de ADM1 lista I2 en «escalados a mí» junto a I3 (escalado a ADM1 en el fixture, D208), sin botones de gestión", async ({ page, browser, request }) => {
       const [h, i] = [await hdu(request), await imps(request)];
       await abrirDetalle(page, h.H1.id);
       await page.getByTestId(`boton-escalar-${i.I2.id}`).click();
@@ -159,7 +158,8 @@ test.describe("E4-F03 · Gestión del QE responsable", () => {
         await adm.page.goto(`${env.portalUrl}/admin`);
         const lista = adm.page.getByTestId("lista-impedimentos-escalados");
         await expect(lista).toContainText("Faltan cuentas de prueba con saldo");
-        await expect(lista.locator("tbody tr")).toHaveCount(1);
+        await expect(lista).toContainText("API de Pagos sin sandbox");
+        await expect(lista.locator("tbody tr")).toHaveCount(2);
         await expect(adm.page.locator("[data-testid^='boton-resolver-'], [data-testid^='boton-escalar-'], [data-testid^='boton-reabrir-']")).toHaveCount(0);
       } finally {
         await adm.contexto.close();
@@ -167,23 +167,20 @@ test.describe("E4-F03 · Gestión del QE responsable", () => {
     });
   });
 
-  test("[E4-F03#2] T04: tras escalar I2 a LID1, su bandeja muestra escalados a mí 2 (I2 e I3), el bloque lista ambos y no hay botones de gestión", async ({ browser, request }) => {
+  test("[E4-F03#2] T04: tras escalar I2 a ADM1 por la API, su bandeja lista I2 e I3 en «Impedimentos escalados a mí» y no hay botones de gestión [D208]", async ({ browser, request }) => {
     const i = await imps(request);
-    const esc = await api.post(request, `/v1/impedimentos/${i.I2.id}/escalar`, { token: await tokenE7("qe1"), body: { responsableId: await uid(request, "lid1"), comentario: "Requiere gestión con TI" } });
+    const esc = await api.post(request, `/v1/impedimentos/${i.I2.id}/escalar`, { token: await tokenE7("qe1"), body: { responsableId: await uid(request, "adm1"), comentario: "Requiere gestión con TI" } });
     expect(esc.status).toBe(200);
-    const lid = await contextoDe(browser, "lid1");
+    const adm = await contextoDe(browser, "adm1");
     try {
-      await lid.page.goto(`${env.portalUrl}/lider`);
-      await expect(lid.page.getByTestId("contador-escalados-a-mi")).toHaveText("2");
-      const lista = lid.page.getByTestId("lista-impedimentos");
-      await expect(lista.locator("tbody tr")).toHaveCount(3);
+      await adm.page.goto(`${env.portalUrl}/admin`);
+      const lista = adm.page.getByTestId("lista-impedimentos-escalados");
+      await expect(lista.locator("tbody tr")).toHaveCount(2);
       await expect(lista).toContainText("Faltan cuentas de prueba con saldo");
       await expect(lista).toContainText("API de Pagos sin sandbox");
-      await expect(lid.page.getByTestId("insignia-escalado-a-mi")).toHaveCount(2);
-      await expect(lid.page.locator("[data-testid^='boton-resolver-'], [data-testid^='boton-escalar-'], [data-testid^='boton-reabrir-']")).toHaveCount(0);
-      await expect(lid.page.locator("button[type=submit]")).toHaveCount(0);
+      await expect(adm.page.locator("[data-testid^='boton-resolver-'], [data-testid^='boton-escalar-'], [data-testid^='boton-reabrir-']")).toHaveCount(0);
     } finally {
-      await lid.contexto.close();
+      await adm.contexto.close();
     }
   });
 
@@ -210,9 +207,9 @@ test.describe("E4-F03 · Gestión del QE responsable", () => {
     }
   });
 
-  test("[E4-F03#1] T08 (negativo): LID1, AUD1 y ADM1 ven I3 con su historial pero ningún botón de gestión ni formulario", async ({ browser, request }) => {
+  test("[E4-F03#1] T08 (negativo): AUD1 y ADM1 (a quien está escalado I3) ven I3 con su historial pero ningún botón de gestión ni formulario", async ({ browser, request }) => {
     const [h, i] = [await hdu(request), await imps(request)];
-    for (const clave of ["lid1", "aud1", "adm1"] as const) {
+    for (const clave of ["aud1", "adm1"] as const) {
       const { contexto, page } = await contextoDe(browser, clave);
       try {
         await abrirDetalle(page, h.H6.id);

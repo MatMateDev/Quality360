@@ -23,7 +23,6 @@ export const PERSONAS = {
   otroQe: { id: '0a000000-0000-4000-8000-000000000003', nombre: 'Marcos QE', rol: 'QE' },
   analista: { id: '0a000000-0000-4000-8000-000000000004', nombre: 'Ana Analista', rol: 'ANALISTA_QA' },
   otroAnalista: { id: '0a000000-0000-4000-8000-000000000005', nombre: 'Beatriz Analista', rol: 'ANALISTA_QA' },
-  lider: { id: '0a000000-0000-4000-8000-000000000006', nombre: 'Lidia Líder', rol: 'LIDER_QA' },
   auditor: { id: '0a000000-0000-4000-8000-000000000007', nombre: 'Aurelio Auditor', rol: 'AUDITOR' },
 } as const;
 
@@ -53,8 +52,6 @@ export interface HduFalsa {
   estado: 'PENDIENTE' | 'DISENO_PRUEBAS' | 'EN_EJECUCION' | 'PENDIENTE_CIERRE' | 'CERRADA';
   qeResponsableId: string;
   analistaId: string | null;
-  /** La HDU pertenece a una célula del Líder QA de prueba (relación LECTOR_CELULA). */
-  deLider?: boolean;
 }
 
 export interface ExportacionRegistrada {
@@ -91,7 +88,6 @@ function sujetoDe(authorization: string | undefined): string | null {
 function relacionCon(persona: Persona, hdu: HduFalsa): string | null {
   if (persona.rol === 'ADMINISTRADOR') return 'ADMINISTRADOR';
   if (persona.rol === 'AUDITOR') return 'LECTOR_AUDITORIA';
-  if (persona.rol === 'LIDER_QA') return hdu.deLider === true ? 'LECTOR_CELULA' : null;
   if (hdu.qeResponsableId === persona.id) return 'QE_RESPONSABLE';
   if (hdu.analistaId === persona.id) return 'ANALISTA_ASIGNADO';
   return null;

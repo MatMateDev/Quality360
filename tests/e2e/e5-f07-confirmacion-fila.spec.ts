@@ -511,7 +511,7 @@ test.describe("E5-F07 · Asignar y confirmar HDU por HDU", () => {
     });
   });
 
-  for (const clave of ["qe1", "lid1", "ana1", "aud1"] as const) {
+  for (const clave of ["qe1", "ana1", "aud1"] as const) {
     test(`[E5-F07#13] T13: ${clave.toUpperCase()} no tiene «Confirmar asignación» ni puede confirmar (403)`, async ({ browser, request }) => {
       await prepararDetalle(request);
       const c = (await consultarOk(request)).consulta;

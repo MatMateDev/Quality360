@@ -4,7 +4,8 @@ import { api, iniciarSesion } from "../support/api";
 import { env } from "../support/env";
 import { USUARIOS_SEMILLA } from "../support/usuarios";
 
-const ROLES = ["ANALISTA_QA", "QE", "LIDER_QA", "ADMINISTRADOR", "AUDITOR"] as const;
+/** Los 4 roles del catálogo: el Líder QA se retiró en D208. */
+const ROLES = ["ANALISTA_QA", "QE", "ADMINISTRADOR", "AUDITOR"] as const;
 const ESTADOS = ["PENDIENTE", "DISENO_PRUEBAS", "EN_EJECUCION", "PENDIENTE_CIERRE", "CERRADA"] as const;
 
 type Contador = { estado: "ok"; datos: { valor: number } } | { estado: "indisponible" };
@@ -13,8 +14,6 @@ interface BandejaAdmin {
     usuariosActivos: { estado: "ok"; datos: { valor: number; porRol: Record<(typeof ROLES)[number], number> } } | { estado: "indisponible" };
     analistasSinQe: Contador;
     qeSinAnalistas: Contador;
-    lideresSinCelulas: Contador;
-    celulasSinLider: Contador;
     hduTotal: Contador;
   };
 }
@@ -58,11 +57,12 @@ test.describe("E6 · Dashboard Administrador", () => {
     for (const [clave, contador] of [
       ["analistas-sin-qe", bandeja.contadores.analistasSinQe],
       ["qe-sin-analistas", bandeja.contadores.qeSinAnalistas],
-      ["lideres-sin-celulas", bandeja.contadores.lideresSinCelulas],
-      ["celulas-sin-lider", bandeja.contadores.celulasSinLider],
     ] as const) {
       await expect(page.getByTestId(`contador-dash-admin-${clave}`)).toHaveText(String(valor(contador)));
     }
+    // D208: sin rol Líder QA ni contadores de líderes y células.
+    await expect(page.getByTestId("dash-admin-rol-LIDER_QA")).toHaveCount(0);
+    await expect(page.locator('[data-testid^="contador-dash-admin-lideres"], [data-testid^="contador-dash-admin-celulas"]')).toHaveCount(0);
 
     const totalHdu = ESTADOS.reduce((suma, estado) => suma + porEstado[estado]!, 0);
     for (const estado of ESTADOS) {

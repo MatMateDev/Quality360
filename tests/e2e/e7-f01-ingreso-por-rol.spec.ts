@@ -8,8 +8,9 @@ import { TEXTO } from "../support/login";
 
 const estadoSesion = (clave: ClaveE7) => path.join(import.meta.dirname, "..", ".auth", `e7-${clave}.json`);
 
-const ETIQUETA_ROL = { ANALISTA_QA: "Analista QA", QE: "QE", LIDER_QA: "Líder QA", ADMINISTRADOR: "Administrador", AUDITOR: "Auditor" } as const;
-const SOLO_PORTAL = ["/qa", "/qe", "/lider", "/admin", "/auditor"] as const;
+/** Los 4 roles y sus portales: el Líder QA y /lider se retiraron en D208. */
+const ETIQUETA_ROL = { ANALISTA_QA: "Analista QA", QE: "QE", ADMINISTRADOR: "Administrador", AUDITOR: "Auditor" } as const;
+const SOLO_PORTAL = ["/qa", "/qe", "/admin", "/auditor"] as const;
 
 /** Peticiones que traen datos de un portal (todo lo del gateway salvo `/v1/me`). */
 function registrarDatos(page: Page) {
@@ -34,7 +35,7 @@ test.describe("E7-F01 · Ingreso a la bandeja de cada rol", () => {
     });
   }
 
-  for (const clave of ["lid1", "aud1"] as const) {
+  for (const clave of ["aud1"] as const) {
     test(`[E7-F01#2] T02: ${clave.toUpperCase()} ve «Bandeja» primero y ninguna opción de creación o edición`, async ({ browser }) => {
       const ctx = await browser.newContext({ storageState: estadoSesion(clave) });
       const page = await ctx.newPage();
@@ -62,7 +63,7 @@ test.describe("E7-F01 · Ingreso a la bandeja de cada rol", () => {
     await ctx.close();
   });
 
-  test("[E7-F01#3] T04: las 20 combinaciones rol x portal ajeno muestran «No tienes acceso a esta sección» en la URL pedida, sin datos", async ({ browser }) => {
+  test("[E7-F01#3] T04: las 12 combinaciones rol x portal ajeno muestran «No tienes acceso a esta sección» en la URL pedida, sin datos", async ({ browser }) => {
     let combinaciones = 0;
     for (const rol of ROLES_MATRIZ) {
       const ctx = await browser.newContext({ storageState: estadoSesion(rol.clave) });
@@ -86,17 +87,17 @@ test.describe("E7-F01 · Ingreso a la bandeja de cada rol", () => {
       }
       await ctx.close();
     }
-    expect(combinaciones).toBe(20);
+    expect(combinaciones).toBe(12);
   });
 
-  test("[E7-F01#3] T04b: las subrutas ajenas (Admin -> /auditor/bitacora, Auditor -> /admin/supervision, QE -> /lider) también dan acceso denegado", async ({ browser }) => {
+  test("[E7-F01#3] T04b: las subrutas ajenas (Admin -> /auditor/bitacora, Auditor -> /admin/supervision, QE -> /admin/usuarios) también dan acceso denegado", async ({ browser }) => {
     const casos: Array<[ClaveE7, string]> = [
       ["adm1", "/auditor/bitacora"],
       ["adm1", "/auditor/auditoria-usuarios"],
       ["aud1", "/admin/supervision"],
       ["qe1", "/admin/usuarios"],
       ["ana1", "/qe/aprobaciones"],
-      ["lid1", "/qa/hdu"],
+      ["aud1", "/qa/hdu"],
     ];
     for (const [clave, ruta] of casos) {
       const ctx = await browser.newContext({ storageState: estadoSesion(clave) });
@@ -121,14 +122,24 @@ test.describe("E7-F01 · Ingreso a la bandeja de cada rol", () => {
     await ctx.close();
   });
 
-  test("[E7-F01#3] T06: sin sesión, /lider pasa por el inicio de sesión y QE1 termina en /qe, no en /lider", async ({ page }) => {
-    await page.goto(`${env.portalUrl}/lider`);
+  test("[E7-F01#3] T06: sin sesión, /admin pasa por el inicio de sesión y QE1 termina en /qe, no en /admin", async ({ page }) => {
+    await page.goto(`${env.portalUrl}/admin`);
     await expect(page).toHaveURL(/\/login/);
     await page.getByLabel("Correo electrónico").fill(USUARIOS_E7.qe1.correo);
     await page.getByLabel("Contraseña", { exact: true }).fill(CONTRASENA);
     await page.getByRole("button", { name: "Ingresar" }).click();
     await expect(page).toHaveURL(/\/qe$/, { timeout: 15_000 });
     await expect(page.getByTestId("bandeja-qe")).toBeVisible();
+  });
+
+  test("[D208] T06b: con sesión, un enlace antiguo a /lider lleva a QE1 a su bandeja, sin acceso denegado (el portal se retiró)", async ({ browser }) => {
+    const ctx = await browser.newContext({ storageState: estadoSesion("qe1") });
+    const page = await ctx.newPage();
+    await page.goto(`${env.portalUrl}/lider`);
+    await expect(page).toHaveURL(/\/qe$/, { timeout: 15_000 });
+    await expect(page.getByTestId("bandeja-qe")).toBeVisible();
+    await expect(page.getByTestId("acceso-denegado")).toHaveCount(0);
+    await ctx.close();
   });
 
   test("[E7-F01#1] T07: si el Administrador cambia el rol con la sesión abierta, al recargar el usuario queda en su nueva bandeja y ya no abre la anterior", async ({ page, request }) => {

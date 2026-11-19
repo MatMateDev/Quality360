@@ -24,7 +24,6 @@ let ana1: UsuarioDePrueba;
 let ana3: UsuarioDePrueba;
 let anaSinEquipo: UsuarioDePrueba;
 let anaInactiva: UsuarioDePrueba;
-let lider: UsuarioDePrueba;
 let celulaC: { id: string; nombre: string };
 let celulaA: { id: string; nombre: string };
 let sprint1: { id: string; nombre: string };
@@ -42,18 +41,16 @@ before(async () => {
   ana3 = await crearUsuarioDePrueba('ANALISTA_QA', { nombre: 'ANA3' });
   anaSinEquipo = await crearUsuarioDePrueba('ANALISTA_QA', { nombre: 'ANA9' });
   anaInactiva = await crearUsuarioDePrueba('ANALISTA_QA', { nombre: 'ANA8', activo: false });
-  lider = await crearUsuarioDePrueba('LIDER_QA', { nombre: 'Lider' });
   celulaC = await prisma.celula.create({ data: { nombre: 'CEL-C consulta' }, select: { id: true, nombre: true } });
   celulaA = await prisma.celula.create({ data: { nombre: 'CEL-A consulta' }, select: { id: true, nombre: true } });
   const inicio = new Date('2026-10-01');
   const fin = new Date('2026-10-14');
   sprint1 = await prisma.sprint.create({ data: { nombre: 'E5 Sprint 1', inicio, fin, celulaId: celulaC.id }, select: { id: true, nombre: true } });
   sprintDeA = await prisma.sprint.create({ data: { nombre: 'Sprint de CEL-A', inicio, fin, celulaId: celulaA.id }, select: { id: true, nombre: true } });
-  // QE1 supervisa a ANA1 y a la inactiva; QE2 supervisa a ANA3. La célula C tiene Líder; la A, no.
+  // QE1 supervisa a ANA1 y a la inactiva; QE2 supervisa a ANA3.
   await prisma.supervision.create({ data: { qeId: qe1.id, analistaId: ana1.id, ...ACTOR } });
   await prisma.supervision.create({ data: { qeId: qe1.id, analistaId: anaInactiva.id, ...ACTOR } });
   await prisma.supervision.create({ data: { qeId: qe2.id, analistaId: ana3.id, ...ACTOR } });
-  await prisma.celulaLider.create({ data: { usuarioId: lider.id, celulaId: celulaC.id, asignadoPorTipo: 'USUARIO', asignadoPorId: admin.id, asignadoPorNombre: 'Admin C' } });
   await prisma.hdu.create({
     data: {
       codigo: 'QTY-5',
@@ -132,17 +129,17 @@ describe('POST /v1/interno/integraciones/hdu/estado-codigos [E5-B02-T04]', () =>
 });
 
 describe('POST /v1/interno/integraciones/asignaciones/validar [E5-B05-T04, T08, T09]', () => {
-  it('una combinación coherente es válida y trae los nombres y el aviso de Líder', async () => {
+  it('una combinación coherente es válida y trae los nombres, sin aviso de Líder (D208)', async () => {
     const r = await post(VALIDAR, { asignaciones: [{ ref: 'a', celulaId: celulaC.id, qeResponsableId: qe1.id, analistaId: ana1.id, sprintId: sprint1.id }] });
     assert.equal(r.status, 200);
     const v = r.body.resultados[0];
     assert.deepEqual([v.ref, v.valida, v.errores], ['a', true, []]);
     assert.deepEqual([v.celula.nombre, v.qeResponsable.nombre, v.analista.nombre, v.sprint.nombre], [celulaC.nombre, 'QE Uno', 'ANA1', 'E5 Sprint 1']);
-    assert.equal(v.celulaSinLiderActivo, false);
+    assert.equal('celulaSinLiderActivo' in v, false);
     assert.equal(v.sprintPropuesto, null);
   });
 
-  it('las 4 reglas de D138 y el aviso de célula sin Líder, en el orden pedido', async () => {
+  it('las 4 reglas de D138, en el orden pedido', async () => {
     const r = await post(VALIDAR, {
       asignaciones: [
         { ref: 'fuera', celulaId: celulaA.id, qeResponsableId: qe1.id, analistaId: ana3.id },
@@ -159,7 +156,6 @@ describe('POST /v1/interno/integraciones/asignaciones/validar [E5-B05-T04, T08, 
     const por = Object.fromEntries(r.body.resultados.map((x: { ref: string }) => [x.ref, x]));
     assert.deepEqual(r.body.resultados.map((x: { ref: string }) => x.ref), ['fuera', 'inactiva', 'noanalista', 'sinqe', 'qemal', 'sprintajeno', 'celulainexistente', 'vacio']);
     assert.deepEqual(por.fuera.errores, [{ campo: 'analistaId', codigo: 'ANALISTA_FUERA_DE_EQUIPO' }]);
-    assert.equal(por.fuera.celulaSinLiderActivo, true);
     assert.equal(por.fuera.analista, null);
     assert.deepEqual(por.inactiva.errores, [{ campo: 'analistaId', codigo: 'ANALISTA_INVALIDO' }]);
     assert.deepEqual(por.noanalista.errores, [{ campo: 'analistaId', codigo: 'ANALISTA_INVALIDO' }]);

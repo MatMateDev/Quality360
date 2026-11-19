@@ -1,7 +1,7 @@
 /**
  * Quién puede cambiar el estado o reasignar una HDU (E2-F02, E2-F04#3,
- * "Cambio de estado" y "Asignación" en decisiones-mvp.md). Líder QA y Auditor
- * son de solo lectura (D32): ninguna de estas operaciones los incluye.
+ * "Cambio de estado" y "Asignación" en decisiones-mvp.md). El Auditor es de
+ * solo lectura (D32): ninguna de estas operaciones lo incluye.
  */
 import { evaluarAccesoHdu } from './ambito.js';
 import type { AmbitoAcceso, EstadoHdu, Rol } from '../tipos.js';

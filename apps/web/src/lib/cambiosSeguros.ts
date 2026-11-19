@@ -10,8 +10,11 @@ const ETIQUETA_CAMPO: Record<string, string> = {
   correo: "Correo",
   activo: "Estado de acceso",
   supervisor: "Supervisor",
-  celulas: "Células",
+  celulas: "Células", // entradas ASIGNAR_CELULAS_LIDER anteriores a D208
 };
+
+/** Roles retirados que la auditoría histórica todavía nombra (D208). */
+const ROLES_RETIRADOS: Record<string, string> = { LIDER_QA: "Líder QA (rol retirado)" };
 
 const PROFUNDIDAD_MAXIMA = 3;
 
@@ -37,14 +40,14 @@ function textoAnidado(valor: unknown, profundidad = 0): string {
 
 function textoValor(clave: string, valor: unknown): string {
   if (valor === null || valor === undefined) return "—";
-  if (clave === "rol" && typeof valor === "string") return ETIQUETAS_ROL[valor as Rol] ?? valor;
+  if (clave === "rol" && typeof valor === "string") return ETIQUETAS_ROL[valor as Rol] ?? ROLES_RETIRADOS[valor] ?? valor;
   if (clave === "activo") return valor ? "Activo" : "Inactivo";
   if (Array.isArray(valor) && valor.length === 0) return clave === "celulas" ? "sin células" : "sin elementos";
   return textoAnidado(valor);
 }
 
 /**
- * «Rol: Analista QA → Líder QA» en lenguaje natural (no JSON). Solo describe campos de la lista blanca y nunca
+ * «Rol: Analista QA → Auditor» en lenguaje natural (no JSON). Solo describe campos de la lista blanca y nunca
  * una clave que contenga `password`, `token` o `secret`. Las células se muestran por nombre.
  */
 export function describirCambios(antes: Record<string, unknown> | null, despues: Record<string, unknown> | null): string[] {

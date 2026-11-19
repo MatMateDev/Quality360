@@ -29,7 +29,7 @@
       "creadoPor": "ana1", "responsableInicial": "qe1",
       "acciones": [
         { "tipo": "REGISTRAR", "estado": "ABIERTO", "actor": "ana1", "hace": { "dias": 3 }, "comentario": "Registro del impedimento." },
-        { "tipo": "ESCALAR", "estadoAnterior": "ABIERTO", "estado": "ESCALADO", "actor": "qe1", "hace": { "dias": 1 }, "comentario": "Se escala al lider de las celulas.", "responsableNuevo": "lid1" }
+        { "tipo": "ESCALAR", "estadoAnterior": "ABIERTO", "estado": "ESCALADO", "actor": "qe1", "hace": { "dias": 1 }, "comentario": "Se escala al Administrador.", "responsableNuevo": "adm1" }
       ]
     },
     {

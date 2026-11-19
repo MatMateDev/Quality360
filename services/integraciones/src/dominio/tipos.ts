@@ -3,7 +3,8 @@
  * Los catálogos son los de comun.v1.yaml (E5, D93–D128).
  */
 
-export type Rol = 'ADMINISTRADOR' | 'QE' | 'ANALISTA_QA' | 'LIDER_QA' | 'AUDITOR';
+/** Los 4 roles vigentes; `LIDER_QA` se retiró (D208). */
+export type Rol = 'ADMINISTRADOR' | 'QE' | 'ANALISTA_QA' | 'AUDITOR';
 
 export type OrigenEjecucion = 'JIRA' | 'CSV' | 'JSON';
 /** Fase de una ejecución (D141): importaciones y sincronizaciones anteriores a D132 son `DIRECTA`. */

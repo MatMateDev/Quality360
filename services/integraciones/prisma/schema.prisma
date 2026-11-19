@@ -261,7 +261,6 @@ model ConsultaItem {
   analistaNombre    String?   @map("analista_nombre") @db.VarChar(150)
   sprintNombre      String?   @map("sprint_nombre") @db.VarChar(120)
   sprintOrigen      String?   @map("sprint_origen") @db.VarChar(8)
-  avisoSinLider     Boolean   @default(false) @map("aviso_sin_lider")
   marcada           Boolean   @default(false)
   aplicada          Boolean   @default(false)
   asignadoPorId     String?   @map("asignado_por_id") @db.Uuid

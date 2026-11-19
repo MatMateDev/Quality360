@@ -4,7 +4,7 @@
 import type { EstadoImpedimento, NivelRiesgo, TipoAccionImpedimento, TipoImpedimento } from "@/types/dominio";
 import { ID } from "./data";
 
-export type RolPersonaMock = "ANALISTA_QA" | "QE" | "LIDER_QA" | "ADMINISTRADOR";
+export type RolPersonaMock = "ANALISTA_QA" | "QE" | "ADMINISTRADOR";
 
 export interface ImpedimentoMock {
   id: string;
@@ -107,8 +107,8 @@ function inicialImpedimentos(): ImpedimentoMock[] {
       titulo: "API de Pagos sin sandbox",
       descripcion: "El equipo de Pagos aún no entrega el sandbox de la API que necesitamos para probar.",
       estado: "ESCALADO",
-      responsableId: ID.lider1,
-      responsableNombre: "Luis Soto",
+      responsableId: ID.admin,
+      responsableNombre: "Valentina Rojas",
       creadoPorId: ID.qa3,
       creadoPorRol: "ANALISTA_QA",
       fechaRegistro: haceDias(3),
@@ -174,7 +174,7 @@ function inicialAcciones(): AccionMock[] {
       actorId: ID.qe1,
       fecha: haceDias(1),
       comentario: "Requiere gestión con el equipo de Pagos.",
-      detalle: { anterior: { id: ID.qe1, nombre: "Jose Seguel" }, nuevo: { id: ID.lider1, nombre: "Luis Soto" } },
+      detalle: { anterior: { id: ID.qe1, nombre: "Jose Seguel" }, nuevo: { id: ID.admin, nombre: "Valentina Rojas" } },
     },
     reg("e4a00000-0000-4000-8000-000000000005", i4!),
     {

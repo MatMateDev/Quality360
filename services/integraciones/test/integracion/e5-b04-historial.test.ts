@@ -185,9 +185,9 @@ describe('E5-B04#2 · consulta', () => {
     assert.equal(org.llamadas.filter((l) => l === 'GET /v1/interno/hdu/ambito').length, 4);
   });
 
-  it('E5-B04-T07 Líder y Analista: 403 en todo; un id inexistente es 404 para Administrador y Auditor y 403 para el QE; sin token 401', async () => {
+  it('E5-B04-T07 Analista: 403 en todo; un id inexistente es 404 para Administrador y Auditor y 403 para el QE; sin token 401', async () => {
     await listo();
-    for (const persona of ['lid1', 'ana1'] as const) {
+    for (const persona of ['ana1'] as const) {
       for (const ruta of ['/v1/integraciones/ejecuciones', '/v1/integraciones/estado', `/v1/integraciones/ejecuciones/${PERSONAS.adm1.id}`]) {
         assert.equal((await m.pedir('get', ruta, persona)).status, 403, `${persona} ${ruta}`);
       }

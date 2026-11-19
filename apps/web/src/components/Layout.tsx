@@ -34,7 +34,6 @@ const ENLACES_POR_ROL: Record<Rol, EnlaceNav[]> = {
     { a: "/qa/hdu", etiqueta: "Mis HDU" },
   ],
   // Sin `fin`: queda activo en las cuatro pestañas del Auditor.
-  LIDER_QA: [{ a: "/lider", etiqueta: "Bandeja" }],
   AUDITOR: [{ a: "/auditor", etiqueta: "Bandeja" }],
 };
 

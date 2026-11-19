@@ -17,7 +17,7 @@ Notación: «cert.» = elemento certificado que **no se modifica**. Lo no mencio
 4. **Guardado inmediato por cambio**, sin botón «Guardar» (la consulta es un borrador del servidor, D139). Cada edición muestra «Guardando…» → «Guardado» en la fila; recargar o volver otro día conserva todo (E5-F05 #2).
 5. **Lo irreversible lleva diálogo**: Confirmar, Reemplazar y Descartar usan `DialogoConfirmacion`. Lo reversible (seleccionar, asignar, editar, marcar) no.
 6. **Estado por texto + glifo + color** (E5 §1.2, §11.2). Estados de fila: «Sin asignar», «Incompleta (falta: analista)», «Lista», «Marcada».
-7. **Los avisos que no bloquean no bloquean**: «La célula no tiene Líder activo…» es `role="note"` con `!`; nunca deshabilita nada (D138).
+7. **Los avisos que no bloquean no bloquean**: se muestran con `!` y nunca deshabilitan nada (D138). *(2026-11-18: se retiró el aviso «La célula no tiene Líder activo…», porque la plataforma ya no tiene el rol Líder QA.)*
 8. **Confirmar no depende de Jira** y el diseño lo dice en pantalla («No se llamará a Jira»).
 9. **Sin posición fija (sticky).** Ninguna barra de acciones queda fija sobre el contenido: evita tapar el foco (WCAG 2.2 · 2.4.11) y ocupar el 375 px. El resumen de confirmación está al final de la consulta y el encabezado de la consulta trae el enlace «Ir al resumen».
 
@@ -315,7 +315,7 @@ Descripción de Jira: no se muestra en la tarjeta (ya está en el servidor y es 
 | Analista no pertenece al equipo del QE (llega de otra edición) | Error de campo | «<Analista> no pertenece al equipo de <QE>» bajo el selector; el valor no cambia | El cambio |
 | Sprint de Jira no existe en la célula | Advertencia | Chip `!` «El sprint de Jira no existe en esta célula» junto al chip «Sprint de respaldo» | No |
 | Sin sprint propuesto | Estado | Selector «Elige un sprint»; fila «Incompleta (falta: sprint)» | La inclusión |
-| **Célula sin Líder activo** | Aviso (`aviso-sin-lider`, `role="note"`, `!`) | «La célula no tiene Líder activo: nadie la verá como Líder.» (ámbar, junto a los selectores; aparece al fijar la célula; no aparece en CEL-A) | **No**: ni la fila ni «Confirmar» |
+| ~~Célula sin Líder activo~~ | **Retirado el 2026-11-18** | La plataforma ya no tiene el rol Líder QA, así que el portal no muestra el aviso «La célula no tiene Líder activo». | No aplica |
 | Sin filas incluidas | Estado | `boton-confirmar` deshabilitado (`aria-disabled`) y nota «Marca al menos una fila» (`ayuda-confirmar`, `aria-describedby`) | Confirmar |
 | Código de HDU ya existente por otra vía | Informativo | Ya no es «Nueva»: aparece en «Cambiaron» o «Sin cambios» | — |
 

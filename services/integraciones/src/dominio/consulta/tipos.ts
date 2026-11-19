@@ -83,7 +83,6 @@ export interface ItemConsulta {
   readonly asignacion: AsignacionFila;
   /** El analista lo puso el servidor por ser el único del equipo del QE (D201). */
   readonly analistaAuto: boolean;
-  readonly avisoSinLider: boolean;
   readonly marcada: boolean;
   readonly aplicada: boolean;
   /** Hay una toma vigente (menos de `INTEGRACIONES_TOMA_FILA_MS`): otra petición la está confirmando (D202). */

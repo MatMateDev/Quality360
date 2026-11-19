@@ -17,8 +17,9 @@ import { correoUnico, nombreUnico } from "./unique";
  * las dejan desactivadas.
  */
 
-export type ClaveE7 = "adm1" | "qe1" | "qe2" | "ana1" | "ana2" | "ana3" | "ana4" | "lid1" | "lid2" | "aud1" | "inact1";
-export type RolE7 = "ANALISTA_QA" | "QE" | "LIDER_QA" | "ADMINISTRADOR" | "AUDITOR";
+export type ClaveE7 = "adm1" | "qe1" | "qe2" | "ana1" | "ana2" | "ana3" | "ana4" | "aud1" | "inact1";
+/** Los 4 roles del catálogo: el Líder QA se retiró (D208). */
+export type RolE7 = "ANALISTA_QA" | "QE" | "ADMINISTRADOR" | "AUDITOR";
 
 export const USUARIOS_E7: Record<ClaveE7, { correo: string; rol: RolE7; portal: string }> = {
   adm1: { correo: "adm1@quality360.local", rol: "ADMINISTRADOR", portal: "/admin" },
@@ -28,26 +29,22 @@ export const USUARIOS_E7: Record<ClaveE7, { correo: string; rol: RolE7; portal: 
   ana2: { correo: "ana2@quality360.local", rol: "ANALISTA_QA", portal: "/qa" },
   ana3: { correo: "ana3@quality360.local", rol: "ANALISTA_QA", portal: "/qa" },
   ana4: { correo: "ana4@quality360.local", rol: "ANALISTA_QA", portal: "/qa" },
-  lid1: { correo: "lid1@quality360.local", rol: "LIDER_QA", portal: "/lider" },
-  lid2: { correo: "lid2@quality360.local", rol: "LIDER_QA", portal: "/lider" },
   aud1: { correo: "aud1@quality360.local", rol: "AUDITOR", portal: "/auditor" },
   inact1: { correo: "inact1@quality360.local", rol: "QE", portal: "/qe" },
 };
 
-/** Los 5 roles con un usuario representativo (los de la matriz de acceso cruzado). */
+/** Los 4 roles con un usuario representativo (los de la matriz de acceso cruzado). */
 export const ROLES_MATRIZ = [
   { clave: "ana1", rol: "ANALISTA_QA", portal: "/qa", bandeja: "analista", rutaPropia: "/qa", rutasPortal: ["/qa", "/qa/hdu"] },
   { clave: "qe1", rol: "QE", portal: "/qe", bandeja: "qe", rutaPropia: "/qe", rutasPortal: ["/qe", "/qe/equipo", "/qe/aprobaciones"] },
-  { clave: "lid1", rol: "LIDER_QA", portal: "/lider", bandeja: "lider", rutaPropia: "/lider", rutasPortal: ["/lider"] },
   { clave: "adm1", rol: "ADMINISTRADOR", portal: "/admin", bandeja: "admin", rutaPropia: "/admin", rutasPortal: ["/admin", "/admin/usuarios", "/admin/supervision"] },
   { clave: "aud1", rol: "AUDITOR", portal: "/auditor", bandeja: "auditor", rutaPropia: "/auditor", rutasPortal: ["/auditor", "/auditor/certificados"] },
 ] as const;
 
-/** Portales de cada rol (una ruta representativa por portal ajeno en la matriz 5 x 4). */
+/** Portales de cada rol (una ruta representativa por portal ajeno en la matriz 4 x 3). */
 export const RUTA_REPRESENTATIVA: Record<string, string> = {
   "/qa": "/qa",
   "/qe": "/qe",
-  "/lider": "/lider",
   "/admin": "/admin",
   "/auditor": "/auditor",
 };
@@ -135,18 +132,18 @@ export interface UsuarioNuevo {
   activo: boolean;
 }
 
-/** Crea un usuario propio de la prueba (cualquiera de los 5 roles) y le fija contraseña si se pide. */
+/** Crea un usuario propio de la prueba (cualquiera de los 4 roles) y le fija contraseña si se pide. */
 export async function crearUsuarioE7(
   request: APIRequestContext,
   tokenAdmin: string,
   rol: RolE7,
-  opciones: { prefijo?: string; celulaIds?: string[]; conContrasena?: boolean } = {},
+  opciones: { prefijo?: string; conContrasena?: boolean } = {},
 ): Promise<UsuarioNuevo & { contrasena: string }> {
   const prefijo = opciones.prefijo ?? rol.toLowerCase();
   const correo = correoUnico(prefijo);
   const respuesta = await api.post<UsuarioNuevo>(request, "/v1/usuarios", {
     token: tokenAdmin,
-    body: { nombre: nombreUnico(`QA E7 ${prefijo}`), correo, rol, ...(opciones.celulaIds ? { celulaIds: opciones.celulaIds } : {}) },
+    body: { nombre: nombreUnico(`QA E7 ${prefijo}`), correo, rol },
   });
   if (respuesta.status !== 201) {
     throw new Error(`No se pudo crear el usuario ${correo} (${rol}): ${respuesta.status} ${JSON.stringify(respuesta.body)}`);
@@ -161,11 +158,6 @@ export async function sesionDe(correo: string): Promise<Sesion> {
 
 /** Desactiva un usuario propio de la prueba para no dejar pendientes de configuración (best effort). */
 export async function desactivarUsuario(request: APIRequestContext, tokenAdmin: string, id: string): Promise<void> {
-  // Un Líder desactivado conserva sus células vigentes (DEF-E7-04): se liberan antes para no dejar células «con líder» fantasma.
-  const u = await api.get<{ rol: string; celulasVigentes?: unknown[] }>(request, `/v1/usuarios/${id}`, { token: tokenAdmin });
-  if (u.status === 200 && u.body.rol === "LIDER_QA" && (u.body.celulasVigentes?.length ?? 0) > 0) {
-    await api.put(request, `/v1/usuarios/${id}/celulas-lider`, { token: tokenAdmin, body: { celulaIds: [] } });
-  }
   await api.patch(request, `/v1/usuarios/${id}`, { token: tokenAdmin, body: { activo: false } });
 }
 
@@ -203,27 +195,7 @@ export async function contarOrganizacion() {
          WHERE u.activo AND r.nombre = 'ANALISTA_QA'
            AND NOT EXISTS (SELECT 1 FROM organizacion.supervision s WHERE s.id_supervisado = u.id_usuario AND s.fecha_hasta IS NULL)`,
       ),
-      lideresSinCelulas: await q(
-        `SELECT count(*) n FROM organizacion.usuario u JOIN organizacion.rol r ON r.id_rol = u.id_rol
-         WHERE u.activo AND r.nombre = 'LIDER_QA'
-           AND NOT EXISTS (SELECT 1 FROM organizacion.celula_lider cl WHERE cl.id_usuario = u.id_usuario AND cl.fecha_hasta IS NULL)`,
-      ),
     };
-  });
-}
-
-/** HDU de las células vigentes de un usuario, directamente en la base (oráculo independiente del endpoint). */
-export async function hduDeCelulasDe(correo: string) {
-  return conOrganizacion(async (c) => {
-    const r = await c.query(
-      `SELECT h.codigo, h.estado, h.analista_id IS NULL AS sin_analista
-         FROM organizacion.historia_usuario h
-        WHERE h.id_celula IN (SELECT cl.id_celula FROM organizacion.celula_lider cl
-                                JOIN organizacion.usuario u ON u.id_usuario = cl.id_usuario
-                               WHERE u.email = $1 AND cl.fecha_hasta IS NULL)`,
-      [correo],
-    );
-    return r.rows as Array<{ codigo: string; estado: string; sin_analista: boolean }>;
   });
 }
 

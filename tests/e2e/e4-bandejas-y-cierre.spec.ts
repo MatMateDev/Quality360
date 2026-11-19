@@ -7,7 +7,8 @@ import { impedimentosCaidoEnOrganizacion, type PilaE4 } from "../support/entorno
 import { env } from "../support/env";
 
 /**
- * E4 en las 5 bandejas (D87), la pestaña del Auditor (E4-B04-T12) y el cierre bloqueado en pantalla (D60, D77, D81).
+ * E4 en las 4 bandejas (D87; la del Líder QA se retiró en D208), la pestaña del Auditor (E4-B04-T12) y el cierre bloqueado
+ * en pantalla (D60, D77, D81).
  * El fixture E4 se recarga antes del archivo y entre los casos que escriben.
  */
 test.describe.configure({ mode: "serial" });
@@ -48,42 +49,10 @@ test.describe("E4 · bandejas por rol", () => {
     });
   });
 
-  test.describe("LID1", () => {
-    test.use({ storageState: estadoSesion("lid1") });
-    test("[E4-F03#2] Líder: LID1 ve abiertos 3, HDU bloqueadas 3 y escalados a mí 1; la lista trae los 3 con I3 primero y «escalado a mí», las columnas Bloqueo y Riesgo y «Solo bloqueadas»", async ({ page, request }) => {
-      const [h, i] = [await hdu(request), await imps(request)];
-      await page.goto(`${env.portalUrl}/lider?q=E7-H`);
-      await expect(page.getByTestId("contador-impedimentos-abiertos")).toHaveText("3");
-      await expect(page.getByTestId("contador-hdu-bloqueadas")).toHaveText("3");
-      await expect(page.getByTestId("contador-escalados-a-mi")).toHaveText("1");
-      const lista = page.getByTestId("lista-impedimentos").locator("tbody tr");
-      await expect(lista).toHaveCount(3);
-      await expect(lista.first()).toHaveAttribute("data-testid", `fila-impedimento-${i.I3.id}`);
-      await expect(lista.first().getByTestId("insignia-escalado-a-mi")).toBeVisible();
-      await expect(page.getByTestId(`celda-bloqueo-${h.H1.id}`)).toContainText("Bloqueada");
-      await expect(page.getByTestId(`celda-riesgo-${h.H1.id}`)).toContainText("Alto");
-      await expect(page.getByTestId(`celda-riesgo-${h.H6.id}`)).toContainText("Medio");
-      await expect(page.getByTestId(`celda-riesgo-${h.H7.id}`)).toContainText("Sin evaluar");
-      await page.getByTestId("filtro-solo-bloqueadas").click();
-      await expect(page.getByTestId("lista-hdu-lider").locator("tbody tr")).toHaveCount(3);
-      await expect(page.locator("button[type=submit]")).toHaveCount(0);
-    });
-  });
-
-  test.describe("LID2", () => {
-    test.use({ storageState: estadoSesion("lid2") });
-    test("[E4-F03#2] Líder sin células: LID2 recibe el aviso de E7 «Aún no tienes células asignadas» (sin bloques de impedimentos ni «No disponible»); sus contadores en 0 se verifican por API", async ({ page }) => {
-      await page.goto(`${env.portalUrl}/lider`);
-      await expect(page.getByRole("status").filter({ hasText: "Aún no tienes células asignadas" })).toBeVisible();
-      await expect(page.getByTestId("contador-impedimentos-abiertos")).toHaveCount(0);
-      await expect(page.getByTestId("estado-indisponible-impedimentos")).toHaveCount(0);
-      await expect(page.getByText("No disponible")).toHaveCount(0);
-    });
-  });
-
   test.describe("ADM1", () => {
     test.use({ storageState: estadoSesion("adm1") });
-    test("[E4-F03#2] Administrador: ADM1 ve abiertos 3, HDU bloqueadas 3 y riesgo alto 2, y «escalados a mí» vacío (aún no le escalan nada)", async ({ page, request }) => {
+    test("[E4-F03#2] Administrador: ADM1 ve abiertos 3, HDU bloqueadas 3 y riesgo alto 2, y en «escalados a mí» solo I3 (escalado a ADM1 en el fixture, D208)", async ({ page, request }) => {
+      const i = await imps(request);
       await page.goto(`${env.portalUrl}/admin`);
       await expect(page.getByTestId("contador-impedimentos-abiertos")).toHaveText("3");
       await expect(page.getByTestId("contador-hdu-bloqueadas")).toHaveText("3");
@@ -91,7 +60,10 @@ test.describe("E4 · bandejas por rol", () => {
       const total = await api.get<{ contadores: { hduTotal: { datos: { valor: number } } } }>(request, "/v1/bandeja/admin", { token: await tokenE7("adm1") });
       if (total.body.contadores.hduTotal.datos.valor === 8) await expect(page.getByTestId("contador-hdu-riesgo-alto")).toHaveText("2");
       else await expect(page.getByTestId("contador-hdu-riesgo-alto")).toHaveText(/^[0-9]+$/);
-      await expect(page.getByTestId("estado-vacio-impedimentos-escalados")).toBeVisible();
+      const escalados = page.getByTestId("lista-impedimentos-escalados").locator("tbody tr");
+      await expect(escalados).toHaveCount(1);
+      await expect(escalados.first()).toHaveAttribute("data-testid", `fila-impedimento-${i.I3.id}`);
+      await expect(page.getByTestId("estado-vacio-impedimentos-escalados")).toHaveCount(0);
       await expect(page.getByTestId("pendientes-configuracion").or(page.getByTestId("lista-pendientes"))).toBeVisible();
     });
   });

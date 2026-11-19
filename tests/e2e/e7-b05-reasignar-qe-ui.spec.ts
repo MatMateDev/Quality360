@@ -42,9 +42,9 @@ test.describe("E7-B05 · Reasignar el QE responsable desde el detalle de la HDU"
     }
   });
 
-  test("[E7-B05#2] el botón «Reasignar QE responsable» no existe para el QE responsable, el Líder ni el Auditor", async ({ browser, request }) => {
+  test("[E7-B05#2] el botón «Reasignar QE responsable» no existe para el QE responsable ni el Auditor", async ({ browser, request }) => {
     const h = await hduFixture(request);
-    for (const clave of ["qe1", "lid1", "aud1"] as const) {
+    for (const clave of ["qe1", "aud1"] as const) {
       const ctx = await browser.newContext({ storageState: path.join(import.meta.dirname, "..", ".auth", `e7-${clave}.json`) });
       const page = await ctx.newPage();
       await page.goto(`${env.portalUrl}/hdu/${h["E7-H1"].id}`);

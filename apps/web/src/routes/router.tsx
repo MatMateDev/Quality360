@@ -16,7 +16,6 @@ import { AuditorBandejaPage } from "@/pages/auditor/AuditorBandejaPage";
 import { AuditorIntegracionesPage } from "@/pages/auditor/AuditorIntegracionesPage";
 import { AuditorImpedimentosPage } from "@/pages/auditor/AuditorImpedimentosPage";
 import { AuditorAuditoriaUsuariosPage, AuditorBitacoraPage, AuditorCertificadosPage } from "@/pages/auditor/AuditorPestanasPage";
-import { LiderBandejaPage } from "@/pages/lider/LiderBandejaPage";
 import { LoginPage } from "@/pages/LoginPage";
 import { PerfilPage } from "@/pages/PerfilPage";
 import { PortalRedirect } from "@/pages/PortalRedirect";
@@ -35,7 +34,7 @@ import { QeInicioPage } from "@/pages/qe/QeInicioPage";
 import { QeDashboardPage } from "@/pages/qe/QeDashboardPage";
 import { QeRiesgoPage } from "@/pages/qe/QeRiesgoPage";
 
-/** Rutas del portal: `/admin`, `/qe`, `/qa`, `/lider` y `/auditor` guardadas por rol (D6, ADR 0006, D41). */
+/** Rutas del portal: `/admin`, `/qe`, `/qa` y `/auditor` guardadas por rol (D6, ADR 0006, D41; `/lider` se retiró, D208). */
 export function AppRoutes() {
   return (
     <Routes>
@@ -77,10 +76,6 @@ export function AppRoutes() {
             <Route path="qe/impedimentos" element={<QeImpedimentosPage />} />
             <Route path="qe/impedimentos/riesgo" element={<QeRiesgoPage />} />
             <Route path="qe/integraciones" element={<QeIntegracionesPage />} />
-          </Route>
-
-          <Route element={<RequireRole roles={["LIDER_QA"]} />}>
-            <Route path="lider" element={<LiderBandejaPage />} />
           </Route>
 
           <Route element={<RequireRole roles={["AUDITOR"]} />}>

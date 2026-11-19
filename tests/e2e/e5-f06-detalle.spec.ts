@@ -269,7 +269,7 @@ test.describe("E5-F06 · Detalle de la HDU", () => {
     });
   });
 
-  for (const clave of ["qe1", "lid1", "ana1", "aud1"] as const) {
+  for (const clave of ["qe1", "ana1", "aud1"] as const) {
     test(`[E5-F06#9] T09: ${clave.toUpperCase()} no ve «Ver detalle» ni el panel en el portal`, async ({ browser, request }) => {
       await consultaConDetalle(request);
       const { contexto, page } = await contextoDe(browser, clave);

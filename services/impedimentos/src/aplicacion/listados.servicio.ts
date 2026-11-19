@@ -4,7 +4,7 @@
  * `consulta` o `ambito/detalle`. Una fuente caída nunca se confunde con una lista vacía (D46).
  */
 import { Injectable } from '@nestjs/common';
-import { accesoDenegado, servicioNoDisponible } from '@quality360/auth-nest';
+import { servicioNoDisponible } from '@quality360/auth-nest';
 
 import { ImpedimentoRepositorio } from '../dominio/repositorios.js';
 import { ORDEN_NIVEL } from '../dominio/riesgo/calculo.js';
@@ -69,15 +69,7 @@ export class ListadosAplicacion {
     private readonly evaluador: EvaluadorRiesgo,
   ) {}
 
-  /** Un Líder QA solo filtra por una de sus células vigentes; otra es 403 (E7-B02#1). */
-  private validarCelula(celulaId: string | undefined, solicitante: Solicitante): void {
-    if (celulaId !== undefined && solicitante.rol === 'LIDER_QA' && !solicitante.celulasIds.includes(celulaId)) {
-      throw accesoDenegado('célula fuera de las vigentes del Líder');
-    }
-  }
-
   async impedimentosDelAmbito(filtros: FiltrosImpedimentos, solicitante: Solicitante) {
-    this.validarCelula(filtros.celulaId, solicitante);
     const ahora = new Date();
     const hoy = this.evaluador.hoy(ahora);
     const ambito = await this.proveedor.ambito(solicitante.contexto);
@@ -171,7 +163,6 @@ export class ListadosAplicacion {
   }
 
   async riesgoPorHdu(filtros: FiltrosRiesgoHdu, solicitante: Solicitante) {
-    this.validarCelula(filtros.celulaId, solicitante);
     const ahora = new Date();
     // Por defecto solo las no cerradas; una HDU cerrada aparece si se pide ese estado.
     let hdus = await this.proveedor.ambitoDetalle(solicitante.contexto, filtros.estado === 'CERRADA');

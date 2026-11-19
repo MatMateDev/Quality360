@@ -15,7 +15,6 @@ import "../../styles/admin-dashboard.css";
 const COLOR_ROL: Record<Rol, string> = {
   ANALISTA_QA: "var(--dash-rol-analista)",
   QE: "var(--dash-rol-qe)",
-  LIDER_QA: "var(--dash-rol-lider)",
   ADMINISTRADOR: "var(--dash-rol-admin)",
   AUDITOR: "var(--dash-rol-auditor)",
 };
@@ -24,7 +23,7 @@ const COLOR_ROL: Record<Rol, string> = {
 const COLOR_ESTADO: Record<EstadoHdu, string> = {
   PENDIENTE: "var(--q360-color-texto-secundario)",
   DISENO_PRUEBAS: "var(--q360-color-acento)",
-  EN_EJECUCION: "var(--q360-color-lider)",
+  EN_EJECUCION: "var(--q360-color-violeta)",
   PENDIENTE_CIERRE: "var(--q360-color-alerta)",
   CERRADA: "var(--q360-color-exito)",
 };
@@ -196,13 +195,11 @@ export function AdminDashboardPage() {
 
         <section className="qe-dashboard__panel" aria-labelledby={idOrganizacion}>
           <h2 id={idOrganizacion}>Organización QA</h2>
-          <p className="qe-dashboard__descripcion">Configuración pendiente que deja analistas, QE, líderes o células sin cubrir.</p>
+          <p className="qe-dashboard__descripcion">Configuración pendiente que deja analistas o QE sin cubrir.</p>
 
           <div className="qe-dashboard__alertas">
             <TarjetaContador consulta={bandeja} id="dash-admin-analistas-sin-qe" clave="dash-admin-analistas-sin-qe" titulo="Analistas sin QE" contador={contadores?.analistasSinQe} atencion />
             <TarjetaContador consulta={bandeja} id="dash-admin-qe-sin-analistas" clave="dash-admin-qe-sin-analistas" titulo="QE sin analistas" contador={contadores?.qeSinAnalistas} atencion />
-            <TarjetaContador consulta={bandeja} id="dash-admin-lideres-sin-celulas" clave="dash-admin-lideres-sin-celulas" titulo="Líderes sin células" contador={contadores?.lideresSinCelulas} atencion />
-            <TarjetaContador consulta={bandeja} id="dash-admin-celulas-sin-lider" clave="dash-admin-celulas-sin-lider" titulo="Células sin líder" contador={contadores?.celulasSinLider} atencion />
           </div>
           <Link className="boton boton--secundario dash-admin__accion" to="/admin" data-testid="dash-admin-ir-pendientes">
             Resolver pendientes en la Bandeja

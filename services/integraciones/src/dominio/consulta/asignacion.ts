@@ -161,7 +161,6 @@ export interface ValidacionAsignacion {
   readonly analista: Ref | null;
   readonly sprint: Ref | null;
   readonly sprintPropuesto: { readonly sprint: Ref | null; readonly origen: 'JIRA' | 'RESPALDO' | null; readonly sprintJiraNoEncontrado: boolean } | null;
-  readonly celulaSinLiderActivo: boolean;
   /** Solo con `proponerAnalista` y QE válido: Analistas activos del equipo vigente del QE (D201). */
   readonly analistasActivos?: number | null;
   /** El único Analista activo del equipo del QE, o `null` con 0 o 2+ (D201). */
@@ -181,7 +180,6 @@ export type DecisionEdicion =
       readonly asignacion: AsignacionFila;
       /** D201: el analista lo puso el servidor por ser el único del equipo del QE. */
       readonly analistaAuto: boolean;
-      readonly avisoSinLider: boolean;
       /** La advertencia `SPRINT_NO_ENCONTRADO` de D136 solo se recalcula si la célula se fijó en esta edición. */
       readonly sprintJiraNoEncontrado: boolean | null;
       readonly marcada: boolean;
@@ -215,7 +213,6 @@ export function decidirEdicion(fila: EstadoFila, pedido: PedidoEdicion, combinac
 
   let asignacion = fila.asignacion;
   let analistaAuto = fila.analistaAuto === true;
-  let avisoSinLider = false;
   let sprintJiraNoEncontrado: boolean | null = null;
   let cambioAsignacion = false;
   if (pedido.cambio !== undefined && combinacion !== null) {
@@ -224,7 +221,6 @@ export function decidirEdicion(fila: EstadoFila, pedido: PedidoEdicion, combinac
       if (rechazo !== null) return { tipo: 'RECHAZADA', rechazo };
     }
     asignacion = construirAsignacion(fila.asignacion, combinacion, validacion);
-    avisoSinLider = validacion?.celulaSinLiderActivo ?? false;
     sprintJiraNoEncontrado = combinacion.modoSprint === 'PROPONER' ? (validacion?.sprintPropuesto?.sprintJiraNoEncontrado ?? false) : null;
     cambioAsignacion = JSON.stringify(idsDe(asignacion)) !== JSON.stringify(idsDe(fila.asignacion)) || asignacion.sprintOrigen !== fila.asignacion.sprintOrigen;
     // D201: el analista es automático solo si lo propuso el servidor en esta edición (o ya lo era y no se tocó el analista).
@@ -262,7 +258,7 @@ export function decidirEdicion(fila: EstadoFila, pedido: PedidoEdicion, combinac
     marcada = false;
     desmarcada = fila.marcada;
   }
-  return { tipo: 'OK', asignacion, analistaAuto, avisoSinLider, sprintJiraNoEncontrado, marcada, desmarcada, marcadaAhora, incompleta, cambioAsignacion };
+  return { tipo: 'OK', asignacion, analistaAuto, sprintJiraNoEncontrado, marcada, desmarcada, marcadaAhora, incompleta, cambioAsignacion };
 }
 
 /** La asignación resultante: los nombres salen de la validación (D148); lo que no se tocó se conserva. */

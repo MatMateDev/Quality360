@@ -1,5 +1,5 @@
 /**
- * `GET /v1/bandeja/{analista, qe, lider, admin, auditor}` (E7-B03, D33). Cada ruta exige
+ * `GET /v1/bandeja/{analista, qe, admin, auditor}` (E7-B03, D33; la del Líder QA se retiró, D208). Cada ruta exige
  * su propio rol y cualquier otro —incluido el Administrador— recibe el mismo 403
  * `ACCESO_DENEGADO` genérico del `AccesoGuard`. Un usuario inactivo recibe el mismo 403.
  */
@@ -11,7 +11,6 @@ import {
   BandejaAdminQueryDto,
   BandejaAnalistaQueryDto,
   BandejaAuditorQueryDto,
-  BandejaLiderQueryDto,
   BandejaQeQueryDto,
 } from '../dto/bandejas.dto.js';
 
@@ -43,17 +42,6 @@ export class BandejasController {
     @Req() solicitud: SolicitudAutenticada,
   ) {
     return this.bandejas.qe(contexto(acceso, identidad, solicitud), query);
-  }
-
-  @Roles('LIDER_QA')
-  @Get('lider')
-  lider(
-    @Query() query: BandejaLiderQueryDto,
-    @AccesoActual() acceso: ResolucionAcceso,
-    @IdentidadActual() identidad: Identidad,
-    @Req() solicitud: SolicitudAutenticada,
-  ) {
-    return this.bandejas.lider(contexto(acceso, identidad, solicitud), query);
   }
 
   @Roles('ADMINISTRADOR')

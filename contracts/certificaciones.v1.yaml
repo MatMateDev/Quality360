@@ -20,10 +20,9 @@ info:
     - **HDU cerrada.** Rechaza cualquier cambio con 409 `HDU_CERRADA` (D22).
     - **Archivos.** Las evidencias y los certificados viven en buckets privados
       de Supabase Storage. Se suben y descargan con URL firmadas (D20).
-    - **Solo lectura (E7, D32).** Las relaciones `LECTOR_CELULA` (Líder QA) y
-      `LECTOR_AUDITORIA` (Auditor) permiten ver el checklist, la bitácora, las
-      evidencias y el certificado, nunca escribir: `permisos` va en `false` y
-      toda escritura responde 403.
+    - **Solo lectura (E7, D32).** La relación `LECTOR_AUDITORIA` (Auditor)
+      permite ver el checklist, la bitácora, las evidencias y el certificado,
+      nunca escribir: `permisos` va en `false` y toda escritura responde 403.
     - **Lecturas en lote (D46, D47).** `POST /v1/interno/checklist/estados` y
       `/v1/auditor/*` resuelven el ámbito con una sola llamada a
       `GET /v1/interno/hdu/ambito` de Organización. `/v1/auditor/*` exige
@@ -84,8 +83,8 @@ paths:
         Avance sobre los 10 entregables: `completados` son los `APROBADO` y
         `completo` es verdadero con los 10 aprobados (D16). Lo usan el bloque
         `checklist` del detalle de HDU en el gateway y el cierre en Organización (D11).
-      x-roles: [ADMINISTRADOR, QE, ANALISTA_QA, LIDER_QA, AUDITOR]
-      x-hdu: [E2-F04#1, E2-B02#3, E3-B02#3, E7-B02#1, E7-B02#2]
+      x-roles: [ADMINISTRADOR, QE, ANALISTA_QA, AUDITOR]
+      x-hdu: [E2-F04#1, E2-B02#3, E3-B02#3, E7-B02#2]
       responses:
         '200':
           description: Resumen del checklist.
@@ -119,8 +118,8 @@ paths:
           muestra el checklist en solo lectura (E3-F01#3).
         - `certificacion` dice si hoy se puede generar el certificado y, si no,
           el motivo y los entregables faltantes (E3-F04#2).
-      x-roles: [ADMINISTRADOR, QE, ANALISTA_QA, LIDER_QA, AUDITOR]
-      x-hdu: [E3-F01#1, E3-F01#2, E3-F01#3, E3-F04#2, E7-F04#3, E7-F06#1, E7-B02#1, E7-B02#2]
+      x-roles: [ADMINISTRADOR, QE, ANALISTA_QA, AUDITOR]
+      x-hdu: [E3-F01#1, E3-F01#2, E3-F01#3, E3-F04#2, E7-F06#1, E7-B02#2]
       responses:
         '200':
           description: Checklist de la HDU.
@@ -344,8 +343,8 @@ paths:
       tags: [Checklist]
       summary: URL firmada para descargar la evidencia de archivo
       description: Cualquier relación permitida con la HDU. 404 si el entregable no tiene un archivo como evidencia.
-      x-roles: [ADMINISTRADOR, QE, ANALISTA_QA, LIDER_QA, AUDITOR]
-      x-hdu: [E3-F03#1, E7-F06#1, E7-B02#1, E7-B02#2]
+      x-roles: [ADMINISTRADOR, QE, ANALISTA_QA, AUDITOR]
+      x-hdu: [E3-F03#1, E7-F06#1, E7-B02#2]
       responses:
         '200':
           description: URL de descarga de corta duración.
@@ -378,8 +377,8 @@ paths:
         valor anterior y nuevo, y motivo o comentario. Pueden consultarlo el
         Administrador, los QE con la HDU en su ámbito y el analista asignado
         (E3-B04#3).
-      x-roles: [ADMINISTRADOR, QE, ANALISTA_QA, LIDER_QA, AUDITOR]
-      x-hdu: [E3-B04#3, E7-F06#1, E7-B02#1, E7-B02#2]
+      x-roles: [ADMINISTRADOR, QE, ANALISTA_QA, AUDITOR]
+      x-hdu: [E3-B04#3, E7-F06#1, E7-B02#2]
       responses:
         '200':
           description: Bitácora de la HDU.
@@ -467,8 +466,8 @@ paths:
       tags: [Certificado]
       summary: Volver a descargar el certificado emitido
       description: Cualquier relación permitida con la HDU. Siempre es el mismo PDF (E3-F04#3). 404 si no hay certificado.
-      x-roles: [ADMINISTRADOR, QE, ANALISTA_QA, LIDER_QA, AUDITOR]
-      x-hdu: [E3-F04#3, E7-F04#3, E7-F06#1, E7-B02#1, E7-B02#2]
+      x-roles: [ADMINISTRADOR, QE, ANALISTA_QA, AUDITOR]
+      x-hdu: [E3-F04#3, E7-F06#1, E7-B02#2]
       responses:
         '200':
           description: Certificado con URL de descarga de corta duración.
@@ -530,8 +529,8 @@ paths:
 
         E4 (D68, D86): Impedimentos también lo usa, para el avance del riesgo
         sugerido y para el ciclo activo al registrar (`certificacionId`).
-      x-roles: [ADMINISTRADOR, QE, ANALISTA_QA, LIDER_QA, AUDITOR]
-      x-hdu: [E7-F02#1, E7-F03#1, E7-F04#1, E7-B03#1, E7-B03#2, E4-B01#1, E4-B03#2]
+      x-roles: [ADMINISTRADOR, QE, ANALISTA_QA, AUDITOR]
+      x-hdu: [E7-F02#1, E7-F03#1, E7-B03#1, E7-B03#2, E4-B01#1, E4-B03#2]
       requestBody:
         required: true
         content:

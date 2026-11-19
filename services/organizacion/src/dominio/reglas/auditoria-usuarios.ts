@@ -28,7 +28,7 @@ export const CAMPOS_VISIBLES: readonly string[] = [
   'activo',
   'supervisor',
   'qeId',
-  'celulas',
+  'celulas', // entradas ASIGNAR_CELULAS_LIDER anteriores a D208
   'recurso',
   'filtros',
   'filas',

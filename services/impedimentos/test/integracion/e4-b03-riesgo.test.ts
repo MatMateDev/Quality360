@@ -113,12 +113,12 @@ describe('E4-B03 · riesgo', () => {
 
   it('[E4-B03#3] T09: PUT 403 para todos menos el QE responsable; GET 403 al QE ajeno y al analista; 200 al resto', async () => {
     const cuerpo = { nivel: 'ALTO', justificacion: 'Intento no autorizado' };
-    for (const persona of ['qe2', 'ana1', 'lid1', 'aud1', 'adm1'] as const) {
+    for (const persona of ['qe2', 'ana1', 'aud1', 'adm1'] as const) {
       assert.equal((await como(app, persona, 'put', `/v1/hdu/${f.h.H6.id}/riesgo`, cuerpo)).status, 403, persona);
     }
     assert.equal((await riesgo('qe2', f.h.H6.id)).status, 403);
     assert.equal((await riesgo('ana1', f.h.H6.id)).status, 403);
-    for (const persona of ['lid1', 'aud1', 'adm1'] as const) {
+    for (const persona of ['aud1', 'adm1'] as const) {
       const r = await riesgo(persona, f.h.H6.id);
       assert.equal(r.status, 200, persona);
       assert.equal(r.body.permisos.puedeFijarRiesgo, false);

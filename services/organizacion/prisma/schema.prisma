@@ -70,6 +70,7 @@ enum AccionAuditoria {
   CAMBIAR_ESTADO_HDU
   ASIGNAR_ANALISTA
   REASIGNAR_ANALISTA
+  /// Solo en registros anteriores a D208 (retiro del rol Líder QA): ya no se genera.
   ASIGNAR_CELULAS_LIDER
   EXPORTAR
   REASIGNAR_QE_RESPONSABLE
@@ -104,7 +105,6 @@ model Usuario {
   supervisionesComoAnalista Supervision[] @relation("SupervisionAnalista")
   hduComoQeResponsable      Hdu[]         @relation("HduQeResponsable")
   hduComoAnalista           Hdu[]         @relation("HduAnalista")
-  celulasLider              CelulaLider[]
 
   @@index([rolId])
   @@map("usuario")
@@ -146,35 +146,8 @@ model Celula {
 
   sprints Sprint[]
   hdus    Hdu[]
-  lideres CelulaLider[]
 
   @@map("celula")
-}
-
-/// CelulaLider (D30, D52): células a cargo de un Líder QA. Vigente si `fecha_hasta`
-/// es nula. Índices parciales y CHECK en la migración 20261021000000_e7_roles_celula_lider:
-/// `celula_lider_vigente_key` UNIQUE (id_usuario, id_celula) WHERE fecha_hasta IS NULL,
-/// `celula_lider_celula_vigente_idx` (id_celula) WHERE fecha_hasta IS NULL,
-/// `celula_lider_fechas_ck` y `celula_lider_retiro_ck`. Que el usuario sea LIDER_QA se
-/// valida en la aplicación, dentro de la misma transacción.
-model CelulaLider {
-  id                String     @id @default(uuid()) @map("id_celula_lider") @db.Uuid
-  usuarioId         String     @map("id_usuario") @db.Uuid
-  celulaId          String     @map("id_celula") @db.Uuid
-  desde             DateTime   @default(now()) @map("fecha_desde") @db.Timestamptz(6)
-  hasta             DateTime?  @map("fecha_hasta") @db.Timestamptz(6)
-  asignadoPorTipo   TipoActor  @map("asignado_por_tipo")
-  asignadoPorId     String     @map("asignado_por_id")
-  asignadoPorNombre String     @map("asignado_por_nombre")
-  retiradoPorTipo   TipoActor? @map("retirado_por_tipo")
-  retiradoPorId     String?    @map("retirado_por_id")
-  retiradoPorNombre String?    @map("retirado_por_nombre")
-
-  usuario Usuario @relation(fields: [usuarioId], references: [id])
-  celula  Celula  @relation(fields: [celulaId], references: [id])
-
-  @@index([usuarioId, desde(sort: Desc)], map: "celula_lider_usuario_historial_idx")
-  @@map("celula_lider")
 }
 
 /// Estado del sprint (modelo de datos: Sprint.estado).

@@ -114,7 +114,8 @@ function estadoDeCodigo(valor: unknown): HduExistente | null {
 
 function validacionDeAsignacion(valor: unknown): AsignacionValidadaConRef {
   const d = objeto(valor, 'una asignación validada');
-  if (!Array.isArray(d.errores) || typeof d.ref !== 'string' || typeof d.celulaSinLiderActivo !== 'boolean') return ilegible('una asignación validada');
+  // `celulaSinLiderActivo` se retiró con el rol Líder QA (D208); si una Organización anterior lo envía, se ignora.
+  if (!Array.isArray(d.errores) || typeof d.ref !== 'string') return ilegible('una asignación validada');
   let sprintPropuesto: ValidacionAsignacion['sprintPropuesto'] = null;
   if (d.sprintPropuesto !== null && d.sprintPropuesto !== undefined) {
     const p = objeto(d.sprintPropuesto, 'un sprint propuesto');
@@ -129,7 +130,6 @@ function validacionDeAsignacion(valor: unknown): AsignacionValidadaConRef {
     analista: referencia(d.analista, 'el analista validado'),
     sprint: referencia(d.sprint, 'el sprint validado'),
     sprintPropuesto,
-    celulaSinLiderActivo: d.celulaSinLiderActivo,
     // D201. Una Organización anterior no los envía: sin propuesta, el analista queda vacío (nunca un error).
     analistasActivos: typeof d.analistasActivos === 'number' && Number.isInteger(d.analistasActivos) && d.analistasActivos >= 0 ? d.analistasActivos : null,
     analistaPropuesto: referencia(d.analistaPropuesto, 'el analista propuesto'),

@@ -30,11 +30,6 @@ main:focus {
   outline: none;
 }
 
-.badge-lider-qa {
-  color: var(--q360-color-lider);
-  background-color: var(--q360-color-lider-suave);
-}
-
 .badge-auditor {
   color: var(--q360-color-auditor);
   background-color: var(--q360-color-auditor-suave);

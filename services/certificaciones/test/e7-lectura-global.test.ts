@@ -1,6 +1,6 @@
 /**
  * Certificaciones en E7 contra Postgres local (esquema `certificaciones`) con Organización y
- * Storage simulados: solo lectura del Líder QA y del Auditor (E7-B02), seguimiento en lote para
+ * Storage simulados: solo lectura del Auditor (E7-B02; el Líder QA se retiró, D208), seguimiento en lote para
  * las bandejas (E7-B03, D46) y consultas y exportaciones del Auditor (E7-B04, D47, D48).
  * Las HDU de cada prueba son nuevas; lo global se aísla por fecha, HDU o actor.
  */
@@ -68,7 +68,7 @@ async function marcarYAprobar(hduId: string, clave: ClaveEntregable): Promise<vo
 
 /** HDU con los 8 primeros entregables aprobados y su certificado (el 9.º); con `cerrada`, también el 10.º. */
 async function hduCertificada(cerrada = false): Promise<{ hdu: HduFalsa; folio: string }> {
-  const hdu = organizacion.nuevaHdu({ deLider: true });
+  const hdu = organizacion.nuevaHdu();
   for (const clave of CLAVES_ENTREGABLE.slice(0, 8)) await marcarYAprobar(hdu.id, clave);
   const generado = await llamar('qe', 'post', `/v1/hdu/${hdu.id}/certificado`);
   assert.equal(generado.status, 201, JSON.stringify(generado.body));
@@ -76,34 +76,23 @@ async function hduCertificada(cerrada = false): Promise<{ hdu: HduFalsa; folio: 
   return { hdu, folio: generado.body.certificado.folio };
 }
 
-describe('Solo lectura del Líder QA y del Auditor [E7-B02]', () => {
-  it('[E7-B02-T01] el Líder lee checklist, bitácora y certificado de una HDU de su célula, con permisos en false', async () => {
+describe('Solo lectura del Auditor [E7-B02]', () => {
+  it('el Auditor lee checklist, bitácora y certificado con permisos en false (D32)', async () => {
     const { hdu, folio } = await hduCertificada();
-    const checklist = await llamar('lider', 'get', `/v1/hdu/${hdu.id}/entregables`);
+    const checklist = await llamar('auditor', 'get', `/v1/hdu/${hdu.id}/entregables`);
     assert.equal(checklist.status, 200);
     assert.deepEqual(checklist.body.permisos, { puedeMarcar: false, puedeAprobar: false, puedeGenerarCertificado: false });
-    assert.equal((await llamar('lider', 'get', `/v1/hdu/${hdu.id}/checklist`)).status, 200);
-    assert.equal((await llamar('lider', 'get', `/v1/hdu/${hdu.id}/entregables/bitacora`)).status, 200);
-    const certificado = await llamar('lider', 'get', `/v1/hdu/${hdu.id}/certificado`);
+    assert.equal((await llamar('auditor', 'get', `/v1/hdu/${hdu.id}/checklist`)).status, 200);
+    assert.equal((await llamar('auditor', 'get', `/v1/hdu/${hdu.id}/entregables/bitacora`)).status, 200);
+    const certificado = await llamar('auditor', 'get', `/v1/hdu/${hdu.id}/certificado`);
     assert.equal(certificado.status, 200);
     assert.equal(certificado.body.certificado.folio, folio);
     assert.match(certificado.body.descarga.url, /^http/);
   });
 
-  it('[E7-B02-T02] una HDU de otra célula da 403 ACCESO_DENEGADO al Líder, igual que una inexistente', async () => {
-    const ajena = organizacion.nuevaHdu({ deLider: false });
-    const respuesta = await llamar('lider', 'get', `/v1/hdu/${ajena.id}/entregables`);
-    assert.equal(respuesta.status, 403);
-    assert.equal(respuesta.body.codigo, 'ACCESO_DENEGADO');
-    const inexistente = await llamar('lider', 'get', '/v1/hdu/7c9e6679-7425-40de-944b-e07fc1f90ae7/entregables');
-    assert.equal(inexistente.status, 403);
-    assert.equal(inexistente.body.mensaje, respuesta.body.mensaje);
-    assert.equal((await llamar('lider', 'get', `/v1/hdu/${ajena.id}/certificado`)).status, 403);
-  });
-
   it('[E7-B02-T06] [E7-B02-T07] el Auditor lee cualquier HDU y obtiene URL firmada de la evidencia en archivo y del certificado', async () => {
     const { hdu, folio } = await hduCertificada();
-    const otra = organizacion.nuevaHdu({ deLider: false });
+    const otra = organizacion.nuevaHdu();
     const subida = await llamar('analista', 'post', `/v1/hdu/${otra.id}/entregables/PLAN_PRUEBAS/evidencias`, {
       nombreArchivo: 'plan.pdf',
       tipoContenido: 'application/pdf',
@@ -123,8 +112,8 @@ describe('Solo lectura del Líder QA y del Auditor [E7-B02]', () => {
     assert.match(certificado.body.descarga.url, new RegExp(`certificados/${hdu.id}/${folio}\\.pdf`));
   });
 
-  it('[E7-B02-T08] [E7-B02-T09] AUD1 y LID1 reciben 403 al marcar, subir evidencia, desmarcar, aprobar, rechazar y certificar, sin eventos nuevos', async () => {
-    const hdu = organizacion.nuevaHdu({ deLider: true });
+  it('[E7-B02-T08] [E7-B02-T09] AUD1 recibe 403 al marcar, subir evidencia, desmarcar, aprobar, rechazar y certificar, sin eventos nuevos', async () => {
+    const hdu = organizacion.nuevaHdu();
     await llamar('analista', 'post', `/v1/hdu/${hdu.id}/entregables/PLAN_PRUEBAS/marcar`, enlace);
     const antes = (await llamar('qe', 'get', `/v1/hdu/${hdu.id}/entregables/bitacora`)).body.eventos.length;
 
@@ -138,15 +127,13 @@ describe('Solo lectura del Líder QA y del Auditor [E7-B02]', () => {
       ['certificado', `${base}/certificado`, undefined],
     ];
     let combinaciones = 0;
-    for (const persona of ['auditor', 'lider'] as const) {
-      for (const [nombre, ruta, cuerpo] of intentos) {
-        const respuesta = await llamar(persona, 'post', ruta, cuerpo);
-        assert.equal(respuesta.status, 403, `${nombre} como ${persona}`);
-        assert.equal(respuesta.body.codigo, 'ACCESO_DENEGADO');
-        combinaciones += 1;
-      }
+    for (const [nombre, ruta, cuerpo] of intentos) {
+      const respuesta = await llamar('auditor', 'post', ruta, cuerpo);
+      assert.equal(respuesta.status, 403, `${nombre} como auditor`);
+      assert.equal(respuesta.body.codigo, 'ACCESO_DENEGADO');
+      combinaciones += 1;
     }
-    assert.equal(combinaciones, 12);
+    assert.equal(combinaciones, 6);
     const despues = await llamar('qe', 'get', `/v1/hdu/${hdu.id}/entregables/bitacora`);
     assert.equal(despues.body.eventos.length, antes, '0 eventos nuevos');
     const checklist = await llamar('qe', 'get', `/v1/hdu/${hdu.id}/entregables`);
@@ -221,17 +208,15 @@ describe('POST /v1/interno/checklist/estados [E7-B03, D46]', () => {
     assert.deepEqual([casi.aprobados, casi.listaParaCertificar, casi.listaParaCerrar, casi.listaDesde], [7, false, false, null]);
   });
 
-  it('autoriza por sí mismo con el ámbito de Organización: un id ajeno da 403 completo; el Auditor y el Líder leen las suyas', async () => {
-    const propia = organizacion.nuevaHdu({ deLider: true });
-    const ajena = organizacion.nuevaHdu({ deLider: false, analistaId: '0a000000-0000-4000-8000-000000000005' });
+  it('autoriza por sí mismo con el ámbito de Organización: un id ajeno da 403 completo; el Auditor y el Administrador leen todas', async () => {
+    const propia = organizacion.nuevaHdu();
+    const ajena = organizacion.nuevaHdu({ analistaId: '0a000000-0000-4000-8000-000000000005' });
 
     const mezcla = await llamar('analista', 'post', '/v1/interno/checklist/estados', { hduIds: [propia.id, ajena.id] });
     assert.equal(mezcla.status, 403);
     assert.equal(mezcla.body.codigo, 'ACCESO_DENEGADO');
     assert.equal('items' in mezcla.body, false, 'sin datos parciales');
     assert.equal((await llamar('analista', 'post', '/v1/interno/checklist/estados', { hduIds: [propia.id] })).status, 200);
-    assert.equal((await llamar('lider', 'post', '/v1/interno/checklist/estados', { hduIds: [propia.id] })).status, 200);
-    assert.equal((await llamar('lider', 'post', '/v1/interno/checklist/estados', { hduIds: [propia.id, ajena.id] })).status, 403);
     assert.equal((await llamar('auditor', 'post', '/v1/interno/checklist/estados', { hduIds: [propia.id, ajena.id] })).status, 200);
     assert.equal((await llamar('admin', 'post', '/v1/interno/checklist/estados', { hduIds: [propia.id, ajena.id] })).status, 200);
   });
@@ -330,9 +315,9 @@ describe('Consultas del Auditor [E7-B04#1]', () => {
     assert.deepEqual([...fechas].sort((a, b) => b - a), fechas, 'del más reciente al más antiguo');
   });
 
-  it('[E7-B04-T07] ADM1, QE1, ANA1 y LID1 reciben 403 en los endpoints de Certificaciones (consultas, exportaciones y resumen)', async () => {
+  it('[E7-B04-T07] ADM1, QE1 y ANA1 reciben 403 en los endpoints de Certificaciones (consultas, exportaciones y resumen)', async () => {
     const rutas = ['/v1/auditor/bitacora', '/v1/auditor/certificados', '/v1/auditor/exportaciones/bitacora', '/v1/auditor/exportaciones/certificados', '/v1/interno/resumen-auditoria'];
-    for (const persona of ['admin', 'qe', 'analista', 'lider'] as const) {
+    for (const persona of ['admin', 'qe', 'analista'] as const) {
       for (const ruta of rutas) {
         const respuesta = await llamar(persona, 'get', ruta);
         assert.equal(respuesta.status, 403, `${ruta} como ${persona}`);

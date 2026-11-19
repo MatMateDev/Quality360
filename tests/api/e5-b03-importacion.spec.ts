@@ -267,11 +267,11 @@ test.describe("E5-B03 · Importación de archivos", () => {
     }
   });
 
-  test("[E5-B03#1] T11 (negativo): QE1, ANA1, LID1 y AUD1 reciben 403 en vista previa e importación; sin token 401; no hay HDU ni ejecuciones", async ({ request }) => {
+  test("[E5-B03#1] T11 (negativo): QE1, ANA1 y AUD1 reciben 403 en vista previa e importación; sin token 401; no hay HDU ni ejecuciones", async ({ request }) => {
     await estadoConfigBase(request);
     const hdu0 = await contarHdu(request);
     const cuerpo = cuerpoArchivo("historias-validas.csv");
-    for (const clave of ["qe1", "ana1", "lid1", "aud1"] as const) {
+    for (const clave of ["qe1", "ana1", "aud1"] as const) {
       for (const ruta of ["vista-previa", "importaciones"]) {
         const r = await api.post(request, `/v1/integraciones/archivos/${ruta}`, { token: await tk(clave), body: cuerpo });
         expect(r.status, `${clave} ${ruta}`).toBe(403);

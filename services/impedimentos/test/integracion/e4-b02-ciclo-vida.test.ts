@@ -49,9 +49,9 @@ describe('E4-B02 · ciclo de vida', () => {
     assert.deepEqual([r.body.accion.tipo, r.body.accion.actor.id, r.body.accion.estadoAnterior, r.body.accion.estado, r.body.accion.comentario], ['RESOLVER', PERSONAS.qe1.id, 'ABIERTO', 'RESUELTO', 'Ya está solucionado']);
   });
 
-  it('[E4-B02#1] T02: escalar a un Líder cambia el responsable y deja el detalle', async () => {
+  it('[E4-B02#1] T02: escalar al Administrador cambia el responsable y deja el detalle', async () => {
     const i = await registrar('ana1', f.h.H8, 'Para escalar T02');
-    // H8 no está en un célula del Líder: el destino válido es el Administrador.
+    // Desde D208 el destino de escalamiento es un Administrador activo.
     const r = await accion('qe1', i, 'escalar', { responsableId: PERSONAS.adm1.id, comentario: 'Se necesita ayuda' });
     assert.equal(r.status, 200, JSON.stringify(r.body));
     assert.equal(r.body.impedimento.estado, 'ESCALADO');
@@ -136,7 +136,7 @@ describe('E4-B02 · ciclo de vida', () => {
     assert.equal(enBlanco.status, 422);
     assert.equal(enBlanco.body.codigo, 'COMENTARIO_REQUERIDO');
     assert.equal((await accion('qe1', i, 'escalar', { comentario: 'Sin destino' })).status, 400);
-    for (const destino of [PERSONAS.ana1.id, PERSONAS.qe2.id, PERSONAS.lid2.id]) {
+    for (const destino of [PERSONAS.ana1.id, PERSONAS.qe2.id, PERSONAS.aud1.id]) {
       const r = await accion('qe1', i, 'escalar', { responsableId: destino, comentario: 'Destino inválido' });
       assert.equal(r.status, 422, destino);
       assert.equal(r.body.codigo, 'RESPONSABLE_INVALIDO');
@@ -152,7 +152,7 @@ describe('E4-B02 · ciclo de vida', () => {
     const i = await registrar('ana1', f.h.H8, 'Para T09');
     const resuelto = f.i.I4;
     const antes = await cuentaAcciones(i);
-    for (const persona of ['ana1', 'qe2', 'lid1', 'aud1', 'adm1'] as const) {
+    for (const persona of ['ana1', 'qe2', 'aud1', 'adm1'] as const) {
       for (const [id, operacion, cuerpo] of [[i, 'resolver', { comentario: 'Intento' }], [i, 'escalar', { responsableId: PERSONAS.adm1.id, comentario: 'Intento' }], [resuelto, 'reabrir', { motivo: 'Intento' }]] as const) {
         const r = await accion(persona, id, operacion, cuerpo);
         assert.equal(r.status, 403, `${persona} ${operacion}`);

@@ -133,9 +133,9 @@ describe('E4-B01 · registro', () => {
     assert.equal(new Set(cuerpos.map((c) => JSON.stringify(c))).size, 1);
   });
 
-  it('[E4-B01#3] T08: QE ajeno, Líder, Auditor y Administrador, 403; sin token, 401', async () => {
+  it('[E4-B01#3] T08: QE ajeno, Auditor y Administrador, 403; sin token, 401', async () => {
     const antes = await filas(f.h.H1.id);
-    for (const persona of ['qe2', 'lid1', 'aud1', 'adm1'] as const) {
+    for (const persona of ['qe2', 'aud1', 'adm1'] as const) {
       const r = await como(app, persona, 'post', `/v1/hdu/${f.h.H1.id}/impedimentos`, nuevo());
       assert.equal(r.status, 403, persona);
     }

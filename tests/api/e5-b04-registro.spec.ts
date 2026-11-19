@@ -131,9 +131,9 @@ test.describe("E5-B04 · Registro de ejecuciones", () => {
     expect((await ejecuciones(request, "", "qe1")).body.total).toBe(5);
   });
 
-  test("[E5-B04#2] T07 (negativo): LID1 y ANA1 reciben 403 en todo; un id inexistente da 404 a ADM1 y AUD1 y 403 a QE1 y LID1; sin token 401", async ({ request }) => {
+  test("[E5-B04#2] T07 (negativo): ANA1 recibe 403 en todo; un id inexistente da 404 a ADM1 y AUD1 y 403 a QE1; sin token 401", async ({ request }) => {
     const { r1 } = await prepararR1aR4(request);
-    for (const clave of ["lid1", "ana1"] as const) {
+    for (const clave of ["ana1"] as const) {
       const token = await tk(clave);
       for (const ruta of ["/v1/integraciones/ejecuciones", `/v1/integraciones/ejecuciones/${r1.id}`, `/v1/integraciones/ejecuciones/${r1.id}/detalle`, "/v1/integraciones/estado"]) {
         const r = await api.get<any>(request, ruta, { token });
@@ -142,7 +142,7 @@ test.describe("E5-B04 · Registro de ejecuciones", () => {
       }
     }
     const inexistente = "00000000-0000-4000-8000-0000000000aa";
-    for (const [clave, status] of [["adm1", 404], ["aud1", 404], ["qe1", 403], ["lid1", 403]] as const) {
+    for (const [clave, status] of [["adm1", 404], ["aud1", 404], ["qe1", 403]] as const) {
       expect((await ejecucion(request, inexistente, clave)).status, clave).toBe(status);
       expect((await detalleEjecucion(request, inexistente, "", clave)).status, `${clave} detalle`).toBe(status);
     }

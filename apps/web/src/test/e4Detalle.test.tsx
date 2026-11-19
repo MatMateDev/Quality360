@@ -10,7 +10,6 @@ const QA1 = "jonathan.choque@quality360.local";
 const QA3 = "camila.rojas@quality360.local";
 const QE1 = "jose.seguel@quality360.local";
 const QE2 = "constanza.diaz@quality360.local";
-const LIDER = "luis.soto@quality360.local";
 const ADMIN = "admin@quality360.local";
 const AUDITOR = "andrea.mora@quality360.local";
 
@@ -45,7 +44,7 @@ describe("Detalle de HDU: registro de impedimentos [E4-F01]", () => {
     expect(form.getByLabelText(/^Título/)).toHaveValue("VPN");
   });
 
-  it.each([LIDER, ADMIN, AUDITOR])("%s ve la sección sin botón de registro ni de gestión [E4-F01-T07]", async (correo) => {
+  it.each([ADMIN, AUDITOR])("%s ve la sección sin botón de registro ni de gestión [E4-F01-T07]", async (correo) => {
     await abrirComo(correo, `/hdu/${ID.hdu3}`);
     expect(await screen.findByTestId(`impedimento-${I.i1}`)).toBeInTheDocument();
     expect(screen.queryByTestId("boton-registrar-impedimento")).not.toBeInTheDocument();
@@ -89,14 +88,14 @@ describe("Detalle de HDU: gestión y cierre [E4-F03]", () => {
     expect(screen.getByTestId(`estado-impedimento-${I.i2}`)).toHaveTextContent("Resuelto");
   });
 
-  it("escalar ofrece solo Líder con la célula y Administrador, más «Otro» [E4-F03-T05]", async () => {
+  it("escalar ofrece solo Administradores activos, más «Otro» [E4-F03-T05 · D208]", async () => {
     const user = userEvent.setup();
     await abrirComo(QE1, `/hdu/${ID.hdu1}`);
     await user.click(await screen.findByTestId(`boton-escalar-${I.i2}`));
     const sel = await screen.findByTestId("campo-destino-escalamiento");
-    await waitFor(() => expect(within(sel).getAllByRole("option").length).toBeGreaterThan(2));
+    await waitFor(() => expect(within(sel).getAllByRole("option").some((o) => o.textContent?.includes("Valentina Rojas"))).toBe(true));
     const textos = within(sel).getAllByRole("option").map((o) => o.textContent);
-    expect(textos.some((t) => t?.includes("Luis Soto"))).toBe(true);
+    expect(textos.some((t) => t?.includes("Andrea Mora"))).toBe(false);
     expect(textos.some((t) => t?.includes("Valentina Rojas"))).toBe(true);
     expect(textos.some((t) => t?.includes("Otro (nombre)"))).toBe(true);
     expect(textos.some((t) => t?.includes("Jonathan"))).toBe(false);

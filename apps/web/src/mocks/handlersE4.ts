@@ -25,7 +25,7 @@ import {
   type ImpedimentoMock,
   type RiesgoFijadoMock,
 } from "./dataE4";
-import { celulasLider, celulasVigentesDe, fuentes, seguimientoDe } from "./dataE7";
+import { fuentes, seguimientoDe } from "./dataE7";
 import { ERROR_ACCESO_DENEGADO, ERROR_NO_ENCONTRADO, aCatalogoRef, cuerpoError, leerNumero, paginar } from "./utils";
 
 const BASE = env.gatewayUrl;
@@ -33,7 +33,7 @@ const MS_DIA = 86_400_000;
 const UMBRAL_DIAS_ANTIGUO = 5;
 
 type Respuesta = HttpResponse<any>;
-export type Relacion = "ANALISTA_ASIGNADO" | "QE_RESPONSABLE" | "QE_SUPERVISOR" | "LIDER" | "ADMINISTRADOR" | "AUDITOR" | null;
+export type Relacion = "ANALISTA_ASIGNADO" | "QE_RESPONSABLE" | "QE_SUPERVISOR" | "ADMINISTRADOR" | "AUDITOR" | null;
 
 const ORDEN_NIVEL: Record<string, number> = { ALTO: 0, MEDIO: 1, BAJO: 2 };
 const PESO_NIVEL: Record<NivelRiesgo, number> = { BAJO: 0, MEDIO: 1, ALTO: 2 };
@@ -46,8 +46,6 @@ export function relacionCon(actor: UsuarioMock, hdu: HduMock): Relacion {
       return "ADMINISTRADOR";
     case "AUDITOR":
       return "AUDITOR";
-    case "LIDER_QA":
-      return celulasVigentesDe(actor.id).includes(hdu.celulaId) ? "LIDER" : null;
     case "ANALISTA_QA":
       return hdu.analistaId === actor.id ? "ANALISTA_ASIGNADO" : null;
     default: {
@@ -297,7 +295,6 @@ function candidatos(hdu: HduMock, proposito: "REGISTRO" | "ESCALAMIENTO") {
     const sup = hdu.analistaId ? supervisorVigenteDe(hdu.analistaId) : undefined;
     if (sup && !ids.includes(sup.qeId)) ids.push(sup.qeId);
   } else {
-    for (const c of celulasLider) if (c.celulaId === hdu.celulaId && c.hasta === null) ids.push(c.usuarioId);
     for (const u of usuarios) if (u.rol === "ADMINISTRADOR" && u.activo) ids.push(u.id);
   }
   return [...new Set(ids)].filter((id) => buscarUsuario(id)?.activo).map((id) => personaRol(id, "QE"));
@@ -327,12 +324,6 @@ export function bloqueoFila(hduId: string) {
     : { fuente: FUENTE_IMP, estado: "indisponible" as const };
 }
 
-export function riesgoFila(hdu: HduMock) {
-  return fuentes.impedimentos
-    ? { fuente: FUENTE_RIESGO, estado: "ok" as const, datos: resumenRiesgo(hdu) }
-    : { fuente: FUENTE_RIESGO, estado: "indisponible" as const };
-}
-
 /** HDU con impedimentos abiertos, para el filtro `soloBloqueadas`. */
 export function hduBloqueadasIds(): Set<string> {
   return new Set(impedimentosMock.filter((i) => i.estado !== "RESUELTO").map((i) => i.hduId));
@@ -359,10 +350,9 @@ function itemBandeja(i: ImpedimentoMock, actor: UsuarioMock) {
   };
 }
 
-function listaBandeja(items: ImpedimentoMock[], actor: UsuarioMock, limite: number, escaladosPrimero = false) {
+function listaBandeja(items: ImpedimentoMock[], actor: UsuarioMock, limite: number) {
   if (!fuentes.impedimentos) return { fuente: FUENTE_IMP, estado: "indisponible" as const };
   const filas = ordenD74(items, actor).map((i) => itemBandeja(i, actor));
-  if (escaladosPrimero) filas.sort((a, b) => Number(b.escaladoAMi) - Number(a.escaladoAMi));
   return { fuente: FUENTE_IMP, estado: "ok" as const, datos: { items: filas.slice(0, limite), total: filas.length } };
 }
 
@@ -382,15 +372,6 @@ export function bloqueImpedimentosBandeja(actor: UsuarioMock, ambito: HduMock[])
           hduRiesgoAlto: contadorRiesgoAlto(ambito),
         },
         lista: listaBandeja(abiertos, actor, 10),
-      };
-    case "LIDER_QA":
-      return {
-        contadores: {
-          impedimentosAbiertos: contador(abiertos.length),
-          hduBloqueadas: contador(bloqueadas),
-          escaladosAMi: contador(abiertos.filter((i) => i.estado === "ESCALADO" && i.responsableId === actor.id).length),
-        },
-        lista: listaBandeja(abiertos, actor, 50, true),
       };
     case "ADMINISTRADOR": {
       const aMi = abiertos.filter((i) => i.estado === "ESCALADO" && i.responsableId === actor.id).sort((a, b) => a.abiertoDesde.localeCompare(b.abiertoDesde));
@@ -451,7 +432,6 @@ function listarImpedimentos(actor: UsuarioMock, url: URL): Respuesta {
   if (p.riesgo && !fuentes.certificaciones) return servicioNoDisponible();
   const ambito = ambitoDe(actor);
   const ids = new Set(ambito.map((h) => h.id));
-  if (actor.rol === "LIDER_QA" && p.celulaId && !celulasVigentesDe(actor.id).includes(p.celulaId)) return denegado();
   const delAmbito = impedimentosMock.filter((i) => ids.has(i.hduId));
   const abiertos = delAmbito.filter((i) => i.estado !== "RESUELTO");
 

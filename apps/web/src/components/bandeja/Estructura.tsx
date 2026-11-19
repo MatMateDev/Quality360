@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { BloqueEstado } from "../BloqueEstado";
 
-/** Aviso fijo de solo lectura (Líder y Auditor, D32/D39). Sin botones. */
+/** Aviso fijo de solo lectura (Auditor, D32/D39). Sin botones. */
 export function AvisoSoloLectura({ texto }: { texto?: string }) {
   return (
     <p className="aviso-solo-lectura" role="note" data-testid="aviso-solo-lectura">

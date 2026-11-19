@@ -6,7 +6,6 @@ import { abrirComo } from "./renderApp";
 
 const ADMIN = "admin@quality360.local";
 const QE1 = "jose.seguel@quality360.local";
-const LIDER = "luis.soto@quality360.local";
 const ANALISTA = "jonathan.choque@quality360.local";
 const AUDITOR = "andrea.mora@quality360.local";
 
@@ -222,15 +221,12 @@ describe("E5-F04 · historial de ejecuciones", () => {
 
 describe("acceso por rol a Integraciones [E5-F01-T09, E5-F04-T08]", () => {
   it.each([
-    ["Líder", LIDER, "/admin/integraciones"],
     ["Analista", ANALISTA, "/admin/integraciones/historial"],
     ["QE", QE1, "/admin/integraciones"],
     ["Auditor", AUDITOR, "/admin/integraciones/importar"],
-    ["Líder", LIDER, "/qe/integraciones"],
     ["Analista", ANALISTA, "/qe/integraciones"],
     ["Administrador", ADMIN, "/qe/integraciones"],
     ["QE", QE1, "/auditor/integraciones"],
-    ["Líder", LIDER, "/auditor/integraciones"],
   ])("%s en %s ve acceso denegado con «Ir a mi bandeja»", async (_rol, correo, ruta) => {
     await abrirComo(correo, ruta);
     const denegado = await screen.findByTestId("acceso-denegado");
@@ -242,7 +238,6 @@ describe("acceso por rol a Integraciones [E5-F01-T09, E5-F04-T08]", () => {
   it.each([
     ["Administrador", ADMIN, "/admin", ["Bandeja", "Dashboard", "Usuarios", "Supervisión", "Integraciones", "Perfil"]],
     ["QE", QE1, "/qe", ["Bandeja", "Dashboard", "Equipo", "Historias supervisadas", "Impedimentos", "Integraciones", "Perfil"]],
-    ["Líder", LIDER, "/lider", ["Bandeja", "Perfil"]],
     ["Analista", ANALISTA, "/qa", ["Bandeja", "Mis HDU", "Perfil"]],
     ["Auditor", AUDITOR, "/auditor", ["Bandeja", "Perfil"]],
   ])("menú del %s", async (_rol, correo, ruta, esperado) => {

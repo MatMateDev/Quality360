@@ -182,7 +182,8 @@ describe("Paginación y tabla", () => {
 describe("describirCambios: lenguaje natural sin claves sensibles", () => {
   it("describe solo campos de la lista blanca y nunca password, token ni secret", () => {
     const lineas = describirCambios({ rol: "ANALISTA_QA", password: "x" }, { rol: "LIDER_QA", accessToken: "y", client_secret: "z", otro: 1 });
-    expect(lineas).toEqual(["Rol: Analista QA → Líder QA"]);
+    // LIDER_QA solo aparece en la auditoría anterior a D208: se rotula como rol retirado.
+    expect(lineas).toEqual(["Rol: Analista QA → Líder QA (rol retirado)"]);
   });
 });
 

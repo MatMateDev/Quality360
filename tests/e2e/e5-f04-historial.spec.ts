@@ -200,7 +200,7 @@ test.describe("E5-F04 · Historial", () => {
     });
   });
 
-  for (const clave of ["lid1", "ana1"] as const) {
+  for (const clave of ["ana1"] as const) {
     test.describe(clave.toUpperCase(), () => {
       test.use({ storageState: estadoSesion(clave) });
       test(`[E5-F04#1] T08 (negativo): ${clave.toUpperCase()} recibe acceso denegado en /qe/integraciones y /admin/integraciones y el listado responde 403`, async ({ page }) => {

@@ -37,8 +37,8 @@ describe('[E4-B02] ciclo de vida y permisos', () => {
 
   it('[E4-B01#3] matriz de permisos por relación (D57, D73, D83)', () => {
     assert.deepEqual(
-      (['ANALISTA_ASIGNADO', 'QE_RESPONSABLE', 'QE_SUPERVISOR_DEL_ANALISTA', 'LECTOR_CELULA', 'ADMINISTRADOR', 'LECTOR_AUDITORIA'] as const).map((r) => [puedeRegistrarPorRelacion(r), puedeGestionarPorRelacion(r), puedeVerRiesgoPorRelacion(r)]),
-      [[true, false, false], [true, true, true], [false, false, true], [false, false, true], [false, false, true], [false, false, true]],
+      (['ANALISTA_ASIGNADO', 'QE_RESPONSABLE', 'QE_SUPERVISOR_DEL_ANALISTA', 'ADMINISTRADOR', 'LECTOR_AUDITORIA'] as const).map((r) => [puedeRegistrarPorRelacion(r), puedeGestionarPorRelacion(r), puedeVerRiesgoPorRelacion(r)]),
+      [[true, false, false], [true, true, true], [false, false, true], [false, false, true], [false, false, true]],
     );
   });
 

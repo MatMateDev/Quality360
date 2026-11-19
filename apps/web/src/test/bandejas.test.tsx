@@ -12,8 +12,6 @@ const ANALISTA = "jonathan.choque@quality360.local";
 const ANALISTA_SIN_HDU = "ana.perez@quality360.local";
 const QE = "jose.seguel@quality360.local";
 const QE_SIN_EQUIPO = "constanza.diaz@quality360.local";
-const LIDER = "luis.soto@quality360.local";
-const LIDER_SIN_CELULAS = "paula.vega@quality360.local";
 const ADMIN = "admin@quality360.local";
 
 const valor = (testid: string) => screen.findByTestId(testid);
@@ -166,84 +164,32 @@ describe("Bandeja del QE [E7-F03]", () => {
   });
 });
 
-describe("Bandeja del Líder QA [E7-F04]", () => {
-  it("muestra sus células, el resumen por célula y solo las HDU de ellas, en solo lectura [E7-F04-T01]", async () => {
-    await abrirComo(LIDER, "/lider");
-    expect(await screen.findByTestId("bandeja-lider")).toBeInTheDocument();
-    expect(screen.getByTestId("aviso-solo-lectura")).toBeInTheDocument();
-    expect(await screen.findByTestId(`chip-celula-${ID.celPagos}`)).toHaveTextContent("Pagos");
-    expect(screen.getByTestId(`chip-celula-${ID.celClientes}`)).toHaveTextContent("Clientes");
-    expect(screen.queryByTestId(`chip-celula-${ID.celTarjetas}`)).not.toBeInTheDocument();
-
-    expect(await valor("contador-celulas")).toHaveTextContent("2");
-    expect(screen.getByTestId("contador-hdu-abiertas")).toHaveTextContent("5");
-    expect(screen.getByTestId("contador-sin-analista")).toHaveTextContent("1");
-    expect(screen.getByTestId("contador-certificados")).toHaveTextContent("1");
-    expect(await screen.findByTestId(`fila-celula-${ID.celPagos}`)).toBeInTheDocument();
-
-    expect(await screen.findByTestId(`fila-hdu-${ID.hdu1}`)).toBeInTheDocument();
-    // La HDU de Tarjetas (otra célula) no aparece.
-    expect(screen.queryByTestId(`fila-hdu-${ID.hdu4}`)).not.toBeInTheDocument();
-    expect(screen.getByTestId(`celda-certificado-${ID.hdu3}`)).toHaveTextContent("Q360-0002");
-    expect(screen.getByTestId(`boton-descargar-certificado-${ID.hdu3}`)).toBeInTheDocument();
-    expect(screen.getByTestId(`celda-certificado-${ID.hdu1}`)).toHaveTextContent("—");
-    // Sin controles de escritura.
-    expect(screen.queryByRole("button", { name: /asignar|reasignar|aprobar|cerrar hdu|certificar$/i })).not.toBeInTheDocument();
-  });
-
-  it("sin células muestra el mensaje exacto y ni contadores ni tabla, sin error [E7-F04-T04]", async () => {
-    await abrirComo(LIDER_SIN_CELULAS, "/lider");
-    expect(await screen.findByTestId("estado-vacio-celulas")).toHaveTextContent(
-      "Aún no tienes células asignadas. Pide al Administrador que te las asigne",
-    );
-    expect(screen.queryByTestId("contador-celulas")).not.toBeInTheDocument();
-    expect(screen.queryByTestId("lista-hdu-lider")).not.toBeInTheDocument();
-    expect(screen.queryByTestId("lista-resumen-celulas")).not.toBeInTheDocument();
-    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
-  });
-
-  it("con Certificaciones caída, hdu-abiertas y sin-analista siguen y «Certificados» dice «No disponible» [E7-F04-T05]", async () => {
-    simularFuentes({ certificaciones: false });
-    await abrirComo(LIDER, "/lider");
-    expect(await valor("contador-hdu-abiertas")).toHaveTextContent("5");
-    expect(screen.getByTestId("contador-sin-analista")).toHaveTextContent("1");
-    expect(await screen.findByTestId("estado-indisponible-certificados")).toHaveTextContent("No disponible");
-    expect((await screen.findAllByTestId("estado-indisponible-avance-promedio")).length).toBe(2);
-  });
-
-  it("el filtro de célula solo ofrece las vigentes del líder", async () => {
-    await abrirComo(LIDER, "/lider");
-    const select = await screen.findByLabelText("Célula");
-    await screen.findByTestId(`fila-hdu-${ID.hdu1}`);
-    const opciones = within(select).getAllByRole("option").map((o) => o.textContent);
-    expect(opciones).toEqual(["Todas las mías", "Clientes", "Pagos"]);
-  });
-});
-
 describe("Bandeja del Administrador [E7-F05]", () => {
   it("conserva las tarjetas certificadas y agrega contadores, pendientes y últimos cambios [E7-F05-T01, T02]", async () => {
     await abrirComo(ADMIN, "/admin");
     expect(await screen.findByTestId("bandeja-admin")).toBeInTheDocument();
-    expect(await screen.findByTestId("tarjeta-usuarios-total")).toHaveTextContent("10");
-    expect(screen.getByTestId("tarjeta-usuarios-activos")).toHaveTextContent("9");
-    expect(await screen.findByTestId("desglose-rol-LIDER_QA")).toHaveTextContent("2");
+    expect(await screen.findByTestId("tarjeta-usuarios-total")).toHaveTextContent("8");
+    expect(screen.getByTestId("tarjeta-usuarios-activos")).toHaveTextContent("7");
+    expect(await screen.findByTestId("desglose-rol-QE")).toHaveTextContent("2");
+    // Cuatro roles: el Líder QA se retiró (D208).
+    expect(screen.queryByTestId("desglose-rol-LIDER_QA")).not.toBeInTheDocument();
     expect(screen.getByTestId("desglose-rol-AUDITOR")).toHaveTextContent("1");
     expect(screen.getByTestId("tarjeta-supervision-vigentes")).toBeInTheDocument();
     expect(screen.getByTestId("tarjeta-supervision-sin-supervisor")).toHaveTextContent("1");
     expect(screen.getByTestId("contador-analistas-sin-qe")).toHaveTextContent("1");
     expect(await valor("contador-usuarios-inactivos")).toHaveTextContent("1");
-    expect(screen.getByTestId("contador-lideres-sin-celulas")).toHaveTextContent("1");
-    expect(screen.getByTestId("contador-celulas-sin-lider")).toHaveTextContent("1");
+    expect(screen.queryByTestId("contador-lideres-sin-celulas")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("contador-celulas-sin-lider")).not.toBeInTheDocument();
     expect(screen.getByTestId("contador-hdu-total")).toHaveTextContent("6");
 
     expect(await screen.findByTestId(`fila-pendiente-analista-sin-qe-${ID.qa2}`)).toBeInTheDocument();
     expect(screen.getByTestId(`boton-asignar-qe-${ID.qa2}`)).toHaveAttribute("href", `/admin/supervision?analista=${ID.qa2}`);
     expect(screen.getByTestId(`boton-asignar-analistas-${ID.qe2}`)).toHaveAttribute("href", `/admin/supervision?qe=${ID.qe2}`);
-    expect(screen.getByTestId(`boton-asignar-celulas-${ID.lider2}`)).toHaveAttribute("href", `/admin/usuarios?usuario=${ID.lider2}`);
-    expect(screen.getByTestId(`boton-asignar-lider-${ID.celTarjetas}`)).toHaveAttribute("href", "/admin/usuarios?rol=LIDER_QA");
+    expect(within(screen.getByTestId("lista-pendientes")).queryByText(/líder|célula/i)).not.toBeInTheDocument();
 
     const cambios = await screen.findByTestId("lista-ultimos-cambios");
-    expect(within(cambios).getByTestId("fila-cambio-0")).toHaveTextContent("Asignación de células");
+    // Histórico anterior a D208: la operación retirada conserva su rótulo.
+    expect(within(cambios).getByTestId("fila-cambio-0")).toHaveTextContent("Células de Líder QA (rol retirado)");
   });
 
   it("si solo fallan los últimos cambios, ese bloque dice «No disponible» y lo demás sigue [E7-F05-T04]", async () => {
@@ -261,12 +207,10 @@ describe("Bandeja del Administrador [E7-F05]", () => {
           rol: "ADMINISTRADOR",
           generadaEn: "2026-10-21T10:00:00Z",
           contadores: {
-            usuariosActivos: { fuente: "organizacion.usuarios", estado: "ok", datos: { valor: 1, porRol: { ADMINISTRADOR: 1, QE: 0, ANALISTA_QA: 0, LIDER_QA: 0, AUDITOR: 0 } } },
+            usuariosActivos: { fuente: "organizacion.usuarios", estado: "ok", datos: { valor: 1, porRol: { ADMINISTRADOR: 1, QE: 0, ANALISTA_QA: 0, AUDITOR: 0 } } },
             usuariosInactivos: { fuente: "organizacion.usuarios", estado: "ok", datos: { valor: 0 } },
             analistasSinQe: { fuente: "organizacion.supervision", estado: "ok", datos: { valor: 0 } },
             qeSinAnalistas: { fuente: "organizacion.supervision", estado: "ok", datos: { valor: 0 } },
-            lideresSinCelulas: { fuente: "organizacion.usuarios", estado: "ok", datos: { valor: 0 } },
-            celulasSinLider: { fuente: "organizacion.celulas", estado: "ok", datos: { valor: 0 } },
             hduTotal: { fuente: "organizacion.hdu", estado: "ok", datos: { valor: 0 } },
           },
           pendientes: { fuente: "organizacion.usuarios", estado: "ok", datos: { items: [], total: 0, pagina: 1, tamanoPagina: 25 } },

@@ -165,11 +165,11 @@ test.describe("E4-B01 · Registro de impedimentos", () => {
     expect(despues).toEqual(antes);
   });
 
-  test("[E4-B01#3] T08 (negativo): QE2, LID1, AUD1 y ADM1 en H1: 403; sin token: 401 NO_AUTENTICADO; H1 conserva solo I2 y el creado por T02", async ({ request }) => {
+  test("[E4-B01#3] T08 (negativo): QE2, AUD1 y ADM1 en H1: 403; sin token: 401 NO_AUTENTICADO; H1 conserva solo I2 y el creado por T02", async ({ request }) => {
     const h = await hdu(request);
     const body = { tipo: "ACCESO", titulo: "Intento sin permiso", descripcion: texto(30, "descripcion "), responsableNombre: "Equipo externo" };
     const antes = await filasHdu(h.H1.id);
-    for (const clave of ["qe2", "lid1", "aud1", "adm1"] as const) {
+    for (const clave of ["qe2", "aud1", "adm1"] as const) {
       const r = await api.post<{ codigo: string }>(request, `/v1/hdu/${h.H1.id}/impedimentos`, { token: await tokenE7(clave), body });
       expect(r.status, clave).toBe(403);
       expect(r.body.codigo).toBe("ACCESO_DENEGADO");

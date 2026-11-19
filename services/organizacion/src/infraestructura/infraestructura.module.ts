@@ -9,7 +9,6 @@ import { Module } from '@nestjs/common';
 
 import { AUDITORIA_REPOSITORIO } from '../dominio/repositorios/auditoria.repositorio.js';
 import { CATALOGO_REPOSITORIO } from '../dominio/repositorios/catalogo.repositorio.js';
-import { CELULA_LIDER_REPOSITORIO } from '../dominio/repositorios/celula-lider.repositorio.js';
 import { HDU_REPOSITORIO } from '../dominio/repositorios/hdu.repositorio.js';
 import { INTEGRACION_HDU_REPOSITORIO } from '../dominio/repositorios/integracion-hdu.repositorio.js';
 import { IntegracionHduPrismaRepositorio } from './repositorios/integracion-hdu.prisma.repositorio.js';
@@ -24,7 +23,6 @@ import { ProveedorChecklistHttp } from './certificaciones/proveedor-checklist.ht
 import { ProveedorSeguimientoHttp } from './certificaciones/proveedor-seguimiento.http.js';
 import { AuditoriaPrismaRepositorio } from './repositorios/auditoria.prisma.repositorio.js';
 import { CatalogoPrismaRepositorio } from './repositorios/catalogo.prisma.repositorio.js';
-import { CelulaLiderPrismaRepositorio } from './repositorios/celula-lider.prisma.repositorio.js';
 import { HduPrismaRepositorio } from './repositorios/hdu.prisma.repositorio.js';
 import { SupervisionPrismaRepositorio } from './repositorios/supervision.prisma.repositorio.js';
 import { UsuarioPrismaRepositorio } from './repositorios/usuario.prisma.repositorio.js';
@@ -38,7 +36,6 @@ import { ProveedorIdentidadSupabase } from './supabase/proveedor-identidad.servi
     { provide: USUARIO_REPOSITORIO, useClass: UsuarioPrismaRepositorio },
     { provide: SUPERVISION_REPOSITORIO, useClass: SupervisionPrismaRepositorio },
     { provide: CATALOGO_REPOSITORIO, useClass: CatalogoPrismaRepositorio },
-    { provide: CELULA_LIDER_REPOSITORIO, useClass: CelulaLiderPrismaRepositorio },
     { provide: HDU_REPOSITORIO, useClass: HduPrismaRepositorio },
     { provide: AUDITORIA_REPOSITORIO, useClass: AuditoriaPrismaRepositorio },
     { provide: INTEGRACION_HDU_REPOSITORIO, useClass: IntegracionHduPrismaRepositorio },
@@ -53,7 +50,6 @@ import { ProveedorIdentidadSupabase } from './supabase/proveedor-identidad.servi
     USUARIO_REPOSITORIO,
     SUPERVISION_REPOSITORIO,
     CATALOGO_REPOSITORIO,
-    CELULA_LIDER_REPOSITORIO,
     HDU_REPOSITORIO,
     AUDITORIA_REPOSITORIO,
     INTEGRACION_HDU_REPOSITORIO,

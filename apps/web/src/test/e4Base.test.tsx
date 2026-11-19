@@ -4,7 +4,7 @@ import { http } from "@/lib/httpClient";
 import { SemaforoRiesgo } from "@/components/impedimentos/SemaforoRiesgo";
 import { InsigniaBloqueo, InsigniaEstadoImpedimento, InsigniaNuevo } from "@/components/impedimentos/Insignias";
 import { simularFuentes } from "@/mocks/dataE7";
-import type { BandejaAdmin, BandejaAnalista, BandejaAuditor, BandejaLider, BandejaQe } from "@/types/dominio";
+import type { BandejaAdmin, BandejaAnalista, BandejaAuditor, BandejaQe } from "@/types/dominio";
 import { abrirComo } from "./renderApp";
 
 describe("Semáforo de riesgo: forma + palabra + color [E4-F04]", () => {
@@ -87,16 +87,16 @@ describe("Contraste de los tokens de E4 [D84]", () => {
   });
 });
 
-describe("Mocks: bloque `impedimentos` en las 5 bandejas [E7-B03 · D87]", () => {
+describe("Mocks: bloque `impedimentos` en las 4 bandejas [E7-B03 · D87, D208]", () => {
   it("cada bandeja trae su bloque con los contadores de D87", async () => {
     await abrirComo("jonathan.choque@quality360.local", "/qa");
     const analista = await http.get<BandejaAnalista>("/v1/bandeja/analista");
     expect(Object.keys(analista.impedimentos.contadores)).toEqual(["impedimentosAbiertos"]);
     expect(analista.hdu.estado === "ok" && analista.hdu.datos.items.every((h) => h.bloqueo !== undefined)).toBe(true);
-    expect(analista.hdu.estado === "ok" && analista.hdu.datos.items.some((h) => h.riesgo !== undefined)).toBe(false);
+    expect(analista.hdu.estado === "ok" && analista.hdu.datos.items.some((h) => "riesgo" in h)).toBe(false);
   });
 
-  it("el QE tiene tres contadores y una lista; el Líder, tres contadores, lista y riesgo por fila", async () => {
+  it("el QE tiene tres contadores y una lista", async () => {
     await abrirComo("jose.seguel@quality360.local", "/qe");
     const qe = await http.get<BandejaQe>("/v1/bandeja/qe");
     expect(Object.keys(qe.impedimentos.contadores)).toEqual(["impedimentosAbiertos", "impedimentosNuevos", "hduRiesgoAlto"]);
@@ -110,15 +110,6 @@ describe("Mocks: bloque `impedimentos` en las 5 bandejas [E7-B03 · D87]", () =>
     expect(qe.impedimentos.contadores.impedimentosAbiertos.estado).toBe("indisponible");
     expect(qe.impedimentos.lista.estado).toBe("indisponible");
     expect(qe.contadores.sinAnalista.estado).toBe("ok");
-  });
-
-  it("Administrador, Líder y Auditor traen sus propios contadores", async () => {
-    await abrirComo("luis.soto@quality360.local", "/lider");
-    const lider = await http.get<BandejaLider>("/v1/bandeja/lider");
-    expect(Object.keys(lider.impedimentos.contadores)).toEqual(["impedimentosAbiertos", "hduBloqueadas", "escaladosAMi"]);
-    const filas = lider.hdu.estado === "ok" ? lider.hdu.datos.items : [];
-    expect(filas.length).toBeGreaterThan(0);
-    expect(filas.every((h) => h.bloqueo !== undefined && h.riesgo !== undefined)).toBe(true);
   });
 
   it("los bloques del Administrador y del Auditor existen", async () => {

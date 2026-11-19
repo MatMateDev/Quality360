@@ -228,7 +228,7 @@ test.describe("E5-F03 · Importar archivo", () => {
     });
   });
 
-  for (const clave of ["qe1", "ana1", "lid1", "aud1"] as const) {
+  for (const clave of ["qe1", "ana1", "aud1"] as const) {
     test.describe(clave.toUpperCase(), () => {
       test.use({ storageState: estadoSesion(clave) });
       test(`[E5-F03#1] T12 (negativo): ${clave.toUpperCase()} recibe acceso denegado en /admin/integraciones/importar y no tiene «selector-archivo» en su portal`, async ({ page }) => {

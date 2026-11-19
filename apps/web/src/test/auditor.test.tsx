@@ -9,7 +9,6 @@ import { server } from "@/mocks/server";
 import { abrirComo, renderApp } from "./renderApp";
 
 const AUDITOR = "andrea.mora@quality360.local";
-const LIDER = "luis.soto@quality360.local";
 
 let urlsCreadas: Blob[] = [];
 
@@ -82,7 +81,8 @@ describe("Bandeja del Auditor [E7-F06]", () => {
   it("Auditoría de usuarios: cambios en lenguaje natural y jamás claves sensibles [E7-F06-T04]", async () => {
     await abrirComo(AUDITOR, "/auditor/auditoria-usuarios");
     const tabla = await screen.findByTestId("lista-auditoria-usuarios");
-    expect(within(tabla).getByText("Rol: Analista QA → Líder QA")).toBeInTheDocument();
+    // Histórico anterior a D208: el rol retirado se muestra con su rótulo.
+    expect(within(tabla).getByText("Rol: Líder QA (rol retirado) → Auditor")).toBeInTheDocument();
     expect(within(tabla).getByText("Células: sin células → Pagos, Clientes")).toBeInTheDocument();
     const texto = document.body.textContent ?? "";
     for (const prohibido of ["secreto-no-mostrar", "tok-no-mostrar", "password", "accessToken", "{", "}"]) {
@@ -161,13 +161,13 @@ describe("Bandeja del Auditor [E7-F06]", () => {
     expect(await screen.findByTestId("lista-auditoria-usuarios")).toBeInTheDocument();
   });
 
-  it("el Líder no entra a /auditor [E7-F06-T07]", async () => {
-    await abrirComo(LIDER, "/auditor");
+  it("el QE no entra a /auditor [E7-F06-T07]", async () => {
+    await abrirComo("jose.seguel@quality360.local", "/auditor");
     expect(await screen.findByTestId("acceso-denegado")).toBeInTheDocument();
   });
 });
 
-describe("Detalle de HDU en solo lectura [E7-F04, E7-F06]", () => {
+describe("Detalle de HDU en solo lectura [E7-F06]", () => {
   it("el Auditor ve el aviso, el enlace de vuelta y ningún control de escritura", async () => {
     await abrirComo(AUDITOR, `/hdu/${ID.hdu1}`);
     expect(await screen.findByRole("heading", { level: 1, name: "Validación de transferencias" })).toBeInTheDocument();
@@ -176,18 +176,5 @@ describe("Detalle de HDU en solo lectura [E7-F04, E7-F06]", () => {
     expect(screen.queryByText(/Reasignar|Asignar analista|Cambiar estado|Generar certificado|Pasar a/)).not.toBeInTheDocument();
     expect(screen.queryByTestId("boton-reasignar-qe")).not.toBeInTheDocument();
     expect(await screen.findByTestId("checklist-solo-lectura")).toBeInTheDocument();
-  });
-
-  it("el Líder solo abre HDU de sus células; otra célula da acceso denegado de recurso [E7-F04-T06]", async () => {
-    await abrirComo(LIDER, `/hdu/${ID.hdu4}`);
-    const denegado = await screen.findByTestId("acceso-denegado");
-    expect(denegado).toHaveTextContent("No tienes acceso a este recurso.");
-    expect(denegado).not.toHaveTextContent("TARJETAS");
-  });
-
-  it("el Líder con la HDU de su célula ve el aviso y puede volver a su bandeja", async () => {
-    await abrirComo(LIDER, `/hdu/${ID.hdu1}`);
-    expect(await screen.findByTestId("aviso-solo-lectura")).toBeInTheDocument();
-    expect(screen.getByTestId("enlace-volver-bandeja")).toHaveAttribute("href", "/lider");
   });
 });

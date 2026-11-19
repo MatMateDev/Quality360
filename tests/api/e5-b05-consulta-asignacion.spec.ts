@@ -694,7 +694,7 @@ test.describe("E5-B05 · Consulta y asignación", () => {
     expect(await solicitudesJira()).toHaveLength(0);
   });
 
-  test("[E5-B05#13] T31 (negativo): las 10 rutas de la consulta dan 403 a QE1, QE2, ANA1, LID1 y AUD1, 401 sin token y 404 CONSULTA_NO_ENCONTRADA a ADM1 con un id inexistente; no se registran ejecuciones", async ({ request }) => {
+  test("[E5-B05#13] T31 (negativo): las 10 rutas de la consulta dan 403 a QE1, QE2, ANA1 y AUD1, 401 sin token y 404 CONSULTA_NO_ENCONTRADA a ADM1 con un id inexistente; no se registran ejecuciones", async ({ request }) => {
     await estadoConfigBase(request);
     const c = (await consultarOk(request)).consulta;
     const n0 = await ejecN();
@@ -715,7 +715,7 @@ test.describe("E5-B05 · Consulta y asignación", () => {
     expect(rutas(c.id), "la consulta tiene 10 operaciones").toHaveLength(10);
     const llamar = async (m: string, ruta: string, token: string | undefined, body?: unknown) =>
       api[m === "GET" ? "get" : m === "PATCH" ? "patch" : "post"]<any>(request, ruta, { token, ...(m === "GET" ? {} : { body }) } as any);
-    for (const clave of ["qe1", "qe2", "ana1", "lid1", "aud1"] as const) {
+    for (const clave of ["qe1", "qe2", "ana1", "aud1"] as const) {
       const token = await tk(clave);
       for (const ruta of rutas(c.id)) {
         const r = await llamar(ruta.m, ruta.ruta, token, ruta.body);

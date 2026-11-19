@@ -9,7 +9,6 @@ import {
   USUARIOS_E7,
   contarOrganizacion,
   cuerpoSinTrace,
-  hduDeCelulasDe,
   tokenE7,
   type Bloque,
   type ClaveE7,
@@ -32,7 +31,8 @@ interface ListaHdu {
   datos?: { items: FilaHdu[]; total: number; pagina: number; tamanoPagina: number; orden: string };
 }
 
-const BANDEJAS = ["analista", "qe", "lider", "admin", "auditor"] as const;
+/** Las 4 bandejas: la del Líder QA se retiró con el rol (D208). */
+const BANDEJAS = ["analista", "qe", "admin", "auditor"] as const;
 
 async function bandeja<T = Record<string, unknown>>(request: Parameters<typeof api.get>[0], clave: ClaveE7, tipo: string, query = "", baseURL?: string) {
   return api.get<T>(request, `/v1/bandeja/${tipo}${query}`, { token: await tokenE7(clave), baseURL });
@@ -106,43 +106,10 @@ test.describe("E7-B03 · Bandeja de cada rol (cálculo por ámbito)", () => {
     expect(q2.body.acciones.datos.items).toEqual([]);
   });
 
-  test("[E7-B03#1] T04: LID1 recibe sus células y contadores calculados solo sobre sus células", async ({ request }) => {
-    const r = await bandeja<{ contadores: Record<string, Contador>; hdu: ListaHdu }>(request, "lid1", "lider", "?tamanoPagina=100");
-    expect(r.status).toBe(200);
-    expect(val(r.body.contadores.celulas)).toBe(2);
-
-    // Oráculo independiente: la base de Organización (la base compartida tiene HDU ajenas al fixture en CEL-A/CEL-B).
-    const enCelulas = await hduDeCelulasDe(USUARIOS_E7.lid1.correo);
-    expect(val(r.body.contadores.hduAbiertas)).toBe(enCelulas.filter((h) => h.estado !== "CERRADA").length);
-    expect(val(r.body.contadores.hduCerradas)).toBe(enCelulas.filter((h) => h.estado === "CERRADA").length);
-    expect(val(r.body.contadores.sinAnalista)).toBe(enCelulas.filter((h) => h.sin_analista && h.estado !== "CERRADA").length);
-    expect(r.body.hdu.datos!.total).toBe(enCelulas.length);
-
-    // Subconjunto del fixture: exactamente los valores del backlog (5 abiertas, 1 cerrada, 1 sin analista).
-    const fx = await bandeja<{ hdu: ListaHdu }>(request, "lid1", "lider", "?q=E7-H&tamanoPagina=100");
-    const items = fx.body.hdu.datos!.items;
-    expect(items.map((h) => h.codigo).sort()).toEqual(["E7-H1", "E7-H2", "E7-H3", "E7-H5", "E7-H6", "E7-H7"]);
-    expect(items.filter((h) => h.estado !== "CERRADA")).toHaveLength(5);
-    expect(items.filter((h) => h.estado === "CERRADA")).toHaveLength(1);
-    expect(items.filter((h) => h.analista === null)).toHaveLength(1);
-    expect(items.filter((h) => h.seguimiento?.datos?.certificado)).toHaveLength(1);
-    expect(items.find((h) => h.seguimiento?.datos?.certificado)?.codigo).toBe("E7-H7");
-
-    // Certificados visibles: contrastado con los certificados reales de las HDU de sus células (lectura global del Auditor).
-    const cert = val(r.body.contadores.certificados);
-    expect(cert).toBeGreaterThanOrEqual(1);
-  });
-
-  test("[E7-B03#1] T05: LID1 filtra por estado CERRADA y recibe solo E7-H7", async ({ request }) => {
-    const r = await bandeja<{ hdu: ListaHdu }>(request, "lid1", "lider", "?estado=CERRADA&q=E7-H");
-    expect(r.status).toBe(200);
-    expect(r.body.hdu.datos!.items.map((h) => h.codigo)).toEqual(["E7-H7"]);
-  });
-
   test("[E7-B03#1] T06: ADM1 ve los contadores del sistema y los pendientes de configuración", async ({ request }) => {
     const r = await bandeja<{
       contadores: Record<string, Contador>;
-      pendientes: { estado: string; datos: { items: Array<{ tipo: string; usuario: { correo: string } | null; celula: { nombre: string } | null }>; total: number } };
+      pendientes: { estado: string; datos: { items: Array<{ tipo: string; usuario: { correo: string } }>; total: number } };
       ultimosCambios: { estado: string; datos: { items: unknown[] } };
     }>(request, "adm1", "admin", "?tamanoPagina=100");
     expect(r.status).toBe(200);
@@ -151,16 +118,16 @@ test.describe("E7-B03 · Bandeja de cada rol (cálculo por ámbito)", () => {
     const c = r.body.contadores;
     expect(val(c.usuariosActivos)).toBe(bd.usuariosActivos);
     expect(c.usuariosActivos.datos!.porRol).toMatchObject(bd.porRol);
-    expect(Object.keys(c.usuariosActivos.datos!.porRol!).sort()).toEqual(["ADMINISTRADOR", "ANALISTA_QA", "AUDITOR", "LIDER_QA", "QE"]);
+    expect(Object.keys(c.usuariosActivos.datos!.porRol!).sort()).toEqual(["ADMINISTRADOR", "ANALISTA_QA", "AUDITOR", "QE"]);
     expect(val(c.usuariosInactivos)).toBe(bd.usuariosInactivos);
     expect(val(c.analistasSinQe)).toBe(bd.analistasSinQe);
-    expect(val(c.lideresSinCelulas)).toBe(bd.lideresSinCelulas);
+    expect(Object.keys(c)).not.toContain("lideresSinCelulas");
+    expect(Object.keys(c)).not.toContain("celulasSinLider");
     expect(val(c.hduTotal)).toBe(bd.hduTotal);
-    // El fixture aporta ANA4, LID2 y CEL-C como pendientes.
+    // El fixture aporta ANA4 como pendiente; desde D208 solo hay pendientes de analistas y de QE, siempre con usuario.
     const pend = r.body.pendientes.datos.items;
-    expect(pend.some((p) => p.tipo === "ANALISTA_SIN_QE" && p.usuario?.correo === "ana4@quality360.local")).toBe(true);
-    expect(pend.some((p) => p.tipo === "LIDER_SIN_CELULAS" && p.usuario?.correo === "lid2@quality360.local")).toBe(true);
-    expect(pend.some((p) => p.tipo === "CELULA_SIN_LIDER" && p.celula?.nombre === "CEL-C")).toBe(true);
+    expect(pend.some((p) => p.tipo === "ANALISTA_SIN_QE" && p.usuario.correo === "ana4@quality360.local")).toBe(true);
+    expect(pend.every((p) => ["ANALISTA_SIN_QE", "QE_SIN_ANALISTAS"].includes(p.tipo) && Boolean(p.usuario?.correo))).toBe(true);
     expect(r.body.ultimosCambios.datos.items.length).toBeLessThanOrEqual(10);
   });
 
@@ -183,10 +150,10 @@ test.describe("E7-B03 · Bandeja de cada rol (cálculo por ámbito)", () => {
   });
 
   test("[E7-B03#1] T08: tamanoPagina=1000 se recorta a 100 y la respuesta informa el tamaño efectivo", async ({ request }) => {
-    const r = await bandeja<{ hdu: ListaHdu }>(request, "lid1", "lider", "?tamanoPagina=1000");
+    const r = await bandeja<{ hdu: ListaHdu }>(request, "aud1", "auditor", "?tamanoPagina=1000");
     expect(r.status).toBe(200);
     expect(r.body.hdu.datos!.tamanoPagina).toBe(100);
-    const sinParametro = await bandeja<{ hdu: ListaHdu }>(request, "lid1", "lider");
+    const sinParametro = await bandeja<{ hdu: ListaHdu }>(request, "aud1", "auditor");
     expect(sinParametro.body.hdu.datos!.tamanoPagina).toBe(25);
   });
 
@@ -216,7 +183,7 @@ test.describe("E7-B03 · Bandeja de cada rol (cálculo por ámbito)", () => {
       expect(bloquesCoherentes(r.body)).toEqual([]);
     });
 
-    test("[E7-B03#2] T10: ANA1, LID1 y AUD1 reciben 200; sus bloques de Certificaciones indisponibles y las listas siguen", async ({ request }) => {
+    test("[E7-B03#2] T10: ANA1 y AUD1 reciben 200; sus bloques de Certificaciones indisponibles y las listas siguen", async ({ request }) => {
       const a = await bandeja<{ contadores: Record<string, Contador>; hdu: ListaHdu }>(request, "ana1", "analista", "", pila.gatewayUrl);
       expect(a.status).toBe(200);
       expect(a.body.contadores.abiertas.estado).toBe("ok");
@@ -229,20 +196,13 @@ test.describe("E7-B03 · Bandeja de cada rol (cálculo por ámbito)", () => {
       expect(a.body.hdu.datos!.items.map((h) => h.codigo).sort()).toEqual(["E7-H1", "E7-H6"]);
       expect(a.body.hdu.datos!.items.every((h) => h.seguimiento?.estado === "indisponible" && !h.seguimiento.datos)).toBe(true);
 
-      const l = await bandeja<{ contadores: Record<string, Contador>; hdu: ListaHdu }>(request, "lid1", "lider", "?q=E7-H", pila.gatewayUrl);
-      expect(l.status).toBe(200);
-      expect(l.body.contadores.certificados.estado).toBe("indisponible");
-      expect(l.body.contadores.hduAbiertas.estado).toBe("ok");
-      expect(l.body.hdu.datos!.items.map((h) => h.codigo).sort()).toEqual(["E7-H1", "E7-H2", "E7-H3", "E7-H5", "E7-H6", "E7-H7"]);
-      expect(l.body.hdu.datos!.items.every((h) => h.seguimiento?.estado === "indisponible")).toBe(true);
-
       const u = await bandeja<{ contadores: Record<string, Contador>; hdu: ListaHdu }>(request, "aud1", "auditor", "?q=E7-H", pila.gatewayUrl);
       expect(u.status).toBe(200);
       expect(u.body.contadores.certificados.estado).toBe("indisponible");
       expect(u.body.contadores.eventos7d.estado).toBe("indisponible");
       expect(u.body.contadores.hduTotal.estado).toBe("ok");
       expect(u.body.hdu.estado).toBe("ok");
-      for (const r of [a, l, u]) expect(bloquesCoherentes(r.body)).toEqual([]);
+      for (const r of [a, u]) expect(bloquesCoherentes(r.body)).toEqual([]);
     });
 
     test("[E7-B03#2] T11: ADM1 recibe todos sus bloques ok porque su bandeja no depende de Certificaciones", async ({ request }) => {
@@ -254,7 +214,7 @@ test.describe("E7-B03 · Bandeja de cada rol (cálculo por ámbito)", () => {
     });
   });
 
-  test("[E7-B03#3] T12: las 20 combinaciones rol x bandeja ajena responden 403 ACCESO_DENEGADO con el mismo cuerpo", async ({ request }) => {
+  test("[E7-B03#3] T12: las 12 combinaciones rol x bandeja ajena responden 403 ACCESO_DENEGADO con el mismo cuerpo", async ({ request }) => {
     const cuerpos = new Set<string>();
     let combinaciones = 0;
     for (const rol of ROLES_MATRIZ) {
@@ -266,13 +226,13 @@ test.describe("E7-B03 · Bandeja de cada rol (cálculo por ámbito)", () => {
         combinaciones += 1;
       }
     }
-    expect(combinaciones).toBe(20);
-    expect(cuerpos.size, "cuerpo idéntico entre las 20 combinaciones").toBe(1);
+    expect(combinaciones).toBe(12);
+    expect(cuerpos.size, "cuerpo idéntico entre las 12 combinaciones").toBe(1);
     // Y cada rol sí obtiene la suya.
     for (const rol of ROLES_MATRIZ) expect((await bandeja(request, rol.clave, rol.bandeja)).status, rol.bandeja).toBe(200);
   });
 
-  test("[E7-B03#3] T13: sin token o con token inválido, las 5 bandejas responden 401 NO_AUTENTICADO", async ({ request }) => {
+  test("[E7-B03#3] T13: sin token o con token inválido, las 4 bandejas responden 401 NO_AUTENTICADO", async ({ request }) => {
     for (const tipo of BANDEJAS) {
       const sin = await api.get(request, `/v1/bandeja/${tipo}`);
       expect(sin.status, `${tipo} sin token`).toBe(401);
@@ -282,8 +242,8 @@ test.describe("E7-B03 · Bandeja de cada rol (cálculo por ámbito)", () => {
     }
   });
 
-  test("[E7-B03#1] contrato: las 5 respuestas de /v1/bandeja/* cumplen contracts/comun.v1.yaml", async ({ request }) => {
-    const esquemas = { analista: ["ana2", "BandejaAnalista"], qe: ["qe1", "BandejaQe"], lider: ["lid1", "BandejaLider"], admin: ["adm1", "BandejaAdmin"], auditor: ["aud1", "BandejaAuditor"] } as const;
+  test("[E7-B03#1] contrato: las 4 respuestas de /v1/bandeja/* cumplen contracts/comun.v1.yaml", async ({ request }) => {
+    const esquemas = { analista: ["ana2", "BandejaAnalista"], qe: ["qe1", "BandejaQe"], admin: ["adm1", "BandejaAdmin"], auditor: ["aud1", "BandejaAuditor"] } as const;
     const fallos: string[] = [];
     for (const [tipo, [clave, esquema]] of Object.entries(esquemas)) {
       const r = await bandeja(request, clave as ClaveE7, tipo, tipo === "admin" ? "" : "?q=E7-H&tamanoPagina=100");

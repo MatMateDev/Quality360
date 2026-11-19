@@ -103,7 +103,6 @@ export function textoCuerpoTerminarRevision(creadas: number, sinConfirmar: numbe
 export function textoCreadas(n: number): string {
   return `${n} ${n === 1 ? "creada" : "creadas"}`;
 }
-export const TEXTO_SIN_LIDER = "La célula no tiene Líder activo: nadie la verá como Líder.";
 export const TEXTO_SPRINT_JIRA_AUSENTE = "El sprint de Jira no existe en esta célula.";
 export const TEXTO_NOTA_CAMBIARON = "Al confirmar se actualizan solo título, descripción y prioridad. El estado, el QE, el analista, el sprint y la célula no cambian.";
 export const TEXTO_NOTA_CREADA_A_MANO = "Al actualizar pasará a figurar como Jira; su estado, analista y QE no cambian.";

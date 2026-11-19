@@ -16,7 +16,7 @@ import { UUID, invalido } from './cuerpos.js';
 
 type Json = Record<string, unknown>;
 
-const ROLES: readonly RolUsuario[] = ['ADMINISTRADOR', 'QE', 'ANALISTA_QA', 'LIDER_QA', 'AUDITOR'];
+const ROLES: readonly RolUsuario[] = ['ADMINISTRADOR', 'QE', 'ANALISTA_QA', 'AUDITOR'];
 const TIPOS_ACCION: readonly TipoAccion[] = ['REGISTRAR', 'ESCALAR', 'RESOLVER', 'REABRIR', 'SEGUIMIENTO'];
 
 function objeto(valor: unknown, campo: string): Json {

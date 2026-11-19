@@ -1,6 +1,6 @@
 /**
- * Rutas nuevas de E7 en el gateway (B6): bandejas, roles, células del líder, consultas y
- * exportaciones del Auditor, catálogo de personas y reasignación del QE responsable (D54).
+ * Rutas nuevas de E7 en el gateway (B6): bandejas, roles, consultas y exportaciones del Auditor,
+ * catálogo de personas y reasignación del QE responsable (D54). Las rutas del Líder QA se retiraron (D208).
  * Son reenvíos declarados uno por uno; el gateway no autoriza (cada servicio lo hace por sí mismo).
  */
 import 'reflect-metadata';
@@ -36,7 +36,7 @@ beforeEach(() => {
 });
 
 describe('Bandejas por rol [E7-B03]', () => {
-  for (const rol of ['analista', 'qe', 'lider', 'admin', 'auditor']) {
+  for (const rol of ['analista', 'qe', 'admin', 'auditor']) {
     it(`GET /v1/bandeja/${rol} se reenvía a Organización con la sesión, la traza y la query`, async () => {
       organizacion.responder(`GET /v1/bandeja/${rol}`, { estado: 200, cuerpo: { rol, contadores: {} } });
       const respuesta = await request(app.getHttpServer())
@@ -54,18 +54,19 @@ describe('Bandejas por rol [E7-B03]', () => {
   }
 
   it('el 403 genérico del servicio dueño llega tal cual (D33): el gateway no autoriza', async () => {
-    organizacion.responder('GET /v1/bandeja/lider', {
+    organizacion.responder('GET /v1/bandeja/auditor', {
       estado: 403,
       cuerpo: { codigo: 'ACCESO_DENEGADO', mensaje: 'No tienes acceso a este recurso.', traceId: 'x', detalles: [] },
     });
-    const respuesta = await request(app.getHttpServer()).get('/v1/bandeja/lider').set('authorization', await autorizacion());
+    const respuesta = await request(app.getHttpServer()).get('/v1/bandeja/auditor').set('authorization', await autorizacion());
     assert.equal(respuesta.status, 403);
     assert.equal(respuesta.body.codigo, 'ACCESO_DENEGADO');
   });
 
-  it('sin sesión: 401 y no reenvía; una bandeja inexistente da 404', async () => {
+  it('sin sesión: 401 y no reenvía; una bandeja inexistente da 404, también la del Líder QA (D208)', async () => {
     assert.equal((await request(app.getHttpServer()).get('/v1/bandeja/admin')).status, 401);
     assert.equal((await request(app.getHttpServer()).get('/v1/bandeja/otro').set('authorization', await autorizacion())).status, 404);
+    assert.equal((await request(app.getHttpServer()).get('/v1/bandeja/lider').set('authorization', await autorizacion())).status, 404);
     assert.equal(organizacion.solicitudes.length, 0);
   });
 
@@ -81,36 +82,29 @@ describe('Bandejas por rol [E7-B03]', () => {
   });
 });
 
-describe('Roles y células del líder [E7-B01]', () => {
-  it('GET /v1/roles, GET /v1/usuarios/{id} y GET|PUT /v1/usuarios/{id}/celulas-lider se reenvían con su cuerpo', async () => {
+describe('Roles [E7-B01]', () => {
+  it('GET /v1/roles y GET /v1/usuarios/{id} se reenvían con su cuerpo; las células del Líder ya no existen (D208)', async () => {
     organizacion.responder('GET /v1/roles', { estado: 200, cuerpo: { items: [] } });
     organizacion.responder(`GET /v1/usuarios/${USUARIO_ID}`, { estado: 200, cuerpo: { id: USUARIO_ID } });
-    organizacion.responder(`GET /v1/usuarios/${USUARIO_ID}/celulas-lider`, { estado: 200, cuerpo: { vigentes: [], historial: [] } });
-    organizacion.responder(`PUT /v1/usuarios/${USUARIO_ID}/celulas-lider`, {
-      estado: 409,
-      cuerpo: { codigo: 'ROL_INCOMPATIBLE', mensaje: 'El usuario no tiene el rol Líder QA.', traceId: 'x', detalles: [] },
-    });
     const token = await autorizacion();
     assert.equal((await request(app.getHttpServer()).get('/v1/roles').set('authorization', token)).status, 200);
     assert.equal((await request(app.getHttpServer()).get(`/v1/usuarios/${USUARIO_ID}`).set('authorization', token)).body.id, USUARIO_ID);
-    assert.equal((await request(app.getHttpServer()).get(`/v1/usuarios/${USUARIO_ID}/celulas-lider`).set('authorization', token)).status, 200);
-    const cuerpo = { celulaIds: [HDU_ID] };
-    const put = await request(app.getHttpServer()).put(`/v1/usuarios/${USUARIO_ID}/celulas-lider`).set('authorization', token).send(cuerpo);
-    assert.equal(put.status, 409);
-    assert.equal(put.body.codigo, 'ROL_INCOMPATIBLE');
-    assert.deepEqual(JSON.parse(organizacion.solicitudes.at(-1)?.cuerpo ?? '{}'), cuerpo);
+    assert.equal(organizacion.solicitudes.length, 2);
+    assert.equal((await request(app.getHttpServer()).get(`/v1/usuarios/${USUARIO_ID}/celulas-lider`).set('authorization', token)).status, 404);
+    assert.equal((await request(app.getHttpServer()).put(`/v1/usuarios/${USUARIO_ID}/celulas-lider`).set('authorization', token).send({ celulaIds: [] })).status, 404);
+    assert.equal(organizacion.solicitudes.length, 2, 'las rutas retiradas no llegan al servicio');
   });
 
   it('un id que no es UUID no llega al servicio', async () => {
     const token = await autorizacion();
     assert.equal((await request(app.getHttpServer()).get('/v1/usuarios/xyz').set('authorization', token)).status, 400);
-    assert.equal((await request(app.getHttpServer()).put('/v1/usuarios/xyz/celulas-lider').set('authorization', token).send({ celulaIds: [] })).status, 400);
+    assert.equal((await request(app.getHttpServer()).put('/v1/usuarios/xyz/rol').set('authorization', token).send({ rol: 'QE' })).status, 400);
     assert.equal(organizacion.solicitudes.length, 0);
   });
 
-  it('el rol y las células viajan juntos en PUT /v1/usuarios/{id}/rol (D42)', async () => {
-    organizacion.responder(`PUT /v1/usuarios/${USUARIO_ID}/rol`, { estado: 200, cuerpo: { id: USUARIO_ID, rol: 'LIDER_QA' } });
-    const cuerpo = { rol: 'LIDER_QA', celulaIds: [HDU_ID] };
+  it('PUT /v1/usuarios/{id}/rol reenvía el cuerpo tal cual', async () => {
+    organizacion.responder(`PUT /v1/usuarios/${USUARIO_ID}/rol`, { estado: 200, cuerpo: { id: USUARIO_ID, rol: 'AUDITOR' } });
+    const cuerpo = { rol: 'AUDITOR' };
     await request(app.getHttpServer()).put(`/v1/usuarios/${USUARIO_ID}/rol`).set('authorization', await autorizacion()).send(cuerpo).expect(200);
     assert.deepEqual(JSON.parse(organizacion.solicitudes[0]?.cuerpo ?? '{}'), cuerpo);
   });

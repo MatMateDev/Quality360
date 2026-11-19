@@ -18,7 +18,7 @@ import { AuditorAplicacion } from '../../aplicacion/auditor.servicio.js';
 import { ConsultaHduLoteDto, RegistroExportacionDto } from '../dto/acceso-interno.dto.js';
 import { uuidDeRuta } from '../validacion/uuid.js';
 
-const ROLES_TODOS = ['ADMINISTRADOR', 'QE', 'ANALISTA_QA', 'LIDER_QA', 'AUDITOR'] as const;
+const ROLES_TODOS = ['ADMINISTRADOR', 'QE', 'ANALISTA_QA', 'AUDITOR'] as const;
 
 @Controller('v1/interno')
 export class AccesoInternoController {
@@ -59,7 +59,7 @@ export class AccesoInternoController {
    * Datos de todas las HDU del ámbito (E4, D86), para «Riesgo por HDU» de Impedimentos. Ordenadas por
    * código; las cerradas solo con `incluirCerradas=true`. El Analista QA no la usa.
    */
-  @Roles('ADMINISTRADOR', 'QE', 'LIDER_QA', 'AUDITOR')
+  @Roles('ADMINISTRADOR', 'QE', 'AUDITOR')
   @Get('hdu/ambito/detalle')
   async ambitoDetalle(@Query('incluirCerradas') incluirCerradas: string | undefined, @AccesoActual() acceso: ResolucionAcceso): Promise<{ items: HduParaCertificacion[] }> {
     if (incluirCerradas !== undefined && incluirCerradas !== 'true' && incluirCerradas !== 'false') {

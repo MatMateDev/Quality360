@@ -11,7 +11,6 @@ import { abrirComo, renderApp } from "./renderApp";
 const ADMIN = "admin@quality360.local";
 const QE1 = "jose.seguel@quality360.local";
 const ANALISTA = "jonathan.choque@quality360.local";
-const LIDER = "luis.soto@quality360.local";
 const AUDITOR = "andrea.mora@quality360.local";
 const TEXTO_DEL_SERVIDOR = "TEXTO-DEL-SERVIDOR-QUE-EL-PORTAL-NO-DEBE-MOSTRAR";
 
@@ -331,7 +330,6 @@ describe("E5-F02 · permisos por rol [E5-F02-T12]", () => {
   it.each([
     ["QE", QE1, "/admin/integraciones/sincronizar"],
     ["Analista", ANALISTA, "/admin/integraciones/sincronizar"],
-    ["Líder", LIDER, "/admin/integraciones/sincronizar"],
     ["Auditor", AUDITOR, "/admin/integraciones/sincronizar"],
   ])("%s no ve la consulta en %s", async (_rol, correo, ruta) => {
     await abrirComo(correo, ruta);

@@ -11,10 +11,10 @@ import type { ContextoSolicitud } from '../../infraestructura/organizacion.clien
 import { claveDeRuta, hduIdDeRuta, leerMarca, leerSubida, leerTexto } from '../validacion.js';
 
 /**
- * Las lecturas admiten los 5 roles (E7-B02): el Líder QA y el Auditor leen y descargan. Toda
- * escritura lista sus roles de forma explícita y ninguna incluye Líder ni Auditor (D32).
+ * Las lecturas admiten los 4 roles (E7-B02): el Auditor lee y descarga. Toda escritura lista sus
+ * roles de forma explícita y ninguna incluye al Auditor (D32). El Líder QA se retiró (D208).
  */
-const ROLES_TODOS = ['ADMINISTRADOR', 'QE', 'ANALISTA_QA', 'LIDER_QA', 'AUDITOR'] as const;
+const ROLES_TODOS = ['ADMINISTRADOR', 'QE', 'ANALISTA_QA', 'AUDITOR'] as const;
 
 function contexto(identidad: Identidad | undefined, solicitud: Request): ContextoSolicitud {
   if (identidad === undefined) throw noAutenticado('ruta sin identidad verificada');

@@ -20,7 +20,7 @@ const ESTADOS_HDU = [
 const COLORES_ESTADOS = [
   "var(--q360-color-texto-secundario)",
   "var(--q360-color-acento)",
-  "var(--q360-color-lider)",
+  "var(--q360-color-violeta)",
   "var(--q360-color-alerta)",
   "var(--q360-color-exito)",
 ] as const;

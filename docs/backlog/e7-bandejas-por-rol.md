@@ -4,6 +4,8 @@ Fecha: 2026-10-21. Formato igual al de `historias-quality360.md` (F = frontend, 
 
 Alcance de esta ronda: diseño, HDU, construcción y certificación.
 
+> **Retiro del rol Líder QA (D208, 2026-11-18).** El catálogo quedó con 4 roles y el Líder QA salió con sus células. Quedan retirados: la sección 6.3, la HDU E7-F04 completa, los casos de células de E7-F07 (T04 y T06) y de E7-B01 (T04 a T07), el ámbito por célula de E7-B02 (T01 a T05) y los contadores y pendientes de líder y de célula de E7-F05 y E7-B03. La matriz de E7-F01 pasa de 5 × 4 a 4 × 3 portales ajenos. El fixture ya no tiene LID1 ni LID2: 8 usuarios activos (1 Administrador, 2 QE, 4 Analistas QA, 1 Auditor), 1 inactivo y ANA4 como único pendiente. Detalle en `docs/arquitectura/decisiones-mvp.md` (D208).
+
 > **Revisión de arquitectura (2026-10-21).** D28–D40 se mantienen; las decisiones D41–D53, los contratos finales y la resolución de los conflictos del diseño están en `docs/arquitectura/decisiones-mvp.md` (sección «Corrida E7»), y el reparto en `docs/arquitectura/e7-plan-construccion.md`. Correcciones de D50 aplicadas en este archivo: rol fuera del catálogo → 400; `operacion=CAMBIAR_ROL`; fuente caída → 503 `SERVICIO_NO_DISPONIBLE`; parámetros con los nombres del contrato (D49). Esta épica **no** incluye los dashboards de E6, los impedimentos de E4 ni la integración con Jira de E5.
 
 ## 1. Resumen
@@ -139,6 +141,8 @@ Contratos (`contracts/`, dueño `q360-arquitecto`): se agregan los 5 endpoints d
 
 ### 6.3 Líder QA · `/lider` (nuevo)
 
+> **Retirada en D208.** El rol Líder QA y su bandeja ya no existen.
+
 | Elemento | Detalle |
 | --- | --- |
 | Encabezado | Nombre y chips con sus células vigentes. Sin células: «Aún no tienes células asignadas. Pide al Administrador que te las asigne» |
@@ -264,6 +268,8 @@ Casos de prueba:
 | E7-F03-T07 | e2e | #1 regresión | QE1 | Ejecuta las pruebas certificadas de E1-F03 y E3-F03 | Pasan sin cambios |
 
 ### E7-F04 · Líder QA
+
+> **Retirada en D208.** La HDU y sus casos (E7-F04-T01 a T06) quedan fuera del alcance vigente.
 
 Quiero una bandeja con todas las HDU de las células que tengo a cargo. Para conocer el estado de certificación de mis células sin depender de cada QE.
 

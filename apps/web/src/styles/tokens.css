@@ -33,9 +33,9 @@
   --q360-color-indisponible: #5b5f66;
   --q360-color-indisponible-suave: #eceef1;
 
-  /* Roles nuevos (texto sobre fondo >= 6:1) */
-  --q360-color-lider: #5b21b6;
-  --q360-color-lider-suave: #f1eafe;
+  /* Violeta de los gráficos (D208: antes, color del Líder QA) */
+  --q360-color-violeta: #5b21b6;
+  /* Rol Auditor (texto sobre fondo >= 6:1) */
   --q360-color-auditor: #0f5f6b;
   --q360-color-auditor-suave: #e0f4f6;
   /* Solo lectura */

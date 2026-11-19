@@ -138,9 +138,11 @@ test.describe("E5-F05 · Revisar, asignar y confirmar", () => {
       expect(opciones.join("|")).not.toContain("E5 Sprint 1");
       expect(opciones.join("|")).not.toContain("E5 Sprint 2");
       await expect(fl.getByTestId("aviso-sin-lider")).toHaveCount(0);
-      // CEL-C no tiene Líder activo en el fixture de E7: la fila avisa que nadie la verá como Líder (D138).
+      // Actualizada al retirar el rol Líder QA (2026-11-18): el portal ya no muestra el aviso de célula sin Líder
+      // (D138), ni siquiera con CEL-C, que no tiene Líder activo en el fixture de E7.
       await asignar(page, "QTY-2", { cel: p.celC });
-      await expect(f(page, "QTY-2").getByTestId("aviso-sin-lider")).toBeVisible();
+      await expect(f(page, "QTY-2").getByTestId("estado-fila")).toContainText("Incompleta", { timeout: 15_000 });
+      await expect(f(page, "QTY-2").getByTestId("aviso-sin-lider")).toHaveCount(0);
     });
 
     test("[E5-F05#3] T06: seleccionar QTY-1..4 y aplicar CEL-C, QE2, ANA3 las deja «Listas»; cambiar el QE de QTY-2 a QE1 limpia el analista («Elige un analista del equipo de…») y las otras 3 no cambian", async ({ page, request }) => {
@@ -649,7 +651,7 @@ test.describe("E5-F05 · Revisar, asignar y confirmar", () => {
     });
   });
 
-  for (const clave of ["qe1", "ana1", "lid1", "aud1"] as const) {
+  for (const clave of ["qe1", "ana1", "aud1"] as const) {
     test.describe(clave.toUpperCase(), () => {
       test.use({ storageState: estadoSesion(clave) });
       test(`[E5-F05#13] T26 (negativo): ${clave.toUpperCase()} recibe acceso denegado en /admin/integraciones y no ve «grupo-nuevas», «Confirmar» ni ninguna consulta en su portal`, async ({ page, request }) => {

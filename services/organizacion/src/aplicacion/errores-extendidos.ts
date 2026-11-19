@@ -6,7 +6,7 @@
  * detalles}`—, así que estos NO son `ExcepcionQ360`: el controlador los
  * atrapa y arma la respuesta extendida él mismo (ver api/errores).
  */
-import type { RelacionesUsuario } from '../dominio/reglas/rol-celulas.js';
+import type { RelacionesUsuario } from '../dominio/reglas/cambio-rol.js';
 import type { EstadoHdu } from '../dominio/tipos.js';
 
 export class ErrorTransicionInvalidaHdu extends Error {
@@ -71,7 +71,7 @@ const lista = (nombres: readonly string[]): string => nombres.join(', ');
 
 /**
  * Mensaje del 409 `RELACIONES_INCOMPATIBLES` (D43): nombra a quiénes reasignar y qué
- * HDU o células resolver. Los mismos datos viajan estructurados en `relaciones`.
+ * HDU resolver. Los mismos datos viajan estructurados en `relaciones`.
  */
 export function mensajeRelacionesIncompatibles(relaciones: RelacionesIncompatibles): string {
   const partes: string[] = [];
@@ -87,9 +87,6 @@ export function mensajeRelacionesIncompatibles(relaciones: RelacionesIncompatibl
     partes.push(
       `tiene ${relaciones.hduAbiertas.total} HDU abiertas (${lista(codigos)}${resto > 0 ? ` y ${resto} más` : ''}): ciérralas o reasígnalas`,
     );
-  }
-  if (relaciones.celulasVigentes.length > 0) {
-    partes.push(`quítale primero las células a su cargo: ${lista(relaciones.celulasVigentes.map((celula) => celula.nombre))}`);
   }
   return partes.length === 0
     ? 'Resuelve las relaciones de supervisión antes de continuar.'

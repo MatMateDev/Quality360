@@ -5,7 +5,7 @@ import { api } from "../support/api";
 import { crearHduAsignadaAAna } from "../support/checklist";
 import { certificacionesCaida, type PilaCaida } from "../support/entornoE7";
 import { env } from "../support/env";
-import { CONTRASENA, USUARIOS_E7, contarOrganizacion, hduFixture, marcarConArchivo, tokenE7, type ClaveE7 } from "../support/e7";
+import { CONTRASENA, USUARIOS_E7, contarOrganizacion, crearUsuarioE7, desactivarUsuario, hduFixture, marcarConArchivo, tokenE7, type ClaveE7 } from "../support/e7";
 import { iniciarSesionUI } from "../support/ui";
 
 const estadoSesion = (clave: ClaveE7) => path.join(import.meta.dirname, "..", ".auth", `e7-${clave}.json`);
@@ -118,13 +118,21 @@ test.describe("E7-F06 · Bandeja del Auditor", () => {
       for (const prohibido of ["password", "secret"]) expect(texto2).not.toContain(prohibido);
     });
 
-    test("[E7-F06#1] T04b: un cambio de células se muestra con las células (no con «…»)", async ({ page }) => {
-      await page.goto(`${env.portalUrl}/auditor/auditoria-usuarios?operacion=ASIGNAR_CELULAS_LIDER`);
-      const lista = page.getByTestId("lista-auditoria-usuarios");
-      await expect(lista.locator("tbody tr").first()).toBeVisible();
-      const texto = await lista.locator("tbody tr").first().innerText();
-      expect(texto, "celda de cambios").not.toMatch(/Células: … →/);
-      expect(texto).toMatch(/CEL-|sin células/);
+    // D208: las células del Líder QA se retiraron; el caso se conserva con un cambio de rol propio de la prueba.
+    test("[E7-F06#1] T04b: un cambio de rol se muestra con el rol anterior y el nuevo (no con «…»)", async ({ page, request }) => {
+      const adm = await tokenE7("adm1");
+      const usuario = await crearUsuarioE7(request, adm, "ANALISTA_QA", { prefijo: "f06-t04b" });
+      try {
+        expect((await api.put(request, `/v1/usuarios/${usuario.id}/rol`, { token: adm, body: { rol: "AUDITOR" } })).status).toBe(200);
+        await page.goto(`${env.portalUrl}/auditor/auditoria-usuarios?operacion=CAMBIAR_ROL`);
+        const fila = page.getByTestId("lista-auditoria-usuarios").locator("tbody tr", { hasText: usuario.nombre }).first();
+        await expect(fila).toBeVisible();
+        const texto = await fila.innerText();
+        expect(texto, "celda de cambios").not.toMatch(/Rol: … →/);
+        expect(texto).toContain("Rol: Analista QA → Auditor");
+      } finally {
+        await desactivarUsuario(request, adm, usuario.id);
+      }
     });
 
     test("[E7-F06#2] T05: en HDU filtra célula = CEL-A y «Exportar CSV» descarga el CSV con encabezado y las filas filtradas (E7-H1, H2, H5, H7)", async ({ page }) => {
@@ -200,8 +208,8 @@ test.describe("E7-F06 · Bandeja del Auditor", () => {
       await expect(page.locator("main select, main input:not([type=search]):not([type=date])")).toHaveCount(0);
     });
 
-    test("[E7-F06#3] T09: AUD1 recibe acceso denegado en /qe/aprobaciones, /qa/hdu, /admin/usuarios y /lider", async ({ page }) => {
-      for (const ruta of ["/qe/aprobaciones", "/qa/hdu", "/admin/usuarios", "/lider"]) {
+    test("[E7-F06#3] T09: AUD1 recibe acceso denegado en /qe/aprobaciones, /qa/hdu y /admin/usuarios", async ({ page }) => {
+      for (const ruta of ["/qe/aprobaciones", "/qa/hdu", "/admin/usuarios"]) {
         await page.goto(`${env.portalUrl}${ruta}`);
         await expect(page.getByTestId("acceso-denegado"), ruta).toContainText("No tienes acceso a esta sección");
         expect(new URL(page.url()).pathname).toBe(ruta);

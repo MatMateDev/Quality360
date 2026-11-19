@@ -56,16 +56,6 @@ export class UsuariosController {
     await this.reenviador.reenviar(solicitud, respuesta, { ruta: `/v1/usuarios/${uuidDeRuta(id)}` });
   }
 
-  @Get(':id/celulas-lider')
-  async celulasLider(@Param('id') id: string, @Req() solicitud: SolicitudGateway, @Res() respuesta: Response): Promise<void> {
-    await this.reenviador.reenviar(solicitud, respuesta, { ruta: `/v1/usuarios/${uuidDeRuta(id)}/celulas-lider` });
-  }
-
-  @Put(':id/celulas-lider')
-  async reemplazarCelulasLider(@Param('id') id: string, @Req() solicitud: SolicitudGateway, @Res() respuesta: Response): Promise<void> {
-    await this.reenviador.reenviar(solicitud, respuesta, { ruta: `/v1/usuarios/${uuidDeRuta(id)}/celulas-lider` });
-  }
-
   @Patch(':id')
   async actualizar(
     @Param('id') id: string,
@@ -95,7 +85,7 @@ export class RolesController {
   }
 }
 
-/** Bandejas por rol (D33, D46): Organización las compone; el gateway solo las reenvía. */
+/** Bandejas por rol (D33, D46): Organización las compone; el gateway solo las reenvía. La del Líder QA se retiró (D208). */
 @Controller('v1/bandeja')
 export class BandejasController {
   constructor(private readonly reenviador: Reenviador) {}
@@ -108,11 +98,6 @@ export class BandejasController {
   @Get('qe')
   async qe(@Req() solicitud: SolicitudGateway, @Res() respuesta: Response): Promise<void> {
     await this.reenviador.reenviar(solicitud, respuesta, { ruta: '/v1/bandeja/qe' });
-  }
-
-  @Get('lider')
-  async lider(@Req() solicitud: SolicitudGateway, @Res() respuesta: Response): Promise<void> {
-    await this.reenviador.reenviar(solicitud, respuesta, { ruta: '/v1/bandeja/lider' });
   }
 
   @Get('admin')

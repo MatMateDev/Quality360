@@ -85,48 +85,6 @@ export class BandejaQeQueryDto extends PaginacionBandejaDto {
   q?: string;
 }
 
-export class BandejaLiderQueryDto extends PaginacionBandejaDto {
-  @IsOptional()
-  @TransformBooleanoQuery()
-  @IsBoolean()
-  soloBloqueadas?: boolean;
-
-  @IsOptional()
-  @IsUUID('all')
-  celulaId?: string;
-
-  @IsOptional()
-  @IsUUID('all')
-  sprintId?: string;
-
-  @IsOptional()
-  @IsIn(ESTADOS)
-  estado?: EstadoHdu;
-
-  @IsOptional()
-  @IsUUID('all')
-  qeId?: string;
-
-  @IsOptional()
-  @IsUUID('all')
-  analistaId?: string;
-
-  @IsOptional()
-  @TransformBooleanoQuery()
-  @IsBoolean()
-  sinAnalista?: boolean;
-
-  @IsOptional()
-  @IsString()
-  @Length(2, 120)
-  q?: string;
-
-  @IsOptional()
-  @IsString()
-  @Matches(/^[a-z]+:(asc|desc)$/)
-  orden?: string;
-}
-
 export class BandejaAdminQueryDto extends PaginacionBandejaDto {}
 
 /** Filtros de la pestaña HDU del Auditor; los usa también su exportación. */

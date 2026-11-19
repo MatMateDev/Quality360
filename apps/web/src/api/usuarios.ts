@@ -3,11 +3,9 @@ import { http } from "@/lib/httpClient";
 import type {
   ActualizacionUsuario,
   CambioRol,
-  CelulasLider,
   NuevoUsuario,
   PaginaUsuarios,
   Rol,
-  SolicitudCelulasLider,
   Usuario,
 } from "@/types/dominio";
 
@@ -63,7 +61,7 @@ export function useActualizarUsuario() {
   });
 }
 
-/** D42: rol y células en una sola llamada (`celulaIds` solo con `LIDER_QA`). */
+/** Cambio de rol (E7-B01); las células del Líder QA se retiraron con el rol (D208). */
 export function useCambiarRolUsuario() {
   const queryClient = useQueryClient();
   return useMutation({
@@ -71,32 +69,6 @@ export function useCambiarRolUsuario() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["usuarios"] });
       queryClient.invalidateQueries({ queryKey: ["usuario"] });
-      queryClient.invalidateQueries({ queryKey: ["celulas-lider"] });
-      queryClient.invalidateQueries({ queryKey: ["bandeja"] });
-    },
-  });
-}
-
-/** Células vigentes e historial de un Líder QA. Se vuelve a pedir al abrir el diálogo (otro administrador pudo cambiarlas). */
-export function useCelulasLider(usuarioId: string | null) {
-  return useQuery({
-    queryKey: ["celulas-lider", usuarioId],
-    queryFn: () => http.get<CelulasLider>(`/v1/usuarios/${usuarioId}/celulas-lider`),
-    enabled: Boolean(usuarioId),
-    staleTime: 0,
-    gcTime: 0,
-    retry: false,
-  });
-}
-
-export function useGuardarCelulasLider() {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: ({ id, body }: { id: string; body: SolicitudCelulasLider }) => http.put<CelulasLider>(`/v1/usuarios/${id}/celulas-lider`, body),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["usuarios"] });
-      queryClient.invalidateQueries({ queryKey: ["usuario"] });
-      queryClient.invalidateQueries({ queryKey: ["celulas-lider"] });
       queryClient.invalidateQueries({ queryKey: ["bandeja"] });
     },
   });

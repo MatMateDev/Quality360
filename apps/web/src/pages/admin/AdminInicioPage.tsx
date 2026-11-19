@@ -23,34 +23,19 @@ import {
 const SEGMENTO_TIPO: Record<TipoPendienteAdmin, string> = {
   ANALISTA_SIN_QE: "analista-sin-qe",
   QE_SIN_ANALISTAS: "qe-sin-analistas",
-  LIDER_SIN_CELULAS: "lider-sin-celulas",
-  CELULA_SIN_LIDER: "celula-sin-lider",
 };
 
 const SITUACION: Record<TipoPendienteAdmin, string> = {
   ANALISTA_SIN_QE: "Analista sin QE",
   QE_SIN_ANALISTAS: "QE sin analistas",
-  LIDER_SIN_CELULAS: "Líder sin células",
-  CELULA_SIN_LIDER: "Célula sin líder",
 };
-
-function idPendiente(p: PendienteConfiguracion): string {
-  return p.usuario?.id ?? p.celula?.id ?? "";
-}
 
 /** Destino y rótulo del botón de cada pendiente (D51). */
 function accionPendiente(p: PendienteConfiguracion): { a: string; texto: string; testId: string } {
-  const id = idPendiente(p);
-  switch (p.tipo) {
-    case "ANALISTA_SIN_QE":
-      return { a: `/admin/supervision?analista=${id}`, texto: "Asignar QE", testId: `boton-asignar-qe-${id}` };
-    case "QE_SIN_ANALISTAS":
-      return { a: `/admin/supervision?qe=${id}`, texto: "Asignar analistas", testId: `boton-asignar-analistas-${id}` };
-    case "LIDER_SIN_CELULAS":
-      return { a: `/admin/usuarios?usuario=${id}`, texto: "Asignar células", testId: `boton-asignar-celulas-${id}` };
-    default:
-      return { a: "/admin/usuarios?rol=LIDER_QA", texto: "Asignar líder", testId: `boton-asignar-lider-${id}` };
-  }
+  const id = p.usuario.id;
+  return p.tipo === "ANALISTA_SIN_QE"
+    ? { a: `/admin/supervision?analista=${id}`, texto: "Asignar QE", testId: `boton-asignar-qe-${id}` }
+    : { a: `/admin/supervision?qe=${id}`, texto: "Asignar analistas", testId: `boton-asignar-analistas-${id}` };
 }
 
 /**
@@ -86,7 +71,7 @@ export function AdminInicioPage() {
   const estadoCambios: EstadoDatos = bandeja.isError ? "error" : bandeja.isLoading || !cambios ? "cargando" : cambios.estado !== "ok" ? "indisponible" : cambios.datos.items.length === 0 ? "vacio" : "ok";
 
   const columnasPend: Columna<PendienteConfiguracion>[] = [
-    { id: "quien", titulo: "Usuario o célula", render: (p) => p.usuario?.nombre ?? p.celula?.nombre ?? "—" },
+    { id: "quien", titulo: "Usuario", render: (p) => p.usuario.nombre },
     { id: "situacion", titulo: "Situación", render: (p) => SITUACION[p.tipo] },
     {
       id: "accion",
@@ -153,8 +138,6 @@ export function AdminInicioPage() {
               valor={inicioQuery.data.supervision.estado === "ok" ? inicioQuery.data.supervision.datos.analistasSinSupervisor : undefined}
             />
             <TarjetaContador consulta={bandeja} id="qe-sin-analistas" clave="qe-sin-analistas" titulo="QE sin analistas" contador={datos?.contadores.qeSinAnalistas} atencion />
-            <TarjetaContador consulta={bandeja} id="lideres-sin-celulas" clave="lideres-sin-celulas" titulo="Líderes sin células" contador={datos?.contadores.lideresSinCelulas} atencion />
-            <TarjetaContador consulta={bandeja} id="celulas-sin-lider" clave="celulas-sin-lider" titulo="Células sin líder" contador={datos?.contadores.celulasSinLider} atencion />
             <TarjetaContador consulta={bandeja} id="hdu-total" clave="hdu-total" titulo="HDU totales" contador={datos?.contadores.hduTotal} />
           </GrupoContadores>
 
@@ -215,11 +198,11 @@ export function AdminInicioPage() {
               {pend?.estado === "ok" ? (
                 <TablaBandeja
                   testId="lista-pendientes"
-                  caption="Usuarios y células con configuración pendiente"
+                  caption="Usuarios con configuración pendiente"
                   columnas={columnasPend}
                   items={pend.datos.items}
-                  clave={(p) => `${p.tipo}-${idPendiente(p)}`}
-                  testIdFila={(p) => `fila-pendiente-${SEGMENTO_TIPO[p.tipo]}-${idPendiente(p)}`}
+                  clave={(p) => `${p.tipo}-${p.usuario.id}`}
+                  testIdFila={(p) => `fila-pendiente-${SEGMENTO_TIPO[p.tipo]}-${p.usuario.id}`}
                   focoPagina={filtros.pagina}
                 />
               ) : null}

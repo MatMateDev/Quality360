@@ -4,7 +4,6 @@ import { accesoDenegado } from '@quality360/auth-nest';
 
 import { evaluarAccesoHdu, filtroAmbitoHdu } from '../dominio/reglas/ambito.js';
 import { CATALOGO_REPOSITORIO, type CatalogoRepositorio } from '../dominio/repositorios/catalogo.repositorio.js';
-import { CELULA_LIDER_REPOSITORIO, type CelulaLiderRepositorio } from '../dominio/repositorios/celula-lider.repositorio.js';
 import { SUPERVISION_REPOSITORIO, type SupervisionRepositorio } from '../dominio/repositorios/supervision.repositorio.js';
 import { HDU_REPOSITORIO, type HduRepositorio } from '../dominio/repositorios/hdu.repositorio.js';
 import { USUARIO_REPOSITORIO, type UsuarioRepositorio } from '../dominio/repositorios/usuario.repositorio.js';
@@ -78,7 +77,6 @@ export class AccesoAplicacion {
     @Inject(HDU_REPOSITORIO) private readonly hdus: HduRepositorio,
     @Inject(USUARIO_REPOSITORIO) private readonly usuarios: UsuarioRepositorio,
     @Inject(CATALOGO_REPOSITORIO) private readonly catalogos: CatalogoRepositorio,
-    @Inject(CELULA_LIDER_REPOSITORIO) private readonly celulasLider: CelulaLiderRepositorio,
     @Inject(SUPERVISION_REPOSITORIO) private readonly supervision: SupervisionRepositorio,
     private readonly hduAplicacion: HduAplicacion,
   ) {}
@@ -110,23 +108,21 @@ export class AccesoAplicacion {
 
   /**
    * Candidatos activos (tabla 3.5): registro = QE responsable y QE supervisor vigente del analista, sin
-   * repetir; escalamiento = Líderes con la célula vigente y Administradores activos (D63, D64).
+   * repetir; escalamiento = Administradores activos (D63, D64; el Líder QA se retiró, D208).
    */
   private async candidatos(hdu: Hdu): Promise<CandidatosResponsable> {
     const supervisorId = hdu.analistaId === null ? null : await this.supervision.buscarQeVigente(hdu.analistaId);
     const idsRegistro = [...new Set([hdu.qeResponsableId, ...(supervisorId === null ? [] : [supervisorId])])];
-    const [lideres, admins, usuariosRegistro] = await Promise.all([
-      this.celulasLider.lideresActivosDeCelula(hdu.celulaId),
+    const [admins, usuariosRegistro] = await Promise.all([
       this.usuarios.listar({ rol: 'ADMINISTRADOR', activo: true }, { pagina: 1, tamanoPagina: 1000 }),
       Promise.all(idsRegistro.map((id) => this.usuarios.buscarPorId(id))),
     ]);
     const registro: PersonaConRol[] = usuariosRegistro
       .filter((usuario): usuario is NonNullable<typeof usuario> => usuario !== null && usuario.activo)
       .map((usuario) => ({ id: usuario.id, nombre: usuario.nombre, rol: usuario.rol }));
-    const escalamiento: PersonaConRol[] = [
-      ...lideres.map((lider) => ({ id: lider.id, nombre: lider.nombre, rol: 'LIDER_QA' as Rol })),
-      ...admins.items.filter((usuario) => usuario.activo).map((usuario) => ({ id: usuario.id, nombre: usuario.nombre, rol: usuario.rol })),
-    ];
+    const escalamiento: PersonaConRol[] = admins.items
+      .filter((usuario) => usuario.activo)
+      .map((usuario) => ({ id: usuario.id, nombre: usuario.nombre, rol: usuario.rol }));
     return { registro, escalamiento };
   }
 

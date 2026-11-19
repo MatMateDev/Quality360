@@ -77,7 +77,6 @@ export function vistaItem(i: ItemConsulta, sitioHost: string) {
     aplicando: i.aplicando,
     aplicacion: i.aplicacion === null ? null : { alcance: i.aplicacion.alcance, por: i.aplicacion.por, en: i.aplicacion.en },
     yaAsignada: i.yaAsignada,
-    avisoSinLider: i.avisoSinLider,
     asignadoPor: i.asignadoPor,
     asignadoEn: i.asignadoEn,
   };

@@ -7,8 +7,8 @@ function aOpciones(m: Map<string, string>): OpcionFiltro[] {
 }
 
 /**
- * Opciones de un filtro por persona o recurso cuando no existe un catálogo para el rol (Líder y Auditor no
- * pueden llamar a `GET /v1/usuarios`, que es del Administrador). Se arman con lo que ya aparece en las filas
+ * Opciones de un filtro por persona o recurso cuando no existe un catálogo para el rol (el Auditor no
+ * puede llamar a `GET /v1/usuarios`, que es del Administrador). Se arman con lo que ya aparece en las filas
  * vistas y se acumulan mientras dura la pantalla. Es una brecha del contrato (se informa en el reporte).
  */
 export function useOpcionesAcumuladas(pares: ReadonlyArray<readonly [string, string]> | undefined): OpcionFiltro[] {
@@ -19,7 +19,7 @@ export function useOpcionesAcumuladas(pares: ReadonlyArray<readonly [string, str
   }, [pares]);
 }
 
-/** QE responsable y Analista de las bandejas de HDU del Líder y del Auditor. */
+/** QE responsable y Analista de la bandeja de HDU del Auditor. */
 export function useUsuariosOpciones(items: ItemBandejaHdu[] | undefined) {
   const qes = useMemo(() => items?.map((h) => [h.qeResponsable.id, h.qeResponsable.nombre] as const), [items]);
   const analistas = useMemo(

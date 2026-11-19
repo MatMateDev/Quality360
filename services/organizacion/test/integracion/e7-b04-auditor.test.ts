@@ -40,10 +40,9 @@ before(async () => {
   await limpiarBaseDeDatos();
   app = await crearAppDePrueba({ certificacionesUrl: cert.url, certificacionesTimeoutMs: 1500 });
   f = await crearFixtureE7(cert);
-  // Auditoría de usuarios de partida: un cambio de rol, uno de datos y una supervisión.
+  // Auditoría de usuarios de partida: un cambio de rol y uno de datos (las células de Líder se retiraron, D208).
   await http().put(`/v1/usuarios/${f.ana4.id}/rol`).set(como(f.adm1)).send({ rol: 'AUDITOR' }).expect(200);
   await http().patch(`/v1/usuarios/${f.ana1.id}`).set(como(f.adm1)).send({ nombre: 'ANA1' }).expect(200);
-  await http().put(`/v1/usuarios/${f.lid2.id}/celulas-lider`).set(como(f.adm1)).send({ celulaIds: [f.celdaC.id] }).expect(200);
 });
 
 after(async () => {
@@ -73,7 +72,7 @@ describe('Consulta con filtros [E7-B04#1]', () => {
     const deAna1: Cuerpo = (await http().get(`/v1/auditor/auditoria-usuarios?usuarioAfectadoId=${f.ana1.id}`).set(como(f.aud1)).expect(200)).body;
     assert.ok(deAna1.items.every((fila: Cuerpo) => fila.usuarioAfectado.id === f.ana1.id));
     const delActor: Cuerpo = (await http().get(`/v1/auditor/auditoria-usuarios?actorId=${f.adm1.id}`).set(como(f.aud1)).expect(200)).body;
-    assert.ok(delActor.total >= 3);
+    assert.ok(delActor.total >= 2);
     const futuro = encodeURIComponent(new Date(Date.now() + 86_400_000).toISOString());
     const ninguna: Cuerpo = (await http().get(`/v1/auditor/auditoria-usuarios?desde=${futuro}`).set(como(f.aud1)).expect(200)).body;
     assert.deepEqual([ninguna.items, ninguna.total], [[], 0]);
@@ -125,10 +124,10 @@ describe('Contenido seguro [E7-B04#2]', () => {
     assert.deepEqual(afectada.items[0].despues, { nombre: 'nuevo', celulas: [{ id: 'x', nombre: 'CEL-X' }] });
   });
 
-  it('[E7-B04-T07] ADM1, QE1, ANA1 y LID1 reciben 403 ACCESO_DENEGADO en los 3 endpoints de Organización (12 intentos)', async () => {
+  it('[E7-B04-T07] ADM1, QE1 y ANA1 reciben 403 ACCESO_DENEGADO en los 3 endpoints de Organización (9 intentos)', async () => {
     const rutas = ['/v1/auditor/auditoria-usuarios', '/v1/auditor/exportaciones/auditoria-usuarios', '/v1/auditor/exportaciones/hdu'];
     let intentos = 0;
-    for (const usuario of [f.adm1, f.qe1, f.ana1, f.lid1]) {
+    for (const usuario of [f.adm1, f.qe1, f.ana1]) {
       for (const ruta of rutas) {
         const respuesta = await http().get(ruta).set(como(usuario));
         assert.equal(respuesta.status, 403, `${ruta} como ${usuario.nombre}`);
@@ -136,7 +135,7 @@ describe('Contenido seguro [E7-B04#2]', () => {
         intentos += 1;
       }
     }
-    assert.equal(intentos, 12);
+    assert.equal(intentos, 9);
     assert.equal(await prisma.auditoria.count({ where: { accion: 'EXPORTAR' } }), 0, 'ningún intento negado se registra como exportación');
   });
 
@@ -242,7 +241,7 @@ describe('Exportación [E7-B04#3]', () => {
     assert.equal(registro.entidad, 'EXPORTACION');
     assert.equal(registro.actorId, f.aud1.id);
     assert.deepEqual(registro.despues, cuerpo);
-    for (const usuario of [f.adm1, f.qe1, f.lid1]) await http().post('/v1/interno/auditoria/exportaciones').set(como(usuario)).send(cuerpo).expect(403);
+    for (const usuario of [f.adm1, f.qe1, f.ana1]) await http().post('/v1/interno/auditoria/exportaciones').set(como(usuario)).send(cuerpo).expect(403);
     await http().post('/v1/interno/auditoria/exportaciones').set(como(f.aud1)).send({ ...cuerpo, recurso: 'OTRO' }).expect(400);
     await http().post('/v1/interno/auditoria/exportaciones').set(como(f.aud1)).send({ ...cuerpo, filas: -1 }).expect(400);
   });

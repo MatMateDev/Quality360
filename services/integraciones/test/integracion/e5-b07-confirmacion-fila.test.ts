@@ -466,10 +466,10 @@ describe('E5-B07#13 · vida de la consulta', () => {
 });
 
 describe('E5-B07#14 · permisos y orden de validación', () => {
-  it('E5-B07-T14 401 sin sesión; 403 a QE, Analista, Líder y Auditor; sin secretos en la respuesta', async () => {
+  it('E5-B07-T14 401 sin sesión; 403 a QE, Analista y Auditor; sin secretos en la respuesta', async () => {
     const { id, uno } = await preparada();
     assert.equal((await confirmarFila(id, uno.id, uno.revision, null)).status, 401);
-    for (const persona of ['qe1', 'ana1', 'lid1', 'aud1'] as const) assert.equal((await confirmarFila(id, uno.id, uno.revision, persona)).status, 403, persona);
+    for (const persona of ['qe1', 'ana1', 'aud1'] as const) assert.equal((await confirmarFila(id, uno.id, uno.revision, persona)).status, 403, persona);
     assert.equal(org.upserts.length, 0);
     const ok = await confirmarFila(id, uno.id, uno.revision);
     assert.doesNotMatch(JSON.stringify(ok.body), /token|secret|apikey|password/i);

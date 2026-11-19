@@ -7,7 +7,7 @@ import { TablaBandeja, type Columna } from "../bandeja/TablaBandeja";
 import { RiesgoDeResumen } from "./CeldaRiesgo";
 import { DiasAbierto, InsigniaEstadoImpedimento, InsigniaNuevo } from "./Insignias";
 
-export type VarianteBloque = "qe" | "lider" | "admin";
+export type VarianteBloque = "qe" | "admin";
 
 interface Props {
   variante: VarianteBloque;
@@ -25,8 +25,8 @@ interface Props {
 }
 
 /**
- * Lista compacta de impedimentos de una bandeja (diseño E4 §7): QE (10 más recientes y «Ver todos»), Líder (todos los
- * abiertos de sus células, los escalados a él primero, solo lectura) y Administrador (solo los escalados a él).
+ * Lista compacta de impedimentos de una bandeja (diseño E4 §7): QE (10 más recientes y «Ver todos») y Administrador
+ * (solo los escalados a él). La variante del Líder QA se retiró con el rol (D208).
  * Nunca hay botones de gestión: gestiona el QE responsable en el detalle (D57, D83).
  */
 export function BloqueImpedimentosBandeja({ variante, titulo, descripcion, clave, testIdTabla, consulta, bloque, vacio, tonoVacio, verTodos = false }: Props) {
@@ -69,23 +69,6 @@ export function BloqueImpedimentosBandeja({ variante, titulo, descripcion, clave
       </span>
     ),
   };
-  const responsable: Col = {
-    id: "responsable",
-    titulo: "Responsable",
-    render: (i) => (
-      <span>
-        {i.responsable.nombre}
-        {i.escaladoAMi ? (
-          <>
-            {" "}
-            <span className="badge badge-imp-escalado" data-testid="insignia-escalado-a-mi">
-              Escalado a ti
-            </span>
-          </>
-        ) : null}
-      </span>
-    ),
-  };
   const registradoPor: Col = {
     id: "registrado",
     titulo: "Registrado por",
@@ -96,9 +79,7 @@ export function BloqueImpedimentosBandeja({ variante, titulo, descripcion, clave
   const columnas: Col[] =
     variante === "qe"
       ? [riesgo, hdu, analista, tipo, impedimento, estadoCol, dias]
-      : variante === "lider"
-        ? [riesgo, hdu, celula, analista, tipo, impedimento, estadoCol, responsable, dias]
-        : [hdu, celula, impedimento, estadoCol, registradoPor, dias, fecha];
+      : [hdu, celula, impedimento, estadoCol, registradoPor, dias, fecha];
 
   return (
     <section className="panel" aria-labelledby={idTitulo} aria-busy={estado === "cargando"}>

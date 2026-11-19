@@ -30,7 +30,7 @@ describe("Dashboard Administrador [E6]", () => {
     expect(screen.getByTestId("tarjeta-dash-admin-cobertura")).toHaveTextContent(`${pct(analistasConQe, analistasActivos.length)}%`);
   });
 
-  it("reparte los usuarios activos entre los cinco roles, con cifra y porcentaje", async () => {
+  it("reparte los usuarios activos entre los cuatro roles, con cifra y porcentaje (sin Líder QA, D208)", async () => {
     await abrirComo(ADMIN, "/admin/dashboard");
 
     const lista = await screen.findByRole("list", { name: "Usuarios activos por rol" });
@@ -38,7 +38,8 @@ describe("Dashboard Administrador [E6]", () => {
       const cantidad = activos.filter((u) => u.rol === rol).length;
       expect(within(lista).getByTestId(`dash-admin-rol-${rol}`)).toHaveTextContent(`${cantidad} (${pct(cantidad, activos.length)}%)`);
     }
-    expect(within(lista).getAllByRole("progressbar")).toHaveLength(5);
+    expect(within(lista).getAllByRole("progressbar")).toHaveLength(ROLES_CATALOGO.length);
+    expect(within(lista).queryByTestId("dash-admin-rol-LIDER_QA")).not.toBeInTheDocument();
     expect(screen.getByRole("img", { name: /^Usuarios activos por rol: Analista QA \d+/ })).toBeInTheDocument();
     expect(screen.getByTestId("dash-admin-anillo-cobertura-valor")).toHaveTextContent(`${pct(analistasConQe, analistasActivos.length)}%`);
   });

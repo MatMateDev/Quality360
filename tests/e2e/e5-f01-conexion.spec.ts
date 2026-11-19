@@ -214,7 +214,7 @@ test.describe("E5-F01 · Conexión con Jira", () => {
     });
   });
 
-  for (const clave of ["qe1", "ana1", "lid1", "aud1"] as const) {
+  for (const clave of ["qe1", "ana1", "aud1"] as const) {
     test.describe(clave.toUpperCase(), () => {
       test.use({ storageState: estadoSesion(clave) });
       test(`[E5-F01#1] T09 (negativo): ${clave.toUpperCase()} abre /admin/integraciones y recibe acceso denegado con «Ir a mi bandeja»; ninguna petición de configuración devuelve 200`, async ({ page }) => {
@@ -235,8 +235,8 @@ test.describe("E5-F01 · Conexión con Jira", () => {
     });
   }
 
-  test("[E5-F01#3] T09 (API): los cuatro roles reciben 403 en GET configuracion (refuerza el negativo de interfaz)", async ({ request }) => {
-    for (const clave of ["qe1", "ana1", "lid1", "aud1"] as const) {
+  test("[E5-F01#3] T09 (API): los tres roles que no administran reciben 403 en GET configuracion (refuerza el negativo de interfaz)", async ({ request }) => {
+    for (const clave of ["qe1", "ana1", "aud1"] as const) {
       const r = await api.get<any>(request, "/v1/integraciones/jira/configuracion", { token: await tk(clave) });
       expect(r.status, clave).toBe(403);
     }

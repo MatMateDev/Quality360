@@ -1,9 +1,9 @@
-/** Reglas puras de E7: ámbito del Líder y del Auditor, solo lectura, rol y células, bandejas, auditoría y CSV. */
+/** Reglas puras de E7: ámbito del Auditor, solo lectura, cambio de rol, bandejas, auditoría y CSV (el Líder QA se retiró, D208). */
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
 import { rangoValido, sanitizarCambios } from '../../src/dominio/reglas/auditoria-usuarios.js';
-import { calcularAmbito, celulaPermitidaParaLider, evaluarAccesoHdu, filtroAmbitoHdu } from '../../src/dominio/reglas/ambito.js';
+import { calcularAmbito, evaluarAccesoHdu, filtroAmbitoHdu } from '../../src/dominio/reglas/ambito.js';
 import {
   accionesPendientesQe,
   actualizadoEn,
@@ -18,78 +18,39 @@ import {
   type SeguimientoHdu,
 } from '../../src/dominio/reglas/bandejas.js';
 import { puedeAsignarAnalistaHdu, puedeCambiarEstadoHdu, puedeReasignarQeResponsable } from '../../src/dominio/reglas/permisos-hdu.js';
-import {
-  celulaIdsCompatiblesConRol,
-  decidirCambioRol,
-  diferenciaCelulas,
-  relacionesVacias,
-  type RelacionesUsuario,
-} from '../../src/dominio/reglas/rol-celulas.js';
+import { decidirCambioRol, relacionesVacias, type RelacionesUsuario } from '../../src/dominio/reglas/cambio-rol.js';
 import { ROLES, esRolSoloLectura } from '../../src/dominio/tipos.js';
 import { celdaCsv, generarCsv } from '../../src/infraestructura/csv/generador-csv.js';
 
 const HDU = { qeResponsableId: 'qe-1', analistaId: 'ana-1', celulaId: 'cel-a', estado: 'EN_EJECUCION' as const };
-const SIN_AMBITO = { qeSupervisorId: null, analistasSupervisadosIds: [], celulasIds: [] };
+const SIN_AMBITO = { qeSupervisorId: null, analistasSupervisadosIds: [] };
 
 describe('Roles y solo lectura [E7-B02]', () => {
-  it('hay 5 roles y solo LIDER_QA y AUDITOR son de solo lectura (D28, D32)', () => {
-    assert.deepEqual([...ROLES], ['ADMINISTRADOR', 'QE', 'ANALISTA_QA', 'LIDER_QA', 'AUDITOR']);
-    assert.deepEqual(ROLES.filter(esRolSoloLectura), ['LIDER_QA', 'AUDITOR']);
+  it('hay 4 roles y solo AUDITOR es de solo lectura (D28, D32, D208)', () => {
+    assert.deepEqual([...ROLES], ['ADMINISTRADOR', 'QE', 'ANALISTA_QA', 'AUDITOR']);
+    assert.deepEqual(ROLES.filter(esRolSoloLectura), ['AUDITOR']);
   });
 
-  it('el ámbito del Líder trae sus células y los demás roles, ninguna', () => {
-    assert.deepEqual(calcularAmbito('LIDER_QA', ['x'], 'y', ['c1', 'c2']), { qeSupervisorId: null, analistasSupervisadosIds: [], celulasIds: ['c1', 'c2'] });
-    assert.deepEqual(calcularAmbito('AUDITOR', [], null, ['c1']).celulasIds, []);
-    assert.deepEqual(calcularAmbito('QE', ['a'], null, ['c1']).celulasIds, []);
-  });
-
-  it('el Líder lee las HDU de sus células vigentes (LECTOR_CELULA) y no las de otras', () => {
-    const ambito = { ...SIN_AMBITO, celulasIds: ['cel-a'] };
-    assert.deepEqual(evaluarAccesoHdu('LIDER_QA', 'lid', ambito, HDU), { permitido: true, relacion: 'LECTOR_CELULA' });
-    assert.deepEqual(evaluarAccesoHdu('LIDER_QA', 'lid', ambito, { ...HDU, celulaId: 'cel-c' }), { permitido: false, relacion: null });
-    assert.equal(evaluarAccesoHdu('LIDER_QA', 'lid', SIN_AMBITO, HDU).permitido, false, 'sin células no ve nada');
+  it('el ámbito del Auditor no trae analistas ni supervisor; ya no hay ámbito por células (D208)', () => {
+    assert.deepEqual(calcularAmbito('AUDITOR', ['x'], 'y'), { qeSupervisorId: null, analistasSupervisadosIds: [] });
+    assert.deepEqual(calcularAmbito('QE', ['a'], null), { qeSupervisorId: null, analistasSupervisadosIds: ['a'] });
   });
 
   it('el Auditor lee todas (LECTOR_AUDITORIA) y el filtro de ámbito es el que corresponde a cada rol', () => {
     assert.deepEqual(evaluarAccesoHdu('AUDITOR', 'aud', SIN_AMBITO, HDU), { permitido: true, relacion: 'LECTOR_AUDITORIA' });
     assert.deepEqual(filtroAmbitoHdu('AUDITOR', 'aud', SIN_AMBITO), { tipo: 'TODAS' });
-    assert.deepEqual(filtroAmbitoHdu('LIDER_QA', 'lid', { ...SIN_AMBITO, celulasIds: ['c1'] }), { tipo: 'CELULAS', celulaIds: ['c1'] });
-    assert.deepEqual(filtroAmbitoHdu('LIDER_QA', 'lid', SIN_AMBITO), { tipo: 'CELULAS', celulaIds: [] });
   });
 
-  it('un Líder solo filtra por células propias; los demás roles no tienen esa restricción', () => {
-    const ambito = { ...SIN_AMBITO, celulasIds: ['c1'] };
-    assert.equal(celulaPermitidaParaLider('LIDER_QA', ambito, 'c1'), true);
-    assert.equal(celulaPermitidaParaLider('LIDER_QA', ambito, 'c9'), false);
-    assert.equal(celulaPermitidaParaLider('LIDER_QA', ambito, undefined), true);
-    assert.equal(celulaPermitidaParaLider('AUDITOR', ambito, 'c9'), true);
-  });
-
-  it('Líder y Auditor nunca cambian estado ni asignan; solo el Administrador reasigna el QE (D32, D54)', () => {
-    for (const rol of ['LIDER_QA', 'AUDITOR'] as const) {
-      assert.equal(puedeCambiarEstadoHdu(rol, 'x', { ...SIN_AMBITO, celulasIds: ['cel-a'] }, HDU), false);
-      assert.equal(puedeAsignarAnalistaHdu(rol, 'x', HDU), false);
-      assert.equal(puedeReasignarQeResponsable(rol), false);
-    }
+  it('el Auditor nunca cambia estado ni asigna; solo el Administrador reasigna el QE (D32, D54)', () => {
+    assert.equal(puedeCambiarEstadoHdu('AUDITOR', 'x', SIN_AMBITO, HDU), false);
+    assert.equal(puedeAsignarAnalistaHdu('AUDITOR', 'x', HDU), false);
+    assert.equal(puedeReasignarQeResponsable('AUDITOR'), false);
     assert.equal(puedeReasignarQeResponsable('ADMINISTRADOR'), true);
     assert.equal(puedeReasignarQeResponsable('QE'), false);
   });
 });
 
-describe('Rol y células [E7-B01]', () => {
-  it('las células solo se aceptan con LIDER_QA, salvo la lista vacía (D42)', () => {
-    assert.equal(celulaIdsCompatiblesConRol('LIDER_QA', ['a']), true);
-    assert.equal(celulaIdsCompatiblesConRol('QE', ['a']), false);
-    assert.equal(celulaIdsCompatiblesConRol('QE', []), true);
-    assert.equal(celulaIdsCompatiblesConRol('AUDITOR', undefined), true);
-  });
-
-  it('la diferencia abre las nuevas, cierra las que sobran y no toca las que siguen (E7-B01-T07)', () => {
-    assert.deepEqual(diferenciaCelulas(['a', 'b'], ['a', 'c']), { abrir: ['c'], cerrar: ['b'], mantener: ['a'] });
-    assert.deepEqual(diferenciaCelulas(['a'], []), { abrir: [], cerrar: ['a'], mantener: [] });
-    assert.deepEqual(diferenciaCelulas([], ['a', 'a']), { abrir: ['a'], cerrar: [], mantener: [] });
-  });
-
+describe('Cambio de rol [E7-B01]', () => {
   const con = (cambios: Partial<RelacionesUsuario>): RelacionesUsuario => ({ ...relacionesVacias(), ...cambios });
   const base = { rolActual: 'QE' as const, rolNuevo: 'AUDITOR' as const, administradoresActivos: 2, relaciones: relacionesVacias() };
   const persona = { id: 'a', nombre: 'Ana', correo: 'a@q.local' };
@@ -103,18 +64,16 @@ describe('Rol y células [E7-B01]', () => {
     assert.equal(decision.tipo, 'ULTIMO_ADMINISTRADOR');
   });
 
-  it('cualquiera de las 4 relaciones abiertas rechaza el cambio y se devuelven todas (D31, D40)', () => {
-    const celula = { id: 'c', nombre: 'CEL-A' };
+  it('cualquiera de las 3 relaciones abiertas rechaza el cambio y se devuelven todas (D31, D40)', () => {
     const hdu = { id: 'h', codigo: 'H1', titulo: 't', estado: 'PENDIENTE' as const };
     const casos: Partial<RelacionesUsuario>[] = [
       { analistasVigentes: [persona] },
       { supervisorVigente: persona },
       { hduAbiertas: { total: 1, items: [hdu] } },
-      { celulasVigentes: [celula] },
     ];
     for (const caso of casos) assert.equal(decidirCambioRol({ ...base, relaciones: con(caso) }).tipo, 'RELACIONES_INCOMPATIBLES');
-    const todas = decidirCambioRol({ ...base, relaciones: con({ analistasVigentes: [persona], celulasVigentes: [celula] }) });
-    assert.ok(todas.tipo === 'RELACIONES_INCOMPATIBLES' && todas.relaciones.analistasVigentes.length === 1 && todas.relaciones.celulasVigentes.length === 1);
+    const todas = decidirCambioRol({ ...base, relaciones: con({ analistasVigentes: [persona], hduAbiertas: { total: 1, items: [hdu] } }) });
+    assert.ok(todas.tipo === 'RELACIONES_INCOMPATIBLES' && todas.relaciones.analistasVigentes.length === 1 && todas.relaciones.hduAbiertas.total === 1);
     assert.equal(decidirCambioRol(base).tipo, 'CAMBIAR');
   });
 });

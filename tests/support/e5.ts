@@ -237,7 +237,6 @@ export async function borrarUsuariosDePrueba(ids: string[], desde: Date): Promis
     await c.query("DELETE FROM organizacion.supervision WHERE id_supervisado = ANY($1::uuid[]) OR id_supervisor = ANY($1::uuid[])", [ids]).catch(async () => {
       await c.query("DELETE FROM organizacion.supervision WHERE id_supervisado = ANY($1::uuid[])", [ids]);
     });
-    await c.query("DELETE FROM organizacion.celula_lider WHERE id_usuario = ANY($1::uuid[])", [ids]);
     await c.query("DELETE FROM organizacion.usuario WHERE id_usuario = ANY($1::uuid[])", [ids]);
     await c.query("DELETE FROM auth.users WHERE id = ANY($1::uuid[])", [ids]);
     await c.query("SET session_replication_role = DEFAULT");
