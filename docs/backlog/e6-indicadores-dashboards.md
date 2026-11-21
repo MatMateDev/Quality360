@@ -198,11 +198,13 @@ Regla: ningún escenario certificado cambia de resultado esperado. Se **agrega**
 | **E2-F04, detalle de HDU** | El detalle suma el bloque «Cerrada con excepción» y el botón «Cerrar con excepción» solo para el QE responsable; ambos después del checklist | Ninguno con los `data-testid` y el orden certificados |
 | **Contratos** | `organizacion.v1.yaml`: campo opcional `justificacion` en el cambio de estado, bloque `cierre` en el detalle, `cierreParcial` en el listado, campo `puedeCerrarConExcepcion` en el 409; `comun.v1.yaml`: sin códigos nuevos (se usan `JUSTIFICACION_REQUERIDA` y `VALIDACION` de E4) | Todos aditivos |
 | **Certificado de E4, resto de E5** | Ninguno | Ninguno |
-| **Semilla** | Se agrega solo lo de la sección 8 (sprints con fechas ya definidos por E4, un QE sin HDU, CEL-D sin HDU y snapshots de prueba, creados por las propias pruebas). No agrega HDU ni usuarios al estado base | Ninguno sobre `hdu-total 8` ni los 10 usuarios activos |
+| **Semilla** | `seed:e6` agrega lo estático de la sección 8: **QE3** (QE sin analistas ni HDU), **LID3** (Líder QA propio de E6) y **CEL-D** (sin HDU, asignada a LID3) (D208). No agrega HDU. Los sprints con fechas ya los define E4; los snapshots y el resto de los datos los crean las propias pruebas | Ninguno sobre lo que E7 y E4 dan por hecho: `hdu-total` sigue en 8, LID2 sigue sin células, CEL-C sigue sin líder y ningún usuario del fixture E7 cambia. Los contadores globales de E7 (10 usuarios activos 1/2/4/2/1, `qe-sin-analistas` 0) se afirman en valor exacto en la base pura **antes** de `seed:e6`; después, QE3 y LID3 suman 2 activos y QE3 cuenta como QE sin analistas |
 
 ## 8. Fixture de datos de prueba (compartido)
 
 Parte del fixture de E7 y E4: mismos usuarios, células y H1–H8, impedimentos I1–I5, sprints SP-VENC, SP-PROX, SP-MED y SP-LEJ, y «hoy» en `America/Santiago`. Supuesto a confirmar con `q360-integraciones`: H4 tiene 0 % de avance (E4 solo fija el nivel BAJO por sprint lejano). Para E6-F05 y E6-B05 las pruebas llevan por los estados de D10 a H2 (1 aprobado, sin impedimentos abiertos: I4 está resuelto), a H5 (sin aprobados, hay que asignarle un analista antes) y a H1 (3 aprobados, con I2 abierto) hasta `PENDIENTE_CIERRE`, con las herramientas de E2; H8 (10 aprobados) se usa para el cierre normal. Cada archivo de pruebas recarga la semilla porque un cierre es terminal. Las pruebas de snapshot generan sus propias fechas con `Q360_FECHA_REFERENCIA`.
+
+**Base pura y base compartida** (misma convención que E7 y E4, `docs/validacion/certificacion-e7.md`). La **base pura** tiene solo el fixture: `seed:e7`, `seed:e4` y `seed:e6`, sin la semilla MVP. La **base compartida** tiene además la semilla MVP (`npm run seed`) y lo que dejan las suites anteriores. El Auditor ve todo el sistema, así que sus cifras absolutas (E6-F01-T04, E6-B01-T07, E6-B02-T02, E6-B02-T13 y las exportaciones del Auditor, como E6-B04-T04) se afirman en valor exacto solo en la base pura. En la compartida se contrastan con el conteo de la base y con las células del fixture: CEL-A, CEL-B y CEL-C suman 8 HDU con cumplimiento 40 %.
 
 **Avance y estado:** H1 30 %, H2 10 %, H3 0 %, H4 0 %, H5 0 %, H6 80 %, H7 100 % (cerrada, certificado F7), H8 100 % (pendiente de cierre, certificado F8). Riesgo vigente: H1 ALTO, H2 MEDIO, H3 MEDIO, H4 BAJO, H5 ALTO, H6 MEDIO (fijado), H7 sin evaluar, H8 BAJO. Bloqueadas: H1 (I2), H3 (I1) y H6 (I3, escalado).
 
@@ -217,7 +219,7 @@ Parte del fixture de E7 y E4: mismos usuarios, células y H1–H8, impedimentos 
 
 El estado base no tiene cierres con excepción (H7 y H8 tienen 10 aprobados), por eso la columna nueva vale 0 y los demás valores no cambian. **Con un cierre con excepción** (E6-F01-T12 y E6-B01-T11: QE1 lleva H2, con 1 aprobado, a `PENDIENTE_CIERRE` y la cierra con justificación): QE1 pasa a totales 5, certificadas 1 (H8), cerradas con excepción 1 (H2), en curso 2 (H1, H6), sin iniciar 1 (H5), bloqueadas 2 y cumplimiento 44 % (H2 aporta 10 %, su avance real; si se contara como 100 % darían 62 %). El semáforo de CEL-A no cambia (H1 y H5 siguen en ALTO) y H2 sale de la carga de ANA2, que queda con 1 activa (H8) y 1 cerrada.
 
-Con filtros para QE1: CEL-A (H1, H2, H5) = 3 totales, 0 certificadas, 2 en curso, 1 sin iniciar, 1 bloqueada, 13 % (13,3). SP-PROX (H1, H6) = 2 totales, 2 en curso, 2 bloqueadas, 55 %. CEL-A y SP-PROX = 1 total (H1), 30 %.
+Con filtros para QE1: CEL-A (H1, H2, H5) = 3 totales, 0 certificadas, 2 en curso, 1 sin iniciar, 1 bloqueada, 13 % (13,3). El modelo tiene un sprint por célula, así que «SP-PROX» son **dos ids**: SP-PROX de CEL-A (H1) y SP-PROX de CEL-B (H6). Sprint = SP-PROX de CEL-A: 1 total (H1), 1 en curso, 1 bloqueada, 30 %. Sprint = SP-PROX de CEL-B: 1 total (H6), 1 en curso, 1 bloqueada, 80 %. La media de los dos es 55 %, pero ningún filtro único la produce. CEL-A y SP-PROX de CEL-A = 1 total (H1), 30 %. Una célula con el sprint de otra célula (por ejemplo, CEL-C y SP-PROX de CEL-A) no tiene HDU: «No hay HDU con esos filtros».
 
 **Semáforo esperado:**
 
@@ -230,7 +232,7 @@ Con filtros para QE1: CEL-A (H1, H2, H5) = 3 totales, 0 certificadas, 2 en curso
 
 **Carga esperada (umbral por defecto 5):** QE1: ANA1 2 activas (H1, H6 en ejecución), cumplimiento 55 %; ANA2 2 activas (H2 en ejecución, H8 pendiente de cierre), 55 %; «Sin analista asignado» 1 (H5). QE2: ANA3 2 activas (H3 pendiente, H4 diseño de pruebas) y 1 cerrada (H7), cumplimiento 33 %. Con umbral 1, ANA1 y ANA2 quedan sobrecargados; con 2, ninguno. ANA4 no tiene QE ni HDU.
 
-**Datos que agregan las pruebas:** QE3 (QE activo sin analistas ni HDU), CEL-D (célula sin HDU, asignada a LID2 con las herramientas de E7), ANA4 supervisada por QE2 (para «sin asignaciones»), H4 reasignada a ANA1 por ADM1 con `PUT /v1/hdu/{id}/analista` (para la regla D160: ANA1 queda supervisada por QE1 y con una HDU de QE2; la supervisión doble no existe, D190), un analista desactivado con una HDU activa (por la API del Administrador: crear, asignar y desactivar; E1-B07 solo impide desactivar a un QE con analistas) y una serie de snapshots de tres días (H1 en 30, 30 y 40 %).
+**Datos que suma E6:** `seed:e6` crea QE3 (QE activo sin analistas ni HDU), LID3 (Líder QA propio de E6, solo con CEL-D) y CEL-D (célula sin HDU, asignada a LID3), D208. LID2 sigue sin células, como exigen las pruebas certificadas de E7 y E4. Desde E6, CEL-D es la célula **ajena** para QE2 (no tiene HDU suyas); CEL-C no lo es, porque tiene H4. Para LID1 la ajena sigue siendo CEL-C. Las pruebas agregan además ANA4 supervisada por QE2 (para «sin asignaciones»), H4 reasignada a ANA1 por ADM1 con `PUT /v1/hdu/{id}/analista` (para la regla D160: ANA1 queda supervisada por QE1 y con una HDU de QE2; la supervisión doble no existe, D190), un analista desactivado con una HDU activa (por la API del Administrador: crear, asignar y desactivar; E1-B07 solo impide desactivar a un QE con analistas) y una serie de snapshots de tres días (H1 en 30, 30 y 40 %).
 
 ## 9. Convenciones comunes de pantalla
 
@@ -268,10 +270,10 @@ Casos de prueba:
 | E6-F01-T01 | e2e | #1 | QE1 | Abre `/qe/indicadores` | Totales 5, certificadas 1, cerradas con excepción 0, en curso 3, sin iniciar 1, bloqueadas 2, cumplimiento 44 %; la suma de las cuatro categorías es 5 |
 | E6-F01-T02 | e2e | #1 | QE2 | Abre `/qe/indicadores` | Totales 3, certificadas 1, en curso 1, sin iniciar 1, bloqueadas 1, cumplimiento 33 %; no aparecen cifras de QE1 |
 | E6-F01-T03 | e2e | #1 | LID1 | Abre `/lider/indicadores` | Totales 6, certificadas 1, en curso 3, sin iniciar 2, bloqueadas 3, cumplimiento 37 % |
-| E6-F01-T04 | e2e | #1 | AUD1 | Abre `/auditor/indicadores` | Totales 8, certificadas 2, en curso 4, sin iniciar 2, bloqueadas 3, cumplimiento 40 %; la pantalla no tiene controles de edición |
+| E6-F01-T04 | e2e | #1 | AUD1 | Abre `/auditor/indicadores` | **Base pura:** totales 8, certificadas 2, en curso 4, sin iniciar 2, bloqueadas 3, cumplimiento 40 %. **Base compartida:** los totales igualan el conteo de HDU de la base y, filtrando CEL-A, CEL-B y CEL-C, suman 8 HDU con cumplimiento conjunto 40 % (CEL-A 4 HDU 35 %, CEL-B 2 HDU 40 %, CEL-C 2 HDU 50 %). En ambas, la pantalla no tiene controles de edición |
 | E6-F01-T05 | e2e | #2 | QE1 | Filtra Célula = CEL-A | Totales 3, certificadas 0, en curso 2, sin iniciar 1, bloqueadas 1, cumplimiento 13 %; la URL conserva `?celula=` |
-| E6-F01-T06 | e2e | #2 | QE1 | Filtra Sprint = SP-PROX; luego agrega Célula = CEL-A | SP-PROX: totales 2, en curso 2, bloqueadas 2, cumplimiento 55 %. Con CEL-A: totales 1, cumplimiento 30 % |
-| E6-F01-T07 | e2e | #3 | QE1 | Filtra Célula = CEL-C y Sprint = SP-PROX | `estado-sin-datos` «No hay HDU con esos filtros»; no hay ningún `indicador-*` con cifra ni «0 %» |
+| E6-F01-T06 | e2e | #2 | QE1 | Filtra Sprint = SP-PROX de CEL-A; luego Sprint = SP-PROX de CEL-B; luego Célula = CEL-A con SP-PROX de CEL-A | SP-PROX de CEL-A: totales 1 (H1), en curso 1, bloqueadas 1, cumplimiento 30 %. SP-PROX de CEL-B: totales 1 (H6), en curso 1, bloqueadas 1, cumplimiento 80 % (media de los dos: 55 %). CEL-A con SP-PROX de CEL-A: totales 1, cumplimiento 30 % |
+| E6-F01-T07 | e2e | #3 | QE1 | Filtra Célula = CEL-C y Sprint = SP-PROX de CEL-A (el sprint de otra célula) | `estado-sin-datos` «No hay HDU con esos filtros»; no hay ningún `indicador-*` con cifra ni «0 %» |
 | E6-F01-T08 | e2e | #3 | QE3 (sin HDU) | Abre `/qe/indicadores` | `estado-sin-datos` «Aún no tienes HDU en tu ámbito»; sin cifras |
 | E6-F01-T09 | e2e | #1 | QE1 con Certificaciones detenido | Abre `/qe/indicadores` | Totales 5, cerradas con excepción 0 y bloqueadas 2 con valor; certificadas, en curso, sin iniciar y cumplimiento dicen «No disponible» (sin ceros); el resto del portal carga |
 | E6-F01-T10 | e2e | #1 negativo | ANA1, ADM1; QE1 en `/lider/indicadores` | Abren las rutas de indicadores que no son suyas | Acceso denegado con «Ir a mi bandeja» en todas; ninguna petición de datos devuelve 200 |
@@ -305,10 +307,10 @@ Casos de prueba:
 | E6-F02-T05 | e2e | #2 | QE1 | Selecciona CEL-B | Una fila: H6 con motivo `IMPEDIMENTO_ESCALADO` (I3) y riesgo vigente MEDIO fijado; no aparece H3 (es de QE2) |
 | E6-F02-T06 | e2e | #2 | QE2 | Selecciona CEL-B; luego CEL-C | CEL-B: H3 con `RIESGO_MEDIO` e `IMPEDIMENTO_ABIERTO`. CEL-C: «Sin HDU con riesgo ni impedimentos» |
 | E6-F02-T07 | e2e | #3 | QE2 | Resuelve I1 en el detalle de H3 (E4-F03) y vuelve al Semáforo; luego reabre I1 | Tras resolver: CEL-B verde. Tras reabrir: amarillo |
-| E6-F02-T08 | e2e | #3 | QE1 | Resuelve I3 y vuelve al Semáforo; luego reabre I3 | Tras resolver: CEL-B amarillo (H6 queda con MEDIO fijado). Tras reabrir: rojo |
+| E6-F02-T08 | e2e | #3 | QE1 | Resuelve I3 y vuelve al Semáforo; luego reabre I3 | Tras resolver: CEL-B amarillo (H6 queda con MEDIO fijado). Tras reabrir: amarillo, no rojo, porque I3 vuelve a `ABIERTO` y no a `ESCALADO` (regla certificada E4-F03#3); el motivo es `IMPEDIMENTO_ABIERTO` |
 | E6-F02-T09 | e2e | #1 | QE1 con Impedimentos detenido | Abre el Semáforo | Las 3 tarjetas dicen «No disponible»; ninguna es verde; el resto del portal carga |
 | E6-F02-T10 | e2e | #1 | QE1 con Certificaciones detenido | Abre el Semáforo | CEL-A rojo con aviso «cálculo parcial» (H1 sigue en ALTO por sus impedimentos), CEL-B rojo (escalado), CEL-C «No disponible» y no verde |
-| E6-F02-T11 | e2e | #1 | LID2 con CEL-D asignada (sin HDU) | Abre el Semáforo | Tarjeta CEL-D gris «Sin HDU», no verde |
+| E6-F02-T11 | e2e | #1 | LID3 con CEL-D asignada (sin HDU, `seed:e6`, D208) | Abre el Semáforo | Tarjeta CEL-D gris «Sin HDU», no verde |
 | E6-F02-T12 | e2e | #1 negativo | ANA1, ADM1 | Abren el Semáforo | Acceso denegado; la petición de semáforo devuelve 403 |
 
 ### E6-F03 · Quality Engineer (QE)
@@ -338,7 +340,7 @@ Casos de prueba:
 | E6-F03-T04 | e2e | #2 | QE1 | Fija el umbral en 2 | Ninguna fila sobrecargada (2 no supera 2); con 1 de nuevo, vuelven a marcarse |
 | E6-F03-T05 | e2e | #3 | QE2 con ANA4 supervisada (ANA4 sin HDU) | Abre la pestaña Carga | `fila-analista-ANA4` con ceros, «Sin HDU asignadas» y cumplimiento «—»; sin estilo de error; la carga de ANA3 sigue igual |
 | E6-F03-T06 | e2e | #2 negativo | QE1 | Prueba 0, 51, 2.5, «abc» y vacío; luego 50 | Un mensaje por cada valor inválido, nada se guarda; 50 se guarda y la pantalla lo muestra |
-| E6-F03-T07 | e2e | #2 | LID1 con el umbral de QE1 en 1 | Abre la pestaña Carga | Ve ANA1 y ANA2 en el grupo de QE1, con umbral 1 y «Sobrecargado»; no existen `campo-umbral` ni `boton-guardar-umbral` |
+| E6-F03-T07 | e2e | #2 | LID1 con el umbral de QE1 en 1 | Abre la pestaña Carga | Ve ANA1 y ANA2 en el grupo de QE1, con umbral 1. ANA1: 2 activas (H1, H6) y «Sobrecargado». ANA2: solo H2, porque H8 es de CEL-C y LID1 no la ve (D160): «1 de 1», sin marca de sobrecarga. No existen `campo-umbral` ni `boton-guardar-umbral` |
 | E6-F03-T08 | e2e | #2 | AUD1 | Abre la pestaña Carga | Ve los grupos de QE1 y QE2 y el `historial-umbral` de QE1 con los cambios hechos; ANA4 aparece con «Sin QE supervisor», umbral 5 y sin HDU |
 | E6-F03-T09 | e2e | #2 | QE1, QE2 | QE1 cambia el umbral de 5 a 1; QE2 abre su Carga | El historial de QE1 muestra anterior 5, nuevo 1, actor QE1 y fecha; el umbral de QE2 sigue 5; QE2 no ve nada de QE1 |
 | E6-F03-T10 | e2e | #2 | ANA1 supervisada por QE1 (umbral 1); H4 (QE2 responsable) reasignada a ANA1 por ADM1; QE2 con umbral 5 (D190) | Ambos abren la Carga | QE1: ANA1 con 3 activas (H1, H6, H4) y sobrecargada. QE2: ANA1 con 1 activa (H4), «No supervisado por ti» y no sobrecargada |
@@ -387,9 +389,9 @@ Quiero cerrar una HDU con menos de 10 entregables aprobados, justificando la dec
 | 3 | Constancia | La HDU quedó cerrada con excepción. | Reviso el detalle y el historial (yo, el Líder o el Auditor). | Se ve «Sin certificado», no hay botón para generarlo, el checklist sigue visible con los pendientes y el historial muestra el evento «Cierre con excepción» con actor, fecha y justificación. |
 
 Reglas de negocio:
-- Ver D173–D175 y la sección 7. El botón «Cerrar con excepción» existe solo para el QE responsable y solo con la HDU en `PENDIENTE_CIERRE`, con menos de 10 aprobados. Para los demás roles **no existe** (D39). Con 10 aprobados el botón sigue siendo «Cerrar HDU» y no pide justificación.
+- Ver D173–D175 y la sección 7. El botón «Cerrar con excepción» existe solo para el QE responsable y solo con la HDU en `PENDIENTE_CIERRE`, con menos de 10 aprobados. Para los demás roles **no existe** (D39). Con 10 aprobados el botón sigue siendo el del cierre normal, «Pasar a Cerrada» (certificado en E2 y E4), y no pide justificación.
 - Cuadro: título «Cerrar con excepción», texto «Quedan N entregables sin aprobar: <lista>. No se emitirá certificado y la HDU no podrá reabrirse», campo de justificación con contador (20 a 500) y los botones «Cerrar con excepción» y «Cancelar».
-- Si el QE pulsa «Cerrar HDU» con el checklist incompleto, el rechazo certificado se conserva (mensaje y código) y aparece además el botón nuevo. Con Certificaciones caída: «No pudimos verificar el checklist de la HDU» y sin cuadro.
+- Si el QE pulsa «Pasar a Cerrada» con el checklist incompleto, el rechazo certificado se conserva (mensaje y código) y aparece además el botón nuevo. Con Certificaciones caída: «No pudimos verificar el checklist de la HDU» y sin cuadro.
 - Efecto sobre HDU certificada: ver sección 7 (E2-B02#3, detalle de HDU).
 
 Casos de prueba:
@@ -402,8 +404,8 @@ Casos de prueba:
 | E6-F05-T04 | e2e | #3 | QE1 tras T03 | Revisa el detalle | `sin-certificado` «Sin certificado»; no existe el botón de generar certificado; el checklist muestra los 9 pendientes; no hay botón de reabrir |
 | E6-F05-T05 | e2e | #3 | LID1, AUD1 tras T03 | Abren `/hdu/<H2>` | Ven el bloque `cierre-excepcion` y el evento «Cierre con excepción» en el historial, con la justificación; sin botones de acción (D39) |
 | E6-F05-T06 | e2e | #1 negativo | QE2, ANA2, LID1, AUD1, ADM1 | Abren una HDU en `PENDIENTE_CIERRE` con menos de 10 aprobados (H5 llevada a ese estado) | No existe `boton-cerrar-excepcion` en ningún rol; QE2 y ANA2 además reciben acceso denegado (fuera de ámbito) |
-| E6-F05-T07 | e2e | #2 negativo | QE1, H1 en `PENDIENTE_CIERRE` con I2 abierto | Escribe una justificación válida y confirma | Mensaje «No se puede cerrar: la HDU tiene impedimentos abiertos» con enlace a I2; la HDU sigue en `PENDIENTE_CIERRE`; al resolver I2 y repetir, se cierra |
-| E6-F05-T08 | e2e | #1 | QE1, H8 (10 aprobados, certificado F8) | Abre `/hdu/<H8>` | El botón es «Cerrar HDU» y no pide justificación; queda Cerrada sin el bloque de excepción |
+| E6-F05-T07 | e2e | #2 negativo | QE1, H1 en `PENDIENTE_CIERRE` con I2 abierto | Escribe una justificación válida y confirma | El rechazo reutiliza el mensaje certificado de E4 (`error-hdu-bloqueada`): «No se puede cerrar la HDU: tiene 1 impedimento abierto o escalado. Resuélvelos y vuelve a intentar.», con enlace a I2 en `lista-error-bloqueantes`; la HDU sigue en `PENDIENTE_CIERRE`; al resolver I2 y repetir, se cierra |
+| E6-F05-T08 | e2e | #1 | QE1, H8 (10 aprobados, certificado F8) | Abre `/hdu/<H8>` | El botón es «Pasar a Cerrada» y no pide justificación; queda Cerrada sin el bloque de excepción |
 | E6-F05-T09 | e2e | #1 | QE1 con Certificaciones detenido | Abre `/hdu/<H2>` y pulsa cerrar | «No pudimos verificar el checklist de la HDU»; no se abre el cuadro; la HDU no cambia |
 | E6-F05-T10 | e2e | regresión | QE1, ANA1, AUD1 | Ejecuta las pruebas certificadas de E2-F04, E3-F01 y E7-F03 | Pasan sin cambios |
 
@@ -431,10 +433,10 @@ Casos de prueba:
 | E6-B01-T01 | api | #1 | QE1 | `GET /v1/indicadores/cumplimiento` | 200: totales 5, certificadas 1, en curso 3, sin iniciar 1, bloqueadas 2, cumplimiento 44.0 |
 | E6-B01-T02 | api | #1 | QE2; QE1 con `celulaId` CEL-B | Dos consultas | QE2: totales 3, cumplimiento 33.3. QE1 en CEL-B: solo H6 (totales 1, 80.0), sin H3 |
 | E6-B01-T03 | api | #1 negativo | ANA1, ADM1; sin sesión | Consultan | 403 `ACCESO_DENEGADO` los dos primeros; 401 `NO_AUTENTICADO` el último |
-| E6-B01-T04 | api | #2 | QE1 | `celulaId`=CEL-A; `sprintId`=SP-PROX; ambos | CEL-A: 3 HDU, 13.3. SP-PROX: 2 HDU, 55.0. Ambos: 1 HDU (H1), 30.0 |
+| E6-B01-T04 | api | #2 | QE1 | `celulaId`=CEL-A; `sprintId`=SP-PROX de CEL-A; `sprintId`=SP-PROX de CEL-B; CEL-A con SP-PROX de CEL-A | CEL-A: 3 HDU, 13.3. SP-PROX de CEL-A: 1 HDU (H1), 30.0. SP-PROX de CEL-B: 1 HDU (H6), 80.0 (media de los dos: 55.0). CEL-A con SP-PROX de CEL-A: 1 HDU (H1), 30.0 |
 | E6-B01-T05 | api | #2 | QE2 | `celulaId` con UUID válido inexistente; luego un UUID mal formado | El primero 200 con `sinDatos: true` y `cumplimientoPromedio: null`; el segundo 400 `VALIDACION` |
 | E6-B01-T06 | api | #3 | QE1 | Consulta; QE1 aprueba el entregable 4 de H1; consulta de nuevo | Antes 44.0; después 46.0 (H1 pasa de 30 a 40 %); sin esperas |
-| E6-B01-T07 | api | #1 | LID1; AUD1 | Consultan | LID1: 6 HDU, 36.7. AUD1: 8 HDU, 40.0; en ambos, certificadas + cerradas con excepción + en curso + sin iniciar = totales |
+| E6-B01-T07 | api | #1 | LID1; AUD1 | Consultan | LID1: 6 HDU, 36.7. AUD1, **base pura:** 8 HDU, 40.0. AUD1, **base compartida:** `hduTotales` igual al conteo de HDU de la base, y con `celulaId` CEL-A, CEL-B y CEL-C suma 8 HDU con cumplimiento conjunto 40.0 (CEL-A 4 HDU 35.0, CEL-B 2 HDU 40.0, CEL-C 2 HDU 50.0). En ambos, certificadas + cerradas con excepción + en curso + sin iniciar = totales |
 | E6-B01-T08 | api | #1 | QE1 con Certificaciones detenido | Consulta | 200: `hduTotales` 5, `cerradasConExcepcion` 0 y `bloqueadas` 2 con `estado: ok`; certificadas, en curso, sin iniciar y cumplimiento con `estado: indisponible` y valor `null` (no 0) |
 | E6-B01-T09 | api | #1 | QE1 con Organización detenido | Consulta | 503 `SERVICIO_NO_DISPONIBLE`; no hay cifras |
 | E6-B01-T10 | api | #1 | QE1 con Impedimentos detenido | Consulta | `bloqueadas` indisponible y el resto con valor |
@@ -461,18 +463,18 @@ Casos de prueba:
 | ID | Tipo | Escenario | Datos | Pasos | Resultado esperado |
 | --- | --- | --- | --- | --- | --- |
 | E6-B02-T01 | api | #1 | QE1 | `GET /v1/indicadores/semaforo` | CEL-A: ROJO, riesgoMaximo ALTO, abiertos 1 (I2), escalados 0. CEL-B: ROJO, riesgoMaximo MEDIO, abiertos 0, escalados 1 (I3). CEL-C: VERDE, riesgoMaximo BAJO |
-| E6-B02-T02 | api | #1 | QE2; AUD1 | Consultan | QE2: CEL-A VERDE (0 HDU activas), CEL-B AMARILLO (MEDIO, abiertos 1), CEL-C VERDE. AUD1: ROJO, ROJO, VERDE |
+| E6-B02-T02 | api | #1 | QE2; AUD1 | Consultan | QE2: CEL-A VERDE (0 HDU activas), CEL-B AMARILLO (MEDIO, abiertos 1), CEL-C VERDE. AUD1: CEL-A ROJO, CEL-B ROJO, CEL-C VERDE. **Base pura:** AUD1 recibe solo esas tres células. **Base compartida:** AUD1 recibe además las células de la semilla MVP, tantas como células con HDU tenga la base, y CEL-A, CEL-B y CEL-C mantienen esos colores |
 | E6-B02-T03 | api | #1 | QE1 | `GET /v1/indicadores/semaforo/<CEL-A>/hdu`; luego `<CEL-B>` | CEL-A: H1 y H5, motivos `RIESGO_ALTO`. CEL-B: H6, motivo `IMPEDIMENTO_ESCALADO`, nivel vigente MEDIO |
-| E6-B02-T04 | api | #1 negativo | QE2 y LID1 con la CEL-C; AUD1 con un UUID inexistente | Piden el drill-down | QE2 y LID1: 403 `ACCESO_DENEGADO`. AUD1: 404 |
+| E6-B02-T04 | api | #1 negativo | QE2 con CEL-D (ajena: sin HDU de QE2); LID1 con CEL-C (no es suya); AUD1 con un UUID inexistente | Piden el drill-down | QE2 y LID1: 403 `ACCESO_DENEGADO`. AUD1: 404. CEL-C no sirve como ajena para QE2, porque tiene H4 |
 | E6-B02-T05 | api | #2 | QE1 | `GET /v1/indicadores/carga` | ANA1: activas 2, enEjecucion 2, cumplimiento 55.0. ANA2: activas 2 (enEjecucion 1, pendienteCierre 1), 55.0. Fila sin analista: 1. `umbral` 5, `porDefecto` true, ninguna `sobrecargado` |
 | E6-B02-T06 | api | #3 | QE1 | `PUT umbral-carga {valor: 1}`; luego `GET carga`; luego `{valor: 2}` | ANA1 y ANA2 `sobrecargado: true` con 1; con 2 ninguno; `porDefecto` false |
 | E6-B02-T07 | api | #3 negativo | QE1 | `PUT` con 0, 51, 2.5, «abc» y vacío | 0 y 51: 400 `VALOR_FUERA_DE_RANGO`; el resto 400 `VALIDACION` con `campo: valor`; el umbral no cambia |
-| E6-B02-T08 | api | #3 negativo | QE2, LID1, AUD1, ADM1, ANA1 | `PUT umbral-carga`; QE2 `GET umbral-carga?qeId=<QE1>` | 403 en todos los `PUT`; QE2 no puede leer el de QE1; LID1 y AUD1 leen el umbral de QE1 con 200 |
+| E6-B02-T08 | api | #3 negativo | QE2, LID1, AUD1, ADM1, ANA1 | Cada uno hace `PUT umbral-carga`; QE2 `GET umbral-carga?qeId=<QE1>`; LID1 y AUD1 leen el de QE1 | El `PUT` de QE2 es sobre su propio umbral y es válido (200, D159). LID1, AUD1, ADM1 y ANA1: 403 `ACCESO_DENEGADO`. El umbral de QE1 sigue en 5. QE2 recibe 403 al leer el de QE1; LID1 y AUD1 lo leen con 200 (valor 5) |
 | E6-B02-T09 | api | #3 | QE1 tras dos cambios (5→1, 1→2) | `GET umbral-carga/historial` | Dos eventos, el más reciente primero, con valor anterior, nuevo, actor y fecha; un intento directo de `UPDATE` o `DELETE` con el rol `svc_indicadores` falla; AUD1 lo lee y LID1 recibe 403 |
 | E6-B02-T10 | api | #1 | QE1 con Certificaciones detenido | `GET semaforo` | CEL-A ROJO con `calculoParcial: true` (H1 alcanza ALTO solo con impedimentos), CEL-B ROJO, CEL-C `color: null`, `estado: indisponible` (no VERDE) |
-| E6-B02-T11 | api | #1 | QE2; LID2 con CEL-D sin HDU | `GET semaforo` | CEL-A (solo cerrada): VERDE con `hduActivas: 0`. CEL-D: `color: null`, `estado: SIN_HDU` |
+| E6-B02-T11 | api | #1 | QE2; LID3 con CEL-D sin HDU (`seed:e6`, D208) | `GET semaforo` | CEL-A (solo cerrada): VERDE con `hduActivas: 0`. CEL-D: `color: null`, `estado: SIN_HDU` |
 | E6-B02-T12 | api | #2 | ANA1 supervisada por QE1 (umbral 1); H4 reasignada a ANA1 por ADM1; QE2 con umbral 5 (D190) | Ambos consultan `carga`; LID1 consulta | QE1: ANA1 `activas` 3, `sobrecargado: true`. QE2: ANA1 `activas` 1, `supervisadoPorMi: false`, `sobrecargado: false`. LID1: una fila de ANA1 en el grupo de QE1, `activas` 2 (H4 es de CEL-C), umbral 1, `sobrecargado: true` |
-| E6-B02-T13 | api | #2 | Analista desactivado con una HDU activa; ANA4 | `GET carga` como AUD1 | El desactivado con `inactivo: true` y su HDU contada; ANA4 con ceros y sin QE supervisor (umbral 5) |
+| E6-B02-T13 | api | #2 | Analista desactivado con una HDU activa; ANA4 | `GET carga` como AUD1 | El desactivado con `inactivo: true` y su HDU contada; ANA4 sin QE supervisor (umbral 5). **Base pura:** ANA4 con ceros y solo los grupos de QE1, QE2 y «Sin QE supervisor». **Base compartida:** hay además los grupos y analistas de la semilla MVP; las activas de cada fila igualan el conteo de HDU no cerradas de ese analista en la base, y las filas de ANA1, ANA2 y ANA3 dan los valores del fixture |
 
 ### E6-B03 · Administrador
 
@@ -534,14 +536,14 @@ Casos de prueba:
 | E6-B04-T01 | api | #1 | QE1 | `exportacion?vista=cumplimiento&formato=csv&celulaId=CEL-A` | 200 `text/csv`; el encabezado incluye «Filtros: Célula CEL-A» y la fecha; los valores coinciden con `GET cumplimiento` (totales 3, cumplimiento 13.3) |
 | E6-B04-T02 | api | #1 | Título de HDU y nombre de analista que empiezan con `=`, `+`, `-`, `@`, tabulación y retorno de carro (datos de prueba) | Exporta `semaforo` y `carga` en CSV | Cada celda de texto con esos inicios lleva el prefijo `'`; los números (incluso negativos) y las fechas ISO no; el texto del filtro también |
 | E6-B04-T03 | api | #2 | QE1 | `exportacion?vista=semaforo&formato=pdf` | 200 `application/pdf` que empieza con `%PDF`; el texto extraído contiene «Quality360 · Indicadores», los filtros, el rol y la fecha en hora de Chile, y «Rojo» escrito en las filas |
-| E6-B04-T04 | api | #3 | QE2; QE1; LID1; AUD1 | Exportan `semaforo` en CSV | QE2: solo H3 y los de su ámbito, sin H1 ni H6. QE1: sin H3. LID1: sin H4 ni H8. AUD1: HDU de las tres células |
+| E6-B04-T04 | api | #3 | QE2; QE1; LID1; AUD1 | Exportan `semaforo` en CSV | QE2: solo H3 y los de su ámbito, sin H1 ni H6. QE1: sin H3. LID1: sin H4 ni H8. AUD1: HDU de las tres células. **Base pura:** solo esas filas. **Base compartida:** también las filas de la semilla MVP, una por HDU no cerrada de la base más una por célula sin HDU no cerradas (D186); las filas de CEL-A, CEL-B y CEL-C son las del fixture |
 | E6-B04-T05 | api | #1 negativo | Impedimentos detenido | Exporta `semaforo` | 503 `INDICADORES_NO_DISPONIBLES`; sin archivo |
 | E6-B04-T06 | api | #1 | QE1 | Exporta `carga` en CSV | Una entrada `EXPORTAR` en la auditoría de Organización con actor QE1, vista `carga`, formato y filtros y cantidad de filas; aparece antes de la respuesta |
 | E6-B04-T07 | api | #1 negativo | Auditoría de Organización detenida | Exporta | 503 `SERVICIO_NO_DISPONIBLE` y sin archivo |
 | E6-B04-T08 | api | #1 negativo | `EXPORTACION_LIMITE_FILAS` y `EXPORTACION_PDF_LIMITE_FILAS` bajos en la prueba | Exporta en ambos formatos con más filas que el tope | 422 `EXPORTACION_EXCEDE_LIMITE` con «Acota los filtros» (CSV) y «Usa CSV» (PDF) |
 | E6-B04-T09 | api | #1 negativo | ANA1, ADM1; sin sesión | Exportan | 403 `ACCESO_DENEGADO` los dos primeros; 401 el tercero |
 | E6-B04-T10 | api | #1 negativo | QE1 | `vista=otra`; `formato=xls`; `celulaId=abc` | 400 `VALIDACION` con `campo` en cada caso |
-| E6-B04-T11 | api | #2 | QE1 con filtros CEL-C y SP-PROX | Exporta `cumplimiento` en CSV y PDF | 200 en ambos; el archivo trae el encabezado y «Sin datos para los filtros aplicados», sin filas de cifras ni «0 %» |
+| E6-B04-T11 | api | #2 | QE1 con filtros CEL-C y SP-PROX de CEL-A (el sprint de otra célula) | Exporta `cumplimiento` en CSV y PDF | 200 en ambos; el archivo trae el encabezado y «Sin datos para los filtros aplicados», sin filas de cifras ni «0 %» |
 | E6-B04-T12 | api | #1 | QE1 | Exporta `tendencia` en CSV con 3 snapshots | Tres filas por fecha en orden ascendente (30.0, 30.0, 40.0), iguales a `GET tendencia`; un día sin snapshot no genera fila |
 
 ### E6-B05 · Quality Engineer (QE) — nueva

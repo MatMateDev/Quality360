@@ -226,7 +226,7 @@ La estructura es la de Impedimentos: `api` → `aplicacion` → `dominio`, con `
 
 ## q360-integraciones · Semilla (`infrastructure/seed/e6/`)
 
-- **`cargar.mjs`** (`npm run seed:e6`) es idempotente y usa solo la API y las cargas internas existentes. Agrega lo estático de la sección 8: QE3 (sin analistas ni HDU), CEL-D asignada a LID2 y ANA4 (sin QE ni HDU).
+- **`cargar.mjs`** (`npm run seed:e6`) es idempotente y usa solo la API y las cargas internas existentes. Agrega lo estático de la sección 8: QE3 (sin analistas ni HDU), LID3 (Líder QA propio de E6), CEL-D asignada a LID3 y ANA4 (sin QE ni HDU). LID2 sigue sin células, como exigen las pruebas certificadas de E7 y E4 (D208).
 - **`escenarios.mjs`** exporta ayudantes para `q360-qa`:
   - `supervisarAna4ConQe2`;
   - `reasignarH4AAna1` (ADM1, `PUT /v1/hdu/{id}/analista`, D190);
