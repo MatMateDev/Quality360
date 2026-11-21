@@ -71,6 +71,122 @@ const longitudCerradas =
 
   const longitudNoCerradas =
     CIRCUNFERENCIA_CIERRE - longitudCerradas;
+
+const exportarReportePdf = async () => {
+  if (!datosHdu) {
+    return;
+  }
+const contadores =
+  bandeja.isLoading || bandeja.isError
+    ? undefined
+    : bandeja.data?.impedimentos.contadores;
+
+const abiertos = contadores?.impedimentosAbiertos;
+const nuevos = contadores?.impedimentosNuevos;
+const riesgoAlto = contadores?.hduRiesgoAlto;
+
+  try {
+    const { descargarReporteQePdf } = await import(
+      "@/lib/reportesQePdf"
+    );
+
+    descargarReporteQePdf({
+      totalHdu: datosHdu.hduEnAmbito,
+
+      analistas:
+        equipo?.estado === "ok"
+          ? equipo.datos.analistasVigentes
+          : null,
+
+      cerradas: datosHdu.porEstado.CERRADA,
+
+      estados: ESTADOS_HDU.map(([clave, etiqueta]) => ({
+        clave,
+        etiqueta,
+        cantidad: datosHdu.porEstado[clave],
+      })),
+
+impedimentosAbiertos:
+  abiertos?.estado === "ok"
+    ? abiertos.datos.valor
+    : null,
+
+impedimentosNuevos24h:
+  nuevos?.estado === "ok"
+    ? nuevos.datos.valor
+    : null,
+
+hduRiesgoAlto:
+  riesgoAlto?.estado === "ok"
+    ? riesgoAlto.datos.valor
+    : null,
+
+    });
+  } catch (error) {
+    console.error("Error al generar el reporte PDF:", error);
+    window.alert(
+      "No se pudo generar el reporte PDF. Intenta nuevamente.",
+    );
+  }
+};
+const exportarReporteExcel = async () => {
+  if (!datosHdu) {
+    return;
+  }
+
+  const contadores =
+    bandeja.isLoading || bandeja.isError
+      ? undefined
+      : bandeja.data?.impedimentos.contadores;
+
+  const abiertos = contadores?.impedimentosAbiertos;
+  const nuevos = contadores?.impedimentosNuevos;
+  const riesgoAlto = contadores?.hduRiesgoAlto;
+
+  try {
+    const { descargarReporteQeExcel } = await import(
+      "@/lib/reportesQeExcel"
+    );
+
+    await descargarReporteQeExcel({
+      totalHdu: datosHdu.hduEnAmbito,
+
+      analistas:
+        equipo?.estado === "ok"
+          ? equipo.datos.analistasVigentes
+          : null,
+
+      cerradas: datosHdu.porEstado.CERRADA,
+
+      estados: ESTADOS_HDU.map(([clave, etiqueta]) => ({
+        clave,
+        etiqueta,
+        cantidad: datosHdu.porEstado[clave],
+      })),
+
+      impedimentosAbiertos:
+        abiertos?.estado === "ok"
+          ? abiertos.datos.valor
+          : null,
+
+      impedimentosNuevos24h:
+        nuevos?.estado === "ok"
+          ? nuevos.datos.valor
+          : null,
+
+      hduRiesgoAlto:
+        riesgoAlto?.estado === "ok"
+          ? riesgoAlto.datos.valor
+          : null,
+    });
+  } catch (error) {
+    console.error("Error al exportar Excel QE:", error);
+    window.alert(
+      "No fue posible generar el reporte Excel."
+    );
+  }
+};
+
  return (
     <div
   className={
@@ -87,13 +203,32 @@ const longitudCerradas =
           </span>
 
           <h1>Dashboard QE</h1>
-
           <p>
             Seguimiento de certificaciones, historias de usuario,
             equipo QA, riesgos e impedimentos.
           </p>
         </div>
         <div className="qe-dashboard__acciones">
+          <button
+              type="button"
+              className="qe-dashboard__boton-tema"
+              onClick={() => void exportarReportePdf()}
+              disabled={!datosHdu}
+              title="Descargar reporte de gestión QA en formato PDF"
+        >
+              Exportar PDF
+        </button>
+
+        <button
+          type="button"
+          className="qe-dashboard__boton-tema"
+          onClick={() => void exportarReporteExcel()}
+          disabled={!datosHdu}
+          title="Descargar reporte de gestión QA en formato Excel"
+        >
+  Exportar Excel
+</button>
+
         <button
             type="button"
             className="qe-dashboard__boton-tema"
@@ -102,8 +237,7 @@ const longitudCerradas =
           {temaOscuro ? "☀ Modo claro" : "☾ Modo oscuro"}
         </button>
       </div>
-      </header>
-
+  </header>
       {/* INDICADORES PRINCIPALES */}
       <section aria-labelledby="e6-titulo-resumen">
         <div className="panel-cabecera">
@@ -117,7 +251,6 @@ const longitudCerradas =
             </p>
           </div>
         </div>
-
         <div className="qe-dashboard__metricas">
           <TarjetaMetrica
             id="e6-hdu"
@@ -138,7 +271,6 @@ const longitudCerradas =
             }
             onReintentar={() => inicio.refetch()}
           />
-
           <TarjetaMetrica
             id="e6-cerradas"
             titulo="HDU cerradas"
