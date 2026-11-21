@@ -439,6 +439,8 @@ tbody tr:hover {
 }
 
 .boton--peligro:hover:not(:disabled) {
+  /* #b91c1c sobre #fee2e2 = 5,4:1; #dc2626 daba 3,95:1 con el puntero encima (DEF-E6-03). */
+  color: #b91c1c;
   background-color: var(--q360-color-error-fondo);
 }
 

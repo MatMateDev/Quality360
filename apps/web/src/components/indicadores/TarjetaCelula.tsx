@@ -60,7 +60,7 @@ export const TarjetaCelula = forwardRef<HTMLButtonElement, Props>(function Tarje
             className="boton boton--secundario"
             data-testid={`boton-ver-detalle-${celula.celula.id}`}
             aria-expanded={seleccionada}
-            aria-controls="lista-drilldown"
+            aria-controls={seleccionada ? "lista-drilldown-panel" : undefined}
             onClick={onVerDetalle}
           >
             Ver HDU de {nombre}

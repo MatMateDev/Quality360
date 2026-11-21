@@ -64,7 +64,7 @@ export function TablaTendencia({ series }: { series: SerieTendencia[] }) {
   return (
     <section aria-labelledby="titulo-datos-grafica">
       <h3 id="titulo-datos-grafica">Datos de la gráfica</h3>
-      <div className="tabla-tendencia-contenedor">
+      <div className="tabla-tendencia-contenedor" tabIndex={0} role="region" aria-label="Tabla de cumplimiento por fecha, desplazable">
         <table data-testid="tabla-tendencia">
           <caption>Cumplimiento promedio por fecha y serie</caption>
           <thead>

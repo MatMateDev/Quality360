@@ -328,6 +328,11 @@
   margin: 0 0 12px;
 }
 
+.tabla-tendencia-contenedor:focus-visible {
+  outline: 2px solid var(--q360-color-acento);
+  outline-offset: 2px;
+}
+
 .tabla-tendencia-contenedor {
   max-width: 100%;
   overflow-x: auto;
