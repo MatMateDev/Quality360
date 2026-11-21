@@ -1,7 +1,8 @@
 {
   "descripcion": "Fixture E6 (seccion 8 de docs/backlog/e6-indicadores-dashboards.md). Parte del fixture E7 + E4. Lo estatico se carga con seed:e6; los escenarios que cambian el estado estan en escenarios.mjs.",
-  "celulaNueva": { "nombre": "CEL-D", "lider": "lid2" },
+  "celulaNueva": { "nombre": "CEL-D", "lider": "lid3", "liderAnterior": "lid2" },
   "usuarios": [
+    { "clave": "lid3", "nombre": "LID3 Líder solo de CEL-D", "rol": "LIDER_QA" },
     { "clave": "qe3", "nombre": "QE3 Quality Engineer sin analistas", "rol": "QE" },
     { "clave": "ana4", "nombre": "ANA4 Analista sin QE", "rol": "ANALISTA_QA", "nota": "Ya existe en seed:e7 (alta idempotente por correo); aqui solo se confirma. Sin QE ni HDU." }
   ],

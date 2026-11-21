@@ -21,7 +21,8 @@ verificación final. Solo local.
 | --- | --- |
 | QE3 | `qe3@quality360.local`, QE activo sin analistas ni HDU |
 | ANA4 | `ana4@quality360.local`, analista sin QE ni HDU. Ya la crea `seed:e7`; aquí solo se confirma |
-| CEL-D | Célula sin HDU, agregada a las células vigentes de LID2 (`PUT /v1/usuarios/{id}/celulas-lider`, sesión ADM1; no quita las que ya tenga) |
+| LID3 | `lid3@quality360.local`, Líder QA activo, solo de CEL-D (LID2 sigue sin células) |
+| CEL-D | Célula sin HDU, asignada a LID3 (`PUT /v1/usuarios/{id}/celulas-lider`, sesión ADM1). Si una base antigua la tiene en LID2, se la quita sin tocar otras células |
 | Verificación | Avance de H1-H8 (aprobados × 10, por Certificaciones) contra el backlog. Si difiere, informa y termina con código 1 **sin corregir nada** |
 
 Todo recorre las listas con `pagina`/`tamanoPagina=100` hasta agotarlas.
@@ -53,7 +54,7 @@ Los valores de E7 (10 usuarios activos, 1 inactivo, `hdu-total 8`) solo valen so
 únicamente `seed:e7`. La API **no borra** usuarios ni HDU, así que lo que agrega E6 no se deshace
 por API:
 
-- `seed:e6` suma **QE3** (11 usuarios activos). `ana4` y `lid2` ya estaban. No suma HDU.
+- `seed:e6` suma **QE3** y **LID3** (12 usuarios activos). `ana4` y `lid2` ya estaban. No suma HDU.
 - `crearAnalistaDesactivadoConHdu()` suma 1 usuario inactivo (`anad`) y 1 HDU (`E6-HD1`): el total pasa a 9 HDU.
 - `reasignarH4AAna1()` y `supervisarAna4ConQe2()` cambian relaciones, no conteos de usuarios o HDU.
 
@@ -64,7 +65,7 @@ pruebas E7 se corren antes de E6 o tras ese reinicio. `npm run seed` (semilla MV
 nada: es aditiva y agrega los usuarios y las 14 HDU de E1/E2, por lo que tampoco deja el estado de
 E7; ver la nota en `infrastructure/seed/mvp/README.md`.
 
-Alternativa sin reiniciar, solo para que QE3 y `anad` no cuenten como activos: desactivarlos con
+Alternativa sin reiniciar, solo para que QE3, LID3 y `anad` no cuenten como activos: desactivarlos con
 `PATCH /v1/usuarios/{id}` (`activo: false`). Quedan como inactivos (el contador de inactivos sube) y
 las HDU no se pueden retirar, así que no devuelve el conteo exacto de E7.
 

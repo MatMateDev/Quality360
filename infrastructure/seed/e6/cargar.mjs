@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // Fixture E6 estatico (seccion 8 de docs/backlog/e6-indicadores-dashboards.md), encima de E7 y E4.
-// Agrega QE3 (QE sin analistas ni HDU), confirma ANA4 (sin QE ni HDU) y crea CEL-D asignada a LID2.
+// Agrega QE3 (QE sin analistas ni HDU), confirma ANA4 (sin QE ni HDU) y crea LID3 (Líder QA solo de E6) con CEL-D.
 // Despues comprueba, sin corregir nada, que el avance de H1..H8 coincide con el backlog (en particular
 // el supuesto «H4 tiene 0 %»). Los escenarios que cambian el estado estan en escenarios.mjs.
 //
@@ -32,15 +32,27 @@ async function main() {
 
   const cel = datos.celulaNueva;
   const id = await celulaId(cel.nombre);
-  const lider = await usuarioPorCorreo(cel.lider);
-  if (!lider) throw new Error(`Falta ${cel.lider}: corre npm run seed:e7 primero.`);
   const adm = await como('adm1');
-  const vigentes = exigir(await http(ORG, 'GET', `/v1/usuarios/${lider.id}/celulas-lider`, { cabeceras: adm }), 'células de LID2').vigentes.map((v) => v.celula.id);
+  const celulasDe = async (u) => exigir(await http(ORG, 'GET', `/v1/usuarios/${u.id}/celulas-lider`, { cabeceras: adm }), `células de ${u.correo}`).vigentes.map((v) => v.celula.id);
+
+  const lider = await usuarioPorCorreo(cel.lider);
+  if (!lider) throw new Error(`Falta ${cel.lider}: no se pudo crear el Líder QA.`);
+  const vigentes = await celulasDe(lider);
   if (vigentes.includes(id)) {
     resumen.push(`${cel.nombre} ya asignada a ${cel.lider}`);
   } else {
-    exigir(await http(ORG, 'PUT', `/v1/usuarios/${lider.id}/celulas-lider`, { cuerpo: { celulaIds: [...vigentes, id] }, cabeceras: adm }), 'asignar CEL-D');
+    exigir(await http(ORG, 'PUT', `/v1/usuarios/${lider.id}/celulas-lider`, { cuerpo: { celulaIds: [...vigentes, id] }, cabeceras: adm }), `asignar ${cel.nombre}`);
     resumen.push(`${cel.nombre} asignada a ${cel.lider}`);
+  }
+
+  // Bases cargadas con la version anterior: CEL-D estaba en LID2 (que debe quedar sin celulas).
+  const anterior = await usuarioPorCorreo(cel.liderAnterior);
+  if (anterior) {
+    const v = await celulasDe(anterior);
+    if (v.includes(id)) {
+      exigir(await http(ORG, 'PUT', `/v1/usuarios/${anterior.id}/celulas-lider`, { cuerpo: { celulaIds: v.filter((c) => c !== id) }, cabeceras: adm }), `quitar ${cel.nombre} de ${cel.liderAnterior}`);
+      resumen.push(`${cel.nombre} quitada de ${cel.liderAnterior}`);
+    }
   }
 
   console.log(`Semilla E6 cargada: ${resumen.join('; ')}.`);

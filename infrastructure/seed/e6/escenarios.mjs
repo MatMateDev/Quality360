@@ -25,7 +25,7 @@ export async function reasignarH4AAna1() {
   const [h4, ana1] = await Promise.all([hduPorCodigo('E7-H4'), usuarioPorCorreo('ana1')]);
   if (!h4 || !ana1) throw new Error('Faltan E7-H4 o ANA1: corre npm run seed:e7 primero.');
   if (h4.analista?.id === ana1.id) return { cambiado: false };
-  exigir(await http(ORG, 'PUT', `/v1/hdu/${h4.id}/analista`, { cuerpo: { analistaId: ana1.id }, cabeceras: await como('adm1') }), 'reasignar H4');
+  exigir(await http(ORG, 'PUT', `/v1/hdu/${h4.id}/analista`, { cuerpo: { analistaId: ana1.id, motivo: 'Escenario E6: H4 pasa a ANA1' }, cabeceras: await como('adm1') }), 'reasignar H4');
   return { cambiado: true };
 }
 
@@ -52,7 +52,7 @@ export async function crearAnalistaDesactivadoConHdu() {
     'HDU de ANAD',
   ).hdu;
   if (hdu.analista?.id !== anad.id) {
-    exigir(await http(ORG, 'PUT', `/v1/hdu/${hdu.id}/analista`, { cuerpo: { analistaId: anad.id }, cabeceras: adm }), 'asignar HDU a ANAD');
+    exigir(await http(ORG, 'PUT', `/v1/hdu/${hdu.id}/analista`, { cuerpo: { analistaId: anad.id, motivo: 'Escenario E6: HDU para analista desactivado' }, cabeceras: adm }), 'asignar HDU a ANAD');
   }
   if (actual.activo) exigir(await http(ORG, 'PATCH', `/v1/usuarios/${anad.id}`, { cuerpo: { activo: false }, cabeceras: adm }), 'desactivar ANAD');
   return { analistaId: anad.id, hduId: hdu.id };
