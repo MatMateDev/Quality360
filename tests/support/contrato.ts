@@ -18,7 +18,7 @@ let ajv: Ajv2020 | undefined;
 
 function instancia(): Ajv2020 {
   if (ajv) return ajv;
-  ajv = new Ajv2020({ strict: false, allErrors: true, validateFormats: false });
+  ajv = new Ajv2020({ strict: false, multipleOfPrecision: 6, allErrors: true, validateFormats: false });
   for (const archivo of ARCHIVOS) {
     const documento = parse(readFileSync(path.join(RAIZ_REPO, "contracts", archivo), "utf8")) as Record<string, unknown>;
     ajv.addSchema({ ...documento, $id: `${BASE}${archivo}` });

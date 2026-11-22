@@ -75,6 +75,10 @@ export const env = {
   organizacionUrl: process.env.ORGANIZACION_URL ?? envGateway.ORGANIZACION_URL ?? "http://localhost:3001",
   certificacionesUrl: process.env.CERTIFICACIONES_URL ?? envGateway.CERTIFICACIONES_URL ?? "http://localhost:3002",
   impedimentosUrl: process.env.IMPEDIMENTOS_URL ?? envGateway.IMPEDIMENTOS_URL ?? "http://localhost:3003",
+  indicadoresUrl: process.env.INDICADORES_URL ?? envGateway.INDICADORES_URL ?? "http://localhost:3005",
+  // Solo para el cron y la prueba de que no se filtra (E6-B03-T01/T02 y seguridad): nunca se registra.
+  cronSecret: process.env.CRON_SECRET ?? envIndicadores.CRON_SECRET ?? "",
+  indicadoresServicioToken: process.env.INDICADORES_SERVICIO_TOKEN ?? envIndicadores.INDICADORES_SERVICIO_TOKEN ?? "",
 
   // Solo para forjar, en tests/support/tokenForjado.ts, un JWT HS256 vencido
   // que ejercite el respaldo local del verificador (E1-B11#1): nunca se usa

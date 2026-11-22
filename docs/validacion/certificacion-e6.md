@@ -1,188 +1,135 @@
-# Certificación E6 · Indicadores y dashboards (Quality360)
+# Certificación de E6 · Indicadores y dashboards (recertificación)
 
-Dueño: `q360-qa`. Alcance: 10 HDU (E6-F01..F05, E6-B01..B05), 30 escenarios y 117 casos de `docs/backlog/e6-indicadores-dashboards.md`, más la regresión de E1, E2, E3, E4, E5, modelo de datos, login y E7 (sección 7 del backlog). Plan: `docs/arquitectura/e6-plan-construccion.md`.
+Dueño: `q360-qa`. Fecha de la corrida: 2026-11-22. Fuente de los casos: `docs/backlog/e6-indicadores-dashboards.md` (ya alineado con el modelo, OBS-E6-01 a 07 y D208).
 
-**Estado de este documento: preparación (Q1). Sin dictamen.** Ninguna prueba de E6 se ha ejecutado; los 117 casos son esqueletos `test.fixme` (no certifican). El dictamen, la tabla de resultados y los defectos los completa la Ola 7 contra el stack real. El código bajo prueba se indicará con su commit al certificar.
+Esta es la segunda certificación de E6. La primera dejó sus pruebas sin versionar en una carpeta temporal que se perdió; aquí se reescribieron todas contra el stack real, sin mocks ni `page.route`. Solo cuenta como «pasa» lo que se ejecutó y terminó en verde; nada se saltó ni quedó en `fixme`.
 
-## Veredicto
+## 1. Dictamen por HDU
 
-Pendiente (Ola 7). Sin dictamen para ninguna HDU.
-
-| HDU | Escenarios | Casos | Dictamen |
+| HDU | Casos del backlog | Resultado real | Dictamen |
 | --- | --- | --- | --- |
-| E6-B01 | 3 | 11 | sin dictamen |
-| E6-B02 | 3 | 13 | sin dictamen |
-| E6-B03 | 3 | 14 | sin dictamen |
-| E6-B04 | 3 | 12 | sin dictamen |
-| E6-B05 | 3 | 12 | sin dictamen |
-| E6-F01 | 3 | 12 | sin dictamen |
-| E6-F02 | 3 | 12 | sin dictamen |
-| E6-F03 | 3 | 12 | sin dictamen |
-| E6-F04 | 3 | 9 | sin dictamen |
-| E6-F05 | 3 | 10 | sin dictamen |
+| E6-F01 Cumplimiento y filtros | 12 (T01–T12) | 12 de 12 pasan | **CERTIFICADA** |
+| E6-F02 Semáforo y drill-down | 12 (T01–T12) | 12 de 12 pasan | **CERTIFICADA** |
+| E6-F03 Carga y umbral | 12 (T01–T12) | 12 de 12 pasan | **CERTIFICADA** |
+| E6-F04 Tendencia y exportación | 9 (T01–T09) | 9 de 9 pasan | **CERTIFICADA** |
+| E6-F05 Cierre con excepción (UI) | 10 (T01–T10) | 10 de 10 pasan | **CERTIFICADA** |
+| E6-B01 Cumplimiento (API) | 11 (T01–T11) | 11 de 11 pasan | **CERTIFICADA** |
+| E6-B02 Semáforo, carga y umbral (API) | 13 (T01–T13) | 13 de 13 pasan | **CERTIFICADA** |
+| E6-B03 Snapshot y tendencia (API) | 14 (T01–T14) | 14 de 14 pasan | **CERTIFICADA** |
+| E6-B04 Exportación (API) | 12 (T01–T12) | 12 de 12 pasan | **CERTIFICADA** |
+| E6-B05 Cierre con excepción (API) | 12 (T01–T12) | 12 de 12 pasan | **CERTIFICADA con reserva** (T12, abajo) |
 
-## Entorno (previsto)
+Total: 117 casos y 30 escenarios, todos con prueba automatizada y el ID en el nombre (`[E6-B05#2] E6-B05-T05: …`).
 
-- Stack real: Supabase local + `npm run local` (con Indicadores en :3005 y `INDICADORES_URL` en el gateway). Fixture: `seed:e7` + `seed:e4` + `seed:e6`. Hora de referencia de snapshots con `Q360_FECHA_REFERENCIA`.
-- Proyectos de Playwright (`tests/playwright.config.ts`): `e6-api` y `e6-e2e`; reutilizan las sesiones de `e7-setup`. Excluidos de los proyectos `api`/`e2e`/`e7-*`.
-- Contrato: `tests/support/contrato.ts` carga `contracts/indicadores.v1.yaml` (usar `cumpleContrato(esquema, cuerpo, "indicadores")`).
-- Ayudantes: `tests/support/e6.ts` (cifras esperadas, menús exactos, rutas nuevas, `limpiarE6`, `recargarSemillaE6`, `celulasE6`, `rutaIndicadores`).
-- Limpieza: `indicadores.*` y `organizacion.cierre_hdu` se vacían con el dueño de la base, nunca por API. Cada archivo que cierra una HDU llama a `recargarSemillaE6()` al terminar (CERRADA es terminal).
-- Aislamiento de base: `DATABASE_URL_INDICADORES` (o `services/indicadores/.env`) para `conIndicadores`.
+**Reserva de E6-B05-T12.** El backlog pide «ejecutar las pruebas certificadas de `e3-acceso-y-cierre.test.ts`, `e4-impedimentos-organizacion.test.ts` y E2-B02». Esas son suites del servicio Organización (`npm test -w services/organizacion`) que vacían la base compartida, así que **no se ejecutaron**. El caso T12 se cubre con un sustituto de API sobre el stack real: checklist incompleto sin justificación (409 `CHECKLIST_INCOMPLETO` con el bloque `ok`), transición inválida (409) y `HDU_BLOQUEADA` con checklist completo. Además, la regresión de E2-B02 y E4-B02 por API (suites `api` y `e4-api`) pasó completa, ver sección 4. Quien tenga una base desechable debería correr esas dos suites de servicio.
 
-## Cambios en pruebas ya certificadas (solo por cambios documentados)
+Casos adicionales de esta certificación (no están en el backlog): seguridad 4 (`E6-SEC`), desviaciones de diseño 6 (`E6-DIS`), axe a 1280 y 375 px sobre 10 pantallas 20 (`E6-A11Y-1280` y `E6-A11Y-375`), secretos en el DOM y estado en la URL 2 (`E6-DOM`) y verificación de DEF-E6-01 a 03 en 3 (`E6-A11Y-DEF01` a `DEF03`). Todos pasan.
 
-Todos dependen solo del diseño y del contrato. **No se han ejecutado** (la plataforma de E6 aún no existe); fallarán hasta que `q360-frontend`, `q360-infra` y `q360-backend` entreguen lo suyo, y deben pasar en la Ola 7.
+## 2. Cifras del estado base (contrastadas con el producto)
 
-| Prueba | Cambio | Motivo |
+Fixture: `seed` (MVP), `seed:e7`, `seed:e4`, `seed:e5` y `seed:e6`, en ese orden: **base compartida**.
+
+| Usuario | Totales | Certificadas | Cerradas con excepción | En curso | Sin iniciar | Bloqueadas | Cumplimiento |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| QE1 | 5 | 1 | 0 | 3 | 1 | 2 | 44,0 |
+| QE2 | 3 | 1 | 0 | 1 | 1 | 1 | 33,3 |
+| LID1 | 6 | 1 | 0 | 3 | 2 | 3 | 36,7 |
+| QE1 tras cerrar H2 con excepción | 5 | 1 | 1 | 2 | 1 | 2 | 44,0 (H2 cuenta 10 %) |
+| QE1, célula CEL-A | 3 | 0 | 0 | 2 | 1 | 1 | 13,3 |
+| QE1, SP-PROX de CEL-A / de CEL-B | 1 / 1 | 0 | 0 | 1 / 1 | 0 | 1 / 1 | 30,0 / 80,0 |
+
+Cifras que el arquitecto agregó al backlog para el Auditor en la base compartida: **coinciden con el producto**, por API (E6-B01-T07) y por pantalla (E6-F01-T04): CEL-A 4 HDU 35,0 %, CEL-B 2 HDU 40,0 %, CEL-C 2 HDU 50,0 %, suma 8 HDU y 40,0 % conjunto; los totales de AUD1 igualan el conteo de HDU de la base y suman las cuatro categorías.
+
+El mensaje de rechazo de E6-F05-T07 también coincide: «No se puede cerrar la HDU: tiene 1 impedimento abierto o escalado. Resuélvelos y vuelve a intentar.», con enlace a I2 en `lista-error-bloqueantes`.
+
+## 3. Entorno y commits bajo prueba
+
+- Worktree `Quality360-e6`, rama `e6-indicadores`, HEAD `58d0727` (portal, DEF-E6-01 a 03) sobre `8276fdf` (backlog), `5eed7ad` (semilla con LID3, DEF-E6-04 y 05), `8a8abce` (nube), `6544dfb` (SQL calificadas) y `c19cf75` (E6). Las pruebas no modifican código de producción.
+- Stack real: Supabase local y `npm run local` (Organización :3001, Certificaciones :3002, Impedimentos :3003, Integraciones :3004, Indicadores :3005, gateway :3000, portal :5173).
+- Pruebas de API con un **gateway alterno :3110** del mismo build y los tres cubos de tasa en 100000 (`GATEWAY_URL=http://localhost:3110`); las de portal usan el gateway real :3000.
+- Fuentes caídas sin detener el stack: instancias alternas del mismo build (Organización :3101, Indicadores :3205, gateway :3100, portal :5180) con la URL de la fuente apuntando a un puerto muerto (:3199). También para límites de exportación bajos, `Q360_FECHA_REFERENCIA` y un proxy que corta solo `/v1/interno/auditoria/exportaciones`. Código: `tests/support/entornoE6.ts`.
+- Estado entre casos: el dueño de la base toma una foto de las tablas del fixture (`historia_usuario` E7-H*, historial, checklists, certificados, supervisiones, células, usuarios) y la restaura al terminar cada caso, además de vaciar `indicadores.*` y `cierre_hdu`; con `seed:e4` se recargan los impedimentos. Código: `tests/support/e6run.ts` (`fotoE6`, `restaurarE6`). Las series de snapshots se generan con el gancho D184 (`POST /v1/interno/carga/snapshots`) en fechas pasadas.
+- Contrato: las respuestas se validan con `cumpleContrato(esquema, cuerpo)` contra `contracts/comun.v1.yaml` (los esquemas de Indicadores viven ahí, no en `indicadores.v1.yaml`; ver OBS-E6-09).
+
+### Resultados de las corridas
+
+| Corrida | Resultado |
+| --- | --- |
+| `e7-setup` + `e6-api` + `e6-e2e` sobre base limpia, antes de la regresión de E5 | **160 pasan, 0 fallan, 0 omitidas, 0 flaky** (11 sesiones + 72 API + 77 portal) |
+| Las 3 pruebas `E6-A11Y-DEF01` a `DEF03` (agregadas después) | 3 pasan (corrida aparte) |
+| Nube: `e6-api` con Organización e Indicadores en `&connection_limit=1` | **83 pasan** (11 sesiones + 72) |
+| Nube: `e6-api` con ambos detrás de PgBouncer 1.26 real en modo transacción (`edoburu/pgbouncer`, `server_reset_query = DISCARD ALL`, URL `:6543/…&connection_limit=1&pgbouncer=true`) | **83 pasan**; el rol `svc_indicadores` conserva su `search_path` tras `DISCARD ALL` |
+
+Procesos normales restaurados y contenedor de PgBouncer eliminado al terminar.
+
+## 4. Regresión completa
+
+Con `seed:e6` cargada, sin quitarle células a nadie. Orden: base, E7, E4, E5 (la regresión de E5 crea HDU en CEL-A y CEL-B, por eso va al final).
+
+| Proyectos | Resultado |
+| --- | --- |
+| `setup`, `api`, `e2e` (E1 a E3, modelo de datos, seguridad, fuentes caídas) | 257 pasan, 1 omitida, 2 fallan → DEF-E6-07 (cerrado: 21 de 21 pasan tras el ajuste) |
+| `e7-*` | **177 pasan**, 8 omitidas |
+| `e4-*` | **146 pasan** |
+| `e5-*` | 277 pasan, 5 fallan, 1 flaky de 283 en la primera corrida; ver OBS-E6-14 |
+
+- Las 8 pruebas de E7 y E4 que antes fallaban por LID2 **pasan** con LID2 sin células: `E7-B03#1 T06`, `E7-A11Y` y `E7-RESP` «bandeja del Líder QA sin células» (×3), `E7-F04#2 T04`, `E7-F05#1 T02`, `E7-F05#3 T05` y `E4-F03#2`.
+- Menús que cambian por E6: `E1-F02#3` y `E7-F01#2` pasan (QE: Bandeja, Equipo, Historias supervisadas, Impedimentos, Indicadores, Integraciones, Perfil; Líder y Auditor: Bandeja, Indicadores, Perfil; Administrador con «Snapshots de indicadores»), además de `E7-F01#3 T04c` (rutas de indicadores por rol).
+- Omitidas, todas por diseño y **no certifican nada**: `E1-B01#3` (límite de intentos, `@limite-intentos`) y las 8 de `E7-ABS` (valores absolutos del fixture en base pura: no aplican a la base compartida).
+- `E5-B01#1 T11` leyó el registro real del stack (`LOGS_E5_DIR` apuntando a una carpeta con una copia de `local-e6.log`) y pasó.
+
+## 5. Defectos de la primera ronda
+
+| ID | Estado | Evidencia de esta corrida |
 | --- | --- | --- |
-| `e2e/e1-f02-portal-qe.spec.ts` (E1-F02#3) | Menú del QE: `Bandeja, Equipo, Historias supervisadas, Impedimentos, Indicadores, Integraciones, Perfil` | Backlog E6 §7 y brecha 10 del diseño (el backlog omite «Integraciones», que E5 ya trajo) |
-| `e2e/e7-f01-ingreso-por-rol.spec.ts` (E7-F01#2 T02) | Menú de Líder y Auditor: `Bandeja, Indicadores, Perfil` | Backlog E6 §7 |
-| `e2e/e7-f01-ingreso-por-rol.spec.ts` (E7-F01#2 T02b, nueva) | Menú del Administrador `Bandeja, Usuarios, Supervisión, Integraciones, Snapshots de indicadores, Perfil`; el del Analista no cambia | Diseño 2.2 |
-| `e2e/e7-f01-ingreso-por-rol.spec.ts` (E7-F01#3 T04c, nueva) | La matriz de rutas de T04 suma `/qe/indicadores`, `/lider/indicadores`, `/auditor/indicadores`, `/admin/indicadores/snapshots` (16 combinaciones ajenas con acceso denegado y sin datos; cada rol entra a la suya). T04 (20 combinaciones) no cambia | Backlog E6 §7 (E7-F01-T04) |
-| `e2e/e7-f06-bandeja-auditor.spec.ts` (E7-F06#3 T07) | También recorre `/auditor/indicadores`: solo lectura, sin controles de umbral ni snapshot | Backlog E6 §7 (E7-F06-T07). El encabezado «Indicadores» (h1) es una suposición del diseño |
-| `api/seguridad-aislamiento-esquemas.spec.ts` | `svc_organizacion`, `svc_certificaciones` y `svc_impedimentos` no leen `indicadores`; prueba nueva `[E6]` de `svc_indicadores` (no superusuario, lee `indicadores`, no lee `organizacion` incluida `cierre_hdu`, `certificaciones`, `impedimentos` ni `public`) | D24; plan «q360-infra» L1 |
-| `support/contrato.ts`, `support/env.ts`, `support/db.ts` | `indicadores.v1.yaml`; `databaseUrlIndicadores`; `conIndicadores` | Infraestructura de E6 |
-| `playwright.config.ts` | Proyectos `e6-api` y `e6-e2e`; los archivos `e6-*` se excluyen de `api` y `e2e` | Infraestructura de E6 |
-| Sin cambio necesario | `e7-b04-auditor.spec.ts` T10 (crea su propia exportación antes de leer la última entrada `EXPORTAR`), las demás bandejas de E7 (D170), `e2-hdu`/`e3-acceso-y-cierre`/`e4-impedimentos-organizacion` (servicios), E2-B02#3 sin justificación y E7-F03 `listas-cerrar` | Backlog E6 §7 |
+| DEF-E6-01 `aria-controls` al panel real | **Cerrado** | `E6-A11Y-DEF01`: ningún `aria-controls` expandido apunta a un id inexistente y «Ver HDU de <célula>» apunta a `lista-drilldown-panel`. Queda la OBS-E6-08 (menor) |
+| DEF-E6-02 tabla de tendencia enfocable | **Cerrado** | `E6-A11Y-DEF02`: la región «Tabla de cumplimiento por fecha, desplazable» tiene `tabindex=0` y recibe foco; axe sin violaciones en Tendencia a 1280 y 375 px |
+| DEF-E6-03 contraste del botón de peligro en hover | **Cerrado** | `E6-A11Y-DEF03`: contraste calculado de «Cerrar con excepción» en hover ≥ 4,5:1; axe sin violaciones con el cuadro abierto a 1280 y 375 px |
+| DEF-E6-04 motivo en las reasignaciones de la semilla | **Cerrado** | `infrastructure/seed/e6/escenarios.mjs` envía `motivo` en sus 4 llamadas; en la base queda `hdu_historial_asignacion.motivo = «Escenario E6: H4 pasa a ANA1»`; los `PUT` con `motivo` de las pruebas dan 200 (E6-B02-T12, E6-F03-T10) |
+| DEF-E6-05 CEL-D con LID3 y LID2 sin células | **Cerrado** | LID2 tiene 0 células vigentes en la base; LID3 ve CEL-D «Sin HDU» (E6-B02-T11, E6-F02-T11); las 8 pruebas de E7 y E4 de la sección 4 pasan |
 
-**Pendientes de la Ola 7 (no resueltos en Q1):**
-- `modelo-datos-*` (`support/modeloDatos.ts`) enumera tres esquemas con columnas del modelo ER; sumar `indicadores` exige el modelo físico final de `q360-backend` (X1). El aislamiento ya se cubre en `seguridad-aislamiento-esquemas.spec.ts`.
-- Pruebas de enumeración de rutas o variables del gateway (`E5-GW`, pruebas de configuración): revisar tras G1.
-- El historial de `/hdu/:id` con el evento `CIERRE_EXCEPCION` (E2-F04): lo cubren E6-F05 y la regresión de E2.
-- Búsqueda de secretos: `CRON_SECRET`, `INDICADORES_SERVICIO_TOKEN` y `Authorization` no deben aparecer en registros, respuestas ni DOM.
-- axe a 1280 y 375 px en las 5 pantallas y el diálogo `dialogo-cierre-excepcion` (F7 de frontend).
+## 6. Defectos nuevos y observaciones
 
-## Defectos por agente
+No se encontró ningún defecto de producto de E6 con severidad de bloqueo ni mayor.
 
-Ninguno reportado todavía (nada ejecutado).
+| ID | Tipo | Dueño | Descripción y reproducción |
+| --- | --- | --- | --- |
+| DEF-E6-07 | Defecto de pruebas (cerrado) | `q360-qa` | `tests/api/modelo-datos-estructura.spec.ts` (2 casos) fallaba porque su dato (`tests/support/modeloDatos.ts`) no conocía la tabla de extensión `organizacion.cierre_hdu` ni su llave foránea a `historia_usuario`. Se agregaron como extensión de E6 (D175). No se agregó a `SOLO_INSERCION`: `cierre_hdu` es inmutable por disparador, no por `REVOKE`. Rerun: 21 de 21 pasan |
+| OBS-E6-08 | Menor | `q360-frontend` | En `BotonExportar.tsx` el botón `boton-exportar` lleva `aria-controls={idPanel}` y, con el menú cerrado (`aria-expanded=false`), ese id no existe en el DOM (`BUTTON#_r_0_`). axe no lo marca y el patrón es admitido, pero es el mismo tipo de referencia que DEF-E6-01. Reproducción: abrir `/qe/indicadores` y buscar `[aria-controls]` sin `getElementById` |
+| OBS-E6-09 | Menor | `q360-arquitecto` | `contracts/comun.v1.yaml` declara `multipleOf: 0.1` en los porcentajes (`PuntoTendencia.cumplimiento`, `PorcentajeIndicador`). Un valor válido como 33,3 falla con Ajv por coma flotante (33,3 / 0,1 = 332,99999999999994). Se usó `multipleOfPrecision: 6` en `tests/support/contrato.ts`; otro consumidor del contrato con validación estricta rechazaría respuestas correctas. Además, el encargo menciona `cumpleContrato(…, "indicadores")`, pero los esquemas de Indicadores están en `comun.v1.yaml` |
+| OBS-E6-10 | Backlog | `q360-arquitecto` | E6-B03-T13 pide mover H1 de SP-PROX a SP-LEJ, pero SP-LEJ es de CEL-C y el modelo exige un sprint de la célula de la HDU (422 `CATALOGO_INVALIDO`). La prueba usa SP-MED de CEL-A (misma célula) y valida lo mismo: filas anteriores intactas, fila nueva y serie de SP-PROX que termina el día anterior |
+| OBS-E6-11 | Backlog | `q360-arquitecto` | E6-F05-T06 y E6-B05-T03 llevan H5 a `PENDIENTE_CIERRE` y la «asignan a un analista antes». Si se asigna a ANA2, ANA2 queda dentro del ámbito y no recibe acceso denegado. El helper de pruebas la asigna a ANA1 (equipo de QE1); conviene decirlo en el backlog |
+| OBS-E6-12 | Información | `q360-arquitecto` | «Certificaciones detenido» en E6-F05-T09 exige cortar Certificaciones tanto para Organización (cierre) como para el gateway (el portal lee el checklist directo por el gateway). Con solo Organización cortada, el portal muestra el checklist y abre el cuadro |
+| OBS-E6-13 | Información | — | «`CIERRE_EXCEPCION` aparece sin rol y `escala=1`»: se validó la parte de «sin rol» (el actor del evento trae solo `tipo`, `id`, `nombre`, E6-DIS-T05) y `escala=1` como parámetro de URL de Tendencia que ajusta la escala (E6-DOM-T02). No hay texto en el backlog ni en el diseño que fije otro alcance; si «escala=1» significa otra cosa, queda sin cubrir |
+| OBS-E6-14 | Regresión E5 (no atribuible a E6) | `q360-frontend` / `q360-qa` | `e5-e2e` es inestable contra el gateway real: en 3 corridas de `e5-f03`, `e5-f05` y `e5-f07` fallaron conjuntos distintos (A: F03-T10, F05-T06, T16, T29, F07-T03, T12; B: F05-T08, T17, T26, F07-T10; C: F05-T06, T16, T29, F07-T09). Cada uno pasa en al menos otra corrida, y T06, T16 y T29 pasan aislados. Los reintentos muestran la pantalla de ingreso con «Demasiados intentos de ingreso» o `consulta-abierta` ausente, sin errores 5xx en el registro. No hay evidencia de relación con E6 (el cambio de E6 no toca E5). No se puede dar por certificada la regresión de esos casos de E5 en una sola corrida verde: queda **observada** |
+| OBS-E5-B07-T11 | Preexistente, ajena a E6 | `q360-backend` | Observación de la suite de Organización (`E5-B07-T11`) informada por el coordinador. No se ejecutó aquí porque esa suite vacía la base compartida |
 
-## Rondas
+## 7. Desviaciones de diseño validadas
 
-| Ronda | Qué se corrió | Resultado |
+| Desviación | Prueba | Resultado |
 | --- | --- | --- |
-| 0 (Q1) | Solo preparación; verificación estática (el TypeScript de `support/e6.ts`, de los 10 esqueletos y de las pruebas editadas compila sin errores de sintaxis) | Nada ejecutado contra el stack |
+| `cierre_hdu` es inmutable por un disparador (`cierre_hdu_inmutable`), no por `REVOKE` | E6-DIS-T01, E6-B05-T08 | El rol del servicio y el dueño conservan el privilegio `UPDATE` y `DELETE`, y aun así ambos fallan por el disparador; `TRUNCATE` del dueño sí pasa (así se limpia entre casos) |
+| Líder y Auditor no reciben `permisos.cerrarConExcepcion` | E6-DIS-T02, E6-F05-T05, E6-F05-T06 | La propiedad está ausente para Líder y Auditor; Administrador y Analista la reciben en `false`; solo el QE responsable en `true` |
+| Con Certificaciones caída el cierre da 409 `CHECKLIST_NO_DISPONIBLE` | E6-DIS-T03, E6-B05-T06(b), E6-F05-T09 | 409 con `checklist.estado: indisponible`, no 503; la HDU no cambia |
+| Los motivos del drill-down se limitan al color de la celda | E6-DIS-T04, E6-F02-T04 a T06 | H1 solo `RIESGO_ALTO` aunque tiene I2 abierto; H6 solo `IMPEDIMENTO_ESCALADO` aunque su riesgo es MEDIO; H3 en CEL-B amarilla trae `RIESGO_MEDIO` e `IMPEDIMENTO_ABIERTO` |
+| `CIERRE_EXCEPCION` aparece sin rol | E6-DIS-T05 | El actor trae `tipo`, `id` y `nombre`; no hay `rol` ni `actorRol` en el evento. Para `escala=1` ver OBS-E6-13 |
+| `guardarLote` hace una consulta por fila en una transacción de 5 s | E6-DIS-T06 | El código recorre las filas con `tx.$queryRaw` dentro de `$transaction`; el snapshot del fixture escribe más de 10 filas en menos de 2,5 s (unos 170 ms con 32 filas). Con el tope de 1000 HDU el margen contra 5 s no se midió |
 
-## Resultado por prueba (esqueletos; a completar en la Ola 7)
+## 8. Seguridad
 
-Estado de las 117 pruebas: todas `test.fixme` = **no ejecutadas, no certifican**.
+- `CRON_SECRET`, `INDICADORES_SERVICIO_TOKEN`, `X_Q360_SERVICIO_TOKEN` y el `Authorization` del llamante **no aparecen** en cuerpos ni cabeceras de las respuestas de indicadores, exportaciones CSV y PDF, snapshots y cron (E6-SEC-T03), ni en el DOM, los registros del stack y del gateway alterno (E6-SEC-T04, E6-DOM-T01).
+- El cron sin cabecera, con secreto ajeno, con un JWT de sesión o con el secreto sin `Bearer` responde 401 por el gateway y directo al servicio, y no crea ejecución (E6-B03-T02, E6-SEC-T02).
+- Las rutas internas (`/v1/interno/carga/snapshots`, `/v1/interno/auditoria/exportaciones`, `/v1/interno/hdu/ambito`, `/v1/interno/checklist/estados`, `/v1/interno/impedimentos/evaluacion`) no se publican en el gateway: 404, también con la credencial de servicio y con sesión de administrador (E6-SEC-T01).
+- Acceso cruzado: ANA1 y ADM1 reciben 403 en toda ruta de indicadores y exportación; QE2 y LID1 reciben 403 en células ajenas; sin sesión, 401 (E6-B01-T03, B02-T04, B02-T08, B03-T07, B03-T11, B04-T09 y los negativos de portal).
 
-| ID | Prueba | Proyecto | Resultado | Evidencia |
-| --- | --- | --- | --- | --- |
-| [E6-B01#1] E6-B01-T01 | GET /v1/indicadores/cumplimiento | e6-api | pendiente (fixme) | — |
-| [E6-B01#1] E6-B01-T02 | Dos consultas | e6-api | pendiente (fixme) | — |
-| [E6-B01#1] E6-B01-T03 | Consultan | e6-api | pendiente (fixme) | — |
-| [E6-B01#2] E6-B01-T04 | celulaId=CEL-A; sprintId=SP-PROX; ambos | e6-api | pendiente (fixme) | — |
-| [E6-B01#2] E6-B01-T05 | celulaId con UUID válido inexistente; luego un UUID mal formado | e6-api | pendiente (fixme) | — |
-| [E6-B01#3] E6-B01-T06 | Consulta; QE1 aprueba el entregable 4 de H1; consulta de nuevo | e6-api | pendiente (fixme) | — |
-| [E6-B01#1] E6-B01-T07 | Consultan | e6-api | pendiente (fixme) | — |
-| [E6-B01#1] E6-B01-T08 | Consulta | e6-api | pendiente (fixme) | — |
-| [E6-B01#1] E6-B01-T09 | Consulta | e6-api | pendiente (fixme) | — |
-| [E6-B01#1] E6-B01-T10 | Consulta | e6-api | pendiente (fixme) | — |
-| [E6-B01#1] E6-B01-T11 | Consulta; luego celulaId=CEL-A | e6-api | pendiente (fixme) | — |
-| [E6-B02#1] E6-B02-T01 | GET /v1/indicadores/semaforo | e6-api | pendiente (fixme) | — |
-| [E6-B02#1] E6-B02-T02 | Consultan | e6-api | pendiente (fixme) | — |
-| [E6-B02#1] E6-B02-T03 | GET /v1/indicadores/semaforo/<CEL-A>/hdu; luego <CEL-B> | e6-api | pendiente (fixme) | — |
-| [E6-B02#1] E6-B02-T04 | Piden el drill-down | e6-api | pendiente (fixme) | — |
-| [E6-B02#2] E6-B02-T05 | GET /v1/indicadores/carga | e6-api | pendiente (fixme) | — |
-| [E6-B02#3] E6-B02-T06 | PUT umbral-carga {valor: 1}; luego GET carga; luego {valor: 2} | e6-api | pendiente (fixme) | — |
-| [E6-B02#3] E6-B02-T07 | PUT con 0, 51, 2.5, «abc» y vacío | e6-api | pendiente (fixme) | — |
-| [E6-B02#3] E6-B02-T08 | PUT umbral-carga; QE2 GET umbral-carga?qeId=<QE1> | e6-api | pendiente (fixme) | — |
-| [E6-B02#3] E6-B02-T09 | GET umbral-carga/historial | e6-api | pendiente (fixme) | — |
-| [E6-B02#1] E6-B02-T10 | GET semaforo | e6-api | pendiente (fixme) | — |
-| [E6-B02#1] E6-B02-T11 | GET semaforo | e6-api | pendiente (fixme) | — |
-| [E6-B02#2] E6-B02-T12 | Ambos consultan carga; LID1 consulta | e6-api | pendiente (fixme) | — |
-| [E6-B02#2] E6-B02-T13 | GET carga como AUD1 | e6-api | pendiente (fixme) | — |
-| [E6-B03#1] E6-B03-T01 | GET /v1/cron/indicadores/snapshot con el secreto | e6-api | pendiente (fixme) | — |
-| [E6-B03#1] E6-B03-T02 | Misma ruta sin cabecera, con un secreto incorrecto y con la sesión de ADM1 | e6-api | pendiente (fixme) | — |
-| [E6-B03#1] E6-B03-T03 | Genera el snapshot | e6-api | pendiente (fixme) | — |
-| [E6-B03#2] E6-B03-T04 | Ejecuta el snapshot dos veces el mismo día | e6-api | pendiente (fixme) | — |
-| [E6-B03#2] E6-B03-T05 | Ejecuta, aprueba el entregable 4 de H1, ejecuta | e6-api | pendiente (fixme) | — |
-| [E6-B03#2] E6-B03-T06 | Dos POST manuales simultáneos | e6-api | pendiente (fixme) | — |
-| [E6-B03#1] E6-B03-T07 | POST /v1/indicadores/snapshots | e6-api | pendiente (fixme) | — |
-| [E6-B03#1] E6-B03-T08 | Dispara el snapshot; repone el servicio y lo dispara de nuevo | e6-api | pendiente (fixme) | — |
-| [E6-B03#3] E6-B03-T09 | GET tendencia como QE1 con CEL-A y SP-PROX | e6-api | pendiente (fixme) | — |
-| [E6-B03#3] E6-B03-T10 | QE2 consulta la misma serie; AUD1 también | e6-api | pendiente (fixme) | — |
-| [E6-B03#3] E6-B03-T11 | GET tendencia; ADM1 además GET snapshots/ejecuciones | e6-api | pendiente (fixme) | — |
-| [E6-B03#1] E6-B03-T12 | Genera el snapshot | e6-api | pendiente (fixme) | — |
-| [E6-B03#3] E6-B03-T13 | Mueve H1 de SP-PROX a SP-LEJ y genera otro | e6-api | pendiente (fixme) | — |
-| [E6-B03#1] E6-B03-T14 | Lee la configuración | e6-api | pendiente (fixme) | — |
-| [E6-B04#1] E6-B04-T01 | exportacion?vista=cumplimiento&formato=csv&celulaId=CEL-A | e6-api | pendiente (fixme) | — |
-| [E6-B04#1] E6-B04-T02 | Exporta semaforo y carga en CSV | e6-api | pendiente (fixme) | — |
-| [E6-B04#2] E6-B04-T03 | exportacion?vista=semaforo&formato=pdf | e6-api | pendiente (fixme) | — |
-| [E6-B04#3] E6-B04-T04 | Exportan semaforo en CSV | e6-api | pendiente (fixme) | — |
-| [E6-B04#1] E6-B04-T05 | Exporta semaforo | e6-api | pendiente (fixme) | — |
-| [E6-B04#1] E6-B04-T06 | Exporta carga en CSV | e6-api | pendiente (fixme) | — |
-| [E6-B04#1] E6-B04-T07 | Exporta | e6-api | pendiente (fixme) | — |
-| [E6-B04#1] E6-B04-T08 | Exporta en ambos formatos con más filas que el tope | e6-api | pendiente (fixme) | — |
-| [E6-B04#1] E6-B04-T09 | Exportan | e6-api | pendiente (fixme) | — |
-| [E6-B04#1] E6-B04-T10 | vista=otra; formato=xls; celulaId=abc | e6-api | pendiente (fixme) | — |
-| [E6-B04#2] E6-B04-T11 | Exporta cumplimiento en CSV y PDF | e6-api | pendiente (fixme) | — |
-| [E6-B04#1] E6-B04-T12 | Exporta tendencia en CSV con 3 snapshots | e6-api | pendiente (fixme) | — |
-| [E6-B05#1] E6-B05-T01 | Cambia a CERRADA con una justificación de 40 caracteres | e6-api | pendiente (fixme) | — |
-| [E6-B05#1] E6-B05-T02 | Cierra sin justificacion; con " "; con 19 y con 501 caracteres | e6-api | pendiente (fixme) | — |
-| [E6-B05#1] E6-B05-T03 | Cierra con una justificación de exactamente 20 caracteres | e6-api | pendiente (fixme) | — |
-| [E6-B05#2] E6-B05-T04 | Cierran H2 con justificación válida | e6-api | pendiente (fixme) | — |
-| [E6-B05#2] E6-B05-T05 | Cierra con justificación válida; luego resuelve I2 y repite | e6-api | pendiente (fixme) | — |
-| [E6-B05#2] E6-B05-T06 | (a) H1 en EN_EJECUCION con justificación válida; (b) H2 en PENDIENTE_CIERRE con Certificaciones detenido y jus | e6-api | pendiente (fixme) | — |
-| [E6-B05#3] E6-B05-T07 | Pide el certificado de H2 y trata de generarlo | e6-api | pendiente (fixme) | — |
-| [E6-B05#3] E6-B05-T08 | ADM1 lee GET /v1/auditoria?entidad=HDU&entidadId=<H2>; AUD1 lee GET /v1/hdu/<H2> y su historial (D192) | e6-api | pendiente (fixme) | — |
-| [E6-B05#1] E6-B05-T09 | Cierra con y sin justificacion en dos pruebas de la misma semilla | e6-api | pendiente (fixme) | — |
-| [E6-B05#3] E6-B05-T10 | Marca un entregable, registra un impedimento y trata de reabrir H2 | e6-api | pendiente (fixme) | — |
-| [E6-B05#1] E6-B05-T11 | Dos cierres simultáneos con justificación | e6-api | pendiente (fixme) | — |
-| [E6-B05#regresión] E6-B05-T12 | Ejecuta las pruebas certificadas de e3-acceso-y-cierre.test.ts, e4-impedimentos-organizacion.test.ts (E4-B02)  | e6-api | pendiente (fixme) | — |
-| [E6-F01#1] E6-F01-T01 | Abre /qe/indicadores | e6-e2e | pendiente (fixme) | — |
-| [E6-F01#1] E6-F01-T02 | Abre /qe/indicadores | e6-e2e | pendiente (fixme) | — |
-| [E6-F01#1] E6-F01-T03 | Abre /lider/indicadores | e6-e2e | pendiente (fixme) | — |
-| [E6-F01#1] E6-F01-T04 | Abre /auditor/indicadores | e6-e2e | pendiente (fixme) | — |
-| [E6-F01#2] E6-F01-T05 | Filtra Célula = CEL-A | e6-e2e | pendiente (fixme) | — |
-| [E6-F01#2] E6-F01-T06 | Filtra Sprint = SP-PROX; luego agrega Célula = CEL-A | e6-e2e | pendiente (fixme) | — |
-| [E6-F01#3] E6-F01-T07 | Filtra Célula = CEL-C y Sprint = SP-PROX | e6-e2e | pendiente (fixme) | — |
-| [E6-F01#3] E6-F01-T08 | Abre /qe/indicadores | e6-e2e | pendiente (fixme) | — |
-| [E6-F01#1] E6-F01-T09 | Abre /qe/indicadores | e6-e2e | pendiente (fixme) | — |
-| [E6-F01#1] E6-F01-T10 | Abren las rutas de indicadores que no son suyas | e6-e2e | pendiente (fixme) | — |
-| [E6-F01#regresión] E6-F01-T11 | Ejecuta las pruebas certificadas de E1-F02, E7-F01 y E7-F03 | e6-e2e | pendiente (fixme) | — |
-| [E6-F01#1] E6-F01-T12 | Abre /qe/indicadores | e6-e2e | pendiente (fixme) | — |
-| [E6-F02#1] E6-F02-T01 | Abre la pestaña Semáforo | e6-e2e | pendiente (fixme) | — |
-| [E6-F02#1] E6-F02-T02 | Abre la pestaña Semáforo | e6-e2e | pendiente (fixme) | — |
-| [E6-F02#1] E6-F02-T03 | Abren el semáforo | e6-e2e | pendiente (fixme) | — |
-| [E6-F02#2] E6-F02-T04 | Selecciona CEL-A | e6-e2e | pendiente (fixme) | — |
-| [E6-F02#2] E6-F02-T05 | Selecciona CEL-B | e6-e2e | pendiente (fixme) | — |
-| [E6-F02#2] E6-F02-T06 | Selecciona CEL-B; luego CEL-C | e6-e2e | pendiente (fixme) | — |
-| [E6-F02#3] E6-F02-T07 | Resuelve I1 en el detalle de H3 (E4-F03) y vuelve al Semáforo; luego reabre I1 | e6-e2e | pendiente (fixme) | — |
-| [E6-F02#3] E6-F02-T08 | Resuelve I3 y vuelve al Semáforo; luego reabre I3 | e6-e2e | pendiente (fixme) | — |
-| [E6-F02#1] E6-F02-T09 | Abre el Semáforo | e6-e2e | pendiente (fixme) | — |
-| [E6-F02#1] E6-F02-T10 | Abre el Semáforo | e6-e2e | pendiente (fixme) | — |
-| [E6-F02#1] E6-F02-T11 | Abre el Semáforo | e6-e2e | pendiente (fixme) | — |
-| [E6-F02#1] E6-F02-T12 | Abren el Semáforo | e6-e2e | pendiente (fixme) | — |
-| [E6-F03#1] E6-F03-T01 | Abre la pestaña Carga | e6-e2e | pendiente (fixme) | — |
-| [E6-F03#1] E6-F03-T02 | Abre la pestaña Carga | e6-e2e | pendiente (fixme) | — |
-| [E6-F03#2] E6-F03-T03 | Fija el umbral en 1 | e6-e2e | pendiente (fixme) | — |
-| [E6-F03#2] E6-F03-T04 | Fija el umbral en 2 | e6-e2e | pendiente (fixme) | — |
-| [E6-F03#3] E6-F03-T05 | Abre la pestaña Carga | e6-e2e | pendiente (fixme) | — |
-| [E6-F03#2] E6-F03-T06 | Prueba 0, 51, 2.5, «abc» y vacío; luego 50 | e6-e2e | pendiente (fixme) | — |
-| [E6-F03#2] E6-F03-T07 | Abre la pestaña Carga | e6-e2e | pendiente (fixme) | — |
-| [E6-F03#2] E6-F03-T08 | Abre la pestaña Carga | e6-e2e | pendiente (fixme) | — |
-| [E6-F03#2] E6-F03-T09 | QE1 cambia el umbral de 5 a 1; QE2 abre su Carga | e6-e2e | pendiente (fixme) | — |
-| [E6-F03#2] E6-F03-T10 | Ambos abren la Carga | e6-e2e | pendiente (fixme) | — |
-| [E6-F03#1] E6-F03-T11 | Abre la pestaña Carga | e6-e2e | pendiente (fixme) | — |
-| [E6-F03#1] E6-F03-T12 | Abren la pestaña Carga | e6-e2e | pendiente (fixme) | — |
-| [E6-F04#1] E6-F04-T01 | Abre la pestaña Tendencia con CEL-A y SP-PROX | e6-e2e | pendiente (fixme) | — |
-| [E6-F04#1] E6-F04-T02 | Quita el filtro de célula y de sprint | e6-e2e | pendiente (fixme) | — |
-| [E6-F04#2] E6-F04-T03 | Exporta PDF | e6-e2e | pendiente (fixme) | — |
-| [E6-F04#2] E6-F04-T04 | Exporta CSV | e6-e2e | pendiente (fixme) | — |
-| [E6-F04#3] E6-F04-T05 | Abre la pestaña Tendencia | e6-e2e | pendiente (fixme) | — |
-| [E6-F04#1] E6-F04-T06 | Abre la pestaña Tendencia | e6-e2e | pendiente (fixme) | — |
-| [E6-F04#1] E6-F04-T07 | Abre la pestaña Tendencia | e6-e2e | pendiente (fixme) | — |
-| [E6-F04#2] E6-F04-T08 | Exporta el Semáforo | e6-e2e | pendiente (fixme) | — |
-| [E6-F04#2] E6-F04-T09 | Intentan abrir el dashboard y llamar a la exportación | e6-e2e | pendiente (fixme) | — |
-| [E6-F05#1] E6-F05-T01 | Abre /hdu/<H2> y pulsa boton-cerrar-excepcion | e6-e2e | pendiente (fixme) | — |
-| [E6-F05#2] E6-F05-T02 | Confirma vacío; luego con 19 caracteres; luego intenta escribir 501 | e6-e2e | pendiente (fixme) | — |
-| [E6-F05#1] E6-F05-T03 | Escribe una justificación de 40 caracteres y confirma | e6-e2e | pendiente (fixme) | — |
-| [E6-F05#3] E6-F05-T04 | Revisa el detalle | e6-e2e | pendiente (fixme) | — |
-| [E6-F05#3] E6-F05-T05 | Abren /hdu/<H2> | e6-e2e | pendiente (fixme) | — |
-| [E6-F05#1] E6-F05-T06 | Abren una HDU en PENDIENTE_CIERRE con menos de 10 aprobados (H5 llevada a ese estado) | e6-e2e | pendiente (fixme) | — |
-| [E6-F05#2] E6-F05-T07 | Escribe una justificación válida y confirma | e6-e2e | pendiente (fixme) | — |
-| [E6-F05#1] E6-F05-T08 | Abre /hdu/<H8> | e6-e2e | pendiente (fixme) | — |
-| [E6-F05#1] E6-F05-T09 | Abre /hdu/<H2> y pulsa cerrar | e6-e2e | pendiente (fixme) | — |
-| [E6-F05#regresión] E6-F05-T10 | Ejecuta las pruebas certificadas de E2-F04, E3-F01 y E7-F03 | e6-e2e | pendiente (fixme) | — |
+## 9. Lo que no se pudo cubrir
+
+- Suites de servicio de Organización (`e3-acceso-y-cierre`, `e4-impedimentos-organizacion`, E2-B02): no se ejecutan sobre la base compartida (reserva de E6-B05-T12).
+- Valores absolutos en base pura (E6-B01-T07, B02-T02, B02-T13, F01-T04, B04-T04 en su rama «base pura»): solo se ejecutó la rama de base compartida.
+- El tiempo de `guardarLote` con 1000 HDU y la transacción de 5 s a ese volumen.
+- `escala=1` más allá del parámetro de Tendencia (OBS-E6-13).
+- Despliegue en nube real (Vercel): se simuló el pooler (PgBouncer) y el límite de conexiones, no el despliegue.
+
+## 10. Estado en que queda la base
+
+La regresión de E5 dejó datos suyos (81 HDU en total y las de CEL-A y CEL-B que crea E5), así que las cifras absolutas de LID1 y AUD1 ya no coinciden. E7-H1 a H8 están en su estado del fixture, LID2 sin células, `cierre_hdu` e `indicadores.*` vacíos. Para repetir la certificación hay que correr E6 antes de la regresión de E5 o recargar la base.

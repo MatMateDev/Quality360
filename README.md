@@ -11,20 +11,23 @@ Plataforma para supervisar la certificación QA de historias de usuario (HDU). E
 | E3 · Certificación y entregables | 8 HDU, 24 escenarios | Certificada |
 | E4 · Impedimentos y riesgos | 8 HDU, 24 escenarios | Certificada |
 | E5 · Integración con Jira Cloud | 14 HDU, 111 escenarios (con consulta, asignación y confirmación por HDU) | Certificada |
-| E6 · Indicadores y dashboards | 8 HDU | Pendiente |
+| E6 · Indicadores y dashboards | 10 HDU, 30 escenarios | Certificada |
 | E7 · Bandejas por rol | 12 HDU, 36 escenarios | Certificada |
 
-La certificación de E1, E2, E3, E4, E5 y E7 cubre los 297 escenarios de aceptación del backlog, con 861 pruebas automatizadas contra el stack real, incluidas las que verifican el modelo de datos (tablas, llaves foráneas y aislamiento por esquema) y la accesibilidad de las bandejas. El dictamen por escenario y por HDU está en [`docs/validacion/certificacion-e1-e2.md`](docs/validacion/certificacion-e1-e2.md), [`docs/validacion/certificacion-e3.md`](docs/validacion/certificacion-e3.md), [`docs/validacion/certificacion-modelo-datos.md`](docs/validacion/certificacion-modelo-datos.md), [`docs/validacion/certificacion-e7.md`](docs/validacion/certificacion-e7.md), [`docs/validacion/certificacion-e4.md`](docs/validacion/certificacion-e4.md), [`docs/validacion/certificacion-e5.md`](docs/validacion/certificacion-e5.md) , [`docs/validacion/certificacion-e5-consulta.md`](docs/validacion/certificacion-e5-consulta.md) y [`docs/validacion/certificacion-e5-detalle.md`](docs/validacion/certificacion-e5-detalle.md). La prueba manual contra un Jira Cloud real (E5-MAN-01) la ejecuta el usuario con su propio sitio.
+La certificación de las siete épicas cubre los 327 escenarios de aceptación del backlog, con 1004 pruebas automatizadas contra el stack real, incluidas las que verifican el modelo de datos (tablas, llaves foráneas y aislamiento por esquema) y la accesibilidad de las bandejas y los dashboards. El dictamen por escenario y por HDU está en [`docs/validacion/certificacion-e1-e2.md`](docs/validacion/certificacion-e1-e2.md), [`docs/validacion/certificacion-e3.md`](docs/validacion/certificacion-e3.md), [`docs/validacion/certificacion-modelo-datos.md`](docs/validacion/certificacion-modelo-datos.md), [`docs/validacion/certificacion-e7.md`](docs/validacion/certificacion-e7.md), [`docs/validacion/certificacion-e4.md`](docs/validacion/certificacion-e4.md), [`docs/validacion/certificacion-e5.md`](docs/validacion/certificacion-e5.md), [`docs/validacion/certificacion-e5-consulta.md`](docs/validacion/certificacion-e5-consulta.md) [`docs/validacion/certificacion-e5-detalle.md`](docs/validacion/certificacion-e5-detalle.md) y [`docs/validacion/certificacion-e6.md`](docs/validacion/certificacion-e6.md). La prueba manual contra un Jira Cloud real (E5-MAN-01) la ejecuta el usuario con su propio sitio.
 
 ## Arquitectura
 
 ```
-Navegador ── Portal React ── Gateway ──┬── Organización ─┐
-                 │                      ├── Certificaciones ├── Postgres (un esquema y un rol por servicio)
-                 │                      ├── Impedimentos ──┤
-                 │                      └── Integraciones ─┘── Jira Cloud (API REST, token cifrado)
+Navegador ── Portal React ── Gateway ──┬── Organización ────┐
+                 │                      ├── Certificaciones ─┤
+                 │                      ├── Impedimentos ────┼── Postgres (un esquema y un rol por servicio)
+                 │                      ├── Indicadores ─────┤
+                 │                      └── Integraciones ───┘── Jira Cloud (API REST, token cifrado)
                  └── Supabase Auth (identidad)
 ```
+
+Indicadores no copia datos de negocio: lee Organización, Certificaciones e Impedimentos por HTTP con un token de servicio y guarda en su esquema solo los snapshots diarios y el umbral de carga de cada QE. El snapshot diario lo dispara Vercel Cron.
 
 - **Portal** (`apps/web`): React 19, Vite, TypeScript. Un portal por rol: Administrador, QE y Analista QA, más la verificación pública de certificados en `/verificar`.
 - **Gateway** (`apps/gateway`): único punto público. Verifica la sesión, enruta y compone los paneles de inicio. Si una fuente cae, el bloque se muestra como no disponible, nunca con cifras inventadas.
@@ -99,10 +102,11 @@ npm test
 | `apps/web` | Portal React |
 | `apps/gateway` | Gateway NestJS |
 | `packages/auth-nest` | Verificación de sesión y autorización compartida |
-| `services/organizacion` | Usuarios, supervisión, HDU, células y sprints (E1, E2) |
+| `services/organizacion` | Usuarios, supervisión, HDU, células y sprints (E1, E2) y cierre con excepción (E6) |
 | `services/certificaciones` | Checklist de 10 entregables, evidencias, aprobaciones del QE y certificado PDF (E3) |
 | `services/impedimentos` | Impedimentos, escalamiento y riesgo de las HDU (E4) |
 | `services/integraciones` | Conexión con Jira Cloud, consulta manual en dos pasos con el detalle de cada HDU, asignación de célula, QE, Analista y sprint y confirmación por HDU, importación CSV/JSON e historial (E5) |
+| `services/indicadores` | Cumplimiento, semáforo por célula, carga de trabajo con umbral, snapshot diario con tendencia y exportación CSV y PDF (E6) |
 | `contracts` | Contratos OpenAPI |
 | `infrastructure` | Supabase local, SQL de esquemas y roles, Docker Compose, semilla y arranque local |
 | `tests` | Suite de certificación E2E y de API |
@@ -115,4 +119,5 @@ npm test
 - La clave `service_role` de Supabase solo la usan Organización (Auth) y Certificaciones (Storage); nunca llega al navegador.
 - El API token de Jira se guarda cifrado (AES-256-GCM) con la llave `INTEGRACIONES_LLAVE_CIFRADO`, que solo vive en las variables del servicio Integraciones; nunca vuelve al navegador ni aparece en los registros.
 - Las evidencias y los certificados se guardan en buckets privados de Storage (`evidencias`, `certificados`). El navegador solo recibe URL firmadas de corta duración que emite Certificaciones.
+- Indicadores lee los demás servicios por rutas internas con `INDICADORES_SERVICIO_TOKEN`, que el gateway no publica. El snapshot diario exige `CRON_SECRET` (Vercel Cron lo envía en `Authorization`): sin él responde 401. Ninguno de los dos valores llega al navegador ni a los registros.
 - Docker Compose (`infrastructure/docker-compose.yml`) es una alternativa a `npm run local`; ver [`infrastructure/README.md`](infrastructure/README.md).
