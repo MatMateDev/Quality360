@@ -4,7 +4,7 @@ import { useInicioQa } from "@/api/inicio";
 import { BloqueEstado } from "@/components/BloqueEstado";
 import { TarjetaMetrica } from "@/components/TarjetaMetrica";
 import type { CampoFiltro } from "@/components/bandeja/BarraFiltros";
-import { EncabezadoBandeja, GrupoContadores } from "@/components/bandeja/Estructura";
+import { EncabezadoBandeja, FranjaResumen, GrupoContadores } from "@/components/bandeja/Estructura";
 import { PanelListaHdu } from "@/components/bandeja/PanelListaHdu";
 import { TarjetaContador } from "@/components/bandeja/TarjetaContador";
 import { columnasHdu } from "@/components/bandeja/columnasHdu";
@@ -14,6 +14,8 @@ import { useFiltrosUrl } from "@/lib/filtrosUrl";
 /**
  * Bandeja del Analista QA (E7-F02) sobre el inicio certificado de E1-F06: se conservan el QE supervisor
  * («Sin supervisor asignado» si no tiene) y «HDU asignadas», y se agregan los contadores de trabajo y «Mis HDU».
+ * D209: el acceso rápido va en el encabezado y los contadores en una franja de tres temas (asignación, trabajo,
+ * impedimentos) sobre la lista.
  */
 export function QaInicioPage() {
   const inicioQuery = useInicioQa();
@@ -36,64 +38,75 @@ export function QaInicioPage() {
 
   return (
     <div data-testid="bandeja-analista">
-      <EncabezadoBandeja etiqueta="Portal Analista QA" descripcion="Tu supervisor, lo que te falta hacer y tus historias asignadas." />
+      <EncabezadoBandeja
+        etiqueta="Portal Analista QA"
+        descripcion="Tu supervisor, lo que te falta hacer y tus historias asignadas."
+        acciones={
+          <Link className="boton boton--secundario" to="/qa/hdu">
+            Ver mis HDU
+          </Link>
+        }
+      />
 
-      {inicioQuery.isLoading ? <BloqueEstado id="inicio-qa" estado="cargando" /> : null}
-      {inicioQuery.isError ? <BloqueEstado id="inicio-qa" estado="error" onReintentar={() => inicioQuery.refetch()} /> : null}
+      <FranjaResumen>
+        <GrupoContadores titulo="Mi asignación" peso={2}>
+          {inicioQuery.isLoading ? <BloqueEstado id="inicio-qa" estado="cargando" /> : null}
+          {inicioQuery.isError ? <BloqueEstado id="inicio-qa" estado="error" onReintentar={() => inicioQuery.refetch()} /> : null}
+          {inicioQuery.data ? (
+            <>
+              <article className="tarjeta-resumen" data-testid="tarjeta-supervisor">
+                <span className="tarjeta-resumen__titulo">QE supervisor</span>
+                {inicioQuery.data.supervisor.estado === "ok" ? (
+                  <strong className="tarjeta-resumen__valor tarjeta-resumen__valor--texto" data-testid="valor-supervisor">
+                    {inicioQuery.data.supervisor.datos.supervisor?.nombre ?? "Sin supervisor asignado"}
+                  </strong>
+                ) : (
+                  <BloqueEstado id="supervisor" estado={inicioQuery.data.supervisor.estado} />
+                )}
+              </article>
 
-      {inicioQuery.data ? (
-        <div className="tarjetas-resumen">
-          <article className="tarjeta-resumen" data-testid="tarjeta-supervisor">
-            <span className="tarjeta-resumen__titulo">QE supervisor</span>
-            {inicioQuery.data.supervisor.estado === "ok" ? (
-              <strong className="tarjeta-resumen__valor" data-testid="valor-supervisor">
-                {inicioQuery.data.supervisor.datos.supervisor?.nombre ?? "Sin supervisor asignado"}
-              </strong>
-            ) : (
-              <BloqueEstado id="supervisor" estado={inicioQuery.data.supervisor.estado} />
-            )}
-          </article>
+              <TarjetaMetrica
+                id="hdu-qa"
+                titulo="HDU asignadas"
+                estado={inicioQuery.data.hdu.estado}
+                valor={inicioQuery.data.hdu.estado === "ok" ? inicioQuery.data.hdu.datos.hduAsignadas : undefined}
+                onReintentar={() => inicioQuery.refetch()}
+              />
+            </>
+          ) : null}
+        </GrupoContadores>
 
-          <TarjetaMetrica
-            id="hdu-qa"
-            titulo="HDU asignadas"
-            estado={inicioQuery.data.hdu.estado}
-            valor={inicioQuery.data.hdu.estado === "ok" ? inicioQuery.data.hdu.datos.hduAsignadas : undefined}
-            onReintentar={() => inicioQuery.refetch()}
+        <GrupoContadores titulo="Mi trabajo" peso={3}>
+          <TarjetaContador consulta={bandeja} id="abiertas" clave="abiertas" titulo="Abiertas" contador={datos?.contadores.abiertas} />
+          <TarjetaContador
+            consulta={bandeja}
+            id="con-observaciones"
+            clave="con-observaciones"
+            titulo="Con observaciones"
+            contador={datos?.contadores.conObservaciones}
+            atencion
           />
-        </div>
-      ) : null}
+          <TarjetaContador
+            consulta={bandeja}
+            id="esperando-aprobacion"
+            clave="esperando-aprobacion"
+            titulo="Esperando aprobación"
+            contador={datos?.contadores.esperandoAprobacion}
+          />
+        </GrupoContadores>
 
-      <GrupoContadores compacto>
-        <TarjetaContador consulta={bandeja} id="abiertas" clave="abiertas" titulo="Abiertas" contador={datos?.contadores.abiertas} />
-        <TarjetaContador
-          consulta={bandeja}
-          id="con-observaciones"
-          clave="con-observaciones"
-          titulo="Con observaciones"
-          contador={datos?.contadores.conObservaciones}
-          atencion
-        />
-        <TarjetaContador
-          consulta={bandeja}
-          id="esperando-aprobacion"
-          clave="esperando-aprobacion"
-          titulo="Esperando aprobación"
-          contador={datos?.contadores.esperandoAprobacion}
-        />
-      </GrupoContadores>
-
-      {/* E4: sin riesgo (D73). Debajo de los contadores certificados. */}
-      <GrupoContadores titulo="Impedimentos" compacto>
-        <TarjetaContador
-          consulta={bandeja}
-          id="impedimentos-abiertos"
-          clave="impedimentos-abiertos"
-          titulo="Impedimentos abiertos"
-          contador={datos?.impedimentos?.contadores.impedimentosAbiertos}
-          atencion
-        />
-      </GrupoContadores>
+        {/* E4: sin riesgo (D73). */}
+        <GrupoContadores titulo="Impedimentos" peso={1}>
+          <TarjetaContador
+            consulta={bandeja}
+            id="impedimentos-abiertos"
+            clave="impedimentos-abiertos"
+            titulo="Impedimentos abiertos"
+            contador={datos?.impedimentos?.contadores.impedimentosAbiertos}
+            atencion
+          />
+        </GrupoContadores>
+      </FranjaResumen>
 
       <PanelListaHdu
         clave="mis-hdu"
@@ -108,17 +121,6 @@ export function QaInicioPage() {
         vacioSinFiltros="No tienes HDU asignadas"
         columnas={[c.codigo, c.titulo, c.celula, c.sprint, c.prioridad, c.estado, c.avance, c.siguiente, c.observaciones, c.actualizada, c.bloqueo]}
       />
-
-      <div className="panel">
-        <div className="panel-cabecera">
-          <h2>Accesos rápidos</h2>
-        </div>
-        <div className="enlaces-rapidos">
-          <Link className="boton boton--secundario" to="/qa/hdu">
-            Ver mis HDU
-          </Link>
-        </div>
-      </div>
     </div>
   );
 }

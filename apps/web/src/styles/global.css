@@ -16,9 +16,23 @@ body {
   margin: 0;
   color: var(--q360-color-texto);
   font-family: var(--q360-font-family);
+  font-size: 16px;
+  line-height: 1.5;
   background-color: var(--q360-color-fondo);
   font-synthesis: none;
   text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* D209: títulos en semibold, interlineado más compacto que el texto corrido. */
+h1,
+h2,
+h3,
+h4 {
+  font-weight: 600;
+  line-height: 1.25;
+  letter-spacing: -0.01em;
 }
 
 button,
@@ -44,10 +58,11 @@ a {
   border-radius: 4px;
 }
 
+/* El borde izquierdo del contenido coincide con el del logo (24 px) hasta los 1488 px de ancho. */
 .contenedor {
-  width: min(1400px, 94%);
+  width: min(1440px, calc(100% - 48px));
   margin: 0 auto;
-  padding: 32px 0 50px;
+  padding: 28px 0 56px;
 }
 
 .contenedor--angosto {
@@ -55,63 +70,137 @@ a {
 }
 
 /* ---------------------------------------------------------------- barra superior */
+/* D209: dos filas. Arriba, el logo a la izquierda y la sesión a la derecha; debajo, el menú del portal.
+   Fija al desplazarse en escritorio; en móvil se desplaza con la página para no robar alto. */
 .barra-superior {
+  position: sticky;
+  top: 0;
+  z-index: 30;
+  padding: 0 24px;
+  background-color: var(--q360-color-superficie);
+  border-bottom: 1px solid var(--q360-color-borde);
+  box-shadow: var(--q360-sombra-barra);
+}
+
+.barra-superior__fila {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 16px;
-  padding: 14px 20px;
-  background-color: var(--q360-color-superficie);
-  border-bottom: 1px solid var(--q360-color-borde);
+  min-height: 64px;
 }
 
 .marca {
-  color: var(--q360-color-acento);
-  font-weight: 800;
-  font-size: 18px;
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: 10px;
+  color: var(--q360-color-marca);
+  font-size: 22px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  line-height: 1;
   text-decoration: none;
+}
+
+.marca__icono {
+  flex: none;
+  width: 40px;
+  height: 40px;
+}
+
+.marca__360 {
+  color: var(--q360-color-marca-360);
 }
 
 .nav-portal {
   display: flex;
-  align-items: center;
+  align-items: stretch;
   gap: 4px;
-  flex-wrap: wrap;
+  margin: 0 -12px;
+  padding: 0 12px;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.nav-portal::-webkit-scrollbar {
+  display: none;
 }
 
 .nav-portal a {
-  padding: 8px 12px;
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  min-height: var(--q360-objetivo-tactil);
+  padding: 0 12px;
   color: var(--q360-color-texto-terciario);
-  border-radius: var(--q360-radio);
-  font-weight: 600;
+  font-size: 15px;
+  font-weight: 500;
+  white-space: nowrap;
   text-decoration: none;
+  border-bottom: 3px solid transparent;
 }
 
 .nav-portal a:hover {
-  background-color: var(--q360-color-superficie-sutil);
+  color: var(--q360-color-texto);
+  border-bottom-color: var(--q360-color-borde-fuerte);
 }
 
 .nav-portal a[aria-current="page"] {
-  color: var(--q360-color-acento);
-  background-color: var(--q360-color-acento-suave);
+  color: var(--q360-color-acento-hover);
+  font-weight: 600;
+  border-bottom-color: var(--q360-color-acento);
 }
 
 .sesion-usuario {
   display: flex;
   align-items: center;
   gap: 12px;
+  min-width: 0;
+}
+
+.sesion-usuario__avatar {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 38px;
+  height: 38px;
+  color: #ffffff;
+  background: linear-gradient(135deg, var(--q360-color-marca-360), var(--q360-color-marca));
+  border-radius: 50%;
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
 }
 
 .sesion-usuario-nombre {
   display: flex;
   flex-direction: column;
-  align-items: flex-end;
-  gap: 2px;
+  align-items: flex-start;
+  gap: 3px;
+  min-width: 0;
   font-size: 13px;
+  line-height: 1.25;
 }
 
 .sesion-usuario-nombre strong {
+  max-width: min(240px, 100%);
+  overflow: hidden;
   color: var(--q360-color-texto);
+  font-size: 14px;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sesion-usuario-nombre .badge {
+  padding: 2px 8px;
+  font-size: 12px;
+}
+
+.sesion-usuario__salir {
+  margin-left: 4px;
 }
 
 /* -------------------------------------------------------------------- encabezado */
@@ -152,14 +241,26 @@ a {
 
 .tarjeta-resumen__titulo {
   display: block;
-  margin-bottom: 10px;
+  margin-bottom: 8px;
   color: var(--q360-color-texto-secundario);
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 1.35;
 }
 
 .tarjeta-resumen__valor {
+  display: block;
   color: var(--q360-color-texto);
   font-size: 30px;
-  font-weight: 700;
+  font-weight: 600;
+  line-height: 1.15;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Valor de texto (p. ej. el nombre del QE supervisor): más chico que una cifra para no partirse en tres líneas. */
+.tarjeta-resumen__valor.tarjeta-resumen__valor--texto {
+  font-size: 18px;
+  line-height: 1.3;
 }
 
 .tarjeta-resumen__valor--indisponible {
@@ -175,6 +276,7 @@ a {
   background-color: var(--q360-color-superficie);
   border: 1px solid var(--q360-color-borde);
   border-radius: var(--q360-radio-grande);
+  box-shadow: var(--q360-sombra-suave);
 }
 
 .panel-cabecera {
@@ -187,13 +289,15 @@ a {
 }
 
 .panel-cabecera h2 {
-  margin: 0 0 6px;
+  margin: 0 0 4px;
   color: var(--q360-color-texto);
+  font-size: 20px;
 }
 
 .panel-cabecera p {
   margin: 0;
   color: var(--q360-color-texto-secundario);
+  font-size: 15px;
 }
 
 /* --------------------------------------------------------------- bloques de estado */
@@ -245,7 +349,7 @@ table {
 
 th,
 td {
-  padding: 13px 12px;
+  padding: 11px 12px;
   text-align: left;
   border-bottom: 1px solid var(--q360-color-borde);
   vertical-align: middle;
@@ -253,14 +357,18 @@ td {
 
 th {
   color: var(--q360-color-texto-secundario);
-  font-size: 13px;
-  font-weight: 700;
+  background-color: var(--q360-color-superficie-sutil);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
   text-transform: uppercase;
   white-space: nowrap;
 }
 
 td {
   color: var(--q360-color-texto);
+  font-size: 14px;
+  font-variant-numeric: tabular-nums;
 }
 
 tbody tr:hover {
@@ -269,17 +377,18 @@ tbody tr:hover {
 
 .codigo {
   color: var(--q360-color-acento);
-  font-weight: 700;
+  font-weight: 600;
   white-space: nowrap;
 }
 
 /* ---------------------------------------------------------------------- badges */
 .badge {
   display: inline-block;
-  padding: 5px 10px;
+  padding: 4px 10px;
   border-radius: var(--q360-radio-pastilla);
   font-size: 13px;
-  font-weight: 700;
+  font-weight: 600;
+  line-height: 1.35;
   white-space: nowrap;
 }
 
@@ -403,8 +512,14 @@ tbody tr:hover {
   padding: 10px 16px;
   border: 1px solid transparent;
   border-radius: var(--q360-radio);
-  font-weight: 700;
+  font-weight: 600;
+  line-height: 1.25;
+  text-decoration: none;
   cursor: pointer;
+  transition:
+    background-color 0.15s ease,
+    border-color 0.15s ease,
+    color 0.15s ease;
 }
 
 .boton:disabled {
@@ -573,14 +688,50 @@ tbody tr:hover {
   font-size: 14px;
 }
 
+/* Con la barra fija, los saltos a un ancla (p. ej. /hdu/:id#asignacion) no quedan tapados por ella. */
+@media (min-width: 751px) {
+  html {
+    scroll-padding-top: 124px;
+  }
+}
+
 @media (max-width: 750px) {
   .barra-superior {
-    flex-direction: column;
-    align-items: stretch;
+    position: static;
+    padding: 0 16px;
+  }
+
+  .barra-superior__fila {
+    flex-wrap: wrap;
+    gap: 10px 12px;
+    padding: 12px 0 8px;
+  }
+
+  .marca {
+    font-size: 20px;
+  }
+
+  .marca__icono {
+    width: 36px;
+    height: 36px;
   }
 
   .sesion-usuario {
-    justify-content: space-between;
+    width: 100%;
+  }
+
+  .sesion-usuario__salir {
+    margin-left: auto;
+  }
+
+  .nav-portal {
+    margin: 0 -16px;
+    padding: 0 16px;
+  }
+
+  .contenedor {
+    width: calc(100% - 32px);
+    padding-top: 20px;
   }
 }
 

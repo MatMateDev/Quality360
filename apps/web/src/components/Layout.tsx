@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
-import { NavLink, Outlet, useNavigate } from "react-router-dom";
+import { Link, NavLink, Outlet, useNavigate } from "react-router-dom";
+import icono from "@/assets/quality360-icono.png";
 import { useAuth } from "@/auth/AuthContext";
 import { rutaPortal, type Rol } from "@/types/dominio";
 import { InsigniaRol } from "./Etiquetas";
@@ -37,7 +38,17 @@ const ENLACES_POR_ROL: Record<Rol, EnlaceNav[]> = {
   AUDITOR: [{ a: "/auditor", etiqueta: "Bandeja" }],
 };
 
-/** Barra superior y navegación por portal (E1-F02#3: el menú del QE solo trae equipo, historias supervisadas, perfil y cerrar sesión). */
+/** Iniciales del avatar (decorativo): primera letra del primer y del último nombre. */
+function iniciales(nombre: string): string {
+  const partes = nombre.trim().split(/\s+/).filter(Boolean);
+  const elegidas = partes.length > 1 ? [partes[0], partes[partes.length - 1]] : partes;
+  return elegidas.map((parte) => (parte ?? "").charAt(0).toLocaleUpperCase("es")).join("");
+}
+
+/**
+ * Barra superior y navegación por portal (E1-F02#3: el menú del QE solo trae equipo, historias supervisadas, perfil y cerrar sesión).
+ * D209: dos filas. Arriba, el logo de Quality360 a la izquierda y la sesión a la derecha; debajo, el menú del portal.
+ */
 export function Layout() {
   const { perfil, cerrarSesion, cambioRol, reconocerCambioRol } = useAuth();
   const navigate = useNavigate();
@@ -69,9 +80,28 @@ export function Layout() {
         Saltar al contenido
       </a>
       <header className="barra-superior">
-        <a className="marca" href="/">
-          Quality360
-        </a>
+        <div className="barra-superior__fila">
+          {/* El nombre accesible es el texto «Quality360»; el ícono es decorativo. */}
+          <Link className="marca" to="/">
+            <img className="marca__icono" src={icono} alt="" width={40} height={40} />
+            <span className="marca__texto">
+              Quality<span className="marca__360">360</span>
+            </span>
+          </Link>
+
+          <div className="sesion-usuario">
+            <span className="sesion-usuario__avatar" aria-hidden="true">
+              {iniciales(perfil.nombre)}
+            </span>
+            <span className="sesion-usuario-nombre">
+              <strong>{perfil.nombre}</strong>
+              <InsigniaRol rol={perfil.rol} />
+            </span>
+            <button type="button" className="boton boton--secundario sesion-usuario__salir" onClick={manejarCerrarSesion}>
+              Cerrar sesión
+            </button>
+          </div>
+        </div>
 
         <nav className="nav-portal" aria-label="Portal">
           {enlaces.map((enlace) => (
@@ -81,16 +111,6 @@ export function Layout() {
           ))}
           <NavLink to="/perfil">Perfil</NavLink>
         </nav>
-
-        <div className="sesion-usuario">
-          <span className="sesion-usuario-nombre">
-            <strong>{perfil.nombre}</strong>
-            <InsigniaRol rol={perfil.rol} />
-          </span>
-          <button type="button" className="boton boton--secundario" onClick={manejarCerrarSesion}>
-            Cerrar sesión
-          </button>
-        </div>
       </header>
 
       <main className="contenedor" id="contenido" tabIndex={-1}>
