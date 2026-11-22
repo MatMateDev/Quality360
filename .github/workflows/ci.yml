@@ -105,6 +105,29 @@ jobs:
               npx prisma db execute --url "$DATABASE_URL" --stdin
           done
 
+          # Crear roles de referencia en el PostgreSQL temporal del CI.
+          # NOLOGIN: no necesitan contraseñas ni acceso de aplicación.
+          npx prisma db execute --url "$DATABASE_URL" --stdin <<'SQL'
+          DO $$
+          BEGIN
+            IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'svc_organizacion') THEN
+              CREATE ROLE svc_organizacion NOLOGIN;
+            END IF;
+
+            IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'svc_certificaciones') THEN
+              CREATE ROLE svc_certificaciones NOLOGIN;
+            END IF;
+
+            IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'svc_impedimentos') THEN
+              CREATE ROLE svc_impedimentos NOLOGIN;
+            END IF;
+
+            IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'svc_integraciones') THEN
+              CREATE ROLE svc_integraciones NOLOGIN;
+            END IF;
+          END
+          $$;
+          SQL
           # Aplicar migraciones de los microservicios.
           for ws in services/organizacion services/certificaciones services/impedimentos services/integraciones; do
             if [[ -f "$ws/prisma/schema.prisma" && -d "$ws/prisma/migrations" ]]; then
