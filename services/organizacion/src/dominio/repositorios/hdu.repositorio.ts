@@ -5,6 +5,7 @@ import type {
   EstadoHdu,
   EventoHistorialHdu,
   Hdu,
+  HduRegistrada,
   OpcionesPaginacion,
   OrigenHdu,
   Pagina,
@@ -65,11 +66,15 @@ export const HDU_REPOSITORIO = Symbol('HDU_REPOSITORIO');
 export interface HduRepositorio {
   /** Crea la HDU en `PENDIENTE` y audita `CREAR_HDU` en la misma transacción. */
   crear(datos: DatosNuevaHdu, actor: Actor): Promise<Hdu>;
+  /** `null` también si la HU no tiene sprint vigente: no es representable (ver `HduRegistrada`). */
   buscarPorId(id: string): Promise<Hdu | null>;
-  buscarPorCodigoNormalizado(codigoNormalizado: string): Promise<Hdu | null>;
+  /** Incluye la HU sin sprint vigente; solo para repararla desde la carga semilla. */
+  buscarRegistradaPorId(id: string): Promise<HduRegistrada | null>;
+  /** Incluye la HU sin sprint vigente: el código sigue ocupado. */
+  buscarPorCodigoNormalizado(codigoNormalizado: string): Promise<HduRegistrada | null>;
   /** Una sola consulta para varios códigos (clasificación de una consulta de Jira, D136). */
-  buscarPorCodigosNormalizados(codigosNormalizados: readonly string[]): Promise<Hdu[]>;
-  /** Las HDU que existen entre `ids` (sin orden garantizado). */
+  buscarPorCodigosNormalizados(codigosNormalizados: readonly string[]): Promise<HduRegistrada[]>;
+  /** Las HDU que existen entre `ids` (sin orden garantizado); las sin sprint vigente se omiten. */
   buscarPorIds(ids: readonly string[]): Promise<Hdu[]>;
   /** Todas las HDU del ámbito, sin paginar (las bandejas filtran, ordenan y paginan en memoria). */
   listarTodasPorAmbito(ambito: FiltroAmbitoHdu): Promise<Hdu[]>;

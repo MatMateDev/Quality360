@@ -58,6 +58,45 @@ export async function crearUsuarioDePrueba(rol: Rol, opciones: { nombre?: string
   return { id, nombre, correo, rol, token: sesion.data.session.access_token };
 }
 
+/** Borra cuentas de prueba de Supabase Auth; ignora las que ya no existen. El registro local lo borra quien llama. */
+export async function eliminarCuentasDePrueba(ids: readonly string[]): Promise<void> {
+  for (const id of ids) {
+    const { error } = await admin.auth.admin.deleteUser(id);
+    if (error && error.status !== 404) throw new Error(`No se pudo borrar la cuenta de prueba ${id}: ${error.message}`);
+  }
+}
+
+/** Lo que una prueba creó y debe borrar al terminar, aunque falle a mitad de camino. */
+export interface CreadosEnPrueba {
+  readonly usuarios: string[];
+  readonly hdus: string[];
+  readonly sprints: string[];
+  readonly celulas: string[];
+}
+
+export function nuevosCreados(): CreadosEnPrueba {
+  return { usuarios: [], hdus: [], sprints: [], celulas: [] };
+}
+
+/**
+ * Borra solo lo registrado en `creados` (no trunca: sirve también sobre una base con otros datos), con sus historiales,
+ * auditoría y supervisión, y las cuentas de Supabase Auth de los usuarios.
+ */
+export async function borrarCreados(creados: CreadosEnPrueba): Promise<void> {
+  const { usuarios, hdus, sprints, celulas } = creados;
+  await prisma.auditoria.deleteMany({ where: { OR: [{ entidadId: { in: [...usuarios, ...hdus] } }, { actorId: { in: usuarios } }] } });
+  await prisma.hduHistorialResponsable.deleteMany({ where: { hduId: { in: hdus } } });
+  await prisma.hduHistorialAsignacion.deleteMany({ where: { hduId: { in: hdus } } });
+  await prisma.hduHistorialEstado.deleteMany({ where: { hduId: { in: hdus } } });
+  await prisma.historiaSprint.deleteMany({ where: { OR: [{ hduId: { in: hdus } }, { sprintId: { in: sprints } }] } });
+  await prisma.hdu.deleteMany({ where: { id: { in: hdus } } });
+  await prisma.sprint.deleteMany({ where: { id: { in: sprints } } });
+  await prisma.celula.deleteMany({ where: { id: { in: celulas } } });
+  await prisma.supervision.deleteMany({ where: { OR: [{ qeId: { in: usuarios } }, { analistaId: { in: usuarios } }] } });
+  await prisma.usuario.deleteMany({ where: { id: { in: usuarios } } });
+  await eliminarCuentasDePrueba(usuarios);
+}
+
 /** Limpia las tablas de `organizacion` entre pruebas (base local compartida, sin datos reales). */
 export async function limpiarBaseDeDatos(): Promise<void> {
   await prisma.$executeRawUnsafe(
