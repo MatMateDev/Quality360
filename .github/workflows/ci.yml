@@ -95,13 +95,42 @@ jobs:
 
       - name: Test (workspaces afectados)
         if: steps.afectados.outputs.hay == 'true'
+        shell: bash
         run: |
-          for ws in ${{ steps.afectados.outputs.lista }}; do
-            echo "::group::test $ws"
-            npm run test --workspace "$ws" --if-present
-            echo "::endgroup::"
+          set -euo pipefail
+
+          # Preparar los esquemas en PostgreSQL temporal del CI.
+          for schema in organizacion certificaciones impedimentos integraciones; do
+            echo "CREATE SCHEMA IF NOT EXISTS \"$schema\";" |
+              npx prisma db execute --url "$DATABASE_URL" --stdin
           done
 
+          # Aplicar migraciones de los microservicios.
+          for ws in services/organizacion services/certificaciones services/impedimentos services/integraciones; do
+            if [[ -f "$ws/prisma/schema.prisma" && -d "$ws/prisma/migrations" ]]; then
+              schema="${ws#services/}"
+              echo "::group::migrate $ws"
+
+              DATABASE_URL="${DATABASE_URL}?schema=${schema}" \
+                npm run migrate:deploy --workspace "$ws"
+              echo "::endgroup::"
+            fi
+          done
+          # Ejecutar las pruebas de los workspaces afectados.
+          for ws in ${{ steps.afectados.outputs.lista }}; do
+            echo "::group::test $ws"
+
+            if [[ "$ws" == services/* ]]; then
+              schema="${ws#services/}"
+
+              DATABASE_URL="${DATABASE_URL}?schema=${schema}" \
+                npm run test --workspace "$ws" --if-present
+            else
+              npm run test --workspace "$ws" --if-present
+            fi
+
+            echo "::endgroup::"
+          done
       - name: Build (workspaces afectados)
         if: steps.afectados.outputs.hay == 'true'
         run: |
