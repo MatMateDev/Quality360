@@ -28,6 +28,7 @@ import type {
   EstadoHdu,
   EventoHistorialHdu,
   Hdu,
+  HduRegistrada,
   OpcionesPaginacion,
   OrigenHdu,
   Pagina,
@@ -140,7 +141,7 @@ export class HduAplicacion {
   }
 
   /** Sin control de ámbito: solo para la carga semilla, que verifica idempotencia por código. */
-  async buscarPorCodigo(codigoNormalizado: string): Promise<Hdu | null> {
+  async buscarPorCodigo(codigoNormalizado: string): Promise<HduRegistrada | null> {
     return this.hdus.buscarPorCodigoNormalizado(codigoNormalizado);
   }
 
