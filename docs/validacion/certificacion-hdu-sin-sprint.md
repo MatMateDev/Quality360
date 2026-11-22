@@ -170,3 +170,49 @@ Las 8 pruebas omitidas (`ABS-*`) no certifican nada. Las de «Certificaciones de
 - `e5-pool-unico` sigue sin ejecutarse contra la base propia.
 - Las pruebas de la ronda 2 no cubren la reparación de una HDU sin sprint por la carga semilla (`cargarSprintHdu` por `buscarRegistradaPorId`) más allá de lo que ejecuta la suite de Organización.
 - La HDU sin sprint se obtuvo cerrando `historia_sprint.fecha_retiro` con el dueño de la tabla; el caso sin ninguna fila de `historia_sprint` solo lo cubre la suite de Organización.
+
+# Ronda 3 · sobre main con D208
+
+Código: `b8b165f` (la corrección completa, `90df435..e178820`, rehecha en un solo commit sobre `11ef5c7` = `quality360/main` con E6 y D208 «se retira el rol Líder QA de toda la plataforma»). No se tocó código de producción. Pruebas del 22-nov-2026 en un Supabase propio recién creado (Postgres 55422, `connection_limit=1`; los puertos 54403–54602 pasaron a estar reservados por Windows, por eso se usó 55xxx), migraciones de main aplicadas (incluida `d208_retiro_lider_qa`), semillas `seed` y `seed:e7` de main (4 roles; el fixture E7 trae 9 usuarios), servicios en 3150–3154 y portal en 5373 (puertos del arnés de E7 libres).
+
+## Veredicto de la ronda 3
+
+**La corrección conserva el comportamiento certificado en la ronda 2 y es compatible con D208. DEF-SINSPRINT-01 a 04 siguen CERRADOS; defectos abiertos: ninguno.** Sin fallos en toda la regresión.
+
+## 1. Revisión del diff `11ef5c7..b8b165f`
+
+- Código de producción: solo `mapeadores.ts`, `hdu.prisma.repositorio.ts`, `hdu.repositorio.ts`, `tipos.ts` (`HduRegistrada`), `hdu.servicio.ts` y `carga-semilla.servicio.ts`. Es el mismo contenido de `e178820` (filtro `CON_SPRINT_VIGENTE` en lista, `total`, contadores, `hdu/ambito` y `contarTodas`; por id la HDU sin sprint es inexistente; por código sigue ocupada; `buscarRegistradaPorId` para reparar por la carga semilla). No toca nada de roles ni de células.
+- Líder QA: ninguna línea añadida por el diff menciona al rol en código de producción ni en pruebas de Organización. Las únicas menciones eran de mis archivos: `LIDER_QA` y `lorena.soto@…` en `tests/e2e/hdu-sin-sprint-vigente.spec.ts` (el usuario ya no está en la semilla) y `bandeja/lider` en la sección de sondeo de este documento (histórica de rondas 1 y 2). En el repositorio quedan menciones previas de main (`ASIGNAR_CELULAS_LIDER` como acción de auditoría histórica, tipos generados de Prisma, pruebas web), que son de D208 y no de este cambio.
+- Pruebas ajustadas por mí a los 4 roles que existen (Administrador, QE, Analista QA, Auditor): se quitó `LIDER_QA` de `CORREOS`, y `[SIN-SPRINT#1]` corre ahora 4 veces y `[SIN-SPRINT#5]` recorre los 4 roles. Los oráculos de `tests/support/e7.ts` (`hduTotal`) y de `e7-b02-ambito.spec.ts` (T06) ya cuentan solo HDU con sprint vigente y no mencionan al Líder.
+
+## 2. Verificación de los defectos (dos HDU sin sprint: una con estado e impedimento, `historia_sprint.fecha_retiro` cerrado con el dueño de la tabla)
+
+| Defecto | Resultado real |
+| --- | --- |
+| 01 | 91 llamadas (detalle, `/historial`, `/entregables`, `/impedimentos`, `/riesgo`, `/checklist` con los 4 roles; `POST estado` y `PUT analista`; `/acceso` y `hdu/consulta` internos; bandejas, inicio, riesgo, aprobaciones, exportaciones y `hdu/ambito*`): **0 respuestas 5xx**. Las HDU sin sprint dan 404 o 403 (inexistente) y `/acceso` da 200 `permitido:false`. Control con las mismas HDU antes de cerrarles el sprint: también 0 |
+| 02 | `GET /v1/inicio/qe` `hduEnAmbito` 6 = lista 6; `GET /v1/inicio/qa` `hduAsignadas` 3 = lista 3 (con sprint presente eran 8 y 5, ambos iguales a su lista) |
+| 03 | `hdu/ambito` no las incluye (QE y Analista); `estado-codigos` da `existe:true` para ambas, coherente con `upsert` (que las trata como código ocupado) |
+| 04 | Tras la suite de Organización, `historia_usuario`, `usuario`, `celula` y `sprint` quedan en 0 filas |
+
+`GET /v1/hdu` da 200 para los 4 roles: Administrador 22, QE 6, Analista 3, Auditor 22 (24, 8, 5 y 24 antes de cerrar los sprints).
+
+## 3. Pruebas
+
+| Prueba | Resultado real |
+| --- | --- |
+| Compilación y `typecheck` de Organización | Sin errores |
+| Suite de Organización (base propia) | 317 pruebas: **316 pasan, 1 falla** (`e5-pool-unico`, por su guarda fija a `127.0.0.1:54322`; no se ejecutó, no certifica), 0 omitidas |
+| `tests/e2e/hdu-sin-sprint-vigente.spec.ts` | **18 de 18** (9 de inicio de sesión y 9 pruebas, con 4 roles) |
+| E6 (`e6-dashboard-admin`: contadores del dashboard y bandeja del Administrador, `hduTotal`) | 12 de 12 (9 de inicio de sesión y 3 pruebas), con las dos HDU sin sprint presentes |
+| E2 API | 12 de 12 |
+| E2 portal | 21 de 21 (9 de inicio de sesión y 12 pruebas) |
+| E7 API | **56 pasan, 0 fallan**, 4 omitidas (`ABS-*`) |
+| E7 portal | **93 pasan, 0 fallan**, 2 omitidas (`ABS-*`) |
+
+Las omitidas son los `ABS-*` del fixture (exigen una base «solo con seed:e7»; aquí también está la semilla MVP) y no certifican nada. Con los puertos del arnés libres pasaron todas las pruebas «Certificaciones detenida». Las dos pruebas del Líder en E7-F04 que fallaron intermitentemente en la ronda 2 ya no existen (D208); no hubo fallos nuevos.
+
+## 4. Observaciones y límites
+
+- **OBS-4:** una carpeta `build-pruebas/` vieja dejó compilado `e7-b01-roles-celulas.test.js`, cuyo fuente ya no existe en main: 22 pruebas fallaban en falso («5 roles, con LIDER_QA»). Se resolvió borrando `build-pruebas` (no versionada) y recompilando; con esa carpeta limpia pasan 316 de 317. Quien ejecute `npm test` en un worktree viejo debería limpiarla (conviene que el script de pruebas la borre antes de compilar).
+- **OBS-2 (vigente):** `e5-pool-unico` solo admite `127.0.0.1:54322` y no se pudo ejecutar contra la base propia.
+- Mismos límites que en las rondas anteriores: stack y base propios, nada medido en producción; E1, E3, E4 y E5 solo sondeados en sus endpoints de HDU (91 llamadas por el gateway, sin sus suites); el caso de una HDU sin ninguna fila de `historia_sprint` y la reparación por la carga semilla los cubre solo la suite de Organización. E6 se corrió únicamente en `e6-dashboard-admin` (el dashboard del Administrador); sus demás pantallas no usan listados de HDU ni `/acceso`.

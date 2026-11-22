@@ -19,7 +19,6 @@ const CORREOS = {
   ADMINISTRADOR: USUARIOS_SEMILLA.patricia.correo,
   QE: USUARIOS_SEMILLA.carla.correo,
   ANALISTA_QA: USUARIOS_SEMILLA.ana.correo,
-  LIDER_QA: "lorena.soto@quality360.local",
   AUDITOR: "andres.vega@quality360.local",
 } as const;
 
@@ -124,7 +123,7 @@ test.describe("HDU sin sprint vigente · GET /v1/hdu", () => {
   });
 
   // DEF-SINSPRINT-01: por id, una HDU sin sprint vigente es inexistente (404/403 según el rol), nunca 500/503.
-  test("[SIN-SPRINT#5] DEF-SINSPRINT-01: lecturas y escrituras por id de una HDU sin sprint vigente no responden 500 ni 503, para los 5 roles", async ({ request }) => {
+  test("[SIN-SPRINT#5] DEF-SINSPRINT-01: lecturas y escrituras por id de una HDU sin sprint vigente no responden 500 ni 503, para los 4 roles", async ({ request }) => {
     for (const rol of Object.keys(CORREOS) as Array<keyof typeof CORREOS>) {
       for (const sufijo of ["", "/historial", "/entregables", "/impedimentos"]) {
         const ruta = `/v1/hdu/${rota.id}${sufijo}`;
