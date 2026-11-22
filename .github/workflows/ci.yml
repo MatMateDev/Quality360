@@ -52,6 +52,7 @@ jobs:
           --health-retries 5
     env:
       DATABASE_URL: postgresql://postgres:postgres@localhost:5432/quality360_ci
+      TEST_DATABASE_ADMIN_URL: postgresql://postgres:postgres@localhost:5432/quality360_ci?schema=integraciones
     steps:
       - name: Checkout
         uses: actions/checkout@v4
