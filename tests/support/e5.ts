@@ -15,7 +15,8 @@ import { TOKEN_VALIDO, CORREO_VALIDO } from "./jira-falso/servidor";
  * Cada archivo de pruebas termina con `limpiarE5()` (sección 9: las HDU importadas no se pueden borrar por la API).
  */
 export const SITIO_FALSO = "http://127.0.0.1:4010";
-export const SITIO_CERRADO = "http://127.0.0.1:4011";
+/** Puerto sin servidor (el 4011 pasó al Atlassian falso de OAuth). */
+export const SITIO_CERRADO = "http://127.0.0.1:4019";
 export const TOKEN_FALSO = TOKEN_VALIDO;
 export const CORREO_FALSO = CORREO_VALIDO;
 /** Prefijo de las HDU manuales que crean las pruebas de E5 (se limpian junto con las importadas). */
@@ -26,6 +27,10 @@ export const URL_I2 = "http://localhost:3104";
 export const URL_I3 = "http://localhost:3105";
 export const URL_I4 = "http://localhost:3106";
 export const URL_I5 = "http://localhost:3107";
+/** Integraciones sin las variables JIRA_OAUTH_* (E5-F08#7, E5-B08#11). */
+export const URL_I6 = "http://localhost:3108";
+/** Atlassian falso de OAuth (E5 OAuth). */
+export const URL_ATLASSIAN = "http://127.0.0.1:4011";
 
 export const tk = (clave: ClaveE7) => tokenE7(clave);
 

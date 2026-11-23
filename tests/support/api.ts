@@ -93,4 +93,6 @@ export const api = {
     llamarApi<T>(request, "PUT", ruta, opciones),
   patch: <T = unknown>(request: APIRequestContext, ruta: string, opciones?: OpcionesLlamada) =>
     llamarApi<T>(request, "PATCH", ruta, opciones),
+  delete: <T = unknown>(request: APIRequestContext, ruta: string, opciones?: Omit<OpcionesLlamada, "body">) =>
+    llamarApi<T>(request, "DELETE", ruta, opciones),
 };

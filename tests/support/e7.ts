@@ -37,7 +37,7 @@ export const USUARIOS_E7: Record<ClaveE7, { correo: string; rol: RolE7; portal: 
 export const ROLES_MATRIZ = [
   { clave: "ana1", rol: "ANALISTA_QA", portal: "/qa", bandeja: "analista", rutaPropia: "/qa", rutasPortal: ["/qa", "/qa/hdu"] },
   { clave: "qe1", rol: "QE", portal: "/qe", bandeja: "qe", rutaPropia: "/qe", rutasPortal: ["/qe", "/qe/equipo", "/qe/aprobaciones"] },
-  { clave: "adm1", rol: "ADMINISTRADOR", portal: "/admin", bandeja: "admin", rutaPropia: "/admin", rutasPortal: ["/admin", "/admin/usuarios", "/admin/supervision"] },
+  { clave: "adm1", rol: "ADMINISTRADOR", portal: "/admin", bandeja: "admin", rutaPropia: "/admin", rutasPortal: ["/admin", "/admin/usuarios", "/admin/supervision", "/admin/integraciones/jira/oauth/retorno"] },
   { clave: "aud1", rol: "AUDITOR", portal: "/auditor", bandeja: "auditor", rutaPropia: "/auditor", rutasPortal: ["/auditor", "/auditor/certificados"] },
 ] as const;
 
