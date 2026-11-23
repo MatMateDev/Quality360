@@ -31,13 +31,27 @@ const MENSAJES_ERROR: Readonly<Record<CodigoErrorIntegracion, string>> = {
   ARCHIVO_ILEGIBLE: 'No pudimos leer el archivo. Revisa que sea un CSV bien formado o un JSON con una lista de historias.',
   COLUMNAS_FALTANTES: 'Faltan las columnas: codigo, titulo.',
   DEMASIADAS_FILAS: 'El archivo supera el máximo de 500 filas.',
+  JIRA_RECONEXION_NECESARIA: 'La conexión con Jira venció. Vuelve a conectar con Jira.',
+  JIRA_OAUTH_PERMISOS_INSUFICIENTES: 'Faltan permisos en Atlassian. Acepta todos los permisos solicitados.',
+  JIRA_OAUTH_CONSENTIMIENTO_RECHAZADO: 'No aceptaste los permisos en Atlassian. No se conectó nada.',
+  JIRA_OAUTH_CANJE_FALLIDO: 'Atlassian no aceptó la autorización. Vuelve a intentarlo.',
+  JIRA_OAUTH_SIN_SITIO: 'Tu cuenta de Atlassian no tiene acceso a ningún sitio de Jira.',
 };
+
+/** Dónde ocurre un error de OAuth: el retorno y la elección de sitio sugieren reintentar; el resto, ir a Conexión (contrato). */
+export type ContextoErrorOauth = 'CONEXION' | 'OPERACION';
 
 /**
  * Sugerencias en orden: la primera es la acción principal (D117). `ORGANIZACION_NO_DISPONIBLE` nunca sugiere
  * importar un archivo, porque el archivo también escribe a través de Organización.
  */
-export function sugerenciasDe(codigo: CodigoErrorIntegracion, origen: OrigenEjecucion, hayContinuarDesde: boolean, fase: FaseEjecucion = 'CONSULTA'): SugerenciaIntegracion[] {
+export function sugerenciasDe(
+  codigo: CodigoErrorIntegracion,
+  origen: OrigenEjecucion,
+  hayContinuarDesde: boolean,
+  fase: FaseEjecucion = 'CONSULTA',
+  contexto: ContextoErrorOauth = 'OPERACION',
+): SugerenciaIntegracion[] {
   // Las ejecuciones directas anteriores a D132 ya no se continúan (D150).
   const puedeContinuar = fase !== 'DIRECTA';
   const esJira = origen === 'JIRA';
@@ -54,6 +68,15 @@ export function sugerenciasDe(codigo: CodigoErrorIntegracion, origen: OrigenEjec
     case 'JIRA_NO_DISPONIBLE':
     case 'JIRA_RESPUESTA_INVALIDA':
       return ['REINTENTAR', 'IMPORTAR_ARCHIVO'];
+    case 'JIRA_RECONEXION_NECESARIA':
+      return ['IR_A_CONEXION', 'IMPORTAR_ARCHIVO'];
+    case 'JIRA_OAUTH_PERMISOS_INSUFICIENTES':
+      return contexto === 'CONEXION' ? ['REINTENTAR'] : ['IR_A_CONEXION', 'IMPORTAR_ARCHIVO'];
+    case 'JIRA_OAUTH_CONSENTIMIENTO_RECHAZADO':
+    case 'JIRA_OAUTH_SIN_SITIO':
+      return ['REINTENTAR'];
+    case 'JIRA_OAUTH_CANJE_FALLIDO':
+      return ['REINTENTAR', 'AVISAR_DESPLIEGUE'];
     case 'PRESUPUESTO_DE_TIEMPO':
       return [esJira ? (puedeContinuar ? 'CONTINUAR' : 'REINTENTAR') : 'IMPORTAR_MISMO_ARCHIVO'];
     case 'TOPE_DE_CONSULTA':
@@ -74,8 +97,25 @@ export function mensajeDeError(codigo: CodigoErrorIntegracion): string {
   return MENSAJES_ERROR[codigo];
 }
 
-export function errorIntegracion(codigo: CodigoErrorIntegracion, origen: OrigenEjecucion, hayContinuarDesde = false): ErrorIntegracion {
-  return { codigo, mensaje: MENSAJES_ERROR[codigo], sugerencias: sugerenciasDe(codigo, origen, hayContinuarDesde) };
+export function errorIntegracion(
+  codigo: CodigoErrorIntegracion,
+  origen: OrigenEjecucion,
+  hayContinuarDesde = false,
+  oauth?: { contexto?: ContextoErrorOauth; permisosFaltantes?: readonly string[] },
+): ErrorIntegracion {
+  const sugerencias = sugerenciasDe(codigo, origen, hayContinuarDesde, 'CONSULTA', oauth?.contexto ?? 'OPERACION');
+  const faltantes = oauth?.permisosFaltantes;
+  if (codigo === 'JIRA_OAUTH_PERMISOS_INSUFICIENTES' && faltantes !== undefined && faltantes.length > 0) {
+    // «Faltan permisos en Atlassian: <permisos>. Acepta todos los permisos solicitados.» Los permisos son constantes del servicio.
+    const lista = faltantes.slice(0, 10);
+    return {
+      codigo,
+      mensaje: `Faltan permisos en Atlassian: ${lista.join(', ')}. Acepta todos los permisos solicitados.`,
+      sugerencias,
+      permisosFaltantes: [...lista],
+    };
+  }
+  return { codigo, mensaje: MENSAJES_ERROR[codigo], sugerencias };
 }
 
 export function esCodigoErrorIntegracion(valor: unknown): valor is CodigoErrorIntegracion {

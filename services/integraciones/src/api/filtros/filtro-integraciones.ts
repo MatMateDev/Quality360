@@ -25,12 +25,20 @@ import {
   IntegracionEnCurso,
   JiraNoConfigurado,
   LlaveCifradoNoDisponible,
+  EstadoOauthInvalido,
+  OauthNoConfigurado,
   OrganizacionDenego,
   OrganizacionNoDisponible,
+  SinConexionOauth,
+  SitioOauthNoValido,
   TokenNoDescifrable,
 } from '../../dominio/errores.js';
 
 @Catch(
+  OauthNoConfigurado,
+  EstadoOauthInvalido,
+  SitioOauthNoValido,
+  SinConexionOauth,
   LlaveCifradoNoDisponible,
   TokenNoDescifrable,
   IntegracionEnCurso,
@@ -70,6 +78,14 @@ export class FiltroErroresIntegraciones implements ExceptionFilter {
 
     if (error instanceof LlaveCifradoNoDisponible) {
       [estado, codigo] = [503, 'LLAVE_CIFRADO_NO_DISPONIBLE'];
+    } else if (error instanceof OauthNoConfigurado) {
+      [estado, codigo] = [503, 'JIRA_OAUTH_NO_CONFIGURADO'];
+    } else if (error instanceof EstadoOauthInvalido) {
+      [estado, codigo] = [400, 'JIRA_OAUTH_ESTADO_INVALIDO'];
+    } else if (error instanceof SitioOauthNoValido) {
+      [estado, codigo] = [400, 'JIRA_OAUTH_SITIO_NO_VALIDO'];
+    } else if (error instanceof SinConexionOauth) {
+      [estado, codigo] = [409, 'JIRA_OAUTH_SIN_CONEXION'];
     } else if (error instanceof TokenNoDescifrable) {
       [estado, codigo] = [409, 'TOKEN_NO_DESCIFRABLE'];
     } else if (error instanceof IntegracionEnCurso) {
@@ -134,6 +150,11 @@ const MENSAJES_DETALLE: Record<string, string> = {
   HDU_YA_ASIGNADA: 'Esta HDU ya fue asignada.',
   FILA_MODIFICADA: 'Otra persona modificó esta HDU. Revisa los datos actuales y confirma de nuevo.',
   FILA_EN_CURSO: 'Otra persona está confirmando esta HDU ahora. Espera unos segundos y revisa.',
+  // E5 OAuth (D211, D212, D216, D217): sin nombres de variables ni valores; mismo texto para toda causa de `state` inválido.
+  JIRA_OAUTH_NO_CONFIGURADO: 'La conexión automática con Jira no está habilitada en el servidor.',
+  JIRA_OAUTH_ESTADO_INVALIDO: 'La autorización venció o no es válida. Vuelve a pulsar «Conectar con Jira».',
+  JIRA_OAUTH_SITIO_NO_VALIDO: 'El sitio elegido no es válido.',
+  JIRA_OAUTH_SIN_CONEXION: 'No hay una conexión pendiente.',
 };
 
 function mensajeDe(codigo: string): string {

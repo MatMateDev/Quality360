@@ -15,7 +15,7 @@ import { PrismaClient } from '#prisma';
 import { SignJWT } from 'jose';
 
 import type { LectorArchivo, ResultadoLectura } from '../src/aplicacion/puertos.js';
-import type { FuenteJira, IssueJira, PaginaJira, ResultadoJira, CodigoErrorJira, EventoEspera } from '../src/dominio/puertos/fuente-jira.js';
+import type { CredencialFuenteJira, FuenteJira, IssueJira, PaginaJira, ResultadoJira, CodigoErrorJira, EventoEspera } from '../src/dominio/puertos/fuente-jira.js';
 import type { FilaMapeada } from '../src/dominio/mapeo/tipos.js';
 import { AUDIENCIA, EMISOR, SECRETO } from './ayudas-app.js';
 
@@ -68,7 +68,7 @@ const duenio = new PrismaClient({
     'postgresql://supabase_admin:postgres@127.0.0.1:54322/postgres?schema=integraciones',
 });
 export async function limpiarIntegraciones(): Promise<void> {
-  await duenio.$executeRawUnsafe('TRUNCATE TABLE integraciones.consulta_item, integraciones.consulta_jira, integraciones.detalle_ejecucion, integraciones.ejecucion_integracion, integraciones.evento_configuracion, integraciones.configuracion_jira');
+  await duenio.$executeRawUnsafe('TRUNCATE TABLE integraciones.consulta_item, integraciones.consulta_jira, integraciones.detalle_ejecucion, integraciones.ejecucion_integracion, integraciones.evento_configuracion, integraciones.configuracion_jira, integraciones.conexion_oauth_jira, integraciones.oauth_estado_jira, integraciones.evento_oauth_jira');
 }
 
 export async function consultaDuenio<T = Record<string, unknown>>(sql: string): Promise<T[]> {
@@ -77,6 +77,34 @@ export async function consultaDuenio<T = Record<string, unknown>>(sql: string): 
 
 export async function ejecutarDuenio(sql: string): Promise<void> {
   await duenio.$executeRawUnsafe(sql);
+}
+
+/**
+ * Otra conexión toma `SELECT … FOR UPDATE` de la fila de la conexión OAuth y la retiene hasta que se llame a lo que devuelve
+ * (o pasen `maxMs`): reproduce un proceso que está renovando (E5-B08 #8, candado no obtenido en 3 s).
+ */
+export async function retenerFilaConexion(maxMs: number): Promise<() => Promise<void>> {
+  let liberar: () => void = () => undefined;
+  const pedido = new Promise<void>((resolver) => {
+    liberar = resolver;
+  });
+  let tomado: () => void = () => undefined;
+  const alTomar = new Promise<void>((resolver) => {
+    tomado = resolver;
+  });
+  const enCurso = duenio.$transaction(
+    async (tx) => {
+      await tx.$queryRawUnsafe('SELECT "id" FROM "integraciones"."conexion_oauth_jira" WHERE "id" = 1 FOR UPDATE');
+      tomado();
+      await Promise.race([pedido, new Promise((resolver) => setTimeout(resolver, maxMs))]);
+    },
+    { timeout: maxMs + 10_000, maxWait: 5000 },
+  );
+  await alTomar;
+  return async () => {
+    liberar();
+    await enCurso;
+  };
 }
 
 export async function cerrarBases(): Promise<void> {
@@ -561,6 +589,9 @@ export function issue(numero: number, clave: string, parcial: Partial<IssueJira>
   };
 }
 
+/** El secreto de una credencial: el API token o el token de acceso OAuth. */
+export const secretoDe = (c: CredencialFuenteJira): string => ('tipo' in c ? c.tokenAcceso : c.token);
+
 export class JiraFalso implements FuenteJira {
   modo: ModoJira = 'NORMAL';
   retardoMs = 0;
@@ -625,15 +656,23 @@ export class JiraFalso implements FuenteJira {
     return null;
   }
 
-  async probar(c: { sitio: string; correo: string; token: string }, proyecto: string): ReturnType<FuenteJira['probar']> {
+  async probar(c: CredencialFuenteJira, proyecto: string): ReturnType<FuenteJira['probar']> {
     this.llamadas.push('probar');
-    const error = this.errorDeCredencial<{ usuarioJira: string; proyecto: { clave: string; nombre: string } }>(c.token);
+    const error = this.errorDeCredencial<{ usuarioJira: string; proyecto: { clave: string; nombre: string } }>(secretoDe(c));
     if (error !== null) return error;
     if (this.modo === 'LIMITE_PAGINA_2' || this.modo === 'LIMITE') {
       if (this.modo === 'LIMITE_PAGINA_2') return this.fallo('JIRA_LIMITE_DE_TASA');
     }
     if (!this.proyectos.has(proyecto)) return this.fallo('JIRA_PROYECTO_NO_ENCONTRADO');
     return { ok: true, valor: { usuarioJira: 'Admin Jira Falso', proyecto: { clave: proyecto, nombre: `Proyecto ${proyecto}` } }, eventos: [] };
+  }
+
+  /** Una sola llamada a `myself` (E5 OAuth): con OAuth el acceso debe estar entre `tokensValidos`. */
+  async probarCuenta(c: CredencialFuenteJira): ReturnType<FuenteJira['probarCuenta']> {
+    this.llamadas.push('probarCuenta');
+    const error = this.errorDeCredencial<{ usuarioJira: string; cuentaId: string }>(secretoDe(c));
+    if (error !== null) return error;
+    return { ok: true, valor: { usuarioJira: 'Admin Jira Falso', cuentaId: 'cuenta-falsa-1' }, eventos: [] };
   }
 
   /** El campo de criterios que `/field` informa (D199). `null`: el sitio no tiene uno. */
@@ -651,13 +690,13 @@ export class JiraFalso implements FuenteJira {
   }
 
   async buscarPagina(
-    c: { sitio: string; correo: string; token: string },
+    c: CredencialFuenteJira,
     q: { proyecto: string; tipos: string[]; despuesDe?: string; nextPageToken?: string; campoSprint: string | null; campoCriterios?: string | null },
   ): Promise<ResultadoJira<PaginaJira>> {
     this.llamadas.push('buscarPagina');
     this.consultas.push({ proyecto: q.proyecto, tipos: q.tipos, despuesDe: q.despuesDe, nextPageToken: q.nextPageToken, campoCriterios: q.campoCriterios });
     await this.esperar();
-    const error = this.errorDeCredencial<PaginaJira>(c.token);
+    const error = this.errorDeCredencial<PaginaJira>(secretoDe(c));
     if (error !== null) return error;
     const pagina2 = q.nextPageToken !== undefined;
     const espera = (n: number): EventoEspera[] => Array.from({ length: n }, () => ({ tipo: 'JIRA_LIMITE_DE_TASA', esperaMs: 1000, fecha: new Date() }));

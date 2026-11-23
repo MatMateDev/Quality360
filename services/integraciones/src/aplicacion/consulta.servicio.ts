@@ -15,8 +15,8 @@ import { SIN_CONTEOS, type Consulta, type GrupoConsulta, type Persona } from '..
 import { calcularVencimiento, decidirConsultar, obstaculoDeContinuar, obstaculoDeLectura, pasoSuVigencia, sinRepetidos } from '../dominio/consulta/vida.js';
 import { Presupuesto, resultadoFinal } from '../dominio/ejecucion.js';
 import { JiraNoConfigurado, OrganizacionNoDisponible } from '../dominio/errores.js';
-import type { CredencialJira, FuenteJira, IssueJira, OpcionesLlamada } from '../dominio/puertos/fuente-jira.js';
-import type { CodigoErrorIntegracion, EventoEjecucion, Rol } from '../dominio/tipos.js';
+import type { FuenteJira, IssueJira, OpcionesLlamada } from '../dominio/puertos/fuente-jira.js';
+import type { CodigoErrorIntegracion, ConfiguracionGuardada, EventoEjecucion, Rol } from '../dominio/tipos.js';
 import {
   CifradorToken,
   ConfiguracionRepositorio,
@@ -29,6 +29,7 @@ import {
   type DatosFilaNueva,
   type Solicitante,
 } from './puertos.js';
+import { CredencialesJira, SesionApiToken, type SesionJira } from './credenciales-jira.js';
 import { vistaEjecucion } from './vistas.js';
 import { vistaConsulta, vistaItem } from './vistas-consulta.js';
 
@@ -68,6 +69,7 @@ export class ConsultaAplicacion {
     private readonly consultas: ConsultaRepositorio,
     private readonly organizacion: ProveedorOrganizacion,
     private readonly cifrador: CifradorToken,
+    private readonly credenciales: CredencialesJira,
     private readonly mapeador: MapeadorIssues,
     private readonly reloj: Reloj,
     @Inject(FUENTE_JIRA) private readonly jira: FuenteJira,
@@ -131,7 +133,7 @@ export class ConsultaAplicacion {
     const presupuesto = new Presupuesto(this.configuracion.presupuestoMs);
     const guardada = await this.configuraciones.obtener();
     if (guardada === null) throw new JiraNoConfigurado();
-    const token = this.cifrador.descifrar(guardada.token);
+    const sesion = await this.abrirSesion(solicitante, guardada, presupuesto);
 
     const abierta = await this.abiertaVigente();
     const decision = decidirConsultar(abierta, entrada.reemplazar, this.reloj.ahora());
@@ -161,7 +163,19 @@ export class ConsultaAplicacion {
         sprintRespaldoNombre: destino.sprintRespaldo?.nombre ?? null,
       },
     };
-    return this.ejecutarTanda(solicitante, { id: actor.id, nombre: actor.nombre }, guardada, { sitio: guardada.sitio, correo: guardada.correo, token }, contexto, presupuesto);
+    return this.ejecutarTanda(solicitante, { id: actor.id, nombre: actor.nombre }, guardada, sesion, contexto, presupuesto);
+  }
+
+  /**
+   * La credencial del método activo (D209). API token: se descifra y se usa tal cual (409 `TOKEN_NO_DESCIFRABLE`). OAuth: sin
+   * las credenciales de la app, 503 `JIRA_OAUTH_NO_CONFIGURADO`; sin conexión o con el sitio pendiente, 409
+   * `JIRA_NO_CONFIGURADO`; con `RECONEXION_NECESARIA`, una sesión que responde `JIRA_RECONEXION_NECESARIA` y deja la tanda
+   * `FALLIDA` sin tocar la consulta abierta (D215).
+   */
+  private async abrirSesion(solicitante: Solicitante, guardada: ConfiguracionGuardada, presupuesto: Presupuesto): Promise<SesionJira> {
+    if (guardada.metodo === 'OAUTH') return this.credenciales.sesionOauth(solicitante, presupuesto);
+    if (guardada.token === null || guardada.correo === null) throw new JiraNoConfigurado();
+    return new SesionApiToken({ sitio: guardada.sitio, correo: guardada.correo, token: this.cifrador.descifrar(guardada.token) });
   }
 
   /** `POST /consultas/{id}/continuaciones`: lee desde `continuarDesde` y acumula en la misma consulta sin tocar lo asignado. */
@@ -172,7 +186,7 @@ export class ConsultaAplicacion {
     if (obstaculo !== null) throw new ErrorDeConsulta(obstaculo, consulta);
     const guardada = await this.configuraciones.obtener();
     if (guardada === null) throw new JiraNoConfigurado();
-    const token = this.cifrador.descifrar(guardada.token);
+    const sesion = await this.abrirSesion(solicitante, guardada, presupuesto);
     const actor = await this.organizacion.perfil(solicitante.contexto, presupuesto.limiteDe(this.configuracion.tiempoLimiteOrganizacionMs));
     const contexto: ContextoTanda = {
       existente: consulta,
@@ -182,14 +196,14 @@ export class ConsultaAplicacion {
       desde: consulta.continuarDesde ?? undefined,
       sugerencia: null,
     };
-    return this.ejecutarTanda(solicitante, { id: actor.id, nombre: actor.nombre }, guardada, { sitio: guardada.sitio, correo: guardada.correo, token }, contexto, presupuesto);
+    return this.ejecutarTanda(solicitante, { id: actor.id, nombre: actor.nombre }, guardada, sesion, contexto, presupuesto);
   }
 
   private async ejecutarTanda(
     solicitante: Solicitante,
     actor: Persona,
     guardada: NonNullable<Awaited<ReturnType<ConfiguracionRepositorio['obtener']>>>,
-    credencial: CredencialJira,
+    sesion: SesionJira,
     contexto: ContextoTanda,
     presupuesto: Presupuesto,
   ) {
@@ -208,7 +222,7 @@ export class ConsultaAplicacion {
       this.configuracion.enCursoMaxMs,
     );
     try {
-      return await this.recorrer(solicitante, actor, guardada, credencial, contexto, ejecucion.id, presupuesto);
+      return await this.recorrer(solicitante, actor, guardada, sesion, contexto, ejecucion.id, presupuesto);
     } catch (error) {
       // Algo inesperado (base de datos, un defecto): la ejecución no puede quedar abierta.
       this.registro.error(`La ejecución ${ejecucion.id} falló: ${error instanceof Error ? error.name : 'desconocido'}`);
@@ -221,7 +235,7 @@ export class ConsultaAplicacion {
     solicitante: Solicitante,
     actor: Persona,
     guardada: NonNullable<Awaited<ReturnType<ConfiguracionRepositorio['obtener']>>>,
-    credencial: CredencialJira,
+    sesion: SesionJira,
     contexto: ContextoTanda,
     ejecucionId: string,
     presupuesto: Presupuesto,
@@ -251,10 +265,13 @@ export class ConsultaAplicacion {
         interrupcion = 'PRESUPUESTO_DE_TIEMPO';
         break;
       }
-      const pagina = await this.jira.buscarPagina(
-        credencial,
-        { proyecto: contexto.proyecto, tipos: guardada.tiposIssue, despuesDe: contexto.desde, nextPageToken, campoSprint: guardada.campoSprint, campoCriterios: guardada.campoCriterios },
-        opciones,
+      // Con OAuth, un 401 renueva el acceso y reintenta UNA vez por tanda (D214); con el API token llama una sola vez.
+      const pagina = await sesion.llamar((credencial) =>
+        this.jira.buscarPagina(
+          credencial,
+          { proyecto: contexto.proyecto, tipos: guardada.tiposIssue, despuesDe: contexto.desde, nextPageToken, campoSprint: guardada.campoSprint, campoCriterios: guardada.campoCriterios },
+          opciones,
+        ),
       );
       eventos.push(...pagina.eventos);
       if (!pagina.ok) {
@@ -264,7 +281,7 @@ export class ConsultaAplicacion {
 
       const issues: IssueJira[] = pagina.valor.issues.slice(0, Math.max(0, tope - leidasEnJira));
       const recortada = issues.length < pagina.valor.issues.length;
-      const mapeadas = issues.map((issue, indice) => ({ issue, fila: this.mapeador.mapear(issue, { fila: yaGuardadas + filas.length + indice + 1, sitio: credencial.sitio }) }));
+      const mapeadas = issues.map((issue, indice) => ({ issue, fila: this.mapeador.mapear(issue, { fila: yaGuardadas + filas.length + indice + 1, sitio: sesion.sitio }) }));
       const { nuevas } = sinRepetidos(
         mapeadas.map((m) => ({ ...m, codigo: m.fila.codigo })),
         guardados,

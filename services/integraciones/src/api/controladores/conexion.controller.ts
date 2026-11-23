@@ -36,8 +36,9 @@ export class ConexionController {
 
   @Post('probar')
   @HttpCode(200)
-  async probar(@Body() cuerpo: unknown) {
-    return this.configuraciones.probar(leerPrueba(cuerpo, this.configuracion));
+  async probar(@Body() cuerpo: unknown, @IdentidadActual() identidad: Identidad | undefined, @AccesoActual() acceso: ResolucionAcceso | undefined, @Req() solicitud: Request) {
+    const entrada = leerPrueba(cuerpo, this.configuracion);
+    return this.configuraciones.probar(solicitanteDe(identidad, acceso, solicitud), entrada);
   }
 
   @Get('eventos')

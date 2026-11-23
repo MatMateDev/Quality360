@@ -4,6 +4,7 @@
  * (q360-integraciones: `FuenteJira`, mapeo y lector de archivos). Las clases abstractas sirven de token de inyección.
  */
 import type { FuenteJira } from '../dominio/puertos/fuente-jira.js';
+import type { ConexionOauth, TipoEventoOauth } from '../dominio/oauth/conexion.js';
 import type { ErrorValidacion, ValidacionAsignacion } from '../dominio/consulta/asignacion.js';
 import type { HduExistente } from '../dominio/consulta/clasificacion.js';
 import type { CampoAsignacion, Consulta, ConteosFilas, EstadoConsulta, GrupoConsulta, ItemConsulta, Persona, YaAsignada } from '../dominio/consulta/tipos.js';
@@ -24,12 +25,14 @@ import type {
   EventoEjecucion,
   FaseEjecucion,
   FilaDetalle,
+  MetodoConexion,
   MotivoFila,
   OrigenEjecucion,
   Pagina,
   ResultadoEjecucion,
   ResultadoFila,
   Rol,
+  SecretoCifrado,
   TokenCifradoGuardado,
   CampoConfiguracion,
 } from '../dominio/tipos.js';
@@ -191,12 +194,18 @@ export abstract class CifradorToken {
   abstract cifrar(token: string): TokenCifradoGuardado;
   /** @throws LlaveCifradoNoDisponible, TokenNoDescifrable */
   abstract descifrar(token: TokenCifradoGuardado): string;
+  /** Mismo AES-256-GCM y misma llave, con IV, etiqueta y dato asociado propios (D214). @throws LlaveCifradoNoDisponible */
+  abstract cifrarSecreto(texto: string, datoAsociado: string): SecretoCifrado;
+  /** @throws LlaveCifradoNoDisponible, TokenNoDescifrable */
+  abstract descifrarSecreto(secreto: SecretoCifrado, datoAsociado: string): string;
 }
 
 // ------------------------------------------------------------------ persistencia
 export interface DatosGuardadoConfiguracion {
+  /** Método que queda activo (D209). Con `OAUTH`: `correo` y `token` son `null` y `sitio` es el del sitio OAuth. */
+  readonly metodo: MetodoConexion;
   readonly sitio: string;
-  readonly correo: string;
+  readonly correo: string | null;
   readonly proyecto: string;
   readonly tiposIssue: string[];
   readonly campoSprint: string | null;
@@ -204,8 +213,24 @@ export interface DatosGuardadoConfiguracion {
   readonly celulaId: string;
   readonly qeResponsableId: string;
   readonly sprintRespaldoId: string;
-  readonly token: TokenCifradoGuardado;
+  readonly token: TokenCifradoGuardado | null;
   readonly actor: { id: string; nombre: string };
+  readonly fecha: Date;
+  /**
+   * Con el cambio de OAuth a API token (D209): se borra la conexión OAuth y se registra `DESCONECTAR`, en la misma
+   * transacción que el guardado. `null` en cualquier otro caso.
+   */
+  readonly descartarOauth: DatosEventoOauth | null;
+}
+
+/** Un evento de la conexión OAuth (D217). Nunca lleva tokens, `code`, `state` ni secretos. */
+export interface DatosEventoOauth {
+  readonly tipo: TipoEventoOauth;
+  readonly actor: { id: string; nombre: string };
+  readonly sitioNombre: string | null;
+  readonly cuentaNombre: string | null;
+  /** Solo con `REFRESCO_FALLIDO`. */
+  readonly codigo: string | null;
   readonly fecha: Date;
 }
 
@@ -223,7 +248,45 @@ export abstract class ConfiguracionRepositorio {
   abstract guardar(datos: DatosGuardadoConfiguracion, evento: DatosEventoConfiguracion): Promise<void>;
   /** Una prueba fallida solo actualiza el estado y la última prueba (D112). Sin fila previa no inserta nada. */
   abstract registrarPrueba(estado: EstadoConexion, codigo: CodigoErrorIntegracion | null, fecha: Date): Promise<void>;
+  /** Mezcla por fecha `evento_configuracion` y `evento_oauth_jira` (D217). */
   abstract listarEventos(pagina: number, tamanoPagina: number): Promise<Pagina<EventoConfiguracion>>;
+}
+
+/** Los tokens nuevos tras renovar. El de renovación se guarda ANTES de usar el acceso (rotación, D214). */
+export interface TokensRenovados {
+  readonly acceso: SecretoCifrado;
+  readonly renovacion: SecretoCifrado;
+  readonly accesoExpiraEn: Date;
+  readonly renovadoEn: Date;
+}
+
+/**
+ * La conexión OAuth (una sola fila), los `state` de un solo uso y la auditoría OAuth. Todo el SQL crudo va calificado
+ * con el esquema (DEF-E5C-05) y, dentro de `conCandado`, toda operación usa el cliente de esa transacción
+ * (`connection_limit=1`: una segunda conexión esperaría a la que tiene el candado).
+ */
+export abstract class ConexionOauthRepositorio {
+  abstract obtener(): Promise<ConexionOauth | null>;
+  /** `true` si ya se registró alguna conexión (`CONECTAR_OAUTH` o `RECONECTAR`): la siguiente es `RECONECTAR` (D217). */
+  abstract hayConexionRegistrada(): Promise<boolean>;
+  /** Reemplaza la conexión (una sola fila) y registra el evento, si lo hay, en la misma transacción. */
+  abstract guardar(conexion: ConexionOauth, evento: DatosEventoOauth | null): Promise<void>;
+  /** Borra la conexión y registra `DESCONECTAR`. `false` (sin evento) si no había conexión. */
+  abstract eliminar(evento: DatosEventoOauth): Promise<boolean>;
+  /** Solo dentro de `conCandado`: guarda los tokens renovados. Devuelve la fila como quedó. */
+  abstract guardarTokens(tokens: TokensRenovados): Promise<ConexionOauth>;
+  /** Solo dentro de `conCandado`: pasa a `RECONEXION_NECESARIA`, borra los tokens y, si hay evento, lo registra (una vez). */
+  abstract marcarReconexion(ahora: Date, evento: DatosEventoOauth | null): Promise<void>;
+  /**
+   * `$transaction(async tx => …)` con `SET LOCAL lock_timeout = '3s'` y `SELECT … FOR UPDATE` de la fila. Dentro de `accion`,
+   * todas las operaciones de este repositorio usan `tx`. @throws CandadoNoObtenido si no se obtuvo el candado o la
+   * transacción no obtuvo conexión a tiempo (55P03, P2024): nada cambió.
+   */
+  abstract conCandado<T>(accion: () => Promise<T>): Promise<T>;
+  /** Purga los `state` de más de 1 día e inserta el nuevo (solo su hash). */
+  abstract crearEstado(estadoHash: string, actorId: string, creadoEn: Date, expiraEn: Date, purgarAntesDe: Date): Promise<void>;
+  /** Una sola sentencia atómica: `UPDATE … SET usado_en = now() WHERE estado_hash = $1 AND actor_id = $2 AND usado_en IS NULL AND expira_en > now()`. */
+  abstract consumirEstado(estadoHash: string, actorId: string): Promise<boolean>;
 }
 
 export interface DatosInicioEjecucion {

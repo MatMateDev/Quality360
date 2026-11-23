@@ -66,6 +66,75 @@ describe('configuración', () => {
     assert.equal(cargarConfiguracion({ ...base, INTEGRACIONES_TOMA_FILA_MS: '2000' }).tomaFilaMs, 2000);
   });
 
+  describe('variables de OAuth (D213, D216)', () => {
+    const RETORNO = '/admin/integraciones/jira/oauth/retorno';
+    const completas = { ...base, JIRA_OAUTH_CLIENT_ID: 'cliente', JIRA_OAUTH_CLIENT_SECRET: 'secreto-de-prueba', JIRA_OAUTH_REDIRECT_URI: `https://quality360-one.vercel.app${RETORNO}` };
+
+    it('opcionales y no fatales: sin ellas el servicio arranca con oauth.disponible false y los hosts fijos', () => {
+      const o = cargarConfiguracion(base).oauth;
+      assert.equal(o.disponible, false);
+      assert.deepEqual([o.clientId, o.clientSecret, o.redirectUri], [null, null, null]);
+      assert.equal(o.urlAutorizacion, 'https://auth.atlassian.com');
+      assert.equal(o.urlApi, 'https://api.atlassian.com');
+    });
+
+    it('disponible solo con las tres válidas', () => {
+      assert.equal(cargarConfiguracion(completas).oauth.disponible, true);
+      for (const falta of ['JIRA_OAUTH_CLIENT_ID', 'JIRA_OAUTH_CLIENT_SECRET', 'JIRA_OAUTH_REDIRECT_URI']) {
+        const incompleta = { ...completas, [falta]: '  ' } as NodeJS.ProcessEnv;
+        assert.equal(cargarConfiguracion(incompleta).oauth.disponible, false, falta);
+      }
+    });
+
+    it('JIRA_OAUTH_REDIRECT_URI: https con la ruta exacta, sin parámetros, fragmento ni credenciales; inválida cuenta como ausente', () => {
+      const con = (uri: string, extra: Record<string, string> = {}) => cargarConfiguracion({ ...completas, JIRA_OAUTH_REDIRECT_URI: uri, ...extra }).oauth;
+      assert.equal(con(`https://quality360-one.vercel.app${RETORNO}`).redirectUri, `https://quality360-one.vercel.app${RETORNO}`);
+      for (const mala of [
+        `http://quality360-one.vercel.app${RETORNO}`,
+        `https://quality360-one.vercel.app${RETORNO}/`,
+        `https://quality360-one.vercel.app${RETORNO}?x=1`,
+        `https://quality360-one.vercel.app${RETORNO}#frag`,
+        `https://usuario:clave@quality360-one.vercel.app${RETORNO}`,
+        'https://quality360-one.vercel.app/admin/integraciones/jira/oauth',
+        `ftp://x.example${RETORNO}`,
+        `https://${RETORNO}`,
+      ]) {
+        const o = con(mala);
+        assert.equal(o.redirectUri, null, mala);
+        assert.equal(o.disponible, false, mala);
+      }
+    });
+
+    it('http://localhost y http://127.0.0.1 solo con la bandera de prueba y fuera de producción', () => {
+      const local = `http://localhost:5173${RETORNO}`;
+      const sin = cargarConfiguracion({ ...completas, JIRA_OAUTH_REDIRECT_URI: local }).oauth;
+      assert.equal(sin.redirectUri, null);
+      const con = cargarConfiguracion({ ...completas, JIRA_OAUTH_REDIRECT_URI: local, INTEGRACIONES_PERMITIR_HOST_PRUEBA: 'true' }).oauth;
+      assert.equal(con.redirectUri, local);
+      assert.equal(cargarConfiguracion({ ...completas, JIRA_OAUTH_REDIRECT_URI: `http://127.0.0.1:5173${RETORNO}`, INTEGRACIONES_PERMITIR_HOST_PRUEBA: 'true' }).oauth.disponible, true);
+      const produccion = cargarConfiguracion({ ...completas, NODE_ENV: 'production', JIRA_OAUTH_REDIRECT_URI: local, INTEGRACIONES_PERMITIR_HOST_PRUEBA: 'true' }).oauth;
+      assert.equal(produccion.redirectUri, null);
+    });
+
+    it('los hosts de prueba solo valen con la bandera, fuera de producción y como http://127.0.0.1:<puerto>', () => {
+      const pruebas = { ...completas, JIRA_OAUTH_URL_AUTORIZACION: 'http://127.0.0.1:4011', JIRA_OAUTH_URL_API: 'http://127.0.0.1:4011/' };
+      const sinBandera = cargarConfiguracion(pruebas).oauth;
+      assert.equal(sinBandera.urlAutorizacion, 'https://auth.atlassian.com');
+      assert.equal(sinBandera.urlApi, 'https://api.atlassian.com');
+      const conBandera = cargarConfiguracion({ ...pruebas, INTEGRACIONES_PERMITIR_HOST_PRUEBA: 'true' }).oauth;
+      assert.equal(conBandera.urlAutorizacion, 'http://127.0.0.1:4011');
+      assert.equal(conBandera.urlApi, 'http://127.0.0.1:4011');
+      const produccion = cargarConfiguracion({ ...pruebas, NODE_ENV: 'production', INTEGRACIONES_PERMITIR_HOST_PRUEBA: 'true' }).oauth;
+      assert.equal(produccion.urlAutorizacion, 'https://auth.atlassian.com');
+      assert.equal(produccion.urlApi, 'https://api.atlassian.com');
+      for (const malo of ['https://evil.example.com', 'http://localhost:4011', 'http://127.0.0.1', 'http://127.0.0.1:4011/ruta', 'http://10.0.0.5:4011']) {
+        const o = cargarConfiguracion({ ...completas, INTEGRACIONES_PERMITIR_HOST_PRUEBA: 'true', JIRA_OAUTH_URL_AUTORIZACION: malo, JIRA_OAUTH_URL_API: malo }).oauth;
+        assert.equal(o.urlAutorizacion, 'https://auth.atlassian.com', malo);
+        assert.equal(o.urlApi, 'https://api.atlassian.com', malo);
+      }
+    });
+  });
+
   it('los valores por defecto son los de D96 y D114', () => {
     const c = cargarConfiguracion(base);
     assert.deepEqual([c.presupuestoMs, c.tiempoLimiteJiraMs, c.esperaMax429Ms, c.topeIssues, c.enCursoMaxMs, c.tiempoLimiteOrganizacionMs], [8000, 3000, 3000, 100, 300_000, 5000]);

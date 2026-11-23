@@ -7,7 +7,7 @@ import { createServer, type IncomingMessage, type Server, type ServerResponse } 
 import type { AddressInfo } from 'node:net';
 import { describe, it } from 'node:test';
 
-import type { CredencialJira, OpcionesLlamada } from '../../../src/dominio/puertos/fuente-jira.js';
+import type { CredencialJira, CredencialJiraOauth, OpcionesLlamada } from '../../../src/dominio/puertos/fuente-jira.js';
 import { ClienteJiraHttp, ParametroJiraInvalido, armarJql, leerRetryAfter } from '../../../src/infraestructura/jira/cliente-jira-http.js';
 
 const SITIO = 'https://equipo.atlassian.net';
@@ -674,5 +674,115 @@ describe('contra un servidor HTTP real en 127.0.0.1 (sin red externa)', () => {
       await s.cerrar();
       await destino.cerrar();
     }
+  });
+});
+
+// ------------------------------------------------------------------ E5 OAuth (JO4, D213, D214, D218)
+const CLOUD = '1b2c3d4e-5f60-4a71-8b92-a3b4c5d6e7f8';
+const ACCESO = 'acceso-oauth-secreto-XYZ';
+const OAUTH: CredencialJiraOauth = { tipo: 'OAUTH', cloudId: CLOUD, tokenAcceso: ACCESO, sitio: 'https://empresa.atlassian.net', permisos: ['read:jira-work', 'read:jira-user', 'offline_access'] };
+
+describe('OAuth: credencial Bearer', () => {
+  it('la base es https://api.atlassian.com/ex/jira/{cloudId} con Bearer; la URL del sitio nunca se llama', async () => {
+    const { cliente, llamadas } = falso([json(YO), json(PROYECTO)]);
+    const r = await cliente.probar(OAUTH, 'QTY', opciones());
+    assert.ok(r.ok);
+    assert.equal(llamadas.length, 2);
+    for (const l of llamadas) {
+      assert.equal(l.url.origin, 'https://api.atlassian.com');
+      assert.equal((l.init.headers as Record<string, string>).Authorization, `Bearer ${ACCESO}`);
+      assert.equal(l.init.redirect, 'manual');
+      assert.equal(l.init.method, 'GET');
+    }
+    assert.equal(llamadas[0]?.url.pathname, `/ex/jira/${CLOUD}/rest/api/3/myself`);
+    assert.equal(llamadas[1]?.url.pathname, `/ex/jira/${CLOUD}/rest/api/3/project/QTY`);
+  });
+
+  it('un cloudId que no es UUID no sale a la red', async () => {
+    const { cliente, llamadas } = falso([json(YO)]);
+    for (const cloudId of ['no-es-uuid', '../../evil', `${CLOUD}/../x`, '']) {
+      const r = await cliente.probarCuenta({ ...OAUTH, cloudId }, opciones());
+      assert.equal(!r.ok && r.codigo, 'JIRA_SITIO_NO_ENCONTRADO', cloudId);
+    }
+    assert.equal(llamadas.length, 0);
+  });
+
+  it('probarCuenta hace una sola llamada, a myself, y entrega el nombre y el accountId', async () => {
+    const { cliente, llamadas } = falso([json(YO)]);
+    const r = await cliente.probarCuenta(OAUTH, opciones());
+    assert.deepEqual(r, { ok: true, valor: { usuarioJira: 'Admin Jira Falso', cuentaId: 'abc' }, eventos: [] });
+    assert.equal(llamadas.length, 1);
+    assert.equal(llamadas[0]?.url.pathname, `/ex/jira/${CLOUD}/rest/api/3/myself`);
+    // Una respuesta sin accountId no es válida.
+    const sin = await falso([json({ displayName: 'X' })]).cliente.probarCuenta(OAUTH, opciones());
+    assert.equal(!sin.ok && sin.codigo, 'JIRA_RESPUESTA_INVALIDA');
+  });
+
+  it('también funciona con el API token: probarCuenta con la credencial básica', async () => {
+    const { cliente, llamadas } = falso([json(YO)]);
+    const r = await cliente.probarCuenta(CRED, opciones());
+    assert.ok(r.ok);
+    assert.equal((llamadas[0]?.init.headers as Record<string, string>).Authorization, BASICA);
+    assert.equal(llamadas[0]?.url.origin, SITIO);
+  });
+
+  it('sin el permiso de la llamada responde JIRA_OAUTH_PERMISOS_INSUFICIENTES sin llamar (D218)', async () => {
+    const { cliente, llamadas } = falso([json(YO)]);
+    const sinUsuario = { ...OAUTH, permisos: ['read:jira-work', 'offline_access'] };
+    const a = await cliente.probarCuenta(sinUsuario, opciones());
+    assert.deepEqual(a, { ok: false, codigo: 'JIRA_OAUTH_PERMISOS_INSUFICIENTES', eventos: [], permisosFaltantes: ['read:jira-user'] });
+    const sinTrabajo = { ...OAUTH, permisos: ['read:jira-user', 'offline_access'] };
+    const b = await cliente.buscarPagina(sinTrabajo, consulta, opciones());
+    assert.deepEqual(b, { ok: false, codigo: 'JIRA_OAUTH_PERMISOS_INSUFICIENTES', eventos: [], permisosFaltantes: ['read:jira-work'] });
+    const c = await cliente.detectarCampos(sinTrabajo, opciones());
+    assert.equal(!c.ok && c.codigo, 'JIRA_OAUTH_PERMISOS_INSUFICIENTES');
+    assert.equal(llamadas.length, 0);
+    // `probar` tiene myself (read:jira-user) pero no el proyecto (read:jira-work): una llamada y luego el rechazo local.
+    const p = await cliente.probar(sinTrabajo, 'QTY', opciones());
+    assert.equal(!p.ok && p.codigo, 'JIRA_OAUTH_PERMISOS_INSUFICIENTES');
+    assert.equal(llamadas.length, 1);
+  });
+
+  it('un 401 con OAuth trae los permisos de esa llamada; la renovación y el reintento los decide la aplicación', async () => {
+    const { cliente, llamadas } = falso([vacio(401)]);
+    const r = await cliente.buscarPagina(OAUTH, consulta, opciones());
+    assert.deepEqual(r, { ok: false, codigo: 'JIRA_CREDENCIAL_INVALIDA', eventos: [], permisosFaltantes: ['read:jira-work'] });
+    assert.equal(llamadas.length, 1);
+    const yo = await falso([vacio(401)]).cliente.probarCuenta(OAUTH, opciones());
+    assert.deepEqual(yo, { ok: false, codigo: 'JIRA_CREDENCIAL_INVALIDA', eventos: [], permisosFaltantes: ['read:jira-user'] });
+  });
+
+  it('con el API token un 401 sigue siendo JIRA_CREDENCIAL_INVALIDA sin permisosFaltantes', async () => {
+    const r = await falso([vacio(401)]).cliente.probarCuenta(CRED, opciones());
+    assert.deepEqual(r, { ok: false, codigo: 'JIRA_CREDENCIAL_INVALIDA', eventos: [] });
+  });
+
+  it('403 y 404 conservan su significado, y el cuerpo del error no se lee ni se propaga', async () => {
+    const r403 = await falso([new Response(`{"message":"${ACCESO}"}`, { status: 403 })]).cliente.detectarCampos(OAUTH, opciones());
+    assert.equal(!r403.ok && r403.codigo, 'JIRA_SIN_PERMISO');
+    assert.equal(JSON.stringify(r403).includes(ACCESO), false);
+    const r404 = await falso([json(YO), vacio(404)]).cliente.probar(OAUTH, 'QTY', opciones());
+    assert.equal(!r404.ok && r404.codigo, 'JIRA_PROYECTO_NO_ENCONTRADO');
+  });
+
+  it('el 429 se espera igual que con el API token', async () => {
+    const { cliente, llamadas, dormidos } = falso([vacio(429, { 'retry-after': '1' }), json({ issues: [], isLast: true })]);
+    const r = await cliente.buscarPagina(OAUTH, consulta, opciones());
+    assert.ok(r.ok);
+    assert.equal(r.eventos.length, 1);
+    assert.equal(llamadas.length, 2);
+    assert.deepEqual(dormidos, [1000]);
+  });
+
+  it('una base de prueba solo vale con la bandera; sin ella se usa api.atlassian.com', async () => {
+    const llamadas: URL[] = [];
+    const f = (async (e: string | URL | Request) => {
+      llamadas.push(new URL(String(e)));
+      return json(YO);
+    }) as typeof fetch;
+    await new ClienteJiraHttp({ fetch: f, urlApiOauth: 'http://127.0.0.1:4011' }).probarCuenta(OAUTH, opciones());
+    await new ClienteJiraHttp({ fetch: f, urlApiOauth: 'http://127.0.0.1:4011', permitirHostPrueba: true }).probarCuenta(OAUTH, opciones());
+    await new ClienteJiraHttp({ fetch: f, urlApiOauth: 'https://evil.example.com', permitirHostPrueba: true }).probarCuenta(OAUTH, opciones());
+    assert.deepEqual(llamadas.map((u) => u.origin), ['https://api.atlassian.com', 'http://127.0.0.1:4011', 'https://api.atlassian.com']);
   });
 });

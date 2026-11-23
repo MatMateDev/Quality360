@@ -28,6 +28,8 @@ export function configuracionPrueba(organizacionUrl: string | null, cambios: Par
     jiraTamanoPagina: 50,
     tomaFilaMs: 30_000,
     permitirHostPrueba: true,
+    // Sin credenciales de la app: la conexión OAuth queda inhabilitada (D216). Las pruebas de OAuth las ponen.
+    oauth: { clientId: null, clientSecret: null, redirectUri: null, urlAutorizacion: 'https://auth.atlassian.com', urlApi: 'https://api.atlassian.com', disponible: false },
     verificador: resolverOpcionesVerificador({ emisor: EMISOR, audiencia: AUDIENCIA, secretoHs256: SECRETO }),
     ...cambios,
   };

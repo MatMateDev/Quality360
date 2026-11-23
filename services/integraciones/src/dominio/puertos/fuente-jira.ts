@@ -5,17 +5,26 @@
  *
  * Crece solo de forma ADITIVA (D196, ADR 0018): campos opcionales en `IssueJira` y `SprintJira`, `campoCriterios?` en la
  * consulta de `buscarPagina` y el método `detectarCampos()`. Ninguna firma existente cambia.
+ *
+ * E5 OAuth (D214, D218, ADR 0019) también la hace crecer SOLO de forma aditiva: `CredencialJiraOauth` (Bearer contra
+ * `<api>/ex/jira/{cloudId}`), la unión `CredencialFuenteJira` que aceptan todos los métodos, `probarCuenta`, el código
+ * `JIRA_OAUTH_PERMISOS_INSUFICIENTES` y `permisosFaltantes?` en el resultado fallido. La renovación y el reintento tras un 401
+ * los hace la aplicación (`CredencialesJira`), no el cliente.
  */
 export type CodigoErrorJira =
   | 'JIRA_CREDENCIAL_INVALIDA' | 'JIRA_SIN_PERMISO' | 'JIRA_SITIO_NO_ENCONTRADO'
   | 'JIRA_PROYECTO_NO_ENCONTRADO' | 'JIRA_LIMITE_DE_TASA' | 'JIRA_TIEMPO_AGOTADO'
-  | 'JIRA_NO_DISPONIBLE' | 'JIRA_RESPUESTA_INVALIDA';
+  | 'JIRA_NO_DISPONIBLE' | 'JIRA_RESPUESTA_INVALIDA' | 'JIRA_OAUTH_PERMISOS_INSUFICIENTES';
 export interface CredencialJira { sitio: string; correo: string; token: string }
+/** Credencial OAuth: `sitio` es la URL del sitio (solo informativa, nunca se llama) y `cloudId` arma la base. */
+export interface CredencialJiraOauth { tipo: 'OAUTH'; cloudId: string; tokenAcceso: string; sitio: string; permisos: readonly string[] }
+export type CredencialFuenteJira = CredencialJira | CredencialJiraOauth;
 export interface OpcionesLlamada { tiempoLimiteMs: number; esperaMax429Ms: number; restanteMs: () => number }
 export interface EventoEspera { tipo: 'JIRA_LIMITE_DE_TASA'; esperaMs: number; fecha: Date }
 export type ResultadoJira<T> =
   | { ok: true; valor: T; eventos: EventoEspera[] }
-  | { ok: false; codigo: CodigoErrorJira; eventos: EventoEspera[] };
+  /** `permisosFaltantes`: solo con OAuth, los permisos de esa llamada (D218). */
+  | { ok: false; codigo: CodigoErrorJira; eventos: EventoEspera[]; permisosFaltantes?: string[] };
 export interface SprintJira {
   nombre: string; estado: 'active' | 'future' | 'closed'; fin: string | null;
   /** `startDate` del sprint en Jira (D196). Ausente o `null` si Jira no lo trae. */
@@ -39,11 +48,13 @@ export interface IssueJira {
 export interface PaginaJira { issues: IssueJira[]; nextPageToken: string | null; esUltima: boolean }
 export interface CamposDetectados { sprint: string | null; criterios: string | null }
 export interface FuenteJira {
-  probar(c: CredencialJira, proyecto: string, o: OpcionesLlamada):
+  probar(c: CredencialFuenteJira, proyecto: string, o: OpcionesLlamada):
     Promise<ResultadoJira<{ usuarioJira: string; proyecto: { clave: string; nombre: string } }>>;
-  detectarCampoSprint(c: CredencialJira, o: OpcionesLlamada): Promise<ResultadoJira<string | null>>;
+  /** Una sola llamada a `GET /rest/api/3/myself`: «Probar conexión» sin proyecto y el paso final del retorno OAuth (E5 OAuth). */
+  probarCuenta(c: CredencialFuenteJira, o: OpcionesLlamada): Promise<ResultadoJira<{ usuarioJira: string; cuentaId: string }>>;
+  detectarCampoSprint(c: CredencialFuenteJira, o: OpcionesLlamada): Promise<ResultadoJira<string | null>>;
   /** La MISMA llamada a `/field` que `detectarCampoSprint`: Sprint y Criterios de aceptación (D199). */
-  detectarCampos(c: CredencialJira, o: OpcionesLlamada): Promise<ResultadoJira<CamposDetectados>>;
-  buscarPagina(c: CredencialJira, q: { proyecto: string; tipos: string[]; despuesDe?: string;
+  detectarCampos(c: CredencialFuenteJira, o: OpcionesLlamada): Promise<ResultadoJira<CamposDetectados>>;
+  buscarPagina(c: CredencialFuenteJira, q: { proyecto: string; tipos: string[]; despuesDe?: string;
     nextPageToken?: string; campoSprint: string | null; campoCriterios?: string | null }, o: OpcionesLlamada): Promise<ResultadoJira<PaginaJira>>;
 }

@@ -29,6 +29,25 @@ Las de ejemplo están en `.env.example`.
 | `INTEGRACIONES_EN_CURSO_MAX_MS` | 300000 | D104 |
 | `INTEGRACIONES_PERMITIR_HOST_PRUEBA` | `false` | Se **ignora** con `NODE_ENV=production` (D95) |
 
+### Conexión con Jira por OAuth 2.0 (3LO) (E5, ADR 0019, D209–D218)
+
+Opcionales y no fatales: sin las tres primeras, `oauthDisponible` es `false`, «Conectar con Jira» queda deshabilitado, las rutas
+`oauth/iniciar`, `oauth/retorno` y `oauth/sitio` (y probar, guardar, consultar y continuar con el método OAuth) responden 503
+`JIRA_OAUTH_NO_CONFIGURADO`, y el API token, `GET configuracion` y `DELETE …/oauth` siguen funcionando. Los valores se cargan en
+Vercel (Production, *Sensitive*) con `docs/arquitectura/guia-oauth-atlassian.md`; nunca van en el repositorio, los registros ni las respuestas.
+
+| Variable | Defecto | Nota |
+| --- | --- | --- |
+| `JIRA_OAUTH_CLIENT_ID` | — | Client ID de la app registrada en Atlassian |
+| `JIRA_OAUTH_CLIENT_SECRET` | — | Solo viaja en el cuerpo JSON hacia `/oauth/token` |
+| `JIRA_OAUTH_REDIRECT_URI` | — | `https://<portal>/admin/integraciones/jira/oauth/retorno`, ruta exacta, sin parámetros ni fragmento. Con la bandera de prueba también `http://localhost:<puerto>` o `http://127.0.0.1:<puerto>`. Inválida cuenta como ausente |
+| `JIRA_OAUTH_URL_AUTORIZACION` | `https://auth.atlassian.com` | Solo pruebas: vale únicamente con `INTEGRACIONES_PERMITIR_HOST_PRUEBA=true`, fuera de producción y como `http://127.0.0.1:<puerto>` |
+| `JIRA_OAUTH_URL_API` | `https://api.atlassian.com` | Ídem |
+
+La migración `20261122000000_e5_oauth_jira` es compatible con el código anterior y se aplica antes de publicar; en la nube se sigue con
+`infrastructure/nube/007_rls_oauth_jira_nube.sql`. Los tokens se guardan cifrados (AES-256-GCM, la misma llave) y la renovación se
+serializa con `SELECT … FOR UPDATE` de la fila de la conexión.
+
 ## Despliegue (Vercel, quinto proyecto `quality360-integraciones`, D128)
 
 Raíz del proyecto `services/integraciones`, con `vercel.json` y `api/index.mjs` como los de Impedimentos (`maxDuration: 30`, región `gru1`).
