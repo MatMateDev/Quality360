@@ -192,7 +192,7 @@ export function FormularioConexionJira({
         else if (cambiaAApiToken) texto = `${texto} Se borraron las credenciales de la conexión con Jira (OAuth).`;
         onResultado({ tipo: "ok", texto });
       } else if (respuesta.prueba.error) {
-        onResultado({ tipo: "error", error: respuesta.prueba.error, pie: "No se guardó nada: se conserva la configuración anterior." });
+        onResultado({ tipo: "error", error: respuesta.prueba.error, metodo: opcion, pie: "No se guardó nada: se conserva la configuración anterior." });
       } else {
         onResultado({ tipo: "global", texto: "No fue posible guardar. Intenta nuevamente." });
       }
@@ -224,7 +224,7 @@ export function FormularioConexionJira({
       if (respuesta.ok) {
         onResultado({ tipo: "ok", texto: `Conexión exitosa con Jira como ${respuesta.usuarioJira ?? "tu cuenta"}. No se guardaron cambios.` });
       } else if (respuesta.error) {
-        onResultado({ tipo: "error", error: respuesta.error, pie: "No se guardó ningún cambio." });
+        onResultado({ tipo: "error", error: respuesta.error, metodo: opcion, pie: "No se guardó ningún cambio." });
       } else {
         onResultado({ tipo: "global", texto: "No fue posible probar la conexión. Intenta nuevamente." });
       }
