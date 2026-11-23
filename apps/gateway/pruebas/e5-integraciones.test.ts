@@ -1,20 +1,28 @@
 /**
- * Rutas de E5 en el gateway (G1, D127; GC1, D132 y D152): reenvío explícito de
- * las 18 rutas (20 operaciones) de `/v1/integraciones/*` a Integraciones
- * (`INTEGRACIONES_URL`), `jira/sincronizaciones` retirada (404), cubo de tasa
- * propio para `PATCH …/consultas/{id}/items` y `POST …/items/{itemId}/confirmaciones`
- * (GD1, ADR 0018, D202 g), 503 solo en esas
- * rutas si la URL falta o es inválida, cuerpo de 1,5 MB solo en `archivos/*`,
- * tiempo límite propio de 12 s (D115), rutas internas no publicadas, y los
- * cambios aditivos de E5 en Organización: `?celulaId` en sprints (D120) y los
- * campos nuevos del detalle de HDU (D108, D124).
+ * Rutas de E5 en el gateway (G1, D127; GC1, D132 y D152; GO1, ADR 0019):
+ * reenvío explícito de las 22 rutas (24 operaciones) de `/v1/integraciones/*`
+ * a Integraciones (`INTEGRACIONES_URL`), `jira/sincronizaciones` retirada
+ * (404), cubo de tasa propio para `PATCH …/consultas/{id}/items` y
+ * `POST …/items/{itemId}/confirmaciones` (GD1, ADR 0018, D202 g), las 4 rutas
+ * de la conexión por OAuth (sesión, sin query, 204 sin cuerpo, cubo de
+ * escritura general y ningún `code`, `state` ni URL de autorización en los
+ * registros), 503 solo en esas rutas si la URL falta o es inválida, cuerpo de
+ * 1,5 MB solo en `archivos/*`, tiempo límite propio de 12 s (D115), rutas
+ * internas no publicadas, y los cambios aditivos de E5 en Organización:
+ * `?celulaId` en sprints (D120) y los campos nuevos del detalle de HDU (D108,
+ * D124).
  */
 import 'reflect-metadata';
 import assert from 'node:assert/strict';
+import { randomBytes } from 'node:crypto';
 import { after, before, beforeEach, describe, it } from 'node:test';
+import { inspect } from 'node:util';
+import { Logger, RequestMethod, type LoggerService } from '@nestjs/common';
+import { METHOD_METADATA, PATH_METADATA } from '@nestjs/common/constants.js';
 import type { NestExpressApplication } from '@nestjs/platform-express';
 import request from 'supertest';
 
+import { IntegracionesController } from '../src/api/integraciones.controller.js';
 import { cargarConfiguracion } from '../src/configuracion.js';
 import { crearApp } from '../src/crear-app.js';
 import { LIMITE_CUERPO_ARCHIVOS_BYTES } from '../src/middlewares/cuerpo.js';
@@ -23,6 +31,7 @@ import {
   autorizacion,
   configuracionPrueba,
   crearAppPrueba,
+  firmarToken,
   iniciarServidorFalso,
   urlCaida,
   type ServidorFalso,
@@ -42,8 +51,17 @@ const CONSULTA = `/v1/integraciones/jira/consultas/${CONSULTA_ID}`;
 const RUTA_EDICION = `${CONSULTA}/items`;
 const RUTA_ITEM = `${CONSULTA}/items/${ITEM_ID}`;
 const RUTA_CONFIRMACION_FILA = `${RUTA_ITEM}/confirmaciones`;
+const SITIO_ID = '1b2c3d4e-5f60-4a71-8b92-a3b4c5d6e7f8';
+const RUTA_OAUTH = '/v1/integraciones/jira/oauth';
+const RUTA_OAUTH_INICIAR = `${RUTA_OAUTH}/iniciar`;
+const RUTA_OAUTH_RETORNO = `${RUTA_OAUTH}/retorno`;
+const RUTA_OAUTH_SITIO = `${RUTA_OAUTH}/sitio`;
+// Secretos de un retorno de Atlassian (D211): aleatorios, para que buscarlos en
+// los registros no dé falsos positivos.
+const CODIGO_OAUTH = `codigo-${randomBytes(24).toString('base64url')}`;
+const ESTADO_OAUTH = randomBytes(32).toString('base64url');
 
-type Metodo = 'get' | 'post' | 'put' | 'patch';
+type Metodo = 'get' | 'post' | 'put' | 'patch' | 'delete';
 
 interface Ruta {
   metodo: Metodo;
@@ -54,7 +72,7 @@ interface Ruta {
   estado?: number;
 }
 
-/** Las 20 operaciones de las 18 rutas de E5 (integraciones.v1.yaml). */
+/** Las 24 operaciones de las 22 rutas de E5 (integraciones.v1.yaml). */
 const RUTAS: Ruta[] = [
   { metodo: 'get', ruta: '/v1/integraciones/jira/configuracion', ids: 'E5-F01#3, E5-B01#1, E5-B01#3' },
   {
@@ -65,6 +83,16 @@ const RUTAS: Ruta[] = [
   },
   { metodo: 'post', ruta: '/v1/integraciones/jira/configuracion/probar', ids: 'E5-F01#2, E5-B01#2, E5-B01#3', cuerpo: {} },
   { metodo: 'get', ruta: '/v1/integraciones/jira/configuracion/eventos', ids: 'E5-F01#1, E5-B01#1' },
+  // Conexión por OAuth 2.0 (ADR 0019): `iniciar` no lleva cuerpo y el `DELETE` responde 204 sin cuerpo.
+  { metodo: 'post', ruta: RUTA_OAUTH_INICIAR, ids: 'E5-F08#1, E5-F08#12, E5-B08#1, E5-B08#13' },
+  {
+    metodo: 'post',
+    ruta: RUTA_OAUTH_RETORNO,
+    ids: 'E5-F08#2, E5-F08#12, E5-B08#2, E5-B08#13',
+    cuerpo: { code: CODIGO_OAUTH, state: ESTADO_OAUTH },
+  },
+  { metodo: 'post', ruta: RUTA_OAUTH_SITIO, ids: 'E5-F08#4, E5-F08#12, E5-B08#5, E5-B08#13', cuerpo: { sitioId: SITIO_ID } },
+  { metodo: 'delete', ruta: RUTA_OAUTH, ids: 'E5-F08#11, E5-F08#12, E5-B08#12, E5-B08#13', estado: 204 },
   { metodo: 'post', ruta: '/v1/integraciones/jira/consultas', ids: 'E5-F02#1, E5-B02#1, E5-B04#1, E5-B05#2', cuerpo: { reemplazar: true }, estado: 201 },
   { metodo: 'get', ruta: '/v1/integraciones/jira/consultas/actual', ids: 'E5-F02#1, E5-F05#8, E5-B05#1' },
   { metodo: 'get', ruta: CONSULTA, ids: 'E5-F05#8, E5-F05#9, E5-B05#13' },
@@ -100,6 +128,21 @@ const RUTAS: Ruta[] = [
   { metodo: 'get', ruta: `/v1/integraciones/ejecuciones/${EJECUCION_ID}/detalle`, ids: 'E5-F02#1, E5-F03#3, E5-F04#3, E5-B04#2' },
   { metodo: 'get', ruta: '/v1/integraciones/estado', ids: 'E5-F04#1, E5-F02#1' },
 ];
+
+/** Las 4 operaciones de la conexión por OAuth (ADR 0019). */
+const RUTAS_OAUTH = RUTAS.filter(({ ruta }) => ruta.startsWith(RUTA_OAUTH));
+
+/** Respuesta de `oauth/iniciar` (`InicioAutorizacionOauthJira`): la URL lleva el `state` en claro. */
+function inicioAutorizacion(estado: string): { urlAutorizacion: string; expiraEn: string } {
+  const retorno = encodeURIComponent('https://quality360-one.vercel.app/admin/integraciones/jira/oauth/retorno');
+  return {
+    urlAutorizacion:
+      'https://auth.atlassian.com/authorize?audience=api.atlassian.com&client_id=CLIENTE' +
+      `&scope=read%3Ajira-work%20read%3Ajira-user%20offline_access&redirect_uri=${retorno}` +
+      `&state=${estado}&response_type=code&prompt=consent`,
+    expiraEn: '2026-11-22T13:25:00Z',
+  };
+}
 
 before(async () => {
   organizacion = await iniciarServidorFalso();
@@ -143,19 +186,114 @@ function enviar(
   return solicitud;
 }
 
-describe('Reenvío de las 18 rutas (20 operaciones) de E5 a Integraciones [D127, D132, GD1]', () => {
-  it('la lista cubre 18 rutas y 20 operaciones, sin jira/sincronizaciones', () => {
-    assert.equal(RUTAS.length, 20);
-    assert.equal(new Set(RUTAS.map(({ ruta }) => ruta)).size, 18);
+/** Operaciones que declara `IntegracionesController`, como `"<MÉTODO> <ruta>"` con sus parámetros (`:id`). */
+function operacionesDeclaradas(): string[] {
+  const prototipo = IntegracionesController.prototype as unknown as Record<string, unknown>;
+  return Object.getOwnPropertyNames(prototipo)
+    .filter((nombre) => nombre !== 'constructor')
+    .map((nombre) => prototipo[nombre])
+    .filter((manejador): manejador is object => typeof manejador === 'function' && Reflect.hasMetadata(PATH_METADATA, manejador))
+    .map((manejador) => {
+      const metodo = RequestMethod[Reflect.getMetadata(METHOD_METADATA, manejador) as RequestMethod];
+      return `${metodo} /v1/integraciones/${String(Reflect.getMetadata(PATH_METADATA, manejador))}`;
+    });
+}
+
+/** Una entrada de `RUTAS` con los parámetros de ruta en lugar de los UUID de prueba. */
+function comoPatron({ metodo, ruta }: Ruta): string {
+  const patron = ruta.replace(CONSULTA_ID, ':id').replace(EJECUCION_ID, ':id').replace(ITEM_ID, ':itemId');
+  return `${metodo.toUpperCase()} ${patron}`;
+}
+
+function aTexto(valor: unknown): string {
+  if (typeof valor === 'string') return valor;
+  return inspect(valor, { depth: null, maxArrayLength: null, maxStringLength: null, breakLength: Infinity });
+}
+
+/** Registro en memoria: guarda cada línea completa, en todos los niveles (también `debug`, que lleva la pila). */
+class RegistroCapturado implements LoggerService {
+  readonly lineas: string[] = [];
+
+  guardar(nivel: string, argumentos: unknown[]): void {
+    this.lineas.push(`${nivel} ${argumentos.map(aTexto).join(' ')}`);
+  }
+
+  log(mensaje: unknown, ...resto: unknown[]): void {
+    this.guardar('log', [mensaje, ...resto]);
+  }
+
+  error(mensaje: unknown, ...resto: unknown[]): void {
+    this.guardar('error', [mensaje, ...resto]);
+  }
+
+  warn(mensaje: unknown, ...resto: unknown[]): void {
+    this.guardar('warn', [mensaje, ...resto]);
+  }
+
+  debug(mensaje: unknown, ...resto: unknown[]): void {
+    this.guardar('debug', [mensaje, ...resto]);
+  }
+
+  verbose(mensaje: unknown, ...resto: unknown[]): void {
+    this.guardar('verbose', [mensaje, ...resto]);
+  }
+
+  fatal(mensaje: unknown, ...resto: unknown[]): void {
+    this.guardar('fatal', [mensaje, ...resto]);
+  }
+}
+
+const METODOS_CONSOLA = ['log', 'info', 'warn', 'error', 'debug', 'trace'] as const;
+
+/**
+ * Ejecuta `accion` con el `Logger` de Nest y la consola capturados en memoria.
+ * Las apps que `accion` crea con `crearApp(…)` sin `registro: false` registran
+ * como en producción (`main.ts` y `api/index.mjs`).
+ */
+async function conRegistroCapturado(accion: () => Promise<void>): Promise<RegistroCapturado> {
+  const registro = new RegistroCapturado();
+  const consola = METODOS_CONSOLA.map((metodo) => [metodo, console[metodo]] as const);
+  Logger.overrideLogger(registro);
+  for (const metodo of METODOS_CONSOLA) {
+    console[metodo] = (...argumentos: unknown[]) => registro.guardar(`console.${metodo}`, argumentos);
+  }
+  try {
+    await accion();
+  } finally {
+    // Como estaba: el resto del archivo crea sus apps con `registro: false`.
+    Logger.overrideLogger(false);
+    for (const [metodo, original] of consola) console[metodo] = original;
+  }
+  return registro;
+}
+
+describe('Reenvío de las 22 rutas (24 operaciones) de E5 a Integraciones [D127, D132, GD1, GO1]', () => {
+  it('la lista cubre 22 rutas y 24 operaciones, con las 4 de OAuth y sin jira/sincronizaciones', () => {
+    assert.equal(RUTAS.length, 24);
+    assert.equal(new Set(RUTAS.map(({ ruta }) => ruta)).size, 22);
+    assert.equal(new Set(RUTAS.map(({ metodo, ruta }) => `${metodo} ${ruta}`)).size, 24, 'sin operaciones repetidas');
+    assert.deepEqual(
+      RUTAS.filter(({ ruta }) => ruta.startsWith(RUTA_OAUTH)).map(({ metodo, ruta }) => `${metodo.toUpperCase()} ${ruta}`),
+      [`POST ${RUTA_OAUTH_INICIAR}`, `POST ${RUTA_OAUTH_RETORNO}`, `POST ${RUTA_OAUTH_SITIO}`, `DELETE ${RUTA_OAUTH}`],
+    );
     assert.equal(RUTAS.some(({ ruta }) => ruta.endsWith('/sincronizaciones')), false);
+  });
+
+  it('IntegracionesController declara exactamente esas 24 operaciones en 22 rutas, ni una más', () => {
+    const declaradas = operacionesDeclaradas();
+    assert.equal(declaradas.length, 24);
+    assert.equal(new Set(declaradas.map((operacion) => operacion.split(' ')[1])).size, 22);
+    assert.deepEqual([...declaradas].sort(), RUTAS.map(comoPatron).sort());
   });
 
   for (const { metodo, ruta, ids, cuerpo, estado } of RUTAS) {
     const nombre = `${metodo.toUpperCase()} ${ruta}`;
+    const detalle = cuerpo !== undefined ? ' y cuerpo' : metodo === 'get' ? ' y query' : ', sin cuerpo ni query';
 
-    it(`${nombre} llega a Integraciones con sesión, traza${cuerpo ? ' y cuerpo' : ' y query'} [${ids}]`, async () => {
+    it(`${nombre} llega a Integraciones con sesión, traza${detalle} [${ids}]`, async () => {
       const esperado = estado ?? 200;
-      integraciones.responder(nombre, { estado: esperado, cuerpo: { ok: ruta } });
+      // Un 204 no lleva cuerpo (DELETE oauth, D217).
+      integraciones.responder(nombre, esperado === 204 ? { estado: 204 } : { estado: esperado, cuerpo: { ok: ruta } });
       const consulta = metodo === 'get' ? '?origen=JIRA&resultado=ERROR&pagina=2' : '?ignorada=1';
       let solicitud = request(app.getHttpServer())
         [metodo](`${ruta}${consulta}`)
@@ -165,7 +303,12 @@ describe('Reenvío de las 18 rutas (20 operaciones) de E5 a Integraciones [D127,
       const respuesta = await solicitud;
 
       assert.equal(respuesta.status, esperado);
-      assert.deepEqual(respuesta.body, { ok: ruta });
+      if (esperado === 204) {
+        assert.equal(respuesta.text, '', 'el 204 sale sin cuerpo');
+        assert.equal(respuesta.headers['x-trace-id'], 'traza-e5');
+      } else {
+        assert.deepEqual(respuesta.body, { ok: ruta });
+      }
       const enviada = integraciones.solicitudes[0];
       assert.equal(integraciones.solicitudes.length, 1);
       assert.equal(enviada?.metodo, metodo.toUpperCase());
@@ -174,6 +317,7 @@ describe('Reenvío de las 18 rutas (20 operaciones) de E5 a Integraciones [D127,
       assert.equal(enviada?.cabeceras['x-trace-id'], 'traza-e5');
       assert.equal(enviada?.cabeceras['x-q360-servicio-token'], undefined);
       if (cuerpo !== undefined) assert.deepEqual(JSON.parse(enviada?.cuerpo ?? '{}'), cuerpo);
+      else assert.equal(enviada?.cuerpo, '', 'sin cuerpo de entrada no se inventa uno');
       assert.equal(totalOtros(), 0, 'no toca otros servicios (sin composición)');
     });
 
@@ -321,6 +465,13 @@ describe('Rutas no publicadas [D127]', () => {
       ['put', RUTA_EDICION],
       ['delete', CONSULTA],
       ['get', `${CONSULTA}/confirmaciones`],
+      // OAuth (ADR 0019): solo las 4 operaciones declaradas; nada de canje ni de token.
+      ['get', RUTA_OAUTH],
+      ['post', RUTA_OAUTH],
+      ['get', RUTA_OAUTH_INICIAR],
+      ['put', RUTA_OAUTH_SITIO],
+      ['delete', RUTA_OAUTH_RETORNO],
+      ['post', `${RUTA_OAUTH}/token`],
     ] as const) {
       const respuesta = await request(app.getHttpServer())[metodo](ruta).set('authorization', token).send({});
       assert.equal(respuesta.status, 404, `${metodo} ${ruta}`);
@@ -349,7 +500,7 @@ describe('Rutas no publicadas [D127]', () => {
 });
 
 describe('INTEGRACIONES_URL ausente o inválida: solo esas rutas dan 503 [D127]', () => {
-  it('cada una de las 20 operaciones responde 503 SERVICIO_NO_DISPONIBLE sin llamar a nadie; sin token sigue dando 401', async () => {
+  it('cada una de las 24 operaciones responde 503 SERVICIO_NO_DISPONIBLE sin llamar a nadie; sin token sigue dando 401', async () => {
     const sinIntegraciones = await crearAppPrueba({ organizacionUrl: organizacion.url, integracionesUrl: null });
     try {
       const token = await autorizacion();
@@ -725,6 +876,301 @@ describe('Cubo de tasa propio de la edición de la consulta [D152]', () => {
       await request(servidor).patch(RUTA_EDICION).set('authorization', token).send(cuerpoEdicion).expect(200);
     } finally {
       await limitada.close();
+    }
+  });
+});
+
+describe('Conexión por OAuth 2.0: sin query y con el cuerpo tal cual [ADR 0019, GO1]', () => {
+  it('POST oauth/iniciar no manda cuerpo ni query (la redirect_uri la arma el servidor) y la URL de autorización vuelve tal cual [E5-F08#1, E5-B08#1, D210]', async () => {
+    const inicio = inicioAutorizacion(randomBytes(32).toString('base64url'));
+    integraciones.responder(`POST ${RUTA_OAUTH_INICIAR}`, { estado: 200, cuerpo: inicio });
+    const respuesta = await request(app.getHttpServer())
+      .post(`${RUTA_OAUTH_INICIAR}?redirect_uri=${encodeURIComponent('https://otro.example/retorno')}`)
+      .set('authorization', await autorizacion());
+
+    assert.equal(respuesta.status, 200);
+    assert.deepEqual(respuesta.body, inicio);
+    const enviada = integraciones.solicitudes[0];
+    assert.equal(integraciones.solicitudes.length, 1);
+    assert.equal(enviada?.url, RUTA_OAUTH_INICIAR, 'la query no viaja');
+    assert.equal(enviada?.cuerpo, '');
+    assert.equal(enviada?.cabeceras['content-type'], undefined);
+  });
+
+  it('POST oauth/retorno reenvía tal cual code y state, o error y state, y nunca la query [E5-F08#2, E5-F08#3, E5-B08#2, E5-B08#4]', async () => {
+    const rechazado = {
+      resultado: 'ERROR',
+      oauth: null,
+      error: {
+        codigo: 'JIRA_OAUTH_CONSENTIMIENTO_RECHAZADO',
+        mensaje: 'No aceptaste los permisos en Atlassian. No se conectó nada.',
+        sugerencias: ['REINTENTAR'],
+      },
+    };
+    integraciones.responder(`POST ${RUTA_OAUTH_RETORNO}`, { estado: 200, cuerpo: rechazado });
+    const token = await autorizacion();
+    for (const cuerpo of [{ code: CODIGO_OAUTH, state: ESTADO_OAUTH }, { error: 'access_denied', state: ESTADO_OAUTH }]) {
+      integraciones.solicitudes.length = 0;
+      const respuesta = await request(app.getHttpServer())
+        .post(`${RUTA_OAUTH_RETORNO}?code=de-la-direccion&state=de-la-direccion`)
+        .set('authorization', token)
+        .send(cuerpo);
+
+      assert.equal(respuesta.status, 200);
+      assert.deepEqual(respuesta.body, rechazado, 'el 200 con error llega tal cual (D105)');
+      const enviada = integraciones.solicitudes[0];
+      assert.equal(enviada?.url, RUTA_OAUTH_RETORNO, 'la query no viaja');
+      assert.deepEqual(JSON.parse(enviada?.cuerpo ?? '{}'), cuerpo);
+      assert.equal(enviada?.cabeceras['content-type'], 'application/json');
+    }
+  });
+
+  it('DELETE oauth: 204 sin cuerpo y con x-trace-id; no reenvía cuerpo aunque el cliente lo mande [E5-F08#11, E5-B08#12, D217]', async () => {
+    integraciones.responder(`DELETE ${RUTA_OAUTH}`, { estado: 204 });
+    const respuesta = await request(app.getHttpServer())
+      .delete(RUTA_OAUTH)
+      .set('authorization', await autorizacion())
+      .set('x-trace-id', 'traza-desconexion')
+      .send({ borrarHdu: true });
+
+    assert.equal(respuesta.status, 204);
+    assert.equal(respuesta.text, '');
+    assert.equal(respuesta.headers['x-trace-id'], 'traza-desconexion');
+    assert.equal(respuesta.headers['content-type'], undefined);
+    const enviada = integraciones.solicitudes[0];
+    assert.equal(enviada?.metodo, 'DELETE');
+    assert.equal(enviada?.url, RUTA_OAUTH);
+    assert.equal(enviada?.cuerpo, '', 'un DELETE no lleva cuerpo');
+    assert.equal(enviada?.cabeceras['content-type'], undefined);
+    assert.equal(enviada?.cabeceras['x-trace-id'], 'traza-desconexion');
+  });
+
+  it('es el primer DELETE del gateway: la verificación previa de CORS lo admite desde el portal, con authorization, y no llega a Integraciones [E5-F08#11]', async () => {
+    const previa = await request(app.getHttpServer())
+      .options(RUTA_OAUTH)
+      .set('origin', 'http://localhost:5173')
+      .set('access-control-request-method', 'DELETE')
+      .set('access-control-request-headers', 'authorization');
+    assert.equal(previa.status, 204);
+    assert.equal(previa.headers['access-control-allow-origin'], 'http://localhost:5173');
+    assert.match(String(previa.headers['access-control-allow-methods']), /\bDELETE\b/);
+    assert.match(String(previa.headers['access-control-allow-headers']), /\bauthorization\b/);
+
+    const ajena = await request(app.getHttpServer())
+      .options(RUTA_OAUTH)
+      .set('origin', 'http://atacante.local')
+      .set('access-control-request-method', 'DELETE');
+    assert.equal(ajena.headers['access-control-allow-origin'], undefined);
+    assert.equal(integraciones.solicitudes.length, 0);
+  });
+
+  it('los errores de Integraciones llegan tal cual: 400, 409 y 503 con su código y su cuerpo [E5-B08#3, E5-B08#5, E5-B08#11, E5-B08#12]', async () => {
+    const casos: Array<[Metodo, string, number, string]> = [
+      ['post', RUTA_OAUTH_INICIAR, 503, 'JIRA_OAUTH_NO_CONFIGURADO'],
+      ['post', RUTA_OAUTH_INICIAR, 503, 'LLAVE_CIFRADO_NO_DISPONIBLE'],
+      ['post', RUTA_OAUTH_RETORNO, 400, 'JIRA_OAUTH_ESTADO_INVALIDO'],
+      ['post', RUTA_OAUTH_RETORNO, 400, 'VALIDACION'],
+      ['post', RUTA_OAUTH_RETORNO, 503, 'JIRA_OAUTH_NO_CONFIGURADO'],
+      ['post', RUTA_OAUTH_SITIO, 400, 'JIRA_OAUTH_SITIO_NO_VALIDO'],
+      ['post', RUTA_OAUTH_SITIO, 409, 'JIRA_OAUTH_SIN_CONEXION'],
+      ['post', RUTA_OAUTH_SITIO, 409, 'TOKEN_NO_DESCIFRABLE'],
+      ['delete', RUTA_OAUTH, 409, 'JIRA_OAUTH_SIN_CONEXION'],
+    ];
+    const token = await autorizacion();
+    for (const [metodo, ruta, estado, codigo] of casos) {
+      const cuerpoError = { codigo, mensaje: 'm', traceId: 'x', detalles: [] };
+      integraciones.responder(`${metodo.toUpperCase()} ${ruta}`, { estado, cuerpo: cuerpoError });
+      const cuerpo = RUTAS_OAUTH.find((oauth) => oauth.metodo === metodo && oauth.ruta === ruta)?.cuerpo;
+      const respuesta = await enviar(app, metodo, ruta, token, cuerpo);
+      assert.equal(respuesta.status, estado, `${metodo} ${ruta} ${codigo}`);
+      assert.deepEqual(respuesta.body, cuerpoError);
+    }
+  });
+
+  it('ninguna es pública: con un token vencido responden 401 SESION_EXPIRADA, con otra audiencia 401 NO_AUTENTICADO, y no se reenvían [E5-B08#13, E1-B11#1]', async () => {
+    const vencido = `Bearer ${await firmarToken({ vigenciaSegundos: -300 })}`;
+    const ajeno = `Bearer ${await firmarToken({ audiencia: 'otro-publico' })}`;
+    for (const { metodo, ruta, cuerpo } of RUTAS_OAUTH) {
+      const expirada = await enviar(app, metodo, ruta, vencido, cuerpo);
+      assert.equal(expirada.status, 401, ruta);
+      assert.equal(expirada.body.codigo, 'SESION_EXPIRADA', ruta);
+      const otraAudiencia = await enviar(app, metodo, ruta, ajeno, cuerpo);
+      assert.equal(otraAudiencia.status, 401, ruta);
+      assert.equal(otraAudiencia.body.codigo, 'NO_AUTENTICADO', ruta);
+    }
+    assert.equal(integraciones.solicitudes.length + totalOtros(), 0);
+  });
+
+  it('el gateway no tiene callback público: GET …/oauth/retorno con code y state responde 404, con o sin token [ADR 0019]', async () => {
+    const ruta = `${RUTA_OAUTH_RETORNO}?code=${CODIGO_OAUTH}&state=${ESTADO_OAUTH}`;
+    for (const token of [null, await autorizacion()]) {
+      const respuesta = await enviar(app, 'get', ruta, token);
+      assert.equal(respuesta.status, 404);
+      assert.equal(respuesta.body.codigo, 'NO_ENCONTRADO');
+    }
+    assert.equal(integraciones.solicitudes.length + totalOtros(), 0);
+  });
+});
+
+describe('Conexión por OAuth 2.0: cubo de escritura general [GO1]', () => {
+  it('las 4 gastan el cubo de escritura y no el de la consulta: agotado, responden 429 con Retry-After y no se reenvían', async () => {
+    const limitada = await crearAppPrueba({
+      organizacionUrl: organizacion.url,
+      integracionesUrl: integraciones.url,
+      limiteTasa: { maximoEscritura: RUTAS_OAUTH.length, maximoConsulta: 1 },
+    });
+    try {
+      for (const { metodo, ruta, estado } of RUTAS_OAUTH) {
+        integraciones.responder(`${metodo.toUpperCase()} ${ruta}`, estado === 204 ? { estado: 204 } : { estado: 200, cuerpo: { ok: true } });
+      }
+      integraciones.responder(`PATCH ${RUTA_EDICION}`, { estado: 200, cuerpo: { ok: true } });
+      const token = await autorizacion();
+
+      // Una vez cada una: gastan las 4 escrituras de la ventana.
+      for (const { metodo, ruta, cuerpo, estado } of RUTAS_OAUTH) {
+        const respuesta = await enviar(limitada, metodo, ruta, token, cuerpo);
+        assert.equal(respuesta.status, estado ?? 200, ruta);
+      }
+      // Con el cubo agotado, cada una responde 429 y no llega a Integraciones.
+      for (const { metodo, ruta, cuerpo } of RUTAS_OAUTH) {
+        const respuesta = await enviar(limitada, metodo, ruta, token, cuerpo);
+        assert.equal(respuesta.status, 429, ruta);
+        assert.equal(respuesta.body.codigo, 'DEMASIADAS_SOLICITUDES', ruta);
+        assert.ok(Number(respuesta.headers['retry-after']) >= 1, ruta);
+      }
+      assert.equal(integraciones.solicitudes.length, RUTAS_OAUTH.length);
+
+      // Es el mismo cubo que el resto de las escrituras de E5…
+      const guardar = await enviar(limitada, 'put', '/v1/integraciones/jira/configuracion', token, {});
+      assert.equal(guardar.status, 429);
+      // …y el de la consulta (máximo 1) sigue intacto.
+      await request(limitada.getHttpServer())
+        .patch(RUTA_EDICION)
+        .set('authorization', token)
+        .send({ version: 1, itemIds: [ITEM_ID], asignacion: { celulaId: CELULA_ID } })
+        .expect(200);
+    } finally {
+      await limitada.close();
+    }
+  });
+});
+
+describe('Conexión por OAuth 2.0: sin code, state ni URL de autorización en los registros [E5-B08#14, GO1]', () => {
+  it('ni el cuerpo de oauth/retorno ni la respuesta de oauth/iniciar quedan en los registros, con éxito ni con error', async () => {
+    const estadoInicio = randomBytes(32).toString('base64url');
+    const inicio = inicioAutorizacion(estadoInicio);
+    const retorno = { code: CODIGO_OAUTH, state: ESTADO_OAUTH };
+    const vigente = await firmarToken();
+    const vencido = await firmarToken({ vigenciaSegundos: -300 });
+    const ajeno = await firmarToken({ audiencia: 'otro-publico' });
+    const base = { organizacionUrl: organizacion.url, integracionesUrl: integraciones.url };
+    const conectada = { resultado: 'CONECTADA', oauth: null, error: null };
+
+    const registro = await conRegistroCapturado(async () => {
+      // Sin `registro: false`: registran como en producción.
+      const normal = await crearApp(configuracionPrueba(base));
+      const caida = await crearApp(configuracionPrueba({ ...base, integracionesUrl: await urlCaida() }));
+      const lenta = await crearApp(configuracionPrueba({ ...base, tiempoLimiteIntegracionesMs: 150 }));
+      const sinUrl = await crearApp(configuracionPrueba({ ...base, integracionesUrl: null }));
+      const limitada = await crearApp(configuracionPrueba({ ...base, limiteTasa: { maximoEscritura: 1 } }));
+
+      const retornar = (
+        destino: NestExpressApplication,
+        traza: string,
+        token: string | null,
+        cuerpo: string | Record<string, unknown> = retorno,
+      ): request.Test => {
+        let solicitud = request(destino.getHttpServer())
+          .post(RUTA_OAUTH_RETORNO)
+          .set('x-trace-id', traza)
+          .set('content-type', 'application/json');
+        if (token !== null) solicitud = solicitud.set('authorization', `Bearer ${token}`);
+        return solicitud.send(typeof cuerpo === 'string' ? cuerpo : JSON.stringify(cuerpo));
+      };
+      const iniciar = (destino: NestExpressApplication, traza: string): request.Test =>
+        request(destino.getHttpServer()).post(RUTA_OAUTH_INICIAR).set('authorization', `Bearer ${vigente}`).set('x-trace-id', traza);
+
+      try {
+        // Éxito: la URL con el state vuelve tal cual al portal y el cuerpo del retorno llega tal cual.
+        integraciones.responder(`POST ${RUTA_OAUTH_INICIAR}`, { estado: 200, cuerpo: inicio });
+        const iniciada = await iniciar(normal, 'traza-oauth-iniciar');
+        assert.equal(iniciada.status, 200);
+        assert.deepEqual(iniciada.body, inicio);
+        integraciones.responder(`POST ${RUTA_OAUTH_RETORNO}`, { estado: 200, cuerpo: conectada });
+        assert.equal((await retornar(normal, 'traza-oauth-retorno', vigente)).status, 200);
+        assert.deepEqual(JSON.parse(integraciones.solicitudes.at(-1)?.cuerpo ?? '{}'), retorno);
+
+        // Integraciones rechaza el state: su 400 llega tal cual.
+        integraciones.responder(`POST ${RUTA_OAUTH_RETORNO}`, {
+          estado: 400,
+          cuerpo: { codigo: 'JIRA_OAUTH_ESTADO_INVALIDO', mensaje: 'm', traceId: 'x', detalles: [] },
+        });
+        assert.equal((await retornar(normal, 'traza-oauth-estado', vigente)).status, 400);
+
+        // Sin sesión válida: IdentidadGuard y el filtro registran código, ruta y traza.
+        assert.equal((await retornar(normal, 'traza-oauth-sin-token', null)).status, 401);
+        assert.equal((await retornar(normal, 'traza-oauth-vencido', vencido)).status, 401);
+        assert.equal((await retornar(normal, 'traza-oauth-audiencia', ajeno)).status, 401);
+
+        // JSON mal formado (el error de JSON.parse cita el texto) y cuerpo de más de 100 KB: 400 VALIDACION.
+        const truncado = `{"code":"${CODIGO_OAUTH}","state":"${ESTADO_OAUTH}"`;
+        assert.equal((await retornar(normal, 'traza-oauth-json', vigente, truncado)).status, 400);
+        assert.equal((await retornar(normal, 'traza-oauth-grande', vigente, { ...retorno, relleno: 'x'.repeat(200_000) })).status, 400);
+
+        // Integraciones responde algo que no es JSON y repite los secretos: 503, sin copiarlo al registro.
+        integraciones.responder(`POST ${RUTA_OAUTH_RETORNO}`, {
+          estado: 502,
+          texto: `<p>${CODIGO_OAUTH} ${ESTADO_OAUTH}</p>`,
+          tipoContenido: 'text/html',
+        });
+        assert.equal((await retornar(normal, 'traza-oauth-html', vigente)).status, 503);
+        integraciones.responder(`POST ${RUTA_OAUTH_INICIAR}`, { estado: 200, texto: inicio.urlAutorizacion, tipoContenido: 'text/plain' });
+        assert.equal((await iniciar(normal, 'traza-oauth-iniciar-texto')).status, 503);
+
+        // Integraciones caída, lenta o sin configurar: 503, y el filtro registra el motivo y la pila.
+        assert.equal((await retornar(caida, 'traza-oauth-caida', vigente)).status, 503);
+        assert.equal((await iniciar(caida, 'traza-oauth-iniciar-caida')).status, 503);
+        integraciones.responder(`POST ${RUTA_OAUTH_RETORNO}`, { estado: 200, cuerpo: conectada, retrasoMs: 600 });
+        assert.equal((await retornar(lenta, 'traza-oauth-lenta', vigente)).status, 503);
+        assert.equal((await retornar(sinUrl, 'traza-oauth-sin-url', vigente)).status, 503);
+
+        // Límite de tasa: el segundo retorno da 429.
+        integraciones.responder(`POST ${RUTA_OAUTH_RETORNO}`, { estado: 200, cuerpo: conectada });
+        assert.equal((await retornar(limitada, 'traza-oauth-tasa-1', vigente)).status, 200);
+        assert.equal((await retornar(limitada, 'traza-oauth-tasa-2', vigente)).status, 429);
+      } finally {
+        for (const destino of [normal, caida, lenta, sinUrl, limitada]) await destino.close();
+      }
+    });
+
+    const texto = registro.lineas.join('\n');
+    // La captura funciona: están las líneas reales de los errores, con código, ruta y traza.
+    for (const esperada of [
+      `NO_AUTENTICADO 401 en POST ${RUTA_OAUTH_RETORNO} · traceId=traza-oauth-sin-token`,
+      `SESION_EXPIRADA 401 en POST ${RUTA_OAUTH_RETORNO} · traceId=traza-oauth-vencido`,
+      `NO_AUTENTICADO 401 en POST ${RUTA_OAUTH_RETORNO} · traceId=traza-oauth-audiencia`,
+      `SERVICIO_NO_DISPONIBLE 503 en POST ${RUTA_OAUTH_RETORNO} · traceId=traza-oauth-html`,
+      `SERVICIO_NO_DISPONIBLE 503 en POST ${RUTA_OAUTH_INICIAR} · traceId=traza-oauth-iniciar-texto`,
+      `SERVICIO_NO_DISPONIBLE 503 en POST ${RUTA_OAUTH_RETORNO} · traceId=traza-oauth-caida`,
+      `SERVICIO_NO_DISPONIBLE 503 en POST ${RUTA_OAUTH_INICIAR} · traceId=traza-oauth-iniciar-caida`,
+      `SERVICIO_NO_DISPONIBLE 503 en POST ${RUTA_OAUTH_RETORNO} · traceId=traza-oauth-lenta`,
+      `SERVICIO_NO_DISPONIBLE 503 en POST ${RUTA_OAUTH_RETORNO} · traceId=traza-oauth-sin-url`,
+    ]) {
+      assert.ok(texto.includes(esperada), `el registro debía tener: ${esperada}`);
+    }
+    assert.ok(registro.lineas.some((linea) => linea.startsWith('debug ')), 'también se capturan las pilas (debug)');
+
+    // Y ningún secreto, en ningún nivel.
+    for (const [nombre, secreto] of [
+      ['el code', CODIGO_OAUTH],
+      ['el state del retorno', ESTADO_OAUTH],
+      ['el state de la URL de autorización', estadoInicio],
+      ['la URL de autorización', 'auth.atlassian.com/authorize'],
+      ['el access token vigente', vigente],
+      ['el access token vencido', vencido],
+      ['el access token de otra audiencia', ajeno],
+    ] as const) {
+      assert.equal(texto.includes(secreto), false, `el registro contiene ${nombre}`);
     }
   });
 });
