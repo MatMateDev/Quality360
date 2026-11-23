@@ -1,9 +1,5 @@
 import type { ReactNode } from "react";
 import { Link } from "react-router-dom";
-import "@fontsource/ibm-plex-sans/latin-400.css";
-import "@fontsource/ibm-plex-sans/latin-500.css";
-import "@fontsource/ibm-plex-sans/latin-600.css";
-import "@fontsource/ibm-plex-sans/latin-700.css";
 import logo from "@/assets/quality360-logo.png";
 import "@/styles/acceso.css";
 import { IconoEscudo, IconoVisto } from "./Iconos";
@@ -16,7 +12,7 @@ const CICLO_HDU = ["Pendiente", "Diseño de pruebas", "En ejecución", "Pendient
  * a la izquierda y la columna del formulario a la derecha. Con menos de 1024 px el panel se reduce a
  * una franja con el logo y el formulario ocupa todo el ancho.
  *
- * La clase raíz `pantalla-acceso` es la única que usa IBM Plex Sans: el resto de la app conserva sus tokens.
+ * IBM Plex Sans se carga para todo el portal en `main.tsx` (D209); `pantalla-acceso` conserva su propia paleta.
  */
 export function AccesoLayout({ children }: { children: ReactNode }) {
   return (

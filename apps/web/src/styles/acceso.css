@@ -1,7 +1,7 @@
 /*
  * Pantalla de acceso «A · pantalla dividida» (login y RECUPERACION de contraseña).
- * Todo cuelga de `.pantalla-acceso`: la tipografía IBM Plex Sans y estos colores NO salen de aquí; el resto
- * de la app sigue con los tokens de tokens.css.
+ * Todo cuelga de `.pantalla-acceso`: estos colores NO salen de aquí; el resto de la app sigue con los tokens de
+ * tokens.css. IBM Plex Sans es la tipografía de todo el portal desde D209.
  *
  * Mobile primero. Con 1024 px o más pasa a dos columnas (panel de marca + formulario).
  * Contraste: texto >= 4.5:1; bordes de campo >= 3:1; foco con contorno de 3 px.

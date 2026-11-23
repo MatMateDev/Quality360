@@ -3,6 +3,11 @@ import { createRoot } from "react-dom/client";
 import { App } from "./App";
 import { ConfiguracionIncompleta } from "./components/ConfiguracionIncompleta";
 import { variablesFaltantes } from "./lib/env";
+// D209: IBM Plex Sans es la tipografía de todo el portal (antes solo la usaba la pantalla de acceso).
+import "@fontsource/ibm-plex-sans/latin-400.css";
+import "@fontsource/ibm-plex-sans/latin-500.css";
+import "@fontsource/ibm-plex-sans/latin-600.css";
+import "@fontsource/ibm-plex-sans/latin-700.css";
 import "./styles/global.css";
 import "./styles/bandejas.css";
 import "./styles/impedimentos.css";

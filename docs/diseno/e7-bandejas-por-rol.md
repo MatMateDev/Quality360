@@ -63,6 +63,8 @@ Reglas de composición:
 - **Los contadores no dependen de los filtros de la lista** (E7-F02-T05: filtrar no cambia el contador).
 - **Una sola `h1`**; cada panel lleva `h2`; las tarjetas usan `span` + `strong` como hoy.
 
+**Actualización D209 (diseño de las bandejas).** La barra superior abre con el logo y la marca «Quality360» arriba a la izquierda; la sesión va a la derecha y el menú «Portal» en una segunda fila. Los accesos rápidos suben al encabezado de la bandeja (`nav` «Accesos rápidos»), y los contadores se agrupan por tema en una franja de grupos con subtítulo (`GrupoContadores` dentro de `FranjaResumen`). Los impedimentos van junto a su lista (`TemaBandeja`), y en el Administrador los pendientes y los últimos cambios quedan lado a lado (`RejillaBandeja`). Bajo 1100 px todo se apila. La tipografía de todo el portal es IBM Plex Sans. El detalle está en `decisiones-mvp.md`, D209.
+
 ### 1.3 Estados de cada bloque (D34 y sección 5 del backlog)
 
 Los cuatro estados reutilizan `BloqueEstado` (testid certificado `bloque-<id>-<estado>`; no cambia). Para cumplir la convención `estado-vacio-<clave>` / `estado-error-<clave>` / `estado-indisponible-<clave>` **sin tocar el testid certificado**, cada bloque de bandeja envuelve a `BloqueEstado` en `BloqueDatos`, que agrega un contenedor con el testid de convención (el anidado queda `estado-vacio-mis-hdu` > `bloque-lista-mis-hdu-vacio`).

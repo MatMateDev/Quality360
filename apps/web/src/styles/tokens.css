@@ -1,6 +1,15 @@
 /* Tokens de color y tipografía rescatados del prototipo (src/ raíz). */
 :root {
-  --q360-font-family: Arial, Helvetica, sans-serif;
+  /* D209: la misma familia de la pantalla de acceso en todo el portal (cargada en main.tsx). */
+  --q360-font-family: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
+
+  /* Marca (logo): «Quality» en azul marino y «360» en azul. Ambos >= 4.5:1 sobre blanco. */
+  --q360-color-marca: #0b2559;
+  --q360-color-marca-360: #1565c0;
+
+  /* Elevación sutil de paneles y barra superior */
+  --q360-sombra-suave: 0 1px 2px rgba(16, 24, 40, 0.05);
+  --q360-sombra-barra: 0 1px 3px rgba(16, 24, 40, 0.08);
 
   /* Fondo y superficie */
   --q360-color-fondo: #f4f6f8;

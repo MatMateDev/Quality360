@@ -4,7 +4,15 @@ import { useBandejaAdmin } from "@/api/bandejas";
 import { useInicioAdmin } from "@/api/inicio";
 import { BloqueEstado } from "@/components/BloqueEstado";
 import { TarjetaMetrica } from "@/components/TarjetaMetrica";
-import { BloqueDatos, EncabezadoBandeja, GrupoContadores, type EstadoDatos } from "@/components/bandeja/Estructura";
+import {
+  BloqueDatos,
+  EncabezadoBandeja,
+  FranjaResumen,
+  GrupoContadores,
+  RejillaBandeja,
+  TemaBandeja,
+  type EstadoDatos,
+} from "@/components/bandeja/Estructura";
 import { TablaBandeja, type Columna } from "@/components/bandeja/TablaBandeja";
 import { TarjetaContador } from "@/components/bandeja/TarjetaContador";
 import { Paginacion } from "@/components/bandeja/Paginacion";
@@ -41,6 +49,8 @@ function accionPendiente(p: PendienteConfiguracion): { a: string; texto: string;
 /**
  * Bandeja del Administrador (E7-F05) sobre el inicio certificado de E1-F08: se conservan las cuatro tarjetas
  * y los accesos, y se agregan contadores de configuración, «Pendientes» y «Últimos cambios».
+ * D209: los accesos van en el encabezado; los contadores en una franja (usuarios | supervisión); «Pendientes» y
+ * «Últimos cambios» lado a lado; al final, los impedimentos de solo consulta junto a su lista.
  */
 export function AdminInicioPage() {
   const inicioQuery = useInicioAdmin();
@@ -96,15 +106,31 @@ export function AdminInicioPage() {
 
   return (
     <div data-testid="bandeja-admin">
-      <EncabezadoBandeja etiqueta="Portal Administrador" descripcion="Estado de usuarios y de la organización de supervisión QA." />
+      <EncabezadoBandeja
+        etiqueta="Portal Administrador"
+        descripcion="Estado de usuarios y de la organización de supervisión QA."
+        acciones={
+          <>
+            <Link className="boton boton--secundario" to="/admin/usuarios">
+              Gestionar usuarios
+            </Link>
+            <Link className="boton boton--secundario" to="/admin/supervision">
+              Gestionar supervisión
+            </Link>
+            <Link className="boton boton--primario" to="/admin/usuarios?nuevo=1">
+              Registrar usuario
+            </Link>
+          </>
+        }
+      />
 
       {inicioQuery.isLoading ? <BloqueEstado id="inicio-admin" estado="cargando" /> : null}
       {inicioQuery.isError ? <BloqueEstado id="inicio-admin" estado="error" onReintentar={() => inicioQuery.refetch()} /> : null}
       {bandeja.isError && !inicioQuery.isError ? <BloqueEstado id="bandeja-admin" estado="error" onReintentar={() => bandeja.refetch()} /> : null}
 
       {inicioQuery.data ? (
-        <>
-          <GrupoContadores titulo="Usuarios">
+        <FranjaResumen>
+          <GrupoContadores titulo="Usuarios" peso={3}>
             <TarjetaMetrica
               id="usuarios-total"
               titulo="Usuarios totales"
@@ -122,7 +148,7 @@ export function AdminInicioPage() {
             <TarjetaContador consulta={bandeja} id="usuarios-inactivos" clave="usuarios-inactivos" titulo="Usuarios inactivos" contador={datos?.contadores.usuariosInactivos} />
           </GrupoContadores>
 
-          <GrupoContadores titulo="Supervisión y organización">
+          <GrupoContadores titulo="Supervisión y organización" peso={4}>
             <TarjetaMetrica
               id="supervision-vigentes"
               titulo="Relaciones vigentes"
@@ -140,45 +166,11 @@ export function AdminInicioPage() {
             <TarjetaContador consulta={bandeja} id="qe-sin-analistas" clave="qe-sin-analistas" titulo="QE sin analistas" contador={datos?.contadores.qeSinAnalistas} atencion />
             <TarjetaContador consulta={bandeja} id="hdu-total" clave="hdu-total" titulo="HDU totales" contador={datos?.contadores.hduTotal} />
           </GrupoContadores>
-
-          {/* E4: solo consulta (D57, D83): sin tono de atención, porque el Administrador no gestiona su contenido. */}
-          <GrupoContadores titulo="Impedimentos y riesgo" compacto>
-            <TarjetaContador consulta={bandeja} id="impedimentos-abiertos" clave="impedimentos-abiertos" titulo="Impedimentos abiertos" contador={datos?.impedimentos?.contadores.impedimentosAbiertos} />
-            <TarjetaContador consulta={bandeja} id="hdu-bloqueadas" clave="hdu-bloqueadas" titulo="HDU bloqueadas" contador={datos?.impedimentos?.contadores.hduBloqueadas} />
-            <TarjetaContador consulta={bandeja} id="hdu-riesgo-alto" clave="hdu-riesgo-alto" titulo="HDU en riesgo alto" contador={datos?.impedimentos?.contadores.hduRiesgoAlto} />
-          </GrupoContadores>
-          <p className="campo-ayuda">Solo consulta. Los gestiona el QE responsable de cada HDU.</p>
-          <BloqueImpedimentosBandeja
-            variante="admin"
-            titulo="Impedimentos escalados a mí"
-            clave="impedimentos-escalados"
-            testIdTabla="lista-impedimentos-escalados"
-            consulta={bandeja}
-            bloque={datos?.impedimentos?.escalados}
-            vacio="No tienes impedimentos escalados"
-          />
-        </>
+        </FranjaResumen>
       ) : null}
 
-      <div className="panel">
-        <div className="panel-cabecera">
-          <h2>Accesos rápidos</h2>
-        </div>
-        <div className="enlaces-rapidos">
-          <Link className="boton boton--secundario" to="/admin/usuarios">
-            Gestionar usuarios
-          </Link>
-          <Link className="boton boton--secundario" to="/admin/supervision">
-            Gestionar supervisión
-          </Link>
-          <Link className="boton boton--secundario" to="/admin/usuarios?nuevo=1">
-            Registrar usuario
-          </Link>
-        </div>
-      </div>
-
       {inicioQuery.isError ? null : (
-        <>
+        <RejillaBandeja>
           <section className="panel" aria-labelledby={idPendientes}>
             <div className="panel-cabecera">
               <h2 id={idPendientes}>Pendientes de configuración</h2>
@@ -237,8 +229,28 @@ export function AdminInicioPage() {
               ) : null}
             </BloqueDatos>
           </section>
-        </>
+        </RejillaBandeja>
       )}
+
+      {inicioQuery.data ? (
+        <TemaBandeja>
+          {/* E4: solo consulta (D57, D83): sin tono de atención, porque el Administrador no gestiona su contenido. */}
+          <GrupoContadores titulo="Impedimentos y riesgo" descripcion="Solo consulta. Los gestiona el QE responsable de cada HDU.">
+            <TarjetaContador consulta={bandeja} id="impedimentos-abiertos" clave="impedimentos-abiertos" titulo="Impedimentos abiertos" contador={datos?.impedimentos?.contadores.impedimentosAbiertos} />
+            <TarjetaContador consulta={bandeja} id="hdu-bloqueadas" clave="hdu-bloqueadas" titulo="HDU bloqueadas" contador={datos?.impedimentos?.contadores.hduBloqueadas} />
+            <TarjetaContador consulta={bandeja} id="hdu-riesgo-alto" clave="hdu-riesgo-alto" titulo="HDU en riesgo alto" contador={datos?.impedimentos?.contadores.hduRiesgoAlto} />
+          </GrupoContadores>
+          <BloqueImpedimentosBandeja
+            variante="admin"
+            titulo="Impedimentos escalados a mí"
+            clave="impedimentos-escalados"
+            testIdTabla="lista-impedimentos-escalados"
+            consulta={bandeja}
+            bloque={datos?.impedimentos?.escalados}
+            vacio="No tienes impedimentos escalados"
+          />
+        </TemaBandeja>
+      ) : null}
     </div>
   );
 }

@@ -80,12 +80,138 @@ main:focus {
   margin-top: 6px;
   color: var(--q360-color-alerta);
   font-size: 13px;
+  font-weight: 600;
+}
+
+/* ------------------------------------------------------- encabezado de bandeja (D209) */
+/* Título a la izquierda y accesos rápidos a la derecha, sobre el mismo degradado del dashboard (E6). */
+.encabezado--bandeja {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 16px 32px;
+  margin-bottom: 20px;
+  padding: 24px 28px;
+  background: linear-gradient(115deg, var(--q360-color-acento-suave), var(--q360-color-superficie) 75%);
+  border: 1px solid var(--q360-color-acento-suave-borde);
+  border-radius: var(--q360-radio-grande);
+}
+
+.encabezado__texto {
+  flex: 1 1 340px;
+  min-width: 0;
+}
+
+.encabezado--bandeja .etiqueta {
+  color: var(--q360-color-acento-hover);
+  font-size: 12px;
   font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.encabezado--bandeja h1 {
+  margin: 6px 0;
+  font-size: 30px;
+}
+
+.encabezado__acciones {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+/* ------------------------------------------------------- grupos de contadores (D209) */
+/* Cada grupo es un panel con su tema; las tarjetas van dentro, sobre un fondo sutil. */
+.grupo-contadores {
+  margin-bottom: 24px;
+  padding: 16px 18px 18px;
+  background-color: var(--q360-color-superficie);
+  border: 1px solid var(--q360-color-borde);
+  border-radius: var(--q360-radio-grande);
+  box-shadow: var(--q360-sombra-suave);
 }
 
 .grupo-contadores h2 {
   margin: 0 0 12px;
-  font-size: 18px;
+  color: var(--q360-color-texto-secundario);
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.grupo-contadores__descripcion {
+  margin: -6px 0 12px;
+  color: var(--q360-color-texto-secundario);
+  font-size: 14px;
+}
+
+.grupo-contadores .tarjetas-resumen {
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 12px;
+  margin: 0;
+}
+
+.grupo-contadores .tarjeta-resumen {
+  padding: 14px 16px;
+  background-color: var(--q360-color-superficie-sutil);
+  border-radius: var(--q360-radio);
+}
+
+/* Un bloque de estado (cargando, error) ocupa todo el ancho del grupo, no una celda. */
+.tarjetas-resumen > .bloque-estado {
+  grid-column: 1 / -1;
+}
+
+/* Franja: los grupos comparten fila; cada uno crece según su cantidad de tarjetas (--q360-peso),
+   de modo que todas las tarjetas de la fila midan lo mismo. Base = tarjetas × 140 px + espacios + relleno. */
+.franja-resumen {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  margin-bottom: 24px;
+}
+
+.franja-resumen > .grupo-contadores {
+  flex: var(--q360-peso, 1) 1 calc(var(--q360-peso, 1) * 152px + 26px);
+  min-width: 0;
+  margin: 0;
+}
+
+/* Tema: contadores a la izquierda y su lista a la derecha (p. ej. impedimentos). */
+.tema-bandeja {
+  display: grid;
+  grid-template-columns: minmax(240px, 300px) minmax(0, 1fr);
+  gap: 16px;
+  align-items: start;
+  margin-bottom: 24px;
+}
+
+.tema-bandeja > .grupo-contadores,
+.tema-bandeja > .panel {
+  margin: 0;
+}
+
+/* Rejilla: dos paneles lado a lado (p. ej. pendientes y últimos cambios). */
+.rejilla-bandeja {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 24px;
+  align-items: start;
+  margin-bottom: 24px;
+}
+
+.rejilla-bandeja > .panel {
+  margin: 0;
+}
+
+@media (max-width: 1100px) {
+  .tema-bandeja,
+  .rejilla-bandeja {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }
 
 .chips {
@@ -219,20 +345,29 @@ main:focus {
   gap: 4px;
   margin-bottom: 16px;
   overflow-x: auto;
-  border-bottom: 1px solid var(--q360-color-borde);
+  border-bottom: 1px solid var(--q360-color-borde-fuerte);
 }
 
 .pestana {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
   padding: 10px 16px;
   color: var(--q360-color-texto-terciario);
+  font-weight: 500;
   text-decoration: none;
   white-space: nowrap;
   border-bottom: 3px solid transparent;
 }
 
+.pestana:hover {
+  color: var(--q360-color-texto);
+  border-bottom-color: var(--q360-color-borde-fuerte);
+}
+
 .pestana[aria-current="page"] {
   color: var(--q360-color-acento-hover);
-  font-weight: 700;
+  font-weight: 600;
   border-bottom-color: var(--q360-color-acento);
 }
 
@@ -303,6 +438,35 @@ main:focus {
   .tarjetas-resumen {
     grid-template-columns: repeat(2, 1fr);
     gap: 12px;
+  }
+
+  /* D209: encabezado y grupos más compactos; los accesos rápidos ocupan todo el ancho. */
+  .encabezado--bandeja {
+    padding: 18px 16px;
+  }
+
+  .encabezado--bandeja h1 {
+    font-size: 26px;
+  }
+
+  .encabezado__acciones {
+    width: 100%;
+  }
+
+  .encabezado__acciones .boton {
+    flex: 1 1 auto;
+  }
+
+  .grupo-contadores {
+    padding: 14px 14px 16px;
+  }
+
+  .grupo-contadores .tarjeta-resumen {
+    padding: 12px 14px;
+  }
+
+  .tarjeta-resumen__valor {
+    font-size: 26px;
   }
 
   .filtros-toggle {
