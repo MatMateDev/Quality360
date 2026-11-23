@@ -1,6 +1,7 @@
 // Datos de MSW de E5 (integración con Jira y archivos) según `contracts/integraciones.v1.yaml`. Solo sirven para
 // pruebas y revisión visual: no son fuente de datos del portal real.
 import type {
+  ConexionOauthJira,
   ConfiguracionJira,
   Ejecucion,
   EventoConfiguracionJira,
@@ -37,6 +38,7 @@ export interface ModoE5 {
     | "tope"
     | "fallida"
     | "fallida-credencial"
+    | "fallida-reconexion"
     | "fallida-organizacion"
     | "fallida-tasa"
     | "sin-novedades"
@@ -53,7 +55,37 @@ export interface ModoE5 {
   /** Resultado de la próxima importación. */
   importacion: "normal" | "incompleta" | "sin-respuesta";
   /** `ok` o el código de error de la prueba de conexión. */
-  prueba: "ok" | "JIRA_CREDENCIAL_INVALIDA" | "JIRA_SITIO_NO_ENCONTRADO" | "JIRA_PROYECTO_NO_ENCONTRADO";
+  prueba:
+    | "ok"
+    | "JIRA_CREDENCIAL_INVALIDA"
+    | "JIRA_SITIO_NO_ENCONTRADO"
+    | "JIRA_PROYECTO_NO_ENCONTRADO"
+    | "JIRA_SIN_PERMISO"
+    | "JIRA_RECONEXION_NECESARIA"
+    | "JIRA_OAUTH_PERMISOS_INSUFICIENTES";
+  /**
+   * Qué responde el Atlassian simulado en el próximo `iniciar`/`retorno` (espejo de los modos de
+   * `tests/support/atlassian-falso`): `normal` (un solo sitio), `varios-sitios`, `sin-sitio`, `consentimiento-rechazado`,
+   * `permisos-insuficientes`, `canje-rechazado`, `estado-invalido` (state vencido o ya usado), `servidor-caido` (5xx),
+   * `sin-respuesta` (504 sin cuerpo JSON), `no-configurado` (el servidor no tiene las credenciales de la app: 503
+   * `JIRA_OAUTH_NO_CONFIGURADO` y `oauthDisponible: false`) y `reconexion-necesaria` (la renovación falló: la conexión
+   * guardada pasa a `RECONEXION_NECESARIA`).
+   */
+  oauth:
+    | "normal"
+    | "varios-sitios"
+    | "sin-sitio"
+    | "consentimiento-rechazado"
+    | "permisos-insuficientes"
+    | "canje-rechazado"
+    | "estado-invalido"
+    | "servidor-caido"
+    | "sin-respuesta"
+    | "no-configurado"
+    | "reconexion-necesaria";
+  /** Resultado de `…/oauth/sitio` y de `DELETE …/oauth`: `ok`, `error` (5xx) o `sin-respuesta` (504). */
+  oauthSitio: "ok" | "error" | "sin-respuesta" | "reconexion-necesaria";
+  oauthDesconexion: "ok" | "error";
 }
 
 export const modoE5: ModoE5 = {
@@ -72,6 +104,9 @@ export const modoE5: ModoE5 = {
   lecturaConsulta: "ok",
   importacion: "normal",
   prueba: "ok",
+  oauth: "normal",
+  oauthSitio: "ok",
+  oauthDesconexion: "ok",
 };
 
 export interface FilaMock extends Omit<FilaEjecucion, "asignacion"> {
@@ -99,6 +134,9 @@ function configuracionInicial(): ConfiguracionJira {
   return {
     configurado: true,
     llaveDisponible: true,
+    metodo: "API_TOKEN",
+    oauthDisponible: true,
+    oauth: null,
     sitio: "https://su-empresa.atlassian.net",
     correo: "admin@empresa.com",
     proyecto: "QTY",
@@ -120,6 +158,9 @@ export function configuracionVacia(): ConfiguracionJira {
   return {
     configurado: false,
     llaveDisponible: true,
+    metodo: null,
+    oauthDisponible: true,
+    oauth: null,
     sitio: null,
     correo: null,
     proyecto: null,
@@ -142,11 +183,75 @@ export const estadoConfig: { actual: ConfiguracionJira } = { actual: configuraci
 /** Último token recibido por el mock: las pruebas verifican que nunca vuelve en una respuesta. */
 export const ultimosTokens: string[] = [];
 
+// ------------------------------------------------------------------ OAuth 2.0 (3LO)
+
+/** Identificadores del Atlassian simulado. El `state` solo sirve una vez y solo para el Administrador que inició. */
+export const OAUTH_MOCK = {
+  codigo: "codigo-de-prueba-oauth",
+  state: "estado-de-prueba-oauth",
+  sitios: [
+    { id: "1b2c3d4e-5f60-4a71-8b92-a3b4c5d6e7f8", nombre: "empresa", url: "https://empresa.atlassian.net" },
+    { id: "2c3d4e5f-6071-4b82-9ca3-b4c5d6e7f809", nombre: "laboratorio", url: "https://laboratorio.atlassian.net" },
+    { id: "3d4e5f60-7182-4c93-8db4-c5d6e7f8091a", nombre: "pruebas-qa", url: "https://pruebas-qa.atlassian.net" },
+  ],
+  cuenta: "Ana Pérez",
+  permisos: ["read:jira-work", "read:jira-user", "offline_access"],
+} as const;
+
+/** La conexión OAuth guardada (`null` = nunca se conectó, se desconectó o se pasó a API token). */
+export const estadoOauth: { actual: ConexionOauthJira | null; estadosUsados: Set<string>; ultimosRetornos: Array<{ state?: string; code?: string; error?: string }> } = {
+  actual: null,
+  estadosUsados: new Set(),
+  ultimosRetornos: [],
+};
+
+export function oauthConectada(parcial: Partial<ConexionOauthJira> = {}): ConexionOauthJira {
+  return {
+    estado: "CONECTADA",
+    descifrable: true,
+    cuenta: { nombre: OAUTH_MOCK.cuenta },
+    sitio: { ...OAUTH_MOCK.sitios[0] },
+    sitiosCandidatos: null,
+    permisos: [...OAUTH_MOCK.permisos],
+    conectadoEn: "2026-11-22T13:15:00Z",
+    conectadoPor: { id: ID.admin, nombre: "Valentina Rojas" },
+    renovadoEn: null,
+    ...parcial,
+  };
+}
+
+/** Conexión que espera el sitio: los candidatos son los 3 de prueba (el actual, si hay, va marcado). */
+export function oauthPendienteSitio(actualUrl: string | null = null): ConexionOauthJira {
+  return oauthConectada({
+    estado: "PENDIENTE_SITIO",
+    cuenta: null,
+    sitio: null,
+    sitiosCandidatos: OAUTH_MOCK.sitios.map((s) => ({ ...s, actual: actualUrl === s.url })),
+  });
+}
+
+export function oauthReconexion(): ConexionOauthJira {
+  return oauthConectada({ estado: "RECONEXION_NECESARIA", descifrable: false, permisos: [] });
+}
+
+/** Prepara la configuración de prueba: método activo y conexión OAuth guardada. */
+export function prepararOauth(metodo: "API_TOKEN" | "OAUTH" | null, oauth: ConexionOauthJira | null): void {
+  estadoOauth.actual = oauth;
+  const base = estadoConfig.actual;
+  if (metodo === "OAUTH") {
+    estadoConfig.actual = { ...base, metodo, correo: null, token: { configurado: false, ultimos4: null, descifrable: false }, sitio: oauth?.sitio?.url ?? base.sitio };
+  } else if (metodo === null) {
+    estadoConfig.actual = { ...configuracionVacia() };
+  } else {
+    estadoConfig.actual = { ...base, metodo };
+  }
+}
+
 function eventosIniciales(): EventoConfiguracionJira[] {
   const admin = { id: ID.admin, nombre: "Valentina Rojas" };
   return [
-    { id: "e5000000-0000-4000-8000-0000000000a1", fecha: "2026-10-29T13:15:00Z", actor: admin, camposCambiados: ["token", "proyecto"], tokenCambiado: true, resultadoPrueba: "OK" },
-    { id: "e5000000-0000-4000-8000-0000000000a2", fecha: "2026-10-28T19:02:00Z", actor: admin, camposCambiados: ["sitio", "correo", "token", "celulaId", "qeResponsableId", "sprintRespaldoId"], tokenCambiado: true, resultadoPrueba: "OK" },
+    { id: "e5000000-0000-4000-8000-0000000000a1", fecha: "2026-10-29T13:15:00Z", tipo: "CONFIGURACION", actor: admin, camposCambiados: ["token", "proyecto"], tokenCambiado: true, resultadoPrueba: "OK", oauth: null },
+    { id: "e5000000-0000-4000-8000-0000000000a2", fecha: "2026-10-28T19:02:00Z", tipo: "CONFIGURACION", actor: admin, camposCambiados: ["sitio", "correo", "token", "celulaId", "qeResponsableId", "sprintRespaldoId"], tokenCambiado: true, resultadoPrueba: "OK", oauth: null },
   ];
 }
 
@@ -341,8 +446,14 @@ export function reiniciarE5(): void {
     lecturaConsulta: "ok",
     importacion: "normal",
     prueba: "ok",
+    oauth: "normal",
+    oauthSitio: "ok",
+    oauthDesconexion: "ok",
   } satisfies ModoE5);
   reiniciarConsulta();
+  estadoOauth.actual = null;
+  estadoOauth.estadosUsados.clear();
+  estadoOauth.ultimosRetornos.length = 0;
   estadoConfig.actual = configuracionInicial();
   eventosConfig.splice(0, eventosConfig.length, ...eventosIniciales());
   ejecuciones.splice(0, ejecuciones.length, ...ejecucionesIniciales());

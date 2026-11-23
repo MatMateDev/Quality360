@@ -1,7 +1,8 @@
 import "@testing-library/jest-dom/vitest";
 import { cleanup } from "@testing-library/react";
-import { afterAll, afterEach, beforeAll } from "vitest";
+import { afterAll, afterEach, beforeAll, vi } from "vitest";
 import { reiniciarSimulacionMock } from "@/auth/mockAuthProvider";
+import { reiniciarCapturaRetornoOauth } from "@/lib/capturaRetornoOauth";
 import { limpiarSesion } from "@/auth/sessionStore";
 import { reiniciarE5 } from "@/mocks/dataE5";
 import { reiniciarFuentes } from "@/mocks/dataE7";
@@ -20,6 +21,8 @@ afterEach(async () => {
   reiniciarSimulacionMock();
   reiniciarFuentes();
   reiniciarE5();
+  reiniciarCapturaRetornoOauth();
+  vi.restoreAllMocks();
 });
 
 afterAll(() => server.close());

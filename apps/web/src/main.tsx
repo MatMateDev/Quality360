@@ -1,3 +1,6 @@
+// D210: PRIMER import. Captura `code`/`state`/`error` del retorno de Atlassian y limpia la dirección antes de que
+// exista el cliente de Supabase (que cerraría la sesión ante un `?error=…`). No mover.
+import "./lib/capturaRetornoOauth";
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { App } from "./App";
@@ -12,6 +15,7 @@ import "./styles/global.css";
 import "./styles/bandejas.css";
 import "./styles/impedimentos.css";
 import "./styles/integraciones.css";
+import "./styles/integraciones-oauth.css";
 import "./styles/consulta.css";
 import "./styles/detalle.css";
 

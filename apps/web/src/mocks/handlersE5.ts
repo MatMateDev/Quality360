@@ -7,7 +7,15 @@ import type {
   AccionVistaPrevia,
   CambiosHdu,
   CodigoErrorIntegracion,
+  ConexionOauthJira,
+  ConfiguracionJira,
   Ejecucion,
+  SolicitudConfiguracionJira,
+  SolicitudConfiguracionJiraOauth,
+  SolicitudPruebaJira,
+  SolicitudPruebaJiraOauth,
+  SolicitudRetornoOauthJira,
+  TipoEventoConfiguracionJira,
   FilaVistaPrevia,
   MotivoFila,
   OrigenEjecucion,
@@ -24,8 +32,13 @@ import {
   ejecucionBase,
   ejecuciones,
   estadoConfig,
+  estadoOauth,
   eventosConfig,
   modoE5,
+  OAUTH_MOCK,
+  oauthConectada,
+  oauthPendienteSitio,
+  oauthReconexion,
   sprintsE5,
   celulaDeSprintBase,
   ultimosTokens,
@@ -57,6 +70,8 @@ export const SUGERENCIAS: Partial<Record<CodigoErrorIntegracion, SugerenciaInteg
   JIRA_NO_DISPONIBLE: ["REINTENTAR", "IMPORTAR_ARCHIVO"],
   ORGANIZACION_NO_DISPONIBLE: ["REINTENTAR"],
   MODO_ESTRICTO: ["CORREGIR_ARCHIVO"],
+  JIRA_RECONEXION_NECESARIA: ["IR_A_CONEXION", "IMPORTAR_ARCHIVO"],
+  JIRA_OAUTH_PERMISOS_INSUFICIENTES: ["IR_A_CONEXION", "IMPORTAR_ARCHIVO"],
 };
 
 function adminOQuizas(request: Request, ...roles: Parameters<typeof exigirRol>[1][]) {
@@ -72,12 +87,47 @@ const lectura = (request: Request) => adminOQuizas(request, "ADMINISTRADOR", "QE
 
 // -------------------------------------------------------------- configuración
 
-function configuracionVigente() {
+/** Lo que `GET configuracion` suma a la configuración (D209, D215, D216): `oauthDisponible` y la conexión guardada. */
+function conOauth<T extends ConfiguracionJira>(configuracion: T): T {
+  return { ...configuracion, oauthDisponible: modoE5.oauth !== "no-configurado", oauth: estadoOauth.actual };
+}
+
+function configuracionVigente(): ConfiguracionJira {
   const actual = estadoConfig.actual;
-  if (modoE5.configuracion === "vacia") return configuracionVacia();
-  if (modoE5.configuracion === "sin-llave") return { ...actual, llaveDisponible: false, token: { configurado: true, ultimos4: null, descifrable: false } };
-  if (modoE5.configuracion === "no-descifrable") return { ...actual, token: { configurado: true, ultimos4: null, descifrable: false } };
-  return actual;
+  if (modoE5.configuracion === "vacia") return conOauth(configuracionVacia());
+  if (modoE5.configuracion === "sin-llave") return conOauth({ ...actual, llaveDisponible: false, token: { configurado: true, ultimos4: null, descifrable: false } });
+  if (modoE5.configuracion === "no-descifrable") return conOauth({ ...actual, token: { configurado: true, ultimos4: null, descifrable: false } });
+  return conOauth(actual);
+}
+
+const errorOauthNoConfigurado = (): Respuesta =>
+  HttpResponse.json(cuerpoError("JIRA_OAUTH_NO_CONFIGURADO", "La conexión automática con Jira no está habilitada en el servidor."), { status: 503 });
+
+const errorServicio = (): Respuesta => HttpResponse.json(cuerpoError("ERROR_INTERNO", "Ocurrió un error inesperado."), { status: 500 });
+
+/** Un 504 del proxy sin cuerpo JSON: la operación pudo haberse completado (D115). */
+const sinRespuesta = (): Respuesta => new HttpResponse("<html><body>504 Gateway Timeout</body></html>", { status: 504, headers: { "Content-Type": "text/html" } });
+
+function errorJiraDe(codigo: CodigoErrorIntegracion, sugerencias: SugerenciaIntegracion[], permisosFaltantes?: string[]) {
+  return { codigo, mensaje: TEXTO_DE_JIRA, sugerencias, ...(permisosFaltantes ? { permisosFaltantes } : {}) };
+}
+
+/** Evento OAuth de «Cambios de configuración» (D217): sin campos, sin token. */
+function registrarEventoOauth(tipo: TipoEventoConfiguracionJira, actor: { id: string; nombre: string }, oauth: ConexionOauthJira | null) {
+  eventosConfig.unshift({
+    id: nuevoId(),
+    fecha: new Date().toISOString(),
+    tipo,
+    actor: { id: actor.id, nombre: actor.nombre },
+    camposCambiados: [],
+    tokenCambiado: false,
+    resultadoPrueba: tipo === "REFRESCO_FALLIDO" ? "FALLIDA" : "OK",
+    oauth: oauth ? { cuenta: oauth.cuenta?.nombre ?? null, sitio: oauth.sitio?.nombre ?? null } : null,
+  });
+}
+
+function huboConexionAntes(): boolean {
+  return eventosConfig.some((e) => e.tipo === "CONECTAR_OAUTH" || e.tipo === "RECONECTAR");
 }
 
 function nombreDe(lista: Array<{ id: string; nombre: string }>, id: string) {
@@ -216,6 +266,173 @@ function filtrarEjecuciones(): Ejecucion[] {
 
 const ESTADOS_COMPLETADOS = ["EXITOSA", "CON_ERRORES"];
 
+// ------------------------------------------------------------ guardar y probar
+
+type Actor = { id: string; nombre: string };
+
+function destinoDe(cuerpo: { celulaId: string; qeResponsableId: string; sprintRespaldoId: string }) {
+  return {
+    celula: nombreDe(celulas, cuerpo.celulaId),
+    qe: nombreDe(usuarios, cuerpo.qeResponsableId),
+    sprint: nombreDe([...sprints, ...sprintsE5], cuerpo.sprintRespaldoId),
+  };
+}
+
+function valorNoPermitido(campos: string[]): Respuesta {
+  return HttpResponse.json(
+    cuerpoError("VALIDACION", "Datos inválidos.", campos.map((campo) => ({ campo, codigo: "VALOR_NO_PERMITIDO", mensaje: "Este campo no se envía con OAuth." }) as never)),
+    { status: 400 },
+  );
+}
+
+/** Con la renovación caída (modo `reconexion-necesaria`) la conexión guardada pasa a `RECONEXION_NECESARIA` (D215). */
+function exigirConexionUtilizable(actor: Actor): { respuesta: Respuesta } | { oauth: ConexionOauthJira } | { reconexion: true } {
+  if (modoE5.oauth === "no-configurado") return { respuesta: errorOauthNoConfigurado() };
+  const oauth = estadoOauth.actual;
+  if (!oauth || oauth.estado === "PENDIENTE_SITIO") return { respuesta: HttpResponse.json(cuerpoError("JIRA_NO_CONFIGURADO", "No hay una conexión con Jira configurada."), { status: 409 }) };
+  if (modoE5.oauth === "reconexion-necesaria" && oauth.estado === "CONECTADA") {
+    estadoOauth.actual = oauthReconexion();
+    registrarEventoOauth("REFRESCO_FALLIDO", actor, oauth);
+    return { reconexion: true };
+  }
+  if (oauth.estado === "RECONEXION_NECESARIA") return { reconexion: true };
+  return { oauth };
+}
+
+const ERROR_RECONEXION = () => errorJiraDe("JIRA_RECONEXION_NECESARIA", ["IR_A_CONEXION", "IMPORTAR_ARCHIVO"]);
+
+function errorDePruebaOauth() {
+  if (modoE5.prueba === "ok") return null;
+  if (modoE5.prueba === "JIRA_OAUTH_PERMISOS_INSUFICIENTES") return errorJiraDe("JIRA_OAUTH_PERMISOS_INSUFICIENTES", ["IR_A_CONEXION", "IMPORTAR_ARCHIVO"], ["read:jira-work"]);
+  return errorDePrueba();
+}
+
+function probarConOauth(cuerpo: SolicitudPruebaJiraOauth & Record<string, unknown>): Respuesta {
+  if (cuerpo.sitio !== undefined || cuerpo.correo !== undefined || cuerpo.token !== undefined) return valorNoPermitido(["sitio", "correo", "token"].filter((c) => cuerpo[c] !== undefined));
+  const conexion = exigirConexionUtilizable({ id: ID.admin, nombre: "Valentina Rojas" });
+  if ("respuesta" in conexion) return conexion.respuesta;
+  if ("reconexion" in conexion) return HttpResponse.json({ ok: false, usuarioJira: null, proyecto: null, error: ERROR_RECONEXION() });
+  const error = errorDePruebaOauth();
+  if (error) return HttpResponse.json({ ok: false, usuarioJira: null, proyecto: null, error });
+  const proyecto = cuerpo.proyecto ?? estadoConfig.actual.proyecto;
+  return HttpResponse.json({ ok: true, usuarioJira: conexion.oauth.cuenta?.nombre ?? null, proyecto: proyecto ? { clave: proyecto, nombre: "Proyecto de prueba" } : null, error: null });
+}
+
+function guardarConOauth(cuerpo: SolicitudConfiguracionJiraOauth & Record<string, unknown>, actor: Actor): Respuesta {
+  if (cuerpo.sitio !== undefined || cuerpo.correo !== undefined || cuerpo.token !== undefined) return valorNoPermitido(["sitio", "correo", "token"].filter((c) => cuerpo[c] !== undefined));
+  const conexion = exigirConexionUtilizable(actor);
+  if ("respuesta" in conexion) return conexion.respuesta;
+  const actual = estadoConfig.actual;
+  const ahora = new Date().toISOString();
+  const rechazo = "reconexion" in conexion ? ERROR_RECONEXION() : errorDePruebaOauth();
+  if (rechazo) {
+    // Si el método activo no se probó, `estadoConexion` no cambia (D209).
+    if (actual.metodo === "OAUTH") estadoConfig.actual = { ...actual, estadoConexion: "FALLIDA", ultimaPruebaEn: ahora, ultimaPruebaCodigo: rechazo.codigo as CodigoErrorIntegracion };
+    return HttpResponse.json({ guardado: false, prueba: { ok: false, usuarioJira: null, proyecto: null, error: rechazo }, configuracion: configuracionVigente() });
+  }
+  if (!("oauth" in conexion)) return errorServicio();
+  const { celula, qe, sprint } = destinoDe(cuerpo);
+  const cambiados = (
+    [
+      ["metodo", actual.metodo !== "OAUTH"],
+      ["proyecto", cuerpo.proyecto !== actual.proyecto],
+      ["tiposIssue", (cuerpo.tiposIssue ?? ["Story", "Historia"]).join(",") !== actual.tiposIssue.join(",")],
+      ["celulaId", cuerpo.celulaId !== actual.celula?.id],
+      ["qeResponsableId", cuerpo.qeResponsableId !== actual.qeResponsable?.id],
+      ["sprintRespaldoId", cuerpo.sprintRespaldoId !== actual.sprintRespaldo?.id],
+    ] as const
+  )
+    .filter(([, c]) => c)
+    .map(([campo]) => campo);
+  estadoConfig.actual = {
+    ...actual,
+    configurado: true,
+    metodo: "OAUTH",
+    sitio: conexion.oauth.sitio?.url ?? actual.sitio,
+    correo: null,
+    proyecto: cuerpo.proyecto,
+    tiposIssue: cuerpo.tiposIssue ?? ["Story", "Historia"],
+    celula,
+    qeResponsable: qe,
+    sprintRespaldo: sprint,
+    token: { configurado: false, ultimos4: null, descifrable: false },
+    estadoConexion: "OK",
+    ultimaPruebaEn: ahora,
+    ultimaPruebaCodigo: null,
+    actualizadoEn: ahora,
+    actualizadoPor: { id: actor.id, nombre: actor.nombre },
+  };
+  eventosConfig.unshift({ id: nuevoId(), fecha: ahora, tipo: "CONFIGURACION", actor: { id: actor.id, nombre: actor.nombre }, camposCambiados: cambiados, tokenCambiado: false, resultadoPrueba: "OK", oauth: null });
+  return HttpResponse.json({
+    guardado: true,
+    prueba: { ok: true, usuarioJira: conexion.oauth.cuenta?.nombre ?? null, proyecto: { clave: cuerpo.proyecto, nombre: "Proyecto de prueba" }, error: null },
+    configuracion: configuracionVigente(),
+  });
+}
+
+function guardarConApiToken(cuerpo: SolicitudConfiguracionJira, actor: Actor): Respuesta {
+  if (cuerpo.token) ultimosTokens.push(cuerpo.token);
+  if (modoE5.configuracion === "no-descifrable" && !cuerpo.token) return HttpResponse.json(cuerpoError("TOKEN_NO_DESCIFRABLE", "Vuelve a ingresar el API token."), { status: 409 });
+  const actual = estadoConfig.actual;
+  const hayToken = Boolean(cuerpo.token) || actual.token.configurado;
+  if (!hayToken) return HttpResponse.json(cuerpoError("VALIDACION", "Datos inválidos.", [{ campo: "token", codigo: "REQUERIDO", mensaje: "Falta el token." } as never]), { status: 400 });
+  const error = errorDePrueba();
+  const ahora = new Date().toISOString();
+  if (error) {
+    // Si el método activo es otro, el que se probó no es el activo: `estadoConexion` no cambia (D209).
+    if (actual.metodo !== "OAUTH") estadoConfig.actual = { ...actual, estadoConexion: "FALLIDA", ultimaPruebaEn: ahora, ultimaPruebaCodigo: error.codigo as CodigoErrorIntegracion };
+    return HttpResponse.json({ guardado: false, prueba: { ok: false, usuarioJira: null, proyecto: null, error }, configuracion: configuracionVigente() });
+  }
+  const { celula, qe, sprint } = destinoDe(cuerpo);
+  const venia = actual.metodo;
+  const cambiados = (
+    [
+      ["metodo", venia !== "API_TOKEN"],
+      ["sitio", cuerpo.sitio !== actual.sitio],
+      ["correo", cuerpo.correo !== actual.correo],
+      ["token", Boolean(cuerpo.token)],
+      ["proyecto", cuerpo.proyecto !== actual.proyecto],
+      ["tiposIssue", (cuerpo.tiposIssue ?? ["Story", "Historia"]).join(",") !== actual.tiposIssue.join(",")],
+      ["celulaId", cuerpo.celulaId !== actual.celula?.id],
+      ["qeResponsableId", cuerpo.qeResponsableId !== actual.qeResponsable?.id],
+      ["sprintRespaldoId", cuerpo.sprintRespaldoId !== actual.sprintRespaldo?.id],
+    ] as const
+  )
+    .filter(([, c]) => c)
+    // Compatibilidad (D209): un guardado de API token sin cambio de método no lista `metodo`.
+    .filter(([campo]) => campo !== "metodo" || venia === "OAUTH")
+    .map(([campo]) => campo);
+  estadoConfig.actual = {
+    ...actual,
+    configurado: true,
+    metodo: "API_TOKEN",
+    sitio: cuerpo.sitio,
+    correo: cuerpo.correo,
+    proyecto: cuerpo.proyecto,
+    tiposIssue: cuerpo.tiposIssue ?? ["Story", "Historia"],
+    celula,
+    qeResponsable: qe,
+    sprintRespaldo: sprint,
+    token: cuerpo.token ? { configurado: true, ultimos4: cuerpo.token.slice(-4).padStart(4, "·"), descifrable: true } : actual.token.configurado ? actual.token : { configurado: true, ultimos4: "····", descifrable: true },
+    estadoConexion: "OK",
+    ultimaPruebaEn: ahora,
+    ultimaPruebaCodigo: null,
+    actualizadoEn: ahora,
+    actualizadoPor: { id: actor.id, nombre: actor.nombre },
+  };
+  // Pasar de OAuth a API token borra la conexión OAuth y lo registra (E5-B01#5, D209).
+  if (venia === "OAUTH" && estadoOauth.actual) {
+    registrarEventoOauth("DESCONECTAR", actor, estadoOauth.actual);
+    estadoOauth.actual = null;
+  }
+  eventosConfig.unshift({ id: nuevoId(), fecha: ahora, tipo: "CONFIGURACION", actor: { id: actor.id, nombre: actor.nombre }, camposCambiados: cambiados, tokenCambiado: Boolean(cuerpo.token), resultadoPrueba: "OK", oauth: null });
+  return HttpResponse.json({
+    guardado: true,
+    prueba: { ok: true, usuarioJira: "Admin Jira Falso", proyecto: { clave: cuerpo.proyecto, nombre: "Proyecto de prueba" }, error: null },
+    configuracion: configuracionVigente(),
+  });
+}
+
 export const handlersE5 = [
   // -------------------------------------------------------------- catálogos
   http.get(`${BASE}/v1/catalogos/sprints`, ({ request }) => {
@@ -273,60 +490,9 @@ export const handlersE5 = [
     const caida = fallaDe(modoE5.configuracion);
     if (caida) return caida;
     if (modoE5.configuracion === "sin-llave") return HttpResponse.json(cuerpoError("LLAVE_CIFRADO_NO_DISPONIBLE", "La integración no está habilitada."), { status: 503 });
-    const cuerpo = (await request.json()) as {
-      sitio: string; correo: string; token?: string; proyecto: string; tiposIssue: string[]; celulaId: string; qeResponsableId: string; sprintRespaldoId: string;
-    };
-    if (cuerpo.token) ultimosTokens.push(cuerpo.token);
-    if (modoE5.configuracion === "no-descifrable" && !cuerpo.token) return HttpResponse.json(cuerpoError("TOKEN_NO_DESCIFRABLE", "Vuelve a ingresar el API token."), { status: 409 });
-    const actual = estadoConfig.actual;
-    const hayToken = Boolean(cuerpo.token) || actual.token.configurado;
-    if (!hayToken) return HttpResponse.json(cuerpoError("VALIDACION", "Datos inválidos.", [{ campo: "token", codigo: "REQUERIDO", mensaje: "Falta el token." } as never]), { status: 400 });
-    const error = errorDePrueba();
-    const ahora = new Date().toISOString();
-    if (error) {
-      estadoConfig.actual = { ...actual, estadoConexion: "FALLIDA", ultimaPruebaEn: ahora, ultimaPruebaCodigo: error.codigo as CodigoErrorIntegracion };
-      return HttpResponse.json({ guardado: false, prueba: { ok: false, usuarioJira: null, proyecto: null, error }, configuracion: estadoConfig.actual });
-    }
-    const celula = nombreDe(celulas, cuerpo.celulaId);
-    const qe = nombreDe(usuarios, cuerpo.qeResponsableId);
-    const sprint = nombreDe([...sprints, ...sprintsE5], cuerpo.sprintRespaldoId);
-    const cambiados = (
-      [
-        ["sitio", cuerpo.sitio !== actual.sitio],
-        ["correo", cuerpo.correo !== actual.correo],
-        ["token", Boolean(cuerpo.token)],
-        ["proyecto", cuerpo.proyecto !== actual.proyecto],
-        ["tiposIssue", cuerpo.tiposIssue.join(",") !== actual.tiposIssue.join(",")],
-        ["celulaId", cuerpo.celulaId !== actual.celula?.id],
-        ["qeResponsableId", cuerpo.qeResponsableId !== actual.qeResponsable?.id],
-        ["sprintRespaldoId", cuerpo.sprintRespaldoId !== actual.sprintRespaldo?.id],
-      ] as const
-    )
-      .filter(([, c]) => c)
-      .map(([campo]) => campo);
-    estadoConfig.actual = {
-      ...actual,
-      configurado: true,
-      sitio: cuerpo.sitio,
-      correo: cuerpo.correo,
-      proyecto: cuerpo.proyecto,
-      tiposIssue: cuerpo.tiposIssue,
-      celula,
-      qeResponsable: qe,
-      sprintRespaldo: sprint,
-      token: cuerpo.token ? { configurado: true, ultimos4: cuerpo.token.slice(-4).padStart(4, "·"), descifrable: true } : actual.token.configurado ? actual.token : { configurado: true, ultimos4: "····", descifrable: true },
-      estadoConexion: "OK",
-      ultimaPruebaEn: ahora,
-      ultimaPruebaCodigo: null,
-      actualizadoEn: ahora,
-      actualizadoPor: { id: actor.id, nombre: actor.nombre },
-    };
-    eventosConfig.unshift({ id: nuevoId(), fecha: ahora, actor: { id: actor.id, nombre: actor.nombre }, camposCambiados: cambiados, tokenCambiado: Boolean(cuerpo.token), resultadoPrueba: "OK" });
-    return HttpResponse.json({
-      guardado: true,
-      prueba: { ok: true, usuarioJira: "Admin Jira Falso", proyecto: { clave: cuerpo.proyecto, nombre: "Proyecto de prueba" }, error: null },
-      configuracion: estadoConfig.actual,
-    });
+    const cuerpo = (await request.json()) as SolicitudConfiguracionJira | SolicitudConfiguracionJiraOauth;
+    if (cuerpo.metodo === "OAUTH") return guardarConOauth(cuerpo, actor);
+    return guardarConApiToken(cuerpo, actor);
   }),
 
   http.post(`${BASE}/v1/integraciones/jira/configuracion/probar`, async ({ request }) => {
@@ -334,12 +500,99 @@ export const handlersE5 = [
     if (!actor) return respuesta;
     const caida = fallaDe(modoE5.configuracion);
     if (caida) return caida;
-    const cuerpo = (await request.json().catch(() => ({}))) as { token?: string; proyecto?: string };
-    if (modoE5.configuracion === "no-descifrable" && !cuerpo.token) return HttpResponse.json(cuerpoError("TOKEN_NO_DESCIFRABLE", "Vuelve a ingresar el API token."), { status: 409 });
-    if (cuerpo.token) ultimosTokens.push(cuerpo.token);
+    const cuerpo = (await request.json().catch(() => ({}))) as Partial<SolicitudPruebaJira> | SolicitudPruebaJiraOauth;
+    if (cuerpo.metodo === "OAUTH") return probarConOauth(cuerpo as SolicitudPruebaJiraOauth);
+    const api = cuerpo as Partial<SolicitudPruebaJira>;
+    if (modoE5.configuracion === "no-descifrable" && !api.token) return HttpResponse.json(cuerpoError("TOKEN_NO_DESCIFRABLE", "Vuelve a ingresar el API token."), { status: 409 });
+    if (api.token) ultimosTokens.push(api.token);
     const error = errorDePrueba();
     if (error) return HttpResponse.json({ ok: false, usuarioJira: null, proyecto: null, error });
-    return HttpResponse.json({ ok: true, usuarioJira: "Admin Jira Falso", proyecto: { clave: cuerpo.proyecto ?? "QTY", nombre: "Proyecto de prueba" }, error: null });
+    return HttpResponse.json({ ok: true, usuarioJira: "Admin Jira Falso", proyecto: { clave: api.proyecto ?? "QTY", nombre: "Proyecto de prueba" }, error: null });
+  }),
+
+  // ---------------------------------------------------------- OAuth 2.0 (3LO)
+  http.post(`${BASE}/v1/integraciones/jira/oauth/iniciar`, ({ request }) => {
+    const { actor, respuesta } = soloAdmin(request);
+    if (!actor) return respuesta;
+    if (modoE5.configuracion === "sin-llave") return HttpResponse.json(cuerpoError("LLAVE_CIFRADO_NO_DISPONIBLE", "La integración no está habilitada."), { status: 503 });
+    if (modoE5.oauth === "no-configurado") return errorOauthNoConfigurado();
+    if (modoE5.oauth === "servidor-caido") return errorServicio();
+    if (modoE5.oauth === "sin-respuesta") return sinRespuesta();
+    // El servidor real devuelve la dirección de Atlassian; el simulado vuelve directo a la ruta de retorno del portal,
+    // como lo haría Atlassian, con `code` (o `error` si el Administrador rechaza) y el `state`.
+    const retorno = new URL("/admin/integraciones/jira/oauth/retorno", typeof location === "undefined" ? "http://localhost:5173" : location.origin);
+    retorno.searchParams.set("state", OAUTH_MOCK.state);
+    if (modoE5.oauth === "consentimiento-rechazado") {
+      retorno.searchParams.set("error", "access_denied");
+      retorno.searchParams.set("error_description", "User denied access");
+    } else retorno.searchParams.set("code", OAUTH_MOCK.codigo);
+    return HttpResponse.json({ urlAutorizacion: retorno.toString(), expiraEn: new Date(Date.now() + 600_000).toISOString() });
+  }),
+
+  http.post(`${BASE}/v1/integraciones/jira/oauth/retorno`, async ({ request }) => {
+    const { actor, respuesta } = soloAdmin(request);
+    if (!actor) return respuesta;
+    const cuerpo = (await request.json().catch(() => ({}))) as SolicitudRetornoOauthJira;
+    const claves = Object.keys(cuerpo).sort().join(",");
+    // `state` y exactamente uno de `code` y `error`; ningún otro campo (contrato).
+    if (!cuerpo.state || !(claves === "code,state" || claves === "error,state")) {
+      return HttpResponse.json(cuerpoError("VALIDACION", "Datos inválidos."), { status: 400 });
+    }
+    if (modoE5.oauth === "no-configurado") return errorOauthNoConfigurado();
+    estadoOauth.ultimosRetornos.push({ ...cuerpo });
+    // El state se consume en cada intento (de dos retornos con el mismo state, solo uno pasa).
+    const valido = cuerpo.state === OAUTH_MOCK.state && !estadoOauth.estadosUsados.has(cuerpo.state) && modoE5.oauth !== "estado-invalido";
+    estadoOauth.estadosUsados.add(cuerpo.state);
+    if (!valido) return HttpResponse.json(cuerpoError("JIRA_OAUTH_ESTADO_INVALIDO", "La autorización venció o no es válida."), { status: 400 });
+    if (modoE5.oauth === "servidor-caido") return errorServicio();
+    if (modoE5.oauth === "sin-respuesta") return sinRespuesta();
+    const error = (codigo: CodigoErrorIntegracion, sugerencias: SugerenciaIntegracion[], permisosFaltantes?: string[]) =>
+      HttpResponse.json({ resultado: "ERROR", oauth: estadoOauth.actual, error: errorJiraDe(codigo, sugerencias, permisosFaltantes) });
+    if (cuerpo.error !== undefined || modoE5.oauth === "consentimiento-rechazado") {
+      return error(cuerpo.error === "access_denied" || modoE5.oauth === "consentimiento-rechazado" ? "JIRA_OAUTH_CONSENTIMIENTO_RECHAZADO" : "JIRA_OAUTH_CANJE_FALLIDO", cuerpo.error === "access_denied" || modoE5.oauth === "consentimiento-rechazado" ? ["REINTENTAR"] : ["REINTENTAR", "AVISAR_DESPLIEGUE"]);
+    }
+    if (modoE5.oauth === "canje-rechazado") return error("JIRA_OAUTH_CANJE_FALLIDO", ["REINTENTAR", "AVISAR_DESPLIEGUE"]);
+    if (modoE5.oauth === "permisos-insuficientes") return error("JIRA_OAUTH_PERMISOS_INSUFICIENTES", ["REINTENTAR"], ["read:jira-work"]);
+    if (modoE5.oauth === "sin-sitio") return error("JIRA_OAUTH_SIN_SITIO", ["REINTENTAR"]);
+    if (modoE5.oauth === "varios-sitios") {
+      estadoOauth.actual = oauthPendienteSitio(estadoConfig.actual.sitio);
+      return HttpResponse.json({ resultado: "ELEGIR_SITIO", oauth: estadoOauth.actual, error: null });
+    }
+    estadoOauth.actual = oauthConectada({ conectadoPor: { id: actor.id, nombre: actor.nombre }, conectadoEn: new Date().toISOString() });
+    registrarEventoOauth(huboConexionAntes() ? "RECONECTAR" : "CONECTAR_OAUTH", actor, estadoOauth.actual);
+    return HttpResponse.json({ resultado: "CONECTADA", oauth: estadoOauth.actual, error: null });
+  }),
+
+  http.post(`${BASE}/v1/integraciones/jira/oauth/sitio`, async ({ request }) => {
+    const { actor, respuesta } = soloAdmin(request);
+    if (!actor) return respuesta;
+    const cuerpo = (await request.json().catch(() => ({}))) as { sitioId?: string };
+    if (!cuerpo.sitioId) return HttpResponse.json(cuerpoError("VALIDACION", "Datos inválidos."), { status: 400 });
+    if (modoE5.oauth === "no-configurado") return errorOauthNoConfigurado();
+    const actual = estadoOauth.actual;
+    if (!actual || actual.estado !== "PENDIENTE_SITIO") return HttpResponse.json(cuerpoError("JIRA_OAUTH_SIN_CONEXION", "No hay una conexión pendiente."), { status: 409 });
+    const elegido = actual.sitiosCandidatos?.find((s) => s.id === cuerpo.sitioId);
+    if (!elegido) return HttpResponse.json(cuerpoError("JIRA_OAUTH_SITIO_NO_VALIDO", "El sitio elegido no es válido."), { status: 400 });
+    if (modoE5.oauthSitio === "error") return errorServicio();
+    if (modoE5.oauthSitio === "sin-respuesta") return sinRespuesta();
+    if (modoE5.oauthSitio === "reconexion-necesaria") {
+      estadoOauth.actual = oauthReconexion();
+      return HttpResponse.json({ resultado: "ERROR", oauth: estadoOauth.actual, error: errorJiraDe("JIRA_RECONEXION_NECESARIA", ["IR_A_CONEXION", "IMPORTAR_ARCHIVO"]) });
+    }
+    estadoOauth.actual = oauthConectada({ sitio: { id: elegido.id, nombre: elegido.nombre, url: elegido.url }, conectadoPor: { id: actor.id, nombre: actor.nombre }, conectadoEn: new Date().toISOString() });
+    registrarEventoOauth(huboConexionAntes() ? "RECONECTAR" : "CONECTAR_OAUTH", actor, estadoOauth.actual);
+    return HttpResponse.json({ resultado: "CONECTADA", oauth: estadoOauth.actual, error: null });
+  }),
+
+  http.delete(`${BASE}/v1/integraciones/jira/oauth`, ({ request }) => {
+    const { actor, respuesta } = soloAdmin(request);
+    if (!actor) return respuesta;
+    // Funciona siempre, sin las credenciales de la app ni la llave (D216).
+    if (!estadoOauth.actual) return HttpResponse.json(cuerpoError("JIRA_OAUTH_SIN_CONEXION", "No hay una conexión OAuth que desconectar."), { status: 409 });
+    if (modoE5.oauthDesconexion === "error") return errorServicio();
+    registrarEventoOauth("DESCONECTAR", actor, estadoOauth.actual);
+    estadoOauth.actual = null;
+    return new HttpResponse(null, { status: 204 });
   }),
 
   http.get(`${BASE}/v1/integraciones/jira/configuracion/eventos`, ({ request }) => {

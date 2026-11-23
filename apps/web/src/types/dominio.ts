@@ -333,6 +333,21 @@ export type ListaPersonas = components["schemas"]["ListaPersonas"];
 export type PersonaCatalogo = components["schemas"]["PersonaCatalogo"];
 export type EstadoConexionJira = components["schemas"]["EstadoConexionJira"];
 
+// E5 · conexión con Jira por OAuth 2.0 (3LO) (D209–D218, ADR 0019)
+export type MetodoConexionJira = components["schemas"]["MetodoConexionJira"];
+export type EstadoConexionOauthJira = components["schemas"]["EstadoConexionOauthJira"];
+export type ConexionOauthJira = components["schemas"]["ConexionOauthJira"];
+export type SitioJiraOauth = components["schemas"]["SitioJiraOauth"];
+export type SitioCandidatoJiraOauth = components["schemas"]["SitioCandidatoJiraOauth"];
+export type PermisoAtlassian = components["schemas"]["PermisoAtlassian"];
+export type InicioAutorizacionOauthJira = components["schemas"]["InicioAutorizacionOauthJira"];
+export type SolicitudRetornoOauthJira = components["schemas"]["SolicitudRetornoOauthJira"];
+export type SolicitudSitioOauthJira = components["schemas"]["SolicitudSitioOauthJira"];
+export type ResultadoConexionOauthJira = components["schemas"]["ResultadoConexionOauthJira"];
+export type SolicitudConfiguracionJiraOauth = components["schemas"]["SolicitudConfiguracionJiraOauth"];
+export type SolicitudPruebaJiraOauth = components["schemas"]["SolicitudPruebaJiraOauth"];
+export type TipoEventoConfiguracionJira = components["schemas"]["TipoEventoConfiguracionJira"];
+
 // E5 · consulta de Jira y asignación (D132–D152)
 export type FaseEjecucion = components["schemas"]["FaseEjecucion"];
 export type EstadoConsulta = components["schemas"]["EstadoConsulta"];

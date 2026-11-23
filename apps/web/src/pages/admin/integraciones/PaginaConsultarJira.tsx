@@ -219,7 +219,7 @@ export function PaginaConsultarJira() {
             <section className="panel" aria-labelledby="titulo-consultar">
               <h2 id="titulo-consultar">Sincronizar con Jira</h2>
               <p>
-                Proyecto <strong>{config.proyecto}</strong> en <span className="texto-largo">{hostDe(config.sitio)}</span> <ChipConexion estado={config.estadoConexion} />
+                Proyecto <strong>{config.proyecto}</strong> en <span className="texto-largo">{hostDe(config.sitio)}</span> <ChipConexion config={config} />
               </p>
               {config.estadoConexion === "FALLIDA" ? (
                 <p className="mensaje-aviso" role="note">

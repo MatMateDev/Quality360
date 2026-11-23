@@ -34,9 +34,9 @@ describe("E5-F01 · pestaña Conexión", () => {
     expect(token).toHaveValue("");
     expect(screen.getByTestId("token-estado")).toHaveTextContent("Configurado · termina en AB12");
     expect(screen.getByTestId("token-estado")).toHaveAttribute("data-configurado", "true");
-    expect(screen.getByTestId("chip-conexion")).toHaveAttribute("data-estado", "OK");
+    expect(screen.getByTestId("chip-conexion")).toHaveAttribute("data-estado", "conectado-api-token");
     expect(screen.queryByRole("button", { name: /mostrar|ver token/i })).not.toBeInTheDocument();
-    expect(screen.getByLabelText(/API token/)).toBe(token);
+    expect(screen.getByLabelText(/^API token/)).toBe(token);
   });
 
   it("con token guardado, vacío significa conservar: se guarda sin enviar el token y el campo queda vacío [E5-F01-T07]", async () => {
@@ -109,7 +109,11 @@ describe("E5-F01 · pestaña Conexión", () => {
     modoE5.configuracion = "vacia";
     await abrirComo(ADMIN, "/admin/integraciones");
     await screen.findByTestId("form-jira");
-    expect(screen.getByTestId("token-estado")).toHaveTextContent("No configurado");
+    // Sin configuración la pestaña abre en OAuth (diseño OAuth §2.2): el formulario del API token se elige a mano.
+    expect(screen.getByTestId("chip-conexion")).toHaveAttribute("data-estado", "sin-conectar");
+    expect(screen.getByTestId("opcion-oauth")).toBeChecked();
+    expect(screen.queryByTestId("campo-sitio")).not.toBeInTheDocument();
+    await user.click(screen.getByTestId("opcion-api-token"));
     expect(screen.getByTestId("campo-tipos")).toHaveValue("Story, Historia");
     await user.type(screen.getByTestId("campo-proyecto"), "qty-1");
     await user.click(screen.getByTestId("boton-probar-guardar"));
@@ -133,6 +137,7 @@ describe("E5-F01 · pestaña Conexión", () => {
     modoE5.configuracion = "vacia";
     await abrirComo(ADMIN, "/admin/integraciones");
     await screen.findByTestId("form-jira");
+    await user.click(screen.getByTestId("opcion-api-token"));
     await user.type(screen.getByTestId("campo-sitio"), "http://127.0.0.1:4010");
     await user.type(screen.getByTestId("campo-correo"), "admin@quality360.local");
     await user.type(screen.getByTestId("campo-token"), "q360-token-valido-AB12");

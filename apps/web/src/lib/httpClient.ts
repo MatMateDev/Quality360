@@ -153,4 +153,5 @@ export const http = {
     solicitar<T>(ruta, { ...opciones, method: "PUT", body }),
   patch: <T>(ruta: string, body?: unknown, opciones?: Opciones) =>
     solicitar<T>(ruta, { ...opciones, method: "PATCH", body }),
+  delete: <T>(ruta: string, opciones?: Opciones) => solicitar<T>(ruta, { ...opciones, method: "DELETE" }),
 };
