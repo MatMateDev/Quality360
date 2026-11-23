@@ -27,6 +27,27 @@ test.describe("E5 · Gateway hacia Integraciones", () => {
     expect(nueva.status).not.toBe(501);
   });
 
+  test("[E5-GW#4] las 4 rutas de OAuth están publicadas (no dan 404), responden 401 sin token y el 403 de Integraciones al Analista llega tal cual", async ({ request }) => {
+    const rutas = [
+      ["post", "/v1/integraciones/jira/oauth/iniciar", undefined],
+      ["post", "/v1/integraciones/jira/oauth/retorno", { state: "x", code: "y" }],
+      ["post", "/v1/integraciones/jira/oauth/sitio", { sitioId: "1b2c3d4e-5f60-4a71-8b92-a3b4c5d6e7f8" }],
+      ["delete", "/v1/integraciones/jira/oauth", undefined],
+    ] as const;
+    for (const [metodo, ruta, body] of rutas) {
+      const llamar = (token?: string) => (metodo === "post" ? api.post<any>(request, ruta, { token, body, baseURL: GATEWAY_REAL }) : api.delete<any>(request, ruta, { token, baseURL: GATEWAY_REAL }));
+      expect((await llamar()).status, `${metodo} ${ruta} sin token`).toBe(401);
+      const ana = await llamar(await tk("ana1"));
+      expect([ana.status, ana.body.codigo], `${ruta} analista`).toEqual([403, "ACCESO_DENEGADO"]);
+      expect(ana.traceId, `${ruta} traza`).toBeTruthy();
+      const adm = await llamar(await tk("adm1"));
+      expect(adm.status, `${ruta} administrador: publicada`).not.toBe(404);
+      expect(adm.status, `${ruta} administrador`).not.toBe(501);
+    }
+    // El método equivocado no existe en el gateway.
+    expect((await api.get<any>(request, "/v1/integraciones/jira/oauth/iniciar", { token: await tk("adm1"), baseURL: GATEWAY_REAL })).status).toBe(404);
+  });
+
   test("[E5-GW#2] /v1/interno/* no se publica en el gateway", async ({ request }) => {
     for (const ruta of ["/v1/interno/integraciones/hdu/upsert", "/v1/interno/acceso"]) {
       const r = await api.post<any>(request, ruta, { token: await tk("adm1"), body: {}, baseURL: GATEWAY_REAL });

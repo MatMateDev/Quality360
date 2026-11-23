@@ -124,3 +124,19 @@ export async function textoDeTablasEjecucion(): Promise<string> {
   ];
   return filas.map((f) => JSON.stringify(f, (_k, v) => (v && v.type === "Buffer" ? Buffer.from(v.data).toString("latin1") : v))).join("\n");
 }
+
+/**
+ * Crea un `state` ya vencido (más de 10 minutos) del Administrador `adm1`. Un disparador solo deja pasar `usado_en`, así que no se puede
+ * envejecer un state por UPDATE: se inserta una fila nueva con el actor de un `iniciar` real.
+ */
+export async function crearEstadoVencido(request: APIRequestContext): Promise<string> {
+  const ini = await iniciarOauth(request);
+  if (ini.status !== 200) throw new Error(`oauth/iniciar respondió ${ini.status}`);
+  const actor = (await sql("SELECT actor_id FROM integraciones.oauth_estado_jira WHERE estado_hash = $1", [sha256Hex(stateDe(ini.body.urlAutorizacion))]))[0].actor_id;
+  const state = `vencido-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  await sql(
+    `INSERT INTO integraciones.oauth_estado_jira (estado_hash, actor_id, creado_en, expira_en) VALUES ($1, $2, now() - interval '20 minutes', now() - interval '10 minutes')`,
+    [sha256Hex(state), actor],
+  );
+  return state;
+}

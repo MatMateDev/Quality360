@@ -17,7 +17,7 @@ function registrarDatos(page: Page) {
   const respuestas: Array<{ url: string; status: number }> = [];
   page.on("response", (r) => {
     const url = new URL(r.url());
-    if (url.port === "3000" && url.pathname.startsWith("/v1/") && url.pathname !== "/v1/me") respuestas.push({ url: url.pathname, status: r.status() });
+    if (url.origin === new URL(env.gatewayUrl).origin && url.pathname.startsWith("/v1/") && url.pathname !== "/v1/me") respuestas.push({ url: url.pathname, status: r.status() });
   });
   return respuestas;
 }

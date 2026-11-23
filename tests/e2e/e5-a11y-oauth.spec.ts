@@ -52,7 +52,7 @@ test.afterAll(async () => {
   await limpiarOauth();
 });
 
-test.describe("E5-F08#13 · accesibilidad y responsividad de OAuth", { tag: ["@pendiente-frontend", "@pendiente-backend"] }, () => {
+test.describe("E5-F08#13 · accesibilidad y responsividad de OAuth", () => {
   test("[E5-F08#13] E5-A11Y-OAUTH-T01: pestaña Conexión (sin conectar, conectado OAuth, falta elegir sitio, reconexión necesaria y API token con OAuth disponible) a 1280 y 375 px", async ({ browser, request }) => {
     for (const ancho of ANCHOS) {
       const { contexto, page } = await con(browser, "adm1", ancho);
@@ -137,13 +137,19 @@ test.describe("E5-F08#13 · accesibilidad y responsividad de OAuth", { tag: ["@p
         return a.code ? `${RETORNO}?code=${a.code}&state=${a.state}` : `${RETORNO}?error=${a.error}&state=${a.state}`;
       };
       try {
-        // 1. procesando: la respuesta del retorno se demora.
+        // Un solo manejador de red para el POST del retorno, cuyo comportamiento cambia según el estado que se quiere ver.
+        let red: "normal" | "demora" | "503" | "corte" = "normal";
         await page.route("**/v1/integraciones/jira/oauth/retorno", async (route) => {
-          await new Promise((r) => setTimeout(r, 4000));
-          await route.continue();
+          if (red === "demora") await new Promise((r) => setTimeout(r, 4000));
+          if (route.request().method() === "OPTIONS") return route.continue().catch(() => undefined); // el preflight de CORS pasa al gateway real
+          if (red === "503") return route.fulfill({ status: 500, contentType: "application/json", headers: { "access-control-allow-origin": env.portalUrl }, body: JSON.stringify({ codigo: "ERROR_INTERNO", mensaje: "Error interno", traceId: "0".repeat(32), detalles: [] }) });
+          if (red === "corte") return route.abort("connectionreset");
+          return route.continue().catch(() => undefined);
         });
+        // 1. procesando: la respuesta del retorno se demora.
+        red = "demora";
         await retorno("procesando", "procesando", () => conCodigo("NORMAL"));
-        await page.unroute("**/v1/integraciones/jira/oauth/retorno");
+        red = "normal";
         // 2. éxito (la tarjeta se ve ~1,5 s antes de volver a Conexión).
         await retorno("éxito", "exito", () => conCodigo("NORMAL"));
         // 3. elegir sitio: el retorno redirige a Conexión con la lista; el estado «elegir-sitio» no se queda en pantalla.
@@ -158,12 +164,11 @@ test.describe("E5-F08#13 · accesibilidad y responsividad de OAuth", { tag: ["@p
         await retorno("sin autorización", "sin-autorizacion", async () => RETORNO);
         await retorno("canje fallido", "canje-fallido", () => conCodigo("CANJE_RECHAZADO"));
         // 10. error del servidor y 11. sin respuesta: se simulan en la red del navegador (no hay otra forma de cortar solo ese POST).
-        await page.route("**/v1/integraciones/jira/oauth/retorno", (route) => route.fulfill({ status: 503, contentType: "application/json", body: JSON.stringify({ codigo: "SERVICIO_NO_DISPONIBLE", mensaje: "No disponible", traceId: "0".repeat(32), detalles: [] }) }));
+        red = "503";
         await retorno("error del servidor", "error-servidor", () => conCodigo("NORMAL"));
-        await page.unroute("**/v1/integraciones/jira/oauth/retorno");
-        await page.route("**/v1/integraciones/jira/oauth/retorno", (route) => route.abort("connectionreset"));
+        red = "corte";
         await retorno("sin respuesta", "sin-respuesta", () => conCodigo("NORMAL"));
-        await page.unroute("**/v1/integraciones/jira/oauth/retorno");
+        red = "normal";
       } finally {
         await contexto.close();
       }

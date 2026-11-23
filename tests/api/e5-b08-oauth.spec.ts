@@ -4,7 +4,7 @@ import { atlassianFalso } from "../support/atlassian-falso/cliente";
 import { SITIO_A, SITIO_B, SITIO_C } from "../support/atlassian-falso/servidor";
 import { cumpleContrato } from "../support/contrato";
 import { conIntegraciones } from "../support/db";
-import { CONFIG, OAUTH, RUTAS_OAUTH, conectarOauth, desconectarOauth, eventosOauth, filaConexion, filasEstado, guardarOauth, iniciarOauth, limpiarOauth, probarOauth, retornoOauth, sha256Hex, sitioOauth, stateDe, textoDeTablasEjecucion, textoDeTablasOauth, tiposEventoOauth, vencerAccesoEnBase } from "../support/e5oauth";
+import { CONFIG, OAUTH, RUTAS_OAUTH, conectarOauth, crearEstadoVencido, desconectarOauth, eventosOauth, filaConexion, filasEstado, guardarOauth, iniciarOauth, limpiarOauth, probarOauth, retornoOauth, sha256Hex, sitioOauth, stateDe, textoDeTablasEjecucion, textoDeTablasOauth, tiposEventoOauth, vencerAccesoEnBase } from "../support/e5oauth";
 import { URL_I6, guardarConfigBase, registroServicios, sql, tk } from "../support/e5";
 import { CONTRASENA, crearUsuarioE7, desactivarUsuario } from "../support/e7";
 import { iniciarSesion } from "../support/api";
@@ -30,9 +30,9 @@ test.afterAll(async () => {
 
 const sinSecretos = async (nombre: string, texto: string) => expect(await atlassianFalso.fugas(texto), `${nombre} filtra`).toEqual([]);
 const ESTADO_INVALIDO = "JIRA_OAUTH_ESTADO_INVALIDO";
-const sinNombresDeVariables = (t: string) => expect(t).not.toMatch(/JIRA_OAUTH|CLIENT_ID|CLIENT_SECRET|INTEGRACIONES_|\.env/i);
+const sinNombresDeVariables = (t: string) => expect(t.replace(/"codigo":"[A-Z_]+"/, "")).not.toMatch(/JIRA_OAUTH|CLIENT_ID|CLIENT_SECRET|INTEGRACIONES_|\.env/i);
 
-test.describe("E5-B08 · Conexión OAuth", { tag: "@pendiente-backend" }, () => {
+test.describe("E5-B08 · Conexión OAuth", () => {
   // ------------------------------------------------------------------------------------------------------------- #1
   test("[E5-B08#1] E5-B08-T01: oauth/iniciar devuelve la URL de Atlassian con audience, client_id, scopes de D218, redirect_uri, response_type, prompt y state nuevo; en la base solo el hash, a 10 minutos", async ({ request }) => {
     const antes = Date.now();
@@ -150,10 +150,7 @@ test.describe("E5-B08 · Conexión OAuth", { tag: "@pendiente-backend" }, () => 
     // 2. mal formado (caracteres fuera del alfabeto base64url)
     await rechazo("mal formado", { code: "codigo-cualquiera", state: "¡¡ no es base64url !!" });
     // 3. vencido
-    const venc = await iniciarOauth(request);
-    const aut = await atlassianFalso.autorizar(venc.body.urlAutorizacion);
-    await sql("UPDATE integraciones.oauth_estado_jira SET creado_en = now() - interval '20 minutes', expira_en = now() - interval '10 minutes' WHERE estado_hash = $1", [sha256Hex(stateDe(venc.body.urlAutorizacion))]);
-    await rechazo("vencido", { code: aut.code, state: aut.state });
+    await rechazo("vencido", { code: "codigo-cualquiera", state: await crearEstadoVencido(request) });
     // 4. ya usado
     const ok = await conectarOauth(request);
     expect(ok.ret.status).toBe(200);
@@ -336,6 +333,7 @@ test.describe("E5-B08 · Conexión OAuth", { tag: "@pendiente-backend" }, () => 
   test("[E5-B08#7] E5-B08-T14: con el acceso por vencer (menos de 5 min) se renueva una vez, se guarda el refresh nuevo antes de usar el acceso nuevo y la llamada a Jira usa el acceso nuevo", async ({ request }) => {
     await conectarOauth(request);
     const antes = await filaConexion();
+    const previas = (await atlassianFalso.solicitudes()).solicitudes.length; // las del propio canje
     await vencerAccesoEnBase();
     const p = await probarOauth(request);
     expect(p.status).toBe(200);
@@ -345,7 +343,7 @@ test.describe("E5-B08 · Conexión OAuth", { tag: "@pendiente-backend" }, () => 
     expect(sol.renovaciones).toBe(1);
     expect(sol.renovacionesRechazadas).toBe(0);
     // Orden: el canje de renovación va antes que la llamada a Jira, y esa llamada llevó un Bearer válido (el nuevo).
-    const orden = sol.solicitudes.filter((s) => s.grant === "refresh_token" || s.ruta.endsWith("/myself"));
+    const orden = sol.solicitudes.slice(previas).filter((s) => s.grant === "refresh_token" || s.ruta.endsWith("/myself"));
     expect(orden[0].grant).toBe("refresh_token");
     expect(orden.filter((s) => s.ruta.endsWith("/myself")).every((s) => s.bearerValido === true)).toBe(true);
     const despues = await filaConexion();
@@ -366,18 +364,20 @@ test.describe("E5-B08 · Conexión OAuth", { tag: "@pendiente-backend" }, () => 
 
   test("[E5-B08#7] E5-B08-T15: un 401 con un acceso que se creía vigente provoca una renovación y un reintento, y la llamada termina bien", async ({ request }) => {
     await conectarOauth(request);
+    const previas = (await atlassianFalso.solicitudes()).solicitudes.length;
     await atlassianFalso.control({ avanzarSegundos: 4000 }); // para Atlassian el acceso ya venció; para la base sigue vigente
     const p = await probarOauth(request);
     expect(p.status).toBe(200);
     expect(p.body).toMatchObject({ ok: true, error: null });
     const sol = await atlassianFalso.solicitudes();
     expect(sol.renovaciones).toBe(1);
-    const myself = sol.solicitudes.filter((s) => s.ruta.endsWith("/myself"));
+    const myself = sol.solicitudes.slice(previas).filter((s) => s.ruta.endsWith("/myself"));
     expect(myself.map((s) => s.bearerValido)).toEqual([false, true]); // un 401 y un solo reintento
   });
 
   test("[E5-B08#7] E5-B08-T16: si la renovación funciona y el reintento vuelve a dar 401 el resultado es JIRA_OAUTH_PERMISOS_INSUFICIENTES con los permisos de esa llamada, sin más reintentos", async ({ request }) => {
     await conectarOauth(request);
+    const previas = (await atlassianFalso.solicitudes()).solicitudes.length;
     await atlassianFalso.modo("ACCESO_REVOCADO"); // la API de Jira da 401 siempre; el endpoint de token sigue renovando
     const p = await probarOauth(request);
     expect(p.status).toBe(200);
@@ -387,7 +387,7 @@ test.describe("E5-B08 · Conexión OAuth", { tag: "@pendiente-backend" }, () => 
     expect(p.body.error.permisosFaltantes).toEqual(["read:jira-user"]); // myself pide read:jira-user (D218)
     const sol = await atlassianFalso.solicitudes();
     expect(sol.renovaciones).toBe(1);
-    expect(sol.solicitudes.filter((s) => s.ruta.endsWith("/myself"))).toHaveLength(2);
+    expect(sol.solicitudes.slice(previas).filter((s) => s.ruta.endsWith("/myself"))).toHaveLength(2);
     expect((await filaConexion()).estado, "no es una reconexión").toBe("CONECTADA");
   });
 
@@ -431,7 +431,7 @@ test.describe("E5-B08 · Conexión OAuth", { tag: "@pendiente-backend" }, () => 
     // GET lo informa y el portal muestra la tarjeta de reconexión.
     const g = await api.get<any>(request, CONFIG, { token: await tk("adm1") });
     expect(cumpleContrato("ConfiguracionJira", g.body)).toEqual({ ok: true, errores: [] });
-    expect(g.body.oauth).toMatchObject({ estado: "RECONEXION_NECESARIA", descifrable: false });
+    expect.soft(g.body.oauth, "contrato: descifrable es false en RECONEXION_NECESARIA (no hay tokens)").toMatchObject({ estado: "RECONEXION_NECESARIA", descifrable: false });
     // Reconectar.
     await atlassianFalso.modo("NORMAL");
     const c = await conectarOauth(request);

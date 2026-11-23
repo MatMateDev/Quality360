@@ -4,7 +4,7 @@ import { SITIO_A, SITIO_B, SITIO_C } from "../support/atlassian-falso/servidor";
 import { env } from "../support/env";
 import { entrarEnPortal, estadoSesion } from "../support/e4ui";
 import { estadoConfigBase, sql, tk } from "../support/e5";
-import { conectarOauth, eventosOauth, filaConexion, guardarOauth, iniciarOauth, limpiarOauth, probarOauth, sha256Hex, stateDe, tiposEventoOauth, vencerAccesoEnBase } from "../support/e5oauth";
+import { conectarOauth, crearEstadoVencido, eventosOauth, filaConexion, guardarOauth, iniciarOauth, limpiarOauth, probarOauth, sha256Hex, stateDe, tiposEventoOauth, vencerAccesoEnBase } from "../support/e5oauth";
 import { pilaSinOauth } from "../support/entornoE5";
 
 /**
@@ -30,9 +30,15 @@ const RETORNO = `${env.portalUrl}/admin/integraciones/jira/oauth/retorno`;
 const TEXTO_CHIP_OAUTH = /Conectado con Jira \(OAuth\) como Admin Jira Falso en jseguelh/;
 
 /** Respuestas del gateway durante la prueba, para afirmar que ni el token ni el `code` ni el secreto llegan al navegador. */
-function vigilarRed(page: Page): { cuerpos: string[]; oauth: Array<{ url: string; status: number }> } {
+function vigilarRed(page: Page): { cuerpos: string[]; oauth: Array<{ url: string; status: number }>; consultas: string[] } {
   const cuerpos: string[] = [];
   const oauth: Array<{ url: string; status: number }> = [];
+  /** Peticiones al gateway cuya query lleva code, state o error: el retorno va por POST con cuerpo, nunca por la query (riesgo de los logs de auth-nest). */
+  const consultas: string[] = [];
+  page.on("request", (r) => {
+    const u = new URL(r.url());
+    if (u.origin === new URL(env.gatewayUrl).origin && /(^|[?&])(code|state|error|error_description)=/.test(u.search)) consultas.push(`${r.method()} ${u.pathname}`);
+  });
   page.on("response", async (r) => {
     const u = new URL(r.url());
     if (!u.pathname.startsWith("/v1/")) return;
@@ -43,7 +49,7 @@ function vigilarRed(page: Page): { cuerpos: string[]; oauth: Array<{ url: string
       // sin cuerpo
     }
   });
-  return { cuerpos, oauth };
+  return { cuerpos, oauth, consultas };
 }
 
 async function almacenamiento(page: Page): Promise<string> {
@@ -59,10 +65,12 @@ async function elegirDestino(page: Page) {
 
 async function conectarPorUI(page: Page) {
   await page.goto(RUTA);
+  // El botón nace «no-disponible» mientras carga la configuración: se espera a que se habilite antes de pulsar.
+  await expect(page.getByTestId("boton-conectar-jira")).toHaveAttribute("data-estado", "disponible");
   await page.getByTestId("boton-conectar-jira").click();
 }
 
-test.describe("E5-F08 · Conectar con Jira", { tag: ["@pendiente-frontend", "@pendiente-backend"] }, () => {
+test.describe("E5-F08 · Conectar con Jira", () => {
   test.describe("ADM1", () => {
     test.use({ storageState: estadoSesion("adm1") });
 
@@ -91,6 +99,8 @@ test.describe("E5-F08 · Conectar con Jira", { tag: ["@pendiente-frontend", "@pe
       await expect(page.getByTestId("campo-token")).toHaveCount(0);
       expect(page.url()).not.toMatch(/code=|state=/);
       expect(await atlassianFalso.fugas([...red.cuerpos, await almacenamiento(page), await page.content()].join("\n"))).toEqual([]);
+      expect(red.consultas, "ninguna llamada al gateway lleva code, state o error en la query").toEqual([]);
+      expect(red.oauth.some((o) => o.url.endsWith("/oauth/retorno") && o.status === 200), "el retorno se envió y el gateway lo aceptó").toBe(true);
       // La dirección del retorno con code y state estuvo solo en el salto desde Atlassian: ninguna navegación posterior la conserva.
       expect(urlsVistas.filter((u) => /[?&](code|state)=/.test(u) && u.startsWith(env.portalUrl)).length).toBeLessThanOrEqual(1);
       expect((await filaConexion()).estado).toBe("CONECTADA");
@@ -148,10 +158,8 @@ test.describe("E5-F08 · Conectar con Jira", { tag: ["@pendiente-frontend", "@pe
       await expect(page.getByTestId("estado-retorno")).toHaveAttribute("data-estado", "estado-invalido", { timeout: 20_000 });
       const textoUsado = await page.getByTestId("estado-retorno").innerText();
       // Vencido.
-      const ini = await iniciarOauth(request);
-      const aut = await atlassianFalso.autorizar(ini.body.urlAutorizacion);
-      await sql("UPDATE integraciones.oauth_estado_jira SET creado_en = now() - interval '20 minutes', expira_en = now() - interval '10 minutes' WHERE estado_hash = $1", [sha256Hex(stateDe(ini.body.urlAutorizacion))]);
-      await page.goto(`${RETORNO}?code=${aut.code}&state=${aut.state}`);
+      const vencido = await crearEstadoVencido(request);
+      await page.goto(`${RETORNO}?code=codigo-cualquiera&state=${vencido}`);
       await expect(page.getByTestId("estado-retorno")).toHaveAttribute("data-estado", "estado-invalido", { timeout: 20_000 });
       expect(await page.getByTestId("estado-retorno").innerText()).toBe(textoUsado);
     });
@@ -184,12 +192,19 @@ test.describe("E5-F08 · Conectar con Jira", { tag: ["@pendiente-frontend", "@pe
       await estadoConfigBase(request);
       await sql("UPDATE integraciones.configuracion_jira SET sitio_url = $1", [SITIO_B.url]);
       await atlassianFalso.modo("VARIOS_SITIOS");
-      await conectarPorUI(page);
+      await page.goto(RUTA);
+      await page.getByTestId("opcion-oauth").click(); // el API token está activo: se elige el panel de OAuth sin cambiar el método activo
+      await expect(page.getByTestId("boton-conectar-jira")).toHaveAttribute("data-estado", "disponible");
+      await page.getByTestId("boton-conectar-jira").click();
       await expect(page.getByTestId("lista-sitios")).toBeVisible({ timeout: 30_000 });
-      await expect(page.getByTestId("sitio-actual")).toContainText(SITIO_B.nombre);
+      await expect(page.getByTestId("sitio-actual")).toHaveCount(1);
+      await expect(page.getByTestId(`sitio-opcion-${SITIO_B.id}`).getByTestId("sitio-actual")).toContainText("Actual");
       await expect(page.getByTestId(`sitio-opcion-${SITIO_B.id}`).getByRole("radio")).toBeChecked();
       await page.reload();
-      await expect(page.getByTestId("chip-conexion")).toHaveAttribute("data-estado", "falta-sitio");
+      // El chip refleja el método activo (API token); la conexión OAuth pendiente se ve en su estado y en la lista.
+      await expect(page.getByTestId("chip-conexion")).toHaveAttribute("data-estado", "conectado-api-token");
+      await page.getByTestId("opcion-oauth").click();
+      await expect(page.getByTestId("estado-oauth")).toHaveAttribute("data-estado", "PENDIENTE_SITIO");
       await expect(page.getByTestId("lista-sitios")).toBeVisible();
     });
 
@@ -246,7 +261,8 @@ test.describe("E5-F08 · Conectar con Jira", { tag: ["@pendiente-frontend", "@pe
       // Consultar Jira.
       await page.goto(`${RUTA}/sincronizar`);
       await page.getByTestId("boton-consultar-jira").click();
-      const error = page.getByTestId("error-sincronizacion");
+      // El diseño §7 nombra «error-sincronizacion», pero la pantalla certificada de E5-F02 usa «error-consulta» (e5-f02-consultar.spec.ts).
+      const error = page.getByTestId("error-consulta");
       await expect(error).toHaveAttribute("data-codigo", "JIRA_RECONEXION_NECESARIA");
       await expect(error).toContainText("La conexión con Jira venció. Vuelve a conectar con Jira.");
       await error.getByTestId("enlace-ir-conexion").click();
@@ -330,7 +346,7 @@ test.describe("E5-F08 · Conectar con Jira", { tag: ["@pendiente-frontend", "@pe
       await expect(error).toBeVisible();
       const codigo = await error.getAttribute("data-codigo");
       expect(["JIRA_SIN_PERMISO", "JIRA_PROYECTO_NO_ENCONTRADO"]).toContain(codigo);
-      await expect(error).toContainText(codigo === "JIRA_SIN_PERMISO" ? "La cuenta de Jira conectada no tiene permiso para leer este proyecto." : "No encontramos el proyecto.");
+      await expect(error).toContainText(codigo === "JIRA_SIN_PERMISO" ? "La cuenta de Jira conectada no tiene permiso para leer este proyecto." : "puede ser que la cuenta de Jira conectada no tenga permiso para verlo");
       expect(await sql("SELECT 1 FROM integraciones.configuracion_jira")).toHaveLength(0);
       expect((await filaConexion()).estado, "la conexión sigue CONECTADA").toBe("CONECTADA");
     });
@@ -420,7 +436,7 @@ test.describe("E5-F08 · Conectar con Jira", { tag: ["@pendiente-frontend", "@pe
         // Sigue en el orden de tabulación y pulsarlo no hace nada.
         await boton.focus();
         await expect(boton).toBeFocused();
-        await boton.click();
+        await boton.click({ force: true }); // aria-disabled no es «enabled» para Playwright: se fuerza el clic
         await page.keyboard.press("Enter");
         await page.waitForTimeout(500);
         expect(page.url()).toContain(pila.portalUrl);

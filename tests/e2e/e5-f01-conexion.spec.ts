@@ -54,12 +54,13 @@ test.describe("E5-F01 · Conexión con Jira", () => {
       await estadoSinConfig();
       await page.goto(RUTA);
       await expect(page.getByTestId("form-jira")).toBeVisible();
-      await expect(page.getByTestId("chip-conexion")).toHaveAttribute("data-estado", "SIN_PROBAR");
+      await expect(page.getByTestId("chip-conexion")).toHaveAttribute("data-estado", "sin-conectar");
+      await page.getByTestId("opcion-api-token").click(); // E5 OAuth: sin configuración la pestaña abre en OAuth (diseño §2.2)
       await llenarFormulario(page);
       await elegirDestino(page);
       await page.getByTestId("boton-probar-guardar").click();
       await expect(page.getByTestId("mensaje-conexion-ok")).toContainText("Conexión exitosa con Jira como Admin Jira Falso");
-      await expect(page.getByTestId("chip-conexion")).toHaveAttribute("data-estado", "OK");
+      await expect(page.getByTestId("chip-conexion")).toHaveAttribute("data-estado", "conectado-api-token");
       await expect(page.getByTestId("token-estado")).toContainText("Configurado · termina en AB12");
       await expect(page.getByTestId("campo-token")).toHaveValue("");
       const fila = (await sql("SELECT * FROM integraciones.configuracion_jira"))[0];
@@ -70,6 +71,7 @@ test.describe("E5-F01 · Conexión con Jira", () => {
       await estadoSinConfig();
       await jiraFalso.limpiarSolicitudes();
       await page.goto(RUTA);
+      await page.getByTestId("opcion-api-token").click();
       await llenarFormulario(page);
       await elegirDestino(page);
       await page.getByTestId("boton-probar-guardar").click();
@@ -130,6 +132,7 @@ test.describe("E5-F01 · Conexión con Jira", () => {
       await estadoSinConfig();
       await jiraFalso.limpiarSolicitudes();
       await page.goto(RUTA);
+      await page.getByTestId("opcion-api-token").click();
       await page.getByTestId("campo-sitio").fill(SITIO_FALSO);
       await page.getByTestId("campo-correo").fill("");
       await page.getByTestId("campo-token").fill(TOKEN_FALSO);
