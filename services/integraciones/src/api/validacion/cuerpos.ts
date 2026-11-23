@@ -88,11 +88,46 @@ function tipos(datos: Record<string, unknown>, a: Acumulador, porDefecto: string
   return lista;
 }
 
+/**
+ * `metodo` (D209): ausente equivale a `API_TOKEN` (el contrato certificado no cambia). Otro valor es 400.
+ */
+function metodo(datos: Record<string, unknown>, a: Acumulador): 'API_TOKEN' | 'OAUTH' {
+  const valor = datos.metodo;
+  if (valor === undefined || valor === null) return 'API_TOKEN';
+  if (valor !== 'API_TOKEN' && valor !== 'OAUTH') {
+    a.falla('metodo', 'VALOR_NO_PERMITIDO', 'El método debe ser API_TOKEN u OAUTH.');
+    return 'API_TOKEN';
+  }
+  return valor;
+}
+
+/** Con OAuth el sitio sale de la conexión y no hay correo ni API token: enviarlos es 400 `VALOR_NO_PERMITIDO` en ese campo. */
+function sinCredencialesDelApiToken(datos: Record<string, unknown>, a: Acumulador): void {
+  for (const campo of ['sitio', 'correo', 'token']) {
+    if (datos[campo] !== undefined) a.falla(campo, 'VALOR_NO_PERMITIDO', 'Con OAuth no se envía este campo.');
+  }
+}
+
 /** `PUT /v1/integraciones/jira/configuracion`. */
 export function leerGuardado(cuerpo: unknown, configuracion: ConfiguracionIntegraciones): EntradaGuardado {
   const datos = objeto(cuerpo);
   const a = new Acumulador();
-  a.sinCamposExtra(datos, ['sitio', 'correo', 'token', 'proyecto', 'tiposIssue', 'celulaId', 'qeResponsableId', 'sprintRespaldoId']);
+  const elMetodo = metodo(datos, a);
+  if (elMetodo === 'OAUTH') {
+    a.sinCamposExtra(datos, ['metodo', 'proyecto', 'tiposIssue', 'celulaId', 'qeResponsableId', 'sprintRespaldoId', 'sitio', 'correo', 'token']);
+    sinCredencialesDelApiToken(datos, a);
+    const oauth = {
+      metodo: 'OAUTH' as const,
+      proyecto: proyecto(datos, a, true),
+      tiposIssue: tipos(datos, a, TIPOS_ISSUE_POR_DEFECTO),
+      celulaId: a.uuid(datos, 'celulaId'),
+      qeResponsableId: a.uuid(datos, 'qeResponsableId'),
+      sprintRespaldoId: a.uuid(datos, 'sprintRespaldoId'),
+    };
+    a.lanzarSiHay();
+    return oauth as EntradaGuardado;
+  }
+  a.sinCamposExtra(datos, ['metodo', 'sitio', 'correo', 'token', 'proyecto', 'tiposIssue', 'celulaId', 'qeResponsableId', 'sprintRespaldoId']);
   const entrada = {
     sitio: sitio(datos, a, configuracion.permitirHostPrueba, true),
     correo: correo(datos, a, true),
@@ -111,7 +146,15 @@ export function leerGuardado(cuerpo: unknown, configuracion: ConfiguracionIntegr
 export function leerPrueba(cuerpo: unknown, configuracion: ConfiguracionIntegraciones): EntradaPrueba {
   const datos = objeto(cuerpo, true);
   const a = new Acumulador();
-  a.sinCamposExtra(datos, ['sitio', 'correo', 'token', 'proyecto', 'tiposIssue']);
+  const elMetodo = metodo(datos, a);
+  a.sinCamposExtra(datos, ['metodo', 'sitio', 'correo', 'token', 'proyecto', 'tiposIssue']);
+  if (elMetodo === 'OAUTH') {
+    sinCredencialesDelApiToken(datos, a);
+    const oauth: EntradaPrueba = { metodo: 'OAUTH', proyecto: proyecto(datos, a, false) };
+    tipos(datos, a, undefined);
+    a.lanzarSiHay();
+    return oauth;
+  }
   const entrada = {
     sitio: sitio(datos, a, configuracion.permitirHostPrueba, false),
     correo: correo(datos, a, false),

@@ -49,12 +49,27 @@ export type CodigoErrorJira =
   | 'JIRA_LIMITE_DE_TASA'
   | 'JIRA_TIEMPO_AGOTADO'
   | 'JIRA_NO_DISPONIBLE'
-  | 'JIRA_RESPUESTA_INVALIDA';
+  | 'JIRA_RESPUESTA_INVALIDA'
+  /** OAuth (D215, D218): los permisos concedidos no alcanzan para esa llamada. Trae `permisosFaltantes`. */
+  | 'JIRA_OAUTH_PERMISOS_INSUFICIENTES';
 
 export type CodigoErrorArchivo = 'ARCHIVO_VACIO' | 'FORMATO_NO_SOPORTADO' | 'ARCHIVO_ILEGIBLE' | 'COLUMNAS_FALTANTES' | 'DEMASIADAS_FILAS';
 
 /** Error de una ejecución o de una prueba: viaja en una respuesta 200 o en la ejecución registrada (D105). */
-export type CodigoErrorIntegracion = CodigoErrorJira | CodigoErrorArchivo | 'PRESUPUESTO_DE_TIEMPO' | 'ORGANIZACION_NO_DISPONIBLE' | 'MODO_ESTRICTO' | 'TOPE_DE_CONSULTA';
+export type CodigoErrorOauth =
+  | 'JIRA_RECONEXION_NECESARIA'
+  | 'JIRA_OAUTH_CONSENTIMIENTO_RECHAZADO'
+  | 'JIRA_OAUTH_CANJE_FALLIDO'
+  | 'JIRA_OAUTH_SIN_SITIO';
+
+export type CodigoErrorIntegracion =
+  | CodigoErrorJira
+  | CodigoErrorArchivo
+  | CodigoErrorOauth
+  | 'PRESUPUESTO_DE_TIEMPO'
+  | 'ORGANIZACION_NO_DISPONIBLE'
+  | 'MODO_ESTRICTO'
+  | 'TOPE_DE_CONSULTA';
 
 export type SugerenciaIntegracion =
   | 'IR_A_CONEXION'
@@ -70,6 +85,8 @@ export interface ErrorIntegracion {
   readonly codigo: CodigoErrorIntegracion;
   readonly mensaje: string;
   readonly sugerencias: SugerenciaIntegracion[];
+  /** Solo con `JIRA_OAUTH_PERMISOS_INSUFICIENTES` (D218). */
+  readonly permisosFaltantes?: string[];
 }
 
 export interface CambioValor {
@@ -171,9 +188,13 @@ export interface FilaDetalle {
 }
 
 /** Configuración de Jira tal como se guarda. El token solo viaja cifrado. */
+export type MetodoConexion = 'API_TOKEN' | 'OAUTH';
+
 export interface ConfiguracionGuardada {
+  /** Método activo (D209). Con `OAUTH`: `correo` y `token` son `null` y `sitio` es el del sitio OAuth. */
+  readonly metodo: MetodoConexion;
   readonly sitio: string;
-  readonly correo: string;
+  readonly correo: string | null;
   readonly proyecto: string;
   readonly tiposIssue: string[];
   readonly campoSprint: string | null;
@@ -182,7 +203,8 @@ export interface ConfiguracionGuardada {
   readonly celulaId: string;
   readonly qeResponsableId: string;
   readonly sprintRespaldoId: string;
-  readonly token: TokenCifradoGuardado;
+  /** `null` con `metodo = OAUTH`. */
+  readonly token: TokenCifradoGuardado | null;
   readonly estadoConexion: EstadoConexion;
   readonly ultimaPruebaEn: Date | null;
   readonly ultimaPruebaCodigo: CodigoErrorIntegracion | null;
@@ -198,11 +220,24 @@ export interface TokenCifradoGuardado {
   readonly llaveVersion: number;
 }
 
-export type CampoConfiguracion = 'sitio' | 'correo' | 'token' | 'proyecto' | 'tiposIssue' | 'celulaId' | 'qeResponsableId' | 'sprintRespaldoId';
+/** Un secreto cifrado (token OAuth, D214): sin `ultimos4`, no se guarda ninguna subcadena en claro. */
+export interface SecretoCifrado {
+  readonly cifrado: Buffer;
+  readonly iv: Buffer;
+  readonly tag: Buffer;
+  readonly llaveVersion: number;
+}
 
+export type CampoConfiguracion = 'sitio' | 'correo' | 'token' | 'proyecto' | 'tiposIssue' | 'celulaId' | 'qeResponsableId' | 'sprintRespaldoId' | 'metodo';
+
+export type TipoEventoConfiguracion = 'CONFIGURACION' | 'CONECTAR_OAUTH' | 'RECONECTAR' | 'DESCONECTAR' | 'REFRESCO_FALLIDO';
+
+/** Un guardado (`CONFIGURACION`) o un evento de la conexión OAuth, mezclados por fecha (D217). */
 export interface EventoConfiguracion {
   readonly id: string;
   readonly fecha: Date;
+  readonly tipo: TipoEventoConfiguracion;
+  readonly oauth: { cuenta: string | null; sitio: string | null } | null;
   readonly actor: { id: string; nombre: string };
   readonly camposCambiados: CampoConfiguracion[];
   readonly tokenCambiado: boolean;

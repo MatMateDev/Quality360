@@ -21,10 +21,12 @@ import type {
   Rol,
 } from '../../dominio/tipos.js';
 
-export const CAMPOS_CONFIGURACION: readonly CampoConfiguracion[] = ['sitio', 'correo', 'token', 'proyecto', 'tiposIssue', 'celulaId', 'qeResponsableId', 'sprintRespaldoId'];
+export const CAMPOS_CONFIGURACION: readonly CampoConfiguracion[] = ['sitio', 'correo', 'token', 'proyecto', 'tiposIssue', 'celulaId', 'qeResponsableId', 'sprintRespaldoId', 'metodo'];
 
 export function aConfiguracionGuardada(fila: ConfiguracionJira): ConfiguracionGuardada {
+  const tieneToken = fila.tokenCifrado !== null && fila.tokenIv !== null && fila.tokenTag !== null && fila.tokenUltimos4 !== null;
   return {
+    metodo: fila.metodo === 'OAUTH' ? 'OAUTH' : 'API_TOKEN',
     sitio: fila.sitioUrl,
     correo: fila.correo,
     proyecto: fila.proyectoClave,
@@ -34,13 +36,15 @@ export function aConfiguracionGuardada(fila: ConfiguracionJira): ConfiguracionGu
     celulaId: fila.celulaId,
     qeResponsableId: fila.qeResponsableId,
     sprintRespaldoId: fila.sprintRespaldoId,
-    token: {
-      cifrado: Buffer.from(fila.tokenCifrado),
-      iv: Buffer.from(fila.tokenIv),
-      tag: Buffer.from(fila.tokenTag),
-      ultimos4: fila.tokenUltimos4,
-      llaveVersion: fila.llaveVersion,
-    },
+    token: tieneToken
+      ? {
+          cifrado: Buffer.from(fila.tokenCifrado as Uint8Array),
+          iv: Buffer.from(fila.tokenIv as Uint8Array),
+          tag: Buffer.from(fila.tokenTag as Uint8Array),
+          ultimos4: fila.tokenUltimos4 as string,
+          llaveVersion: fila.llaveVersion,
+        }
+      : null,
     estadoConexion: fila.estadoConexion as EstadoConexion,
     ultimaPruebaEn: fila.ultimaPruebaEn,
     ultimaPruebaCodigo: esCodigoErrorIntegracion(fila.ultimaPruebaCodigo) ? fila.ultimaPruebaCodigo : null,
@@ -54,6 +58,8 @@ export function aEventoConfiguracion(fila: EventoPrisma): EventoConfiguracion {
   return {
     id: fila.id,
     fecha: fila.fecha,
+    tipo: 'CONFIGURACION',
+    oauth: null,
     actor: { id: fila.actorId, nombre: fila.actorNombre },
     camposCambiados: campos.filter((campo): campo is CampoConfiguracion => (CAMPOS_CONFIGURACION as readonly unknown[]).includes(campo)),
     tokenCambiado: fila.tokenCambiado,

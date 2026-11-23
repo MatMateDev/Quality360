@@ -6,6 +6,7 @@ import type {
   CampoConfiguracionJira,
   FaseEjecucion,
   MotivoFila,
+  MetodoConexionJira,
   OrigenEjecucion,
   OrigenHdu,
   ResultadoEjecucion,
@@ -53,11 +54,29 @@ export const INFO_ACCION_VISTA_PREVIA = {
   ERROR: { etiqueta: "Error", glifo: "✕", tono: "fallida" },
 } as const satisfies Record<string, { etiqueta: string; glifo: string; tono: TonoResultado }>;
 
-export const INFO_CONEXION = {
-  OK: { etiqueta: "Conectado", glifo: "✓", clase: "ok" },
-  FALLIDA: { etiqueta: "Falló la última prueba", glifo: "✕", clase: "fallida" },
-  SIN_PROBAR: { etiqueta: "Sin probar", glifo: "○", clase: "sin-probar" },
-} as const;
+/** Valores de `data-estado` de `chip-conexion` (decisiones-mvp, «Chip de la conexión»; diseño OAuth §3.1). */
+export type EstadoChipConexion = "sin-conectar" | "conectado-oauth" | "conectado-api-token" | "reconexion-necesaria" | "falta-sitio" | "fallo";
+
+/** Glifo + palabra + clase por estado del chip: el color nunca es el único canal (diseño OAuth §1). */
+export const INFO_CHIP_CONEXION: Record<EstadoChipConexion, { etiqueta: string; glifo: string; clase: "ok" | "fallida" | "incompleta" | "sin-probar" }> = {
+  "sin-conectar": { etiqueta: "Sin conectar", glifo: "○", clase: "sin-probar" },
+  "conectado-oauth": { etiqueta: "Conectado con Jira (OAuth)", glifo: "✓", clase: "ok" },
+  "conectado-api-token": { etiqueta: "Conectado con API token", glifo: "✓", clase: "ok" },
+  "reconexion-necesaria": { etiqueta: "Reconexión necesaria", glifo: "⚠", clase: "incompleta" },
+  "falta-sitio": { etiqueta: "Falta elegir el sitio", glifo: "◐", clase: "incompleta" },
+  fallo: { etiqueta: "Falló la última prueba", glifo: "✕", clase: "fallida" },
+};
+
+/** Permisos (scopes) de Atlassian traducidos (diseño OAuth §3.2). Uno desconocido se muestra tal cual. */
+export const ETIQUETAS_PERMISO: Record<string, string> = {
+  "read:jira-work": "Ver datos de issues",
+  "read:jira-user": "Ver perfil del usuario",
+  offline_access: "Mantener la conexión",
+};
+
+export function etiquetaPermiso(permiso: string): string {
+  return ETIQUETAS_PERMISO[permiso] ?? permiso;
+}
 
 export const MENSAJE_GENERICO_JIRA = "No pudimos completar la operación con Jira.";
 
@@ -72,6 +91,21 @@ const MENSAJES: Record<string, string> = {
   JIRA_NO_DISPONIBLE: "Jira no está disponible por ahora.",
   JIRA_RESPUESTA_INVALIDA: "Jira respondió algo que no entendimos.",
   JIRA_NO_CONFIGURADO: "Configura la conexión con Jira antes de consultar.",
+  // E5 · OAuth (diseño OAuth §9.3).
+  JIRA_RECONEXION_NECESARIA: "La conexión con Jira venció. Vuelve a conectar con Jira.",
+  JIRA_OAUTH_NO_CONFIGURADO: "La conexión automática con Jira no está habilitada en el servidor.",
+  JIRA_OAUTH_ESTADO_INVALIDO: "La autorización venció o no es válida. Vuelve a pulsar «Conectar con Jira».",
+  JIRA_OAUTH_CONSENTIMIENTO_RECHAZADO: "No aceptaste los permisos en Atlassian. No se conectó nada.",
+  JIRA_OAUTH_CANJE_FALLIDO: "Atlassian no aceptó la autorización. Vuelve a intentarlo.",
+  JIRA_OAUTH_SIN_SITIO: "Tu cuenta de Atlassian no tiene acceso a ningún sitio de Jira.",
+  JIRA_OAUTH_SITIO_NO_VALIDO: "El sitio elegido no es válido.",
+  JIRA_OAUTH_SIN_CONEXION: "No hay una conexión pendiente.",
+  // Códigos que solo existen en el portal.
+  OAUTH_NO_ABRIO: "No fue posible abrir Atlassian. Intenta nuevamente.",
+  OAUTH_SIN_PERMISO: "Ya no tienes permiso para esta acción",
+  OAUTH_ERROR_SERVIDOR: "Hubo un problema del servidor. Intenta nuevamente en unos minutos.",
+  OAUTH_SIN_RESPUESTA: "No recibimos respuesta del servidor. La conexión pudo haberse completado: revisa la pestaña Conexión antes de reintentar.",
+  OAUTH_SIN_AUTORIZACION: "Para conectar con Jira, pulsa «Conectar con Jira» en la pestaña Conexión.",
   PRESUPUESTO_DE_TIEMPO: "Se alcanzó el tiempo máximo. Continúa para procesar el resto.",
   ORGANIZACION_NO_DISPONIBLE: "No pudimos guardar las HDU en este momento.",
   LLAVE_CIFRADO_NO_DISPONIBLE: "La integración no está habilitada en el servidor.",
@@ -98,7 +132,17 @@ const MENSAJES: Record<string, string> = {
   DEMASIADAS_FILAS: "El archivo supera el máximo de 500 filas.",
 };
 
+/** Textos de los códigos cuyo mensaje depende del método de conexión (E5-F01-T04 certifica el del API token). */
+const MENSAJES_OAUTH: Record<string, string> = {
+  JIRA_SIN_PERMISO: "La cuenta de Jira conectada no tiene permiso para leer este proyecto.",
+  JIRA_PROYECTO_NO_ENCONTRADO: "No encontramos el proyecto. Revisa la clave; también puede ser que la cuenta de Jira conectada no tenga permiso para verlo.",
+};
+
 export interface ContextoMensaje {
+  /** Método activo: con OAuth cambian los textos de `JIRA_SIN_PERMISO` y `JIRA_PROYECTO_NO_ENCONTRADO`. */
+  metodo?: MetodoConexionJira | null;
+  /** Permisos que faltan, para `JIRA_OAUTH_PERMISOS_INSUFICIENTES` (D218). */
+  permisosFaltantes?: readonly string[];
   /** Filas con error, para `MODO_ESTRICTO`. */
   conError?: number;
   /** Columnas que faltan, para `COLUMNAS_FALTANTES`. */
@@ -115,6 +159,11 @@ export function mensajeDeError(codigo: string | null | undefined, contexto: Cont
     const lista = contexto.columnasFaltantes ?? [];
     return lista.length > 0 ? `Faltan las columnas: ${lista.join(", ")}` : "Faltan columnas obligatorias en el archivo.";
   }
+  if (codigo === "JIRA_OAUTH_PERMISOS_INSUFICIENTES") {
+    const lista = (contexto.permisosFaltantes ?? []).map(etiquetaPermiso).join(", ");
+    return lista ? `Faltan permisos en Atlassian: ${lista}. Acepta todos los permisos solicitados.` : "Faltan permisos en Atlassian. Acepta todos los permisos solicitados.";
+  }
+  if (codigo && contexto.metodo === "OAUTH" && MENSAJES_OAUTH[codigo]) return MENSAJES_OAUTH[codigo];
   return (codigo ? MENSAJES[codigo] : undefined) ?? MENSAJE_GENERICO_JIRA;
 }
 
@@ -178,6 +227,7 @@ export const ETIQUETAS_CAMPO_CONFIGURACION: Record<CampoConfiguracionJira, strin
   celulaId: "Célula",
   qeResponsableId: "QE",
   sprintRespaldoId: "Sprint",
+  metodo: "Método de conexión",
 };
 
 export const ETIQUETAS_CAMBIO_HDU: Record<string, string> = { titulo: "Título", descripcion: "Descripción", prioridad: "Prioridad" };

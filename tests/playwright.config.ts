@@ -17,8 +17,8 @@ import { env } from "./support/env";
  */
 export default defineConfig({
   testDir: ".",
-  // Jira simulado de E5 (puerto 4010); lo arranca la corrida y lo cierra al terminar.
-  globalSetup: "./support/jira-falso/globalSetup.ts",
+  // Jira simulado (4010) y Atlassian simulado de OAuth (4011) de E5; los arranca la corrida y los cierra al terminar.
+  globalSetup: "./support/globalSetupE5.ts",
   // Generoso porque las pruebas de escritura comparten el límite de tasa
   // real del gateway (30 escrituras/min) con el resto de la suite: un
   // reintento tras 429 puede esperar casi un minuto (ver tests/support/api.ts).
@@ -30,6 +30,13 @@ export default defineConfig({
   reporter: [["list"], ["html", { outputFolder: "playwright-report", open: "never" }]],
   outputDir: "test-results",
   projects: [
+    // Pruebas propias del Atlassian falso de E5 OAuth (modos, rotación, secretos). No usan el stack: levantan su propio falso en :4111.
+    {
+      name: "atlassian-falso",
+      testDir: "./support/atlassian-falso",
+      testMatch: /.*\.spec\.ts/,
+      use: {},
+    },
     {
       name: "setup",
       testDir: "./e2e",

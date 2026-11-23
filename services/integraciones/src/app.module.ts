@@ -12,11 +12,17 @@ import { ConexionController } from './api/controladores/conexion.controller.js';
 import { HistorialController } from './api/controladores/historial.controller.js';
 import { SaludController } from './api/controladores/salud.controller.js';
 import { ConsultaController } from './api/controladores/consulta.controller.js';
+import { OauthController } from './api/controladores/oauth.controller.js';
 import { ArchivosAplicacion } from './aplicacion/archivos.servicio.js';
 import { ConfiguracionAplicacion } from './aplicacion/configuracion.servicio.js';
+import { CredencialesJira } from './aplicacion/credenciales-jira.js';
+import { OauthJiraAplicacion } from './aplicacion/oauth-jira.servicio.js';
+import { AUTORIZADOR_ATLASSIAN, type AutorizadorAtlassian } from './dominio/puertos/autorizador-atlassian.js';
+import { ConexionOauthPrismaRepositorio } from './infraestructura/prisma/conexion-oauth.prisma.repositorio.js';
 import { HistorialAplicacion } from './aplicacion/historial.servicio.js';
 import {
   CifradorToken,
+  ConexionOauthRepositorio,
   ConfiguracionRepositorio,
   ConsultaRepositorio,
   EjecucionRepositorio,
@@ -31,7 +37,7 @@ import { ConsultaAplicacion } from './aplicacion/consulta.servicio.js';
 import { ConfirmacionAplicacion } from './aplicacion/confirmacion.servicio.js';
 import { ConfirmacionFilaAplicacion } from './aplicacion/confirmacion-fila.servicio.js';
 import { EdicionConsultaAplicacion } from './aplicacion/edicion-consulta.servicio.js';
-import { crearFuenteJira, crearLector, crearMapeador } from './composicion-externa.js';
+import { crearAutorizador, crearFuenteJira, crearLector, crearMapeador } from './composicion-externa.js';
 import { CONFIGURACION, type ConfiguracionIntegraciones } from './configuracion.js';
 import { CifradorTokenAesGcm } from './infraestructura/cifrado/cifrador-aes-gcm.js';
 import { OpcionesResolutorRemotoModule } from './infraestructura/opciones-resolutor-remoto.module.js';
@@ -44,6 +50,8 @@ import { PrismaService } from './infraestructura/prisma/prisma.service.js';
 /** Lo que las pruebas (o la integración con q360-integraciones) pueden reemplazar. */
 export interface ExtensionesApp {
   fuenteJira?: FuenteJira;
+  /** Atlassian para OAuth (canje, renovación y sitios): las pruebas ponen su doble. */
+  autorizador?: AutorizadorAtlassian;
   mapeador?: MapeadorIssues;
   lector?: LectorArchivo;
   reloj?: Reloj;
@@ -70,19 +78,23 @@ export class AppModule {
           filtroErroresGlobal: true,
         }),
       ],
-      controllers: [SaludController, ConexionController, ConsultaController, ArchivosController, HistorialController],
+      controllers: [SaludController, ConexionController, OauthController, ConsultaController, ArchivosController, HistorialController],
       providers: [
         { provide: CONFIGURACION, useValue: configuracion },
         PrismaService,
         { provide: ConfiguracionRepositorio, useClass: ConfiguracionPrismaRepositorio },
         { provide: EjecucionRepositorio, useClass: EjecucionPrismaRepositorio },
         { provide: ConsultaRepositorio, useClass: ConsultaPrismaRepositorio },
+        { provide: ConexionOauthRepositorio, useClass: ConexionOauthPrismaRepositorio },
+        { provide: AUTORIZADOR_ATLASSIAN, useValue: extensiones.autorizador ?? crearAutorizador(configuracion) },
         { provide: ProveedorOrganizacion, useClass: OrganizacionCliente },
         { provide: CifradorToken, useClass: CifradorTokenAesGcm },
         { provide: FUENTE_JIRA, useValue: extensiones.fuenteJira ?? crearFuenteJira(configuracion) },
         { provide: MapeadorIssues, useValue: extensiones.mapeador ?? crearMapeador() },
         { provide: LectorArchivo, useValue: extensiones.lector ?? crearLector() },
         { provide: Reloj, useValue: extensiones.reloj ?? { ahora: () => new Date() } },
+        CredencialesJira,
+        OauthJiraAplicacion,
         ConfiguracionAplicacion,
         ConsultaAplicacion,
         EdicionConsultaAplicacion,

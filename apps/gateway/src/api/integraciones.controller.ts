@@ -2,7 +2,7 @@
  * Rutas de Integraciones (E5, D127): se reenvían tal cual a la misma ruta del
  * servicio (`INTEGRACIONES_URL`), sin composición.
  *
- * Declaradas una por una (las 18 rutas y 20 operaciones de
+ * Declaradas una por una (las 22 rutas y 24 operaciones de
  * `integraciones.v1.yaml`), sin comodín: lo que no está aquí responde 404 y
  * `/v1/interno/*` no se publica. `POST jira/sincronizaciones` se retiró con la
  * consulta y asignación (D132): responde 404 como cualquier ruta inexistente.
@@ -22,8 +22,16 @@
  *   decide Integraciones; el gateway valida que `id` e `itemId` sean UUID.
  * - Los 409, 410 y 422 de la consulta y sus cuerpos extendidos (también
  *   `HDU_YA_ASIGNADA`, `FILA_MODIFICADA` y `FILA_EN_CURSO`) llegan tal cual.
+ * - Conexión por OAuth 2.0 (ADR 0019, D209–D218): 4 rutas, todas con sesión;
+ *   ninguna es pública, porque el retorno de Atlassian llega a una página del
+ *   portal, que envía `code` y `state` en el cuerpo. Solo Administrador, pero
+ *   eso lo decide Integraciones. Sin query; el cuerpo, tal cual; el 204 del
+ *   `DELETE` sale sin cuerpo y con `x-trace-id`. Usan el cubo de escritura
+ *   general. El gateway **no registra** el cuerpo de `oauth/retorno` ni la
+ *   respuesta de `oauth/iniciar`, cuya URL lleva el `state`: el reenviador
+ *   nunca registra cuerpos, y `pruebas/e5-integraciones.test.ts` lo fija.
  */
-import { Controller, Get, Param, Patch, Post, Put, Req, Res } from '@nestjs/common';
+import { Controller, Delete, Get, Param, Patch, Post, Put, Req, Res } from '@nestjs/common';
 import type { Response } from 'express';
 
 import { Reenviador, type SolicitudGateway } from '../aplicacion/reenviador.js';
@@ -63,6 +71,31 @@ export class IntegracionesController {
   @Get('jira/configuracion/eventos')
   async eventos(@Req() solicitud: SolicitudGateway, @Res() respuesta: Response): Promise<void> {
     await this.reenviar(solicitud, respuesta, '/v1/integraciones/jira/configuracion/eventos');
+  }
+
+  // ------------------------------------------------------------ Conexión por OAuth 2.0 (E5-B08, ADR 0019)
+
+  /** Sin cuerpo. La respuesta trae `urlAutorizacion` con el `state`: no se registra. */
+  @Post('jira/oauth/iniciar')
+  async iniciarOauth(@Req() solicitud: SolicitudGateway, @Res() respuesta: Response): Promise<void> {
+    await this.reenviar(solicitud, respuesta, '/v1/integraciones/jira/oauth/iniciar');
+  }
+
+  /** El cuerpo (`code` o `error`, y `state`) viaja tal cual y no se registra. */
+  @Post('jira/oauth/retorno')
+  async completarOauth(@Req() solicitud: SolicitudGateway, @Res() respuesta: Response): Promise<void> {
+    await this.reenviar(solicitud, respuesta, '/v1/integraciones/jira/oauth/retorno');
+  }
+
+  @Post('jira/oauth/sitio')
+  async elegirSitioOauth(@Req() solicitud: SolicitudGateway, @Res() respuesta: Response): Promise<void> {
+    await this.reenviar(solicitud, respuesta, '/v1/integraciones/jira/oauth/sitio');
+  }
+
+  /** 204 sin cuerpo; el reenviador no manda cuerpo en un `DELETE`. */
+  @Delete('jira/oauth')
+  async desconectarOauth(@Req() solicitud: SolicitudGateway, @Res() respuesta: Response): Promise<void> {
+    await this.reenviar(solicitud, respuesta, '/v1/integraciones/jira/oauth');
   }
 
   // ------------------------------------------------------------ Consulta y asignación (E5-B02, E5-B05)

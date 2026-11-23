@@ -118,6 +118,10 @@ services:
       # E5 consulta: vacío = por defecto del servicio.
       INTEGRACIONES_CONSULTA_VIGENCIA_MS: ${INTEGRACIONES_CONSULTA_VIGENCIA_MS:-}
       INTEGRACIONES_CONSULTA_TOPE_ITEMS: ${INTEGRACIONES_CONSULTA_TOPE_ITEMS:-}
+      # E5 OAuth (ADR 0019): vacío = «Conectar con Jira» deshabilitado; el API token sigue funcionando.
+      JIRA_OAUTH_CLIENT_ID: ${JIRA_OAUTH_CLIENT_ID:-}
+      JIRA_OAUTH_CLIENT_SECRET: ${JIRA_OAUTH_CLIENT_SECRET:-}
+      JIRA_OAUTH_REDIRECT_URI: ${JIRA_OAUTH_REDIRECT_URI:-}
     depends_on:
       organizacion:
         condition: service_healthy

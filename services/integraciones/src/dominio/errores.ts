@@ -65,3 +65,39 @@ export class OrganizacionDenego extends Error {
     super('ORGANIZACION_DENEGO');
   }
 }
+
+/** No se obtuvo el candado de la fila de la conexión OAuth en 3 s, o la transacción no consiguió conexión a tiempo (D214). */
+export class CandadoNoObtenido extends Error {
+  constructor() {
+    super('CANDADO_NO_OBTENIDO');
+  }
+}
+
+// ------------------------------------------------------------------ conexión OAuth con Jira (D211–D217)
+/** Faltan `JIRA_OAUTH_CLIENT_ID`, `JIRA_OAUTH_CLIENT_SECRET` o `JIRA_OAUTH_REDIRECT_URI` (503 `JIRA_OAUTH_NO_CONFIGURADO`, D216). */
+export class OauthNoConfigurado extends Error {
+  constructor() {
+    super('JIRA_OAUTH_NO_CONFIGURADO');
+  }
+}
+
+/** `state` desconocido, mal formado, vencido, ya usado o de otro Administrador: un solo mensaje (400, D211). */
+export class EstadoOauthInvalido extends Error {
+  constructor() {
+    super('JIRA_OAUTH_ESTADO_INVALIDO');
+  }
+}
+
+/** `sitioId` que no está entre los candidatos de la conexión pendiente (400, D212). */
+export class SitioOauthNoValido extends Error {
+  constructor() {
+    super('JIRA_OAUTH_SITIO_NO_VALIDO');
+  }
+}
+
+/** No hay conexión OAuth (o no está pendiente de sitio) para la operación pedida (409, D217). */
+export class SinConexionOauth extends Error {
+  constructor() {
+    super('JIRA_OAUTH_SIN_CONEXION');
+  }
+}

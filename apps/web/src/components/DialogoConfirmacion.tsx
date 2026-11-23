@@ -15,6 +15,8 @@ interface Props {
   /** `data-testid` de los botones (solo los diálogos que los necesitan). */
   testIdConfirmar?: string;
   testIdCancelar?: string;
+  /** `alertdialog` para las confirmaciones de acciones destructivas (diseño OAuth §3.4). */
+  rol?: "dialog" | "alertdialog";
   onConfirmar: () => void;
   onCancelar: () => void;
 }
@@ -37,10 +39,12 @@ export function DialogoConfirmacion({
   testId,
   testIdConfirmar,
   testIdCancelar,
+  rol = "dialog",
   onConfirmar,
   onCancelar,
 }: Props) {
   const idTitulo = useId();
+  const idDescripcion = useId();
   const contenedor = useRef<HTMLDivElement>(null);
   const cancelarRef = useRef(onCancelar);
   cancelarRef.current = onCancelar;
@@ -82,15 +86,16 @@ export function DialogoConfirmacion({
       <div
         ref={contenedor}
         className="dialogo"
-        role="dialog"
+        role={rol}
         aria-modal="true"
         aria-labelledby={idTitulo}
+        aria-describedby={rol === "alertdialog" ? idDescripcion : undefined}
         data-testid={testId}
         onClick={(evento) => evento.stopPropagation()}
         onKeyDown={manejarTeclado}
       >
         <h2 id={idTitulo}>{titulo}</h2>
-        {children}
+        {rol === "alertdialog" ? <div id={idDescripcion}>{children}</div> : children}
         <div className="dialogo-acciones">
           <button type="button" className="boton boton--secundario" data-testid={testIdCancelar} onClick={onCancelar}>
             {etiquetaCancelar}

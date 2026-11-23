@@ -1,0 +1,316 @@
+/* E5 · conexión por OAuth (diseño e5-oauth-jira §1 a §8). Solo alias de tokens: no se agrega ningún color nuevo. */
+
+/* El chip lleva la palabra completa: envuelve en varias líneas (a 375 px no se corta con puntos suspensivos). */
+.chip-conexion {
+  max-width: 100%;
+  white-space: normal;
+  border-radius: 16px;
+  overflow-wrap: anywhere;
+}
+
+.chip-conexion--incompleta {
+  color: var(--q360-color-res-incompleta);
+  background-color: var(--q360-color-res-incompleta-suave);
+}
+
+.panel-resultado--incompleta a,
+.panel-resultado--incompleta .boton--secundario {
+  color: var(--q360-color-res-incompleta);
+}
+
+h2.panel-resultado__titulo {
+  font-size: 1.125rem;
+}
+
+.insignia-texto {
+  display: inline-block;
+  padding: 1px 8px;
+  border: 1px solid currentColor;
+  border-radius: 999px;
+  color: var(--q360-color-acento);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.insignia-texto--activo {
+  color: var(--q360-color-res-exitosa);
+}
+
+.tarjeta-estado__chip,
+.tarjeta-estado__metodo {
+  margin: 0 0 12px;
+}
+
+.tarjeta-estado__datos {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 12px 24px;
+  margin: 0 0 12px;
+}
+
+.tarjeta-estado__datos dt {
+  color: var(--q360-color-texto-secundario);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.tarjeta-estado__datos dd {
+  margin: 2px 0 0;
+  overflow-wrap: anywhere;
+}
+
+.lista-permisos {
+  margin: 4px 0 0;
+  padding-left: 18px;
+}
+
+.aviso-reconexion {
+  margin: 0 0 12px;
+  padding: 12px 16px;
+  border-left: 4px solid var(--q360-color-res-incompleta);
+  border-radius: var(--q360-radio);
+  background-color: var(--q360-color-res-incompleta-suave);
+  color: var(--q360-color-texto);
+}
+
+.aviso-reconexion:focus-visible {
+  outline: 3px solid var(--q360-foco-color);
+  outline-offset: 2px;
+}
+
+.tarjeta-oauth-inactiva {
+  margin-top: 16px;
+  padding-top: 12px;
+  border-top: 1px solid var(--q360-color-borde);
+}
+
+.boton--texto-peligro {
+  color: var(--q360-color-res-fallida);
+}
+
+/* Selector de método: radios nativos con forma de tarjeta, 2 columnas a >= 900 px. */
+.selector-metodo {
+  margin: 0 0 24px;
+  padding: 0;
+  border: 0;
+}
+
+.selector-metodo legend {
+  margin-bottom: 8px;
+  font-weight: 700;
+}
+
+.selector-metodo__opciones {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 12px;
+}
+
+@media (min-width: 900px) {
+  .selector-metodo__opciones {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+.opcion-metodo {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-height: var(--q360-objetivo-tactil);
+  padding: 14px 16px;
+  border: 1px solid var(--q360-color-borde-fuerte);
+  border-radius: var(--q360-radio-grande);
+  background-color: var(--q360-color-superficie);
+  cursor: pointer;
+}
+
+.opcion-metodo--elegida {
+  border-width: 2px;
+  padding: 13px 15px;
+  border-color: var(--q360-color-acento);
+}
+
+.opcion-metodo:has(input:focus-visible),
+.opcion-sitio:has(input:focus-visible) {
+  outline: 3px solid var(--q360-foco-color);
+  outline-offset: 2px;
+}
+
+.opcion-metodo__cabecera {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.opcion-metodo__titulo {
+  font-weight: 700;
+}
+
+.opcion-metodo__texto,
+.opcion-metodo__activo-ahora {
+  color: var(--q360-color-texto-secundario);
+  font-size: 14px;
+}
+
+/* Botón con aria-disabled: legible (no se baja la opacidad), fondo neutro y borde punteado. */
+.boton-conectar[aria-disabled="true"] {
+  border: 2px dashed var(--q360-color-borde-fuerte);
+  background-color: var(--q360-color-res-neutra-suave);
+  color: var(--q360-color-texto);
+  cursor: not-allowed;
+}
+
+.indicador-giro {
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  margin-right: 6px;
+  border: 2px solid currentColor;
+  border-right-color: transparent;
+  border-radius: 50%;
+  vertical-align: -2px;
+  animation: giro-conectar 0.8s linear infinite;
+}
+
+@keyframes giro-conectar {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .indicador-giro {
+    animation: none;
+  }
+}
+
+/* Lista de sitios. */
+.lista-sitios {
+  margin: 0 0 16px;
+  padding: 12px 0 0;
+  border: 0;
+}
+
+.lista-sitios:focus-visible {
+  outline: 3px solid var(--q360-foco-color);
+  outline-offset: 2px;
+}
+
+.lista-sitios legend {
+  font-weight: 700;
+}
+
+.lista-sitios__opciones {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.lista-sitios__opciones--larga {
+  max-height: 320px;
+  overflow-y: auto;
+}
+
+.opcion-sitio {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: var(--q360-objetivo-tactil);
+  padding: 10px 14px;
+  border: 1px solid var(--q360-color-borde-fuerte);
+  border-radius: var(--q360-radio);
+  cursor: pointer;
+}
+
+.opcion-sitio--elegida {
+  border: 2px solid var(--q360-color-acento);
+  padding: 9px 13px;
+}
+
+.opcion-sitio__texto {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.opcion-sitio__url {
+  color: var(--q360-color-texto-secundario);
+  font-size: 14px;
+  overflow-wrap: anywhere;
+}
+
+/* Avisos y guía. */
+.aviso-cerrable {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.guia-oauth__panel {
+  margin-top: 8px;
+  padding: 12px 16px;
+  border: 1px solid var(--q360-color-borde);
+  border-radius: var(--q360-radio);
+  background-color: var(--q360-color-superficie-sutil);
+}
+
+.guia-oauth__panel[hidden] {
+  display: none;
+}
+
+.guia-oauth__panel:focus-visible {
+  outline: 3px solid var(--q360-foco-color);
+  outline-offset: 2px;
+}
+
+.guia-oauth__panel ol {
+  padding-left: 20px;
+}
+
+.ayuda-revocar {
+  margin-top: 12px;
+}
+
+.ayuda-revocar summary {
+  cursor: pointer;
+  font-weight: 600;
+}
+
+/* Página de retorno: una sola tarjeta centrada. */
+.tarjeta-retorno {
+  max-width: 640px;
+  margin-inline: auto;
+}
+
+.acciones-retorno {
+  margin-top: 16px;
+}
+
+@media (max-width: 750px) {
+  .acciones-retorno,
+  .tarjeta-estado .acciones-formulario,
+  .lista-sitios .acciones-formulario {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .tarjeta-estado .boton,
+  .tarjeta-retorno .boton,
+  .panel .boton-conectar,
+  .lista-sitios .boton,
+  .aviso-reconexion .boton {
+    width: 100%;
+    min-height: var(--q360-objetivo-tactil);
+    text-align: center;
+  }
+
+  .acciones-retorno a.boton {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+  }
+}

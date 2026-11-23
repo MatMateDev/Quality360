@@ -26,7 +26,13 @@ import type {
   ResultadoPruebaJira,
   SolicitudArchivo,
   SolicitudConfiguracionJira,
+  SolicitudConfiguracionJiraOauth,
   SolicitudPruebaJira,
+  SolicitudPruebaJiraOauth,
+  InicioAutorizacionOauthJira,
+  ResultadoConexionOauthJira,
+  SolicitudRetornoOauthJira,
+  SolicitudSitioOauthJira,
   VistaPreviaArchivo,
 } from "@/types/dominio";
 
@@ -97,7 +103,7 @@ export function useQeActivos() {
 export function useGuardarConfiguracion() {
   const cliente = useQueryClient();
   return useMutation({
-    mutationFn: (cuerpo: SolicitudConfiguracionJira) => http.put<ResultadoGuardadoJira>(`${BASE}/jira/configuracion`, cuerpo),
+    mutationFn: (cuerpo: SolicitudConfiguracionJira | SolicitudConfiguracionJiraOauth) => http.put<ResultadoGuardadoJira>(`${BASE}/jira/configuracion`, cuerpo),
     onSettled: () => {
       void cliente.invalidateQueries({ queryKey: ["integraciones"] });
     },
@@ -106,7 +112,47 @@ export function useGuardarConfiguracion() {
 
 export function useProbarConexion() {
   return useMutation({
-    mutationFn: (cuerpo: SolicitudPruebaJira) => http.post<ResultadoPruebaJira>(`${BASE}/jira/configuracion/probar`, cuerpo),
+    mutationFn: (cuerpo: SolicitudPruebaJira | SolicitudPruebaJiraOauth) => http.post<ResultadoPruebaJira>(`${BASE}/jira/configuracion/probar`, cuerpo),
+  });
+}
+
+// ------------------------------------------------------------ OAuth 2.0 (3LO) (D209–D218, ADR 0019)
+
+const OAUTH = `${BASE}/jira/oauth`;
+
+/**
+ * Las 4 rutas de la conexión por OAuth. El portal solo pasa `code` y `state` al gateway, con la sesión del
+ * Administrador: nunca ve ni guarda tokens ni el secreto, y no arma la dirección de Atlassian (la devuelve `iniciar`).
+ */
+export const llamadasOauth = {
+  /** «Conectar con Jira» / «Reconectar»: devuelve la `urlAutorizacion` armada por el servidor. */
+  iniciarConexionOauth: () => http.post<InicioAutorizacionOauthJira>(`${OAUTH}/iniciar`),
+  /** Lo que leyó la página de retorno: `state` y exactamente uno de `code` o `error`. */
+  completarConexionOauth: (cuerpo: SolicitudRetornoOauthJira) => http.post<ResultadoConexionOauthJira>(`${OAUTH}/retorno`, cuerpo),
+  elegirSitioOauth: (sitioId: string) => http.post<ResultadoConexionOauthJira>(`${OAUTH}/sitio`, { sitioId } satisfies SolicitudSitioOauthJira),
+  /** 204 sin cuerpo. No borra nada de lo ya importado. */
+  desconectarOauth: () => http.delete<void>(OAUTH),
+};
+
+export const { iniciarConexionOauth, completarConexionOauth, elegirSitioOauth, desconectarOauth } = llamadasOauth;
+
+export function useElegirSitioOauth() {
+  const cliente = useQueryClient();
+  return useMutation({
+    mutationFn: (sitioId: string) => elegirSitioOauth(sitioId),
+    onSettled: () => {
+      void cliente.invalidateQueries({ queryKey: ["integraciones"] });
+    },
+  });
+}
+
+export function useDesconectarOauth() {
+  const cliente = useQueryClient();
+  return useMutation({
+    mutationFn: () => desconectarOauth(),
+    onSettled: () => {
+      void cliente.invalidateQueries({ queryKey: ["integraciones"] });
+    },
   });
 }
 
