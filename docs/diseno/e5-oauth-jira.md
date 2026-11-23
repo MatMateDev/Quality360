@@ -477,22 +477,25 @@ Si el Administrador eligió el método contrario y navega a otra pestaña con ca
 
 ## 7. Consultar Jira: reconexión necesaria
 
-Aplica a la pestaña **Sincronizar** (E5-F02, «Consultar Jira» y «Sincronizar con Jira») y, con el mismo componente, a cualquier bloque `ErrorIntegracion` de integraciones.
+Aplica a la pestaña **Sincronizar** (`/admin/integraciones/sincronizar`, que muestra la pantalla «Consultar Jira» de E5-F02, con «Consultar Jira» y «Continuar consulta») y, con el mismo componente, a cualquier bloque `ErrorIntegracion` de integraciones.
 
-`error-sincronizacion` (cert., `role="alert"`, `tabIndex=-1`, foco) con `data-codigo="JIRA_RECONEXION_NECESARIA"`:
+`error-consulta` (cert. en E5-F02, `role="alert"`, `tabIndex=-1`, foco) con `data-codigo="JIRA_RECONEXION_NECESARIA"`:
 
 ```
- ┌ error-sincronizacion  data-codigo="JIRA_RECONEXION_NECESARIA" ─────────────────────┐
+ ┌ error-consulta  data-codigo="JIRA_RECONEXION_NECESARIA" ───────────────────────────┐
  │ ⚠ No se pudo consultar Jira                                                         │
  │ La conexión con Jira venció. Vuelve a conectar con Jira.                            │
- │ No se creó ni se modificó ninguna HDU. Tu consulta abierta se conserva.             │
+ │ La ejecución quedó registrada como fallida y no se guardó ninguna consulta nueva.   │
+ │ La consulta que tenías abierta se conserva.                                         │
  │ Qué puedes hacer                                                                    │
- │  · Ir a Conexión (enlace-ir-conexion) → /admin/integraciones                         │
- │  · Importar un archivo (enlace-importar-archivo)                                     │
+ │  · Ir a Conexión (enlace-ir-conexion) → /admin/integraciones                        │
+ │  · Importar un archivo (enlace-importar-archivo)                                    │
  └──────────────────────────────────────────────────────────────────────────────────────┘
 ```
 
-- Título: «No se pudo consultar Jira» (consultar) o «No se pudo sincronizar» (sincronizar; cert.). El glifo es `⚠` (no `✕`) porque tiene remedio directo; el borde izquierdo usa `res-incompleta`.
+- Título: «No se pudo consultar Jira» (cert.). El glifo es `⚠` (no `✕`) porque tiene remedio directo; el borde izquierdo usa `res-incompleta`.
+- El pie es el certificado de E5-F02: «La ejecución quedó registrada como fallida y no se guardó ninguna consulta nueva.» y, solo si hay una consulta abierta, «La consulta que tenías abierta se conserva.». No se crea ni se modifica ninguna HDU.
+- Nombre del testid: este documento decía `error-sincronizacion`, que no existe en la pantalla certificada (OBS-E5O-01, `docs/validacion/certificacion-e5-oauth.md`); el producto y las pruebas usan `error-consulta`.
 - El enlace «Ir a Conexión» es un `<Link>` (no un `button`) y es la acción principal (primer enlace de «Qué puedes hacer»). Ya existe `enlace-ir-conexion` en E5 (cert.).
 - Al volver a Conexión desde este enlace, la tarjeta ya muestra «Reconexión necesaria» y el foco va al `h1` (comportamiento existente); el botón «Reconectar» está a un Tab de distancia por orden de DOM (tarjeta de estado antes que el selector).
 - La **consulta abierta se conserva**: los filtros y la vista previa que el usuario ya tenía no se pierden (E5-F02 #4).
@@ -519,7 +522,7 @@ Aplica a la pestaña **Sincronizar** (E5-F02, «Consultar Jira» y «Sincronizar
 ### 8.2 Anuncios (`aria-live`)
 
 - `role="status"` (educado): «Abriendo Atlassian…», «Conectando con Jira…», éxito de la conexión, sitio guardado, desconexión, resultado de «Probar conexión», `aviso-oauth-conectado`.
-- `role="alert"` (asertivo): `error-oauth`, `error-conexion`, `error-sitio`, `error-desconexion`, `aviso-reconexion`, `error-sincronizacion`.
+- `role="alert"` (asertivo): `error-oauth`, `error-conexion`, `error-sitio`, `error-desconexion`, `aviso-reconexion`, `error-consulta`.
 - Una sola región de estado a la vez por pantalla; **no hay `aria-live` por pulsación de tecla**. Los cambios de estado largos (procesando → éxito) usan la misma región para no duplicar lecturas.
 - `aviso-cambio-a-api-token` y `aviso-cambio-a-oauth` son `role="note"`: se leen al llegar con el foco, no se interrumpe.
 
@@ -643,7 +646,7 @@ Los del backlog (sección 10) **se mantienen con esos nombres**. Adiciones propi
 | Aviso de éxito | `aviso-oauth-conectado`+, `boton-cerrar-aviso`+ |
 | Retorno | `pagina-retorno-oauth`, `estado-retorno` (`data-estado`: `procesando`, `exito`, `consentimiento-rechazado`, `estado-invalido`, `permisos-insuficientes`, `sin-sitio`, `sin-autorizacion`, `canje-fallido`, `error-servidor`, `sin-respuesta`), `enlace-ir-conexion` (cert.) |
 | Ayuda | `ayuda-revocar-jira`, `panel-guia-oauth`+, `boton-guia-oauth`+, `guia-oauth-paso-<n>`+ |
-| Consultar Jira | `error-sincronizacion` (`data-codigo="JIRA_RECONEXION_NECESARIA"`, cert.), `enlace-ir-conexion` (cert.), `enlace-importar-archivo` (cert.) |
+| Consultar Jira | `error-consulta` (`data-codigo="JIRA_RECONEXION_NECESARIA"`, cert. en E5-F02), `enlace-ir-conexion` (cert.), `enlace-importar-archivo` (cert.) |
 
 Convención (E5): kebab-case, un testid por elemento accionable o que aporte un estado; `data-estado`/`data-codigo` en lugar de testids por variante.
 

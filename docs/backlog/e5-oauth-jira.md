@@ -256,7 +256,7 @@ Escenario agregado (E5-F02 tenía #1 a #5, así que este es el **#6**):
 
 | # | Criterio | Contexto | Evento | Resultado esperado |
 | --- | --- | --- | --- | --- |
-| 6 | Reconexión necesaria al consultar (agregado) | El método activo es OAuth y la conexión necesita reconexión. | Pulsa «Consultar Jira» o «Continuar consulta». | `error-sincronizacion` con `data-codigo` `JIRA_RECONEXION_NECESARIA`, el mensaje de la sección 4.1 y el enlace «Ir a Conexión»; no se crea ni modifica ninguna HDU; la consulta abierta se conserva. |
+| 6 | Reconexión necesaria al consultar (agregado) | El método activo es OAuth y la conexión necesita reconexión. | Pulsa «Consultar Jira» o «Continuar consulta». | `error-consulta` (el bloque certificado de E5-F02) con `data-codigo` `JIRA_RECONEXION_NECESARIA`, el mensaje de la sección 4.1 y el enlace «Ir a Conexión»; no se crea ni modifica ninguna HDU; la consulta abierta se conserva. |
 
 ## 11. HDU de backend
 

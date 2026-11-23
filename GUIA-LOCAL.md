@@ -165,6 +165,11 @@ npm run local
 | La primera ejecución parece detenida en «Iniciando Supabase local» | Está descargando imágenes de Docker | Espera; puede tardar varios minutos según tu conexión |
 | El checklist muestra «No disponible en este momento» | Certificaciones no arrancó o le falta configuración | `node infrastructure/local/preparar-entorno.mjs --forzar` y luego `npm run local -- --build` |
 | Al adjuntar un archivo aparece un error de subida | Supabase local sin Storage o sin buckets | `Ctrl+C` y `npm run local` de nuevo: reinicia Supabase con Storage y crea los buckets |
+| «Conectar con Jira» aparece deshabilitado en local | Integraciones arrancó con un `.env` sin las variables `JIRA_OAUTH_*` | `Ctrl+C` y `npm run local`: regenera la configuración si falta alguna |
+| Al pulsar «Conectar con Jira» el navegador no puede abrir `127.0.0.1:4011` | El Atlassian simulado no está corriendo | Levántalo (sección «Conectar con Jira por OAuth en local») |
+| El comando del simulado termina enseguida, sin mensajes | Los puertos 4010 y 4011 ya están en uso, por ejemplo por una corrida de Playwright | Usa los que ya corren o ciérralos y repite |
+| Al volver de Atlassian el portal dice «Tu sesión se cerró durante la conexión…» | El portal no está en `http://localhost:5173` (por ejemplo, Vite tomó otro puerto porque el 5173 estaba ocupado) | Libera el 5173 y repite `npm run local`: la dirección de retorno es fija |
+| «Atlassian no aceptó la autorización…» justo después de regenerar la configuración | Integraciones sigue con el secreto anterior y el simulado ya lee el nuevo | `Ctrl+C` y `npm run local` |
 
 ---
 
@@ -181,13 +186,15 @@ npm run local
 | Supabase API, Auth y Storage | 54321 | Supabase CLI en Docker |
 | Postgres | 54322 | Supabase CLI en Docker |
 | Supabase Studio | 54323 | Supabase CLI en Docker |
+| Jira simulado (solo pruebas y prueba manual) | 4010 | Node, `tests/support/jira-falso/` |
+| Atlassian simulado (solo pruebas y prueba manual) | 4011 | Node, `tests/support/atlassian-falso/` |
 
 ### Integraciones en local y Jira simulado (E5)
 
 `npm run local` levanta Integraciones (puerto 3004, `/health`) igual que los otros servicios: aplica sus migraciones (esquema `integraciones`, rol `svc_integraciones`) y el gateway le reenvía las rutas `/v1/integraciones/*` con `INTEGRACIONES_URL=http://localhost:3004`.
 
 - **Llave de cifrado de desarrollo.** `preparar-entorno.mjs` genera `INTEGRACIONES_LLAVE_CIFRADO` con `crypto.randomBytes(32).toString('base64')` y la guarda solo en `services/integraciones/.env` (no versionado). Es una llave por máquina: si ya existe y es válida se conserva, para no dejar ilegible el token de Jira guardado; si falta, el siguiente `npm run local` regenera el archivo. Si la borras, se crea otra y hay que volver a guardar el token en la pantalla de Integraciones. Sin llave el servicio arranca igual y solo cifrar o descifrar responde 503 `LLAVE_CIFRADO_NO_DISPONIBLE`.
-- **Jira simulado.** El Jira falso de QA (`tests/support/jira-falso/`, lo construye q360-qa) escucha en `http://127.0.0.1:4010` y lo arranca el `globalSetup` de Playwright; no forma parte de `npm run local`. Para que Integraciones acepte ese sitio, el `.env` local trae `INTEGRACIONES_PERMITIR_HOST_PRUEBA=true` (se ignora con `NODE_ENV=production`). Credenciales del falso: correo `admin@quality360.local` y token `q360-token-valido-AB12` (datos de prueba, no reales). Un puerto cerrado como `http://127.0.0.1:4011` representa un sitio inexistente.
+- **Jira simulado.** El Jira falso de QA (`tests/support/jira-falso/`, lo construye q360-qa) escucha en `http://127.0.0.1:4010` y lo arranca el `globalSetup` de Playwright; no forma parte de `npm run local`. Para que Integraciones acepte ese sitio, el `.env` local trae `INTEGRACIONES_PERMITIR_HOST_PRUEBA=true` (se ignora con `NODE_ENV=production`). Credenciales del falso: correo `admin@quality360.local` y token `q360-token-valido-AB12` (datos de prueba, no reales). Un puerto cerrado como `http://127.0.0.1:4019` representa un sitio inexistente (el 4011 es del Atlassian simulado, ver la sección siguiente).
 - **Instancias extra del perfil de QA (backlog E5, 10.3).** Se arrancan a mano con el mismo `.env` y variables sobreescritas; ninguna llave va en el repositorio (en Git Bash; en PowerShell usa `$env:VAR='...'`):
   - **I2**, sin llave de cifrado, puerto 3104: `PORT=3104 INTEGRACIONES_LLAVE_CIFRADO= node --env-file=services/integraciones/.env services/integraciones/dist/main.js`
   - **I3**, otra llave: `PORT=3105 INTEGRACIONES_LLAVE_CIFRADO=$(node -e "console.log(require('crypto').randomBytes(32).toString('base64'))") node --env-file=...`
@@ -195,5 +202,51 @@ npm run local
   - **I5**, producción (prueba D95): `PORT=3107 NODE_ENV=production node --env-file=...`
   Las variables del proceso tienen prioridad sobre `--env-file`. Los puertos 3105 a 3107 son una convención de esta guía; solo 3104 viene del backlog.
 - **Perfil de pruebas del servicio:** `JIRA_TIEMPO_LIMITE_MS=1500`, `JIRA_ESPERA_MAX_429_MS=1500`, `INTEGRACIONES_PRESUPUESTO_MS=8000`, `JIRA_TOPE_ISSUES=100`; se pasan igual, como variables del proceso.
+
+### Conectar con Jira por OAuth en local (Atlassian simulado)
+
+En local, «Conectar con Jira» no sale a Atlassian. Va al Atlassian simulado de QA (`tests/support/atlassian-falso/`), que escucha en `http://127.0.0.1:4011`, acepta los permisos sin pedir inicio de sesión y reenvía las llamadas a Jira al Jira simulado de `:4010`. No necesitas una cuenta de Atlassian ni registrar una app. En la nube, la app real se registra con [`docs/arquitectura/guia-oauth-atlassian.md`](docs/arquitectura/guia-oauth-atlassian.md).
+
+**Qué escribe `preparar-entorno.mjs`.** Agrega a `services/integraciones/.env` (no versionado):
+
+| Variable | Valor local | Para qué |
+| --- | --- | --- |
+| `JIRA_OAUTH_CLIENT_ID` | `q360-local` | Identificador de la app de desarrollo. No es secreto |
+| `JIRA_OAUTH_CLIENT_SECRET` | Aleatorio, nuevo en cada preparación | Vive solo en ese `.env`. El simulado lo lee del mismo archivo en cada petición, así que siempre coinciden. No lo copies a otro lugar |
+| `JIRA_OAUTH_REDIRECT_URI` | `http://localhost:5173/admin/integraciones/jira/oauth/retorno` | Dirección de retorno al portal. El simulado solo acepta esta |
+| `JIRA_OAUTH_URL_AUTORIZACION` y `JIRA_OAUTH_URL_API` | `http://127.0.0.1:4011` | Reemplazan a `auth.atlassian.com` y `api.atlassian.com`. Solo valen con `INTEGRACIONES_PERMITIR_HOST_PRUEBA=true` (ya está en `true` por el Jira simulado) y fuera de `NODE_ENV=production` (D213) |
+
+Si tu `.env` es anterior a E5 OAuth, el siguiente `npm run local` lo regenera solo y conserva la llave de cifrado si es válida. Compose no sirve para esto: pasa solo las tres primeras, vacías por defecto, y corre con `NODE_ENV=production`, donde las variables de prueba se ignoran.
+
+**Probar «Conectar con Jira» a mano:**
+
+1. En una terminal, ejecuta `npm run local` y espera el resumen con el portal en `http://localhost:5173`.
+2. En otra terminal, desde la raíz del repositorio, levanta el Jira y el Atlassian simulados. Quedan corriendo hasta `Ctrl+C`, y la primera vez `npx` descarga `tsx`. El comando es el mismo en Git Bash y en PowerShell:
+
+   ```
+   npx --yes tsx@4.23.15 --eval "import('./tests/support/globalSetupE5.ts').then((m) => m.default())"
+   ```
+
+   Para comprobar que responde, abre `http://127.0.0.1:4011/__solicitudes`: debe mostrar `"modo":"NORMAL"`.
+3. Abre `http://localhost:5173` con `localhost`, no con `127.0.0.1`: la sesión del portal es por origen y el retorno llega a `localhost`. Entra como Administrador (`patricia.rojas@quality360.local`) y ve a Integraciones (`/admin/integraciones`).
+4. Con «Conectar con Jira» elegido, pulsa el botón. El simulado acepta los permisos y te devuelve al portal. Como hay un solo sitio (`jseguelh`), la conexión queda «Conectado con Jira (OAuth)».
+5. Completa el proyecto (`QTY`, del Jira simulado) y el destino, y pulsa «Probar y guardar». El método activo pasa a OAuth y desde ahí «Consultar Jira» usa esa conexión.
+
+**Otros casos.** El modo del simulado se cambia con `POST http://127.0.0.1:4011/__control`, y `POST /__reset` lo devuelve a `NORMAL`. En Git Bash:
+
+```
+curl -X POST http://127.0.0.1:4011/__control -H "Content-Type: application/json" -d '{"modo":"VARIOS_SITIOS"}'
+```
+
+En PowerShell: `Invoke-RestMethod -Method Post -Uri http://127.0.0.1:4011/__control -ContentType 'application/json' -Body '{"modo":"VARIOS_SITIOS"}'`.
+
+| Modo | Qué ves al conectar |
+| --- | --- |
+| `VARIOS_SITIOS` | La lista de sitios con «Usar este sitio» |
+| `CONSENTIMIENTO_RECHAZADO` | «No aceptaste los permisos en Atlassian. No se conectó nada.» |
+| `SIN_SITIO` | «Tu cuenta de Atlassian no tiene acceso a ningún sitio de Jira.» |
+| `SCOPES_INSUFICIENTES` | «Faltan permisos en Atlassian: …» |
+
+Para ver «Reconexión necesaria», reinicia el simulado (`Ctrl+C` y el mismo comando). Los tokens viven en su memoria, así que la siguiente llamada a Jira (por ejemplo, «Consultar Jira») ya no se puede renovar; «Reconectar» lo arregla. La lista completa de modos está en [`tests/README.md`](tests/README.md). Antes de correr las pruebas de Playwright, cierra el simulado o llama a `POST /__reset`: la corrida reutiliza el que encuentre escuchando.
 
 > Las credenciales de esta guía (contraseña de demo y contraseñas `*_local_dev` de los roles de base de datos) **solo sirven en local**. Nunca las uses en un entorno publicado.

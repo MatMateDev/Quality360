@@ -27,7 +27,7 @@ Como `npm run build` del portal ejecuta `gen:types` y `tsc` antes de `vite build
 
 > **Aviso: puerto fijo `FuenteJira`** (`services/integraciones/src/dominio/puertos/fuente-jira.ts`). Su comentario dice «interfaz FIJA». Este plan lo cambia **solo de forma aditiva** (D214, D218):
 > - `CredencialJira {sitio, correo, token}` no cambia. Se suma `CredencialJiraOauth {tipo: 'OAUTH', cloudId, tokenAcceso, sitio, permisos}`, y los métodos aceptan `CredencialJira | CredencialJiraOauth` (se distingue con `'tipo' in c`). Con OAuth, la base es `<url API>/ex/jira/{cloudId}` y la autenticación es `Bearer`.
-> - Método nuevo `probarCuenta(c, o): Promise<ResultadoJira<{ usuarioJira: string }>>`, con una sola llamada a `/rest/api/3/myself`. Lo usa «Probar conexión» cuando no hay proyecto.
+> - Método nuevo `probarCuenta(c, o): Promise<ResultadoJira<{ usuarioJira: string; cuentaId: string }>>`, con una sola llamada a `/rest/api/3/myself`. Lo usa «Probar conexión» cuando no hay proyecto. `cuentaId` se guarda en la conexión y no sale en ninguna respuesta pública (desvío 1 de la ronda 1, aceptado).
 > - `CodigoErrorJira` suma `'JIRA_OAUTH_PERMISOS_INSUFICIENTES'`, y el resultado fallido suma `permisosFaltantes?: string[]`.
 > - Con OAuth, el cliente comprueba `permisos` contra la tabla de permisos por endpoint antes de llamar. Si falta alguno, responde `JIRA_OAUTH_PERMISOS_INSUFICIENTES` sin llamar. Ante un 401 responde `JIRA_CREDENCIAL_INVALIDA` con los `permisosFaltantes` de ese endpoint. La renovación forzada y el único reintento los hace la aplicación (`CredencialesJira`, JO5), no el cliente.
 >
@@ -161,7 +161,7 @@ Reglas:
 | FO4 | Selector de método y panel OAuth (§2): `selector-metodo`, el botón con sus 4 estados y `aria-disabled`, `aviso-oauth-no-disponible`, `error-oauth` y el cambio de método de §6 (avisos y `confirmar-cambio-a-api-token`). El formulario del API token y «Proyecto y destino» no cambian. **`form-jira` sigue envolviendo el panel del método, «Proyecto y destino» y los botones en ambos métodos** (lo espera `e5-a11y-responsivo.spec.ts`) | `src/components/integraciones/SelectorMetodoConexion.tsx` (nuevo), `src/components/integraciones/PanelOauthJira.tsx` (nuevo), `src/components/integraciones/FormularioConexionJira.tsx`, `src/pages/admin/integraciones/PaginaConexionJira.tsx` | F01#4, F08#7, #9, #10 |
 | FO5 | Lista de sitios (§5): `lista-sitios`, preselección del `actual` y `boton-elegir-sitio` con `aria-disabled` hasta elegir, más sus errores | `src/components/integraciones/ListaSitiosOauth.tsx` (nuevo) | F08#4 |
 | FO6 | Desconectar, revocación y guía. Diálogo `confirmar-desconexion` con «Lo ya importado no se borra.», `ayuda-revocar-jira` y `panel-guia-oauth`, cuyo pie apunta a `docs/arquitectura/guia-oauth-atlassian.md`. Los eventos OAuth en «Cambios de configuración» siguen §3.8, con «Sistema» como actor en `REFRESCO_FALLIDO` | `src/components/integraciones/DialogoDesconexionOauth.tsx` (nuevo), `src/components/integraciones/AyudaOauthJira.tsx` (nuevo), `src/components/integraciones/ListaEventosConfiguracion.tsx` | F08#11, F01#1 (eventos) |
-| FO7 | Consultar Jira con reconexión necesaria (§7): `error-sincronizacion` con `JIRA_RECONEXION_NECESARIA`, glifo `⚠` e «Ir a Conexión». Los textos de `JIRA_SIN_PERMISO` y `JIRA_PROYECTO_NO_ENCONTRADO` dependen del método: con API token quedan los certificados (E5-F01-T04) | `src/components/integraciones/ErrorIntegracion.tsx`, `src/components/integraciones/ResultadoConsulta.tsx` | F02#6, F08#8 |
+| FO7 | Consultar Jira con reconexión necesaria (§7): `error-consulta` con `JIRA_RECONEXION_NECESARIA`, glifo `⚠` e «Ir a Conexión». Los textos de `JIRA_SIN_PERMISO` y `JIRA_PROYECTO_NO_ENCONTRADO` dependen del método: con API token quedan los certificados (E5-F01-T04) | `src/components/integraciones/ErrorIntegracion.tsx`, `src/components/integraciones/ResultadoConsulta.tsx` | F02#6, F08#8 |
 | FO8 | Pruebas unitarias y accesibilidad del portal | `src/test/e5Conexion.test.tsx` (línea 37: `OK` → `conectado-api-token`), `src/test/e5Oauth.test.tsx` (nuevo), `src/test/e5RetornoOauth.test.tsx` (nuevo) | F08#13 |
 
 Si la ruta de retorno no queda protegida por el `RequireRole` del Administrador sin tocar `RequireAuth`, `q360-frontend` lo informa a `q360-arquitecto` antes de improvisar.
@@ -204,6 +204,8 @@ Si la ruta de retorno no queda protegida por el `RequireRole` del Administrador 
 | 8 | usuario | E5-MAN-02 en producción, con la guía | despliegue |
 
 Al cerrar la corrida, `q360-arquitecto` actualiza `GUIA-LOCAL.md` y el `.env.example` de la raíz con el Atlassian simulado, y revisa el trabajo de los demás agentes.
+
+**Cierre (2026-11-23).** Hecho tras la ronda 1 de QA (`docs/validacion/certificacion-e5-oauth.md`). `GUIA-LOCAL.md` explica cómo probar «Conectar con Jira» a mano con el Atlassian simulado y qué escribe `preparar-entorno.mjs`. Los desvíos aceptados que fijan conducta quedan en D219–D223 (`decisiones-mvp.md`, «Cierre de la corrida»). Las pruebas de JO5 con `connection_limit=1` quedaron en `test/integracion/def-e5c-05-oauth.test.ts` y las de JO7 en `test/integracion/e5-b01-oauth.test.ts`. Ningún contrato cambia.
 
 ## Despliegue
 
