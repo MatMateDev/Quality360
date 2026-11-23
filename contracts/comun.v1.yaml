@@ -136,9 +136,9 @@ components:
         | `CATALOGO_INVALIDO` | 422 | La célula o el sprint indicados no existen. |
         | `EVIDENCIA_INVALIDA` | 422 | La evidencia debe ser un enlace https o un archivo PDF, PNG o JPEG de hasta 10 MB. |
         | `EXPORTACION_EXCEDE_LIMITE` | 422 | La exportación supera las 50.000 filas. Acota los filtros. |
-        | `JIRA_NO_CONFIGURADO` | 409 | Configura la conexión con Jira antes de consultar. (E5) |
+        | `JIRA_NO_CONFIGURADO` | 409 | Configura la conexión con Jira antes de consultar. (E5; con el método OAuth también cuando no hay conexión o falta elegir el sitio, D215) |
         | `INTEGRACION_EN_CURSO` | 409 | Ya hay una consulta o confirmación en curso. (E5, D104; el portal usa «Ya hay una importación o consulta en curso» en Importar) |
-        | `TOKEN_NO_DESCIFRABLE` | 409 | Vuelve a ingresar el API token. (E5, D94) |
+        | `TOKEN_NO_DESCIFRABLE` | 409 | Vuelve a ingresar el API token. (E5, D94; con OAuth: «Vuelve a conectar con Jira.», D214) |
         | `ARCHIVO_MUY_GRANDE` | 413 | El archivo supera el máximo de 1 MB. (E5, D102) |
         | `ARCHIVO_VACIO` | 422 | El archivo está vacío o no tiene filas de datos. (E5) |
         | `FORMATO_NO_SOPORTADO` | 422 | El formato no es compatible. Usa un archivo .csv o .json. (E5) |
@@ -162,6 +162,10 @@ components:
         | `HDU_YA_ASIGNADA` | 409 / 422 | Esta HDU ya fue asignada a <QE> / <Analista>. (D204; 409 al confirmar una fila, 422 al editar una fila `NUEVA` que ya existe; `ErrorHduYaAsignada`) |
         | `FILA_MODIFICADA` | 409 | Otra persona modificó esta HDU. Revisa los datos actuales y confirma de nuevo. (D202; `ErrorFilaModificada`, trae la fila actual) |
         | `FILA_EN_CURSO` | 409 | Otra persona está confirmando esta HDU ahora. Espera unos segundos y revisa. (D202; la toma de la fila dura como máximo 30 s) |
+        | `JIRA_OAUTH_NO_CONFIGURADO` | 503 | La conexión automática con Jira no está habilitada en el servidor. (D216; faltan las credenciales de la app de Atlassian, sin nombrarlas. Lo emiten `oauth/iniciar`, `oauth/retorno`, `oauth/sitio` y, con el método OAuth, probar, guardar, consultar y continuar, porque sin ellas no se puede renovar. `GET configuracion` y `DELETE …/jira/oauth` no lo emiten) |
+        | `JIRA_OAUTH_ESTADO_INVALIDO` | 400 | La autorización venció o no es válida. Vuelve a pulsar «Conectar con Jira». (D211; el mismo mensaje para un `state` desconocido, mal formado, vencido, ya usado o de otro Administrador) |
+        | `JIRA_OAUTH_SITIO_NO_VALIDO` | 400 | El sitio elegido no es válido. (D212; `sitioId` que no está entre los candidatos guardados) |
+        | `JIRA_OAUTH_SIN_CONEXION` | 409 | No hay una conexión pendiente. (D217; elegir sitio sin una conexión `PENDIENTE_SITIO`, o desconectar sin conexión) |
         | `DEMASIADAS_SOLICITUDES` | 429 | Demasiadas solicitudes. Intenta más tarde. |
         | `ERROR_INTERNO` | 500 | Ocurrió un error inesperado. |
         | `SERVICIO_NO_DISPONIBLE` | 503 | El servicio no está disponible. Intenta nuevamente. |
@@ -225,6 +229,10 @@ components:
         - HDU_YA_ASIGNADA
         - FILA_MODIFICADA
         - FILA_EN_CURSO
+        - JIRA_OAUTH_NO_CONFIGURADO
+        - JIRA_OAUTH_ESTADO_INVALIDO
+        - JIRA_OAUTH_SITIO_NO_VALIDO
+        - JIRA_OAUTH_SIN_CONEXION
         - DEMASIADAS_SOLICITUDES
         - ERROR_INTERNO
         - SERVICIO_NO_DISPONIBLE
@@ -3615,12 +3623,29 @@ components:
         | `MODO_ESTRICTO` | No se importó nada porque el modo estricto detectó filas con error. | `CORREGIR_ARCHIVO` |
         | `TOPE_DE_CONSULTA` | La consulta llegó a 500 filas. Confirma lo que corresponda y consulta de nuevo para traer el resto. | Ninguna (D135; «Continuar» responde 409 `CONSULTA_LLENA`) |
         | `ARCHIVO_VACIO`, `FORMATO_NO_SOPORTADO`, `ARCHIVO_ILEGIBLE`, `COLUMNAS_FALTANTES`, `DEMASIADAS_FILAS` | Los de `CodigoError` | `CORREGIR_ARCHIVO` |
+        | `JIRA_RECONEXION_NECESARIA` | La conexión con Jira venció. Vuelve a conectar con Jira. | `IR_A_CONEXION`, `IMPORTAR_ARCHIVO` (D215; probar, guardar, consultar y continuar con el método OAuth) |
+        | `JIRA_OAUTH_PERMISOS_INSUFICIENTES` | Faltan permisos en Atlassian: <permisos>. Acepta todos los permisos solicitados. | Retorno y sitio: `REINTENTAR`. Probar, guardar, consultar y continuar: `IR_A_CONEXION`, `IMPORTAR_ARCHIVO`. Trae `permisosFaltantes` (D218) |
+        | `JIRA_OAUTH_CONSENTIMIENTO_RECHAZADO` | No aceptaste los permisos en Atlassian. No se conectó nada. | `REINTENTAR` (solo en el retorno) |
+        | `JIRA_OAUTH_CANJE_FALLIDO` | Atlassian no aceptó la autorización. Vuelve a intentarlo. | `REINTENTAR`, `AVISAR_DESPLIEGUE` (solo en el retorno) |
+        | `JIRA_OAUTH_SIN_SITIO` | Tu cuenta de Atlassian no tiene acceso a ningún sitio de Jira. | `REINTENTAR` (solo en el retorno) |
 
         Un `INCOMPLETA` por tope de issues no trae código: `hayMas: true` y
         `codigoError: null` (D96). En fase `DIRECTA` (ejecuciones anteriores
         a D132) el servicio **no** devuelve `CONTINUAR`: esas ejecuciones ya no
         se continúan (D150).
-      enum: [JIRA_CREDENCIAL_INVALIDA, JIRA_SIN_PERMISO, JIRA_SITIO_NO_ENCONTRADO, JIRA_PROYECTO_NO_ENCONTRADO, JIRA_LIMITE_DE_TASA, JIRA_TIEMPO_AGOTADO, JIRA_NO_DISPONIBLE, JIRA_RESPUESTA_INVALIDA, PRESUPUESTO_DE_TIEMPO, ORGANIZACION_NO_DISPONIBLE, MODO_ESTRICTO, TOPE_DE_CONSULTA, ARCHIVO_VACIO, FORMATO_NO_SOPORTADO, ARCHIVO_ILEGIBLE, COLUMNAS_FALTANTES, DEMASIADAS_FILAS]
+
+        **Con el método OAuth (D213, D214, D218).** `<permisos>` son los
+        códigos de `PermisoAtlassian`, separados por coma. Un 401 de Jira que
+        sigue después de **una** renovación y **un** reintento es
+        `JIRA_OAUTH_PERMISOS_INSUFICIENTES` (el acceso es válido pero no
+        alcanza); `JIRA_CREDENCIAL_INVALIDA` queda solo para el API token. Si
+        la renovación falla con 400, 401 o 403 de Atlassian es
+        `JIRA_RECONEXION_NECESARIA`. Un 403 de Jira sigue siendo
+        `JIRA_SIN_PERMISO` y se refiere a la cuenta conectada. Los fallos
+        pasajeros de Atlassian (red, tiempo, 5xx, 429) reutilizan
+        `JIRA_NO_DISPONIBLE`, `JIRA_TIEMPO_AGOTADO` y `JIRA_LIMITE_DE_TASA`
+        y no tocan la credencial.
+      enum: [JIRA_CREDENCIAL_INVALIDA, JIRA_SIN_PERMISO, JIRA_SITIO_NO_ENCONTRADO, JIRA_PROYECTO_NO_ENCONTRADO, JIRA_LIMITE_DE_TASA, JIRA_TIEMPO_AGOTADO, JIRA_NO_DISPONIBLE, JIRA_RESPUESTA_INVALIDA, PRESUPUESTO_DE_TIEMPO, ORGANIZACION_NO_DISPONIBLE, MODO_ESTRICTO, TOPE_DE_CONSULTA, ARCHIVO_VACIO, FORMATO_NO_SOPORTADO, ARCHIVO_ILEGIBLE, COLUMNAS_FALTANTES, DEMASIADAS_FILAS, JIRA_RECONEXION_NECESARIA, JIRA_OAUTH_PERMISOS_INSUFICIENTES, JIRA_OAUTH_CONSENTIMIENTO_RECHAZADO, JIRA_OAUTH_CANJE_FALLIDO, JIRA_OAUTH_SIN_SITIO]
     SugerenciaIntegracion:
       type: string
       description: |
@@ -3653,6 +3678,28 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/SugerenciaIntegracion'
+        permisosFaltantes:
+          type: array
+          description: 'Solo con `JIRA_OAUTH_PERMISOS_INSUFICIENTES` (D218): los permisos de Atlassian que faltan, en el orden en que se piden. El portal los traduce («Ver datos de issues»…) y muestra tal cual un código que no conoce. Ausente con cualquier otro código.'
+          minItems: 1
+          maxItems: 10
+          items:
+            $ref: '#/components/schemas/PermisoAtlassian'
+    PermisoAtlassian:
+      type: string
+      description: |
+        Permiso (scope) de OAuth 2.0 (3LO) de Atlassian. Quality360 pide solo
+        lectura (D218); la lista requerida vive en una constante del servicio
+        y se confirma en E5-MAN-02, así que el contrato no la fija como enum.
+        Ningún permiso de escritura se pide nunca.
+
+        | Código | Etiqueta del portal | Lo usa |
+        | --- | --- | --- |
+        | `read:jira-work` | Ver datos de issues | `GET /rest/api/3/project/{clave}`, `/field` y `/search/jql` |
+        | `read:jira-user` | Ver perfil del usuario | `GET /rest/api/3/myself` |
+        | `offline_access` | Mantener la conexión | Renovar el token de acceso |
+      pattern: '^[a-z][a-z0-9:_.-]{2,79}$'
+      examples: [read:jira-work]
     ActorEjecucion:
       type: object
       required: [id, nombre, rol]
@@ -3991,7 +4038,7 @@ components:
             - type: 'null'
         jiraConfigurado:
           type: boolean
-          description: Solo para el Administrador; ausente para QE y Auditor.
+          description: 'Solo para el Administrador; ausente para QE y Auditor. Con `metodo: OAUTH` es `true` solo si existe la conexión y no está `PENDIENTE_SITIO`; con `RECONEXION_NECESARIA` es `true`, para que «Consultar Jira» muestre `JIRA_RECONEXION_NECESARIA` (D215).'
         continuar:
           deprecated: true
           description: |
@@ -4010,7 +4057,7 @@ components:
               $ref: '#/components/schemas/Uuid'
     TokenJiraEstado:
       type: object
-      description: Lo único que se informa del token (D94). Nunca su valor ni su cifrado.
+      description: 'Lo único que se informa del API token (D94). Nunca su valor ni su cifrado. Con `metodo: OAUTH` no hay API token guardado: `configurado: false`, `ultimos4: null` y `descifrable: false`.'
       required: [configurado, ultimos4, descifrable]
       additionalProperties: false
       properties:
@@ -4028,8 +4075,23 @@ components:
       description: |
         Configuración sin secretos. Sin configuración guardada:
         `configurado: false` y el resto en `null` (salvo `tiposIssue` con el
-        valor por defecto y `token.configurado: false`).
-      required: [configurado, llaveDisponible, sitio, correo, proyecto, tiposIssue, celula, qeResponsable, sprintRespaldo, token, estadoConexion, ultimaPruebaEn, ultimaPruebaCodigo, avisosDestino, actualizadoEn, actualizadoPor]
+        valor por defecto, `token.configurado: false`, `oauthDisponible` y
+        `oauth`, que se informan igual).
+
+        **Dos métodos (D209, D215).** `metodo` es el método **activo**, el
+        que usan consultar y continuar (probar y guardar traen su propio
+        `metodo`; ausente es `API_TOKEN`). `oauth` es la conexión OAuth
+        guardada, exista o no la configuración. Con `metodo: OAUTH`:
+        `correo: null`, `token.configurado: false` y `sitio` es la URL del
+        sitio OAuth del último «Probar y guardar». **«Lista, sin activar»**
+        (diseño §6.1) es `metodo: API_TOKEN` con `oauth.estado: CONECTADA`:
+        el servidor conserva las dos credenciales y el API token sigue en
+        uso hasta un `PUT` con `metodo: OAUTH` cuya prueba pase (D112). Sin
+        configuración (`metodo: null`) y con `oauth.estado: CONECTADA`, la
+        conexión está hecha y falta «Probar y guardar» con el proyecto y el
+        destino. `estadoConexion`, `ultimaPruebaEn` y `ultimaPruebaCodigo`
+        son del método activo.
+      required: [configurado, llaveDisponible, metodo, oauthDisponible, oauth, sitio, correo, proyecto, tiposIssue, celula, qeResponsable, sprintRespaldo, token, estadoConexion, ultimaPruebaEn, ultimaPruebaCodigo, avisosDestino, actualizadoEn, actualizadoPor]
       additionalProperties: false
       properties:
         configurado:
@@ -4037,10 +4099,24 @@ components:
         llaveDisponible:
           type: boolean
           description: '`false` si falta o es inválida la llave de cifrado. El portal muestra `aviso-integracion-deshabilitada` con el formulario deshabilitado; guardar, probar y sincronizar responden 503 `LLAVE_CIFRADO_NO_DISPONIBLE`. No revela el nombre ni el valor de la variable.'
+        metodo:
+          description: Método activo. `null` sin configuración guardada (D209).
+          oneOf:
+            - $ref: '#/components/schemas/MetodoConexionJira'
+            - type: 'null'
+        oauthDisponible:
+          type: boolean
+          description: '`false` si al servidor le faltan las credenciales de la app de Atlassian (D216). El portal muestra «Conectar con Jira» con `aria-disabled` y su motivo; las rutas `…/jira/oauth/iniciar`, `retorno` y `sitio`, y probar, guardar, consultar y continuar con el método OAuth, responden 503 `JIRA_OAUTH_NO_CONFIGURADO`. Desconectar y el API token siguen funcionando. No revela nombres ni valores de variables.'
+        oauth:
+          description: Conexión OAuth guardada (activa o «lista, sin activar»). `null` si no hay ninguna (nunca se conectó, se desconectó o se cambió a API token).
+          oneOf:
+            - $ref: '#/components/schemas/ConexionOauthJira'
+            - type: 'null'
         sitio:
           type: [string, 'null']
         correo:
           type: [string, 'null']
+          description: '`null` con `metodo: OAUTH`.'
         proyecto:
           type: [string, 'null']
         tiposIssue:
@@ -4088,13 +4164,20 @@ components:
     SolicitudConfiguracionJira:
       type: object
       description: |
-        «Probar y guardar» (D112). `token` es obligatorio solo si no hay uno
-        guardado y descifrable; ausente o vacío conserva el guardado (D116).
-        Orden de validación: 400 (formato) → 422 (destino, con Organización)
-        → prueba con Jira → guardar.
+        «Probar y guardar» con API token (D112). `token` es obligatorio solo
+        si no hay uno guardado y descifrable; ausente o vacío conserva el
+        guardado (D116). Orden de validación: 400 (formato) → 422 (destino,
+        con Organización) → prueba con Jira → guardar. Con el método activo
+        OAuth no hay token guardado: `sitio`, `correo` y `token` son
+        obligatorios (400) y, si la prueba pasa, se borra la conexión OAuth
+        (E5-B01#5).
       required: [sitio, correo, proyecto, celulaId, qeResponsableId, sprintRespaldoId]
       additionalProperties: false
       properties:
+        metodo:
+          type: string
+          const: API_TOKEN
+          description: 'Ausente equivale a `API_TOKEN`, así los clientes anteriores no cambian (D209). Para OAuth se envía `SolicitudConfiguracionJiraOauth`.'
         sitio:
           type: string
           maxLength: 100
@@ -4128,11 +4211,53 @@ components:
         sprintRespaldoId:
           $ref: '#/components/schemas/Uuid'
           description: 'Debe pertenecer a `celulaId` (D120); si no, 422 `CATALOGO_INVALIDO` con `campo: sprintRespaldoId`.'
-    SolicitudPruebaJira:
+    SolicitudConfiguracionJiraOauth:
       type: object
-      description: «Probar sin guardar». Cada campo ausente se toma de la configuración guardada; sin configuración y con campos faltantes → 400.
+      description: |
+        «Probar y guardar» con OAuth (E5-B01#4, D209, D215). Usa la conexión
+        OAuth guardada: 409 `JIRA_NO_CONFIGURADO` si no existe o está
+        `PENDIENTE_SITIO`; 200 con `guardado: false` y
+        `JIRA_RECONEXION_NECESARIA` si necesita reconexión. Mismo orden que
+        con API token: 400 → 422 (destino) → prueba (`myself`, `project` y
+        `field` en `api.atlassian.com/ex/jira/{cloudid}`) → guardar. Si
+        guarda: `metodo` queda `OAUTH`, `sitio` es el del sitio OAuth y el
+        API token cifrado se descarta. `sitio`, `correo` o `token` en el
+        cuerpo → 400 `VALIDACION` con `VALOR_NO_PERMITIDO` en ese campo.
+      required: [metodo, proyecto, celulaId, qeResponsableId, sprintRespaldoId]
       additionalProperties: false
       properties:
+        metodo:
+          type: string
+          const: OAUTH
+        proyecto:
+          type: string
+          pattern: '^[A-Z][A-Z0-9_]{1,9}$'
+        tiposIssue:
+          type: array
+          minItems: 1
+          maxItems: 5
+          default: [Story, Historia]
+          items:
+            type: string
+            minLength: 1
+            maxLength: 40
+            pattern: '^[\p{L}\p{N} _-]+$'
+        celulaId:
+          $ref: '#/components/schemas/Uuid'
+        qeResponsableId:
+          $ref: '#/components/schemas/Uuid'
+        sprintRespaldoId:
+          $ref: '#/components/schemas/Uuid'
+          description: 'Debe pertenecer a `celulaId` (D120); si no, 422 `CATALOGO_INVALIDO` con `campo: sprintRespaldoId`.'
+    SolicitudPruebaJira:
+      type: object
+      description: «Probar sin guardar» con API token. Cada campo ausente se toma de la configuración guardada; sin configuración y con campos faltantes → 400.
+      additionalProperties: false
+      properties:
+        metodo:
+          type: string
+          const: API_TOKEN
+          description: 'Ausente equivale a `API_TOKEN` (D209). Para OAuth se envía `SolicitudPruebaJiraOauth`.'
         sitio:
           type: string
           maxLength: 100
@@ -4156,6 +4281,35 @@ components:
             type: string
             minLength: 1
             maxLength: 40
+    SolicitudPruebaJiraOauth:
+      type: object
+      description: |
+        «Probar conexión» de la tarjeta de estado y «Probar sin guardar» con
+        OAuth (diseño §3.3, E5-B01#2). Usa la conexión OAuth guardada aunque
+        no sea la activa («lista, sin activar»), renovando antes si hace
+        falta (D214). El proyecto sale del cuerpo o, si falta, de la
+        configuración guardada; sin ninguno de los dos solo se prueba
+        `myself` y la respuesta trae `proyecto: null`. 409
+        `JIRA_NO_CONFIGURADO` sin conexión o con el sitio pendiente.
+        `sitio`, `correo` o `token` en el cuerpo → 400 `VALIDACION`. Como
+        con API token, no cambia la configuración ni registra eventos.
+      required: [metodo]
+      additionalProperties: false
+      properties:
+        metodo:
+          type: string
+          const: OAUTH
+        proyecto:
+          type: string
+          pattern: '^[A-Z][A-Z0-9_]{1,9}$'
+        tiposIssue:
+          type: array
+          minItems: 1
+          maxItems: 5
+          items:
+            type: string
+            minLength: 1
+            maxLength: 40
     ResultadoPruebaJira:
       type: object
       required: [ok, usuarioJira, proyecto, error]
@@ -4167,6 +4321,7 @@ components:
           type: [string, 'null']
           description: '`displayName` de la cuenta de Jira (para «Conexión exitosa con Jira como …»).'
         proyecto:
+          description: '`null` si la prueba falló o si fue una prueba OAuth sin proyecto (solo `myself`).'
           oneOf:
             - type: object
               required: [clave, nombre]
@@ -4195,17 +4350,40 @@ components:
           $ref: '#/components/schemas/ConfiguracionJira'
     CampoConfiguracionJira:
       type: string
-      description: 'Etiquetas: Sitio, Correo, API token, Proyecto, Tipos de issue, Célula, QE responsable, Sprint de respaldo.'
-      enum: [sitio, correo, token, proyecto, tiposIssue, celulaId, qeResponsableId, sprintRespaldoId]
+      description: 'Etiquetas: Sitio, Correo, API token, Proyecto, Tipos de issue, Célula, QE responsable, Sprint de respaldo, Método de conexión (`metodo`, D209: aparece cuando un guardado cambia de método).'
+      enum: [sitio, correo, token, proyecto, tiposIssue, celulaId, qeResponsableId, sprintRespaldoId, metodo]
+    TipoEventoConfiguracionJira:
+      type: string
+      description: |
+        Tipo de un evento de «Cambios de configuración» (D111, D217). Textos
+        del portal en el diseño E5 OAuth §3.8.
+
+        | Código | Origen | Cuándo |
+        | --- | --- | --- |
+        | `CONFIGURACION` | `evento_configuracion` | Un «Probar y guardar» que guardó (D111) |
+        | `CONECTAR_OAUTH` | `evento_oauth_jira` | La conexión OAuth queda `CONECTADA` por primera vez |
+        | `RECONECTAR` | `evento_oauth_jira` | Cualquier conexión `CONECTADA` posterior a la primera |
+        | `DESCONECTAR` | `evento_oauth_jira` | «Desconectar», o el guardado con API token que borró la conexión OAuth |
+        | `REFRESCO_FALLIDO` | `evento_oauth_jira` | La renovación falló de forma definitiva y la conexión pasó a `RECONEXION_NECESARIA` (una vez por transición, no por intento) |
+      enum: [CONFIGURACION, CONECTAR_OAUTH, RECONECTAR, DESCONECTAR, REFRESCO_FALLIDO]
     EventoConfiguracionJira:
       type: object
-      required: [id, fecha, actor, camposCambiados, tokenCambiado, resultadoPrueba]
+      description: |
+        Un evento de configuración o de la conexión OAuth (D217). Nunca trae
+        tokens, `code`, `state`, el Client secret ni valores de campos. En
+        los eventos OAuth `camposCambiados` es `[]` y `tokenCambiado` es
+        `false`; en `REFRESCO_FALLIDO`, `actor` es el Administrador cuya
+        operación disparó la renovación (el portal lo muestra como
+        «Sistema», diseño §3.8).
+      required: [id, fecha, tipo, actor, camposCambiados, tokenCambiado, resultadoPrueba, oauth]
       additionalProperties: false
       properties:
         id:
           $ref: '#/components/schemas/Uuid'
         fecha:
           $ref: '#/components/schemas/FechaHora'
+        tipo:
+          $ref: '#/components/schemas/TipoEventoConfiguracionJira'
         actor:
           $ref: '#/components/schemas/Persona'
         camposCambiados:
@@ -4217,7 +4395,21 @@ components:
           type: boolean
         resultadoPrueba:
           type: string
-          description: '`OK` o el `CodigoErrorIntegracion` de la prueba que acompañó al guardado.'
+          description: '`OK` o el `CodigoErrorIntegracion` de la prueba que acompañó al guardado. En los eventos OAuth es `OK`, salvo `REFRESCO_FALLIDO`, que trae `JIRA_RECONEXION_NECESARIA`.'
+        oauth:
+          description: 'Solo en los eventos OAuth: cuenta y nombre del sitio en ese momento (pueden ser `null` si aún no se conocían). `null` en `CONFIGURACION`.'
+          oneOf:
+            - type: object
+              required: [cuenta, sitio]
+              additionalProperties: false
+              properties:
+                cuenta:
+                  type: [string, 'null']
+                  maxLength: 150
+                sitio:
+                  type: [string, 'null']
+                  maxLength: 150
+            - type: 'null'
     PaginaEventosConfiguracionJira:
       type: object
       required: [items, total, pagina, tamanoPagina]
@@ -4225,7 +4417,7 @@ components:
       properties:
         items:
           type: array
-          description: Del más reciente al más antiguo.
+          description: Del más reciente al más antiguo. Mezcla los guardados de la configuración y los eventos de la conexión OAuth (D217); `total` cuenta ambos.
           items:
             $ref: '#/components/schemas/EventoConfiguracionJira'
         total:
@@ -4238,6 +4430,194 @@ components:
           type: integer
           minimum: 1
           maximum: 100
+
+    # ------------------------------------- E5 · conexión con Jira por OAuth 2.0 (3LO) (D209–D218, ADR 0019)
+    MetodoConexionJira:
+      type: string
+      description: 'Método de conexión con Jira (D209). Etiquetas: «Conectar con Jira» (`OAUTH`, recomendado) y «Conectar con API token» (`API_TOKEN`). Las configuraciones anteriores a D209 son `API_TOKEN`.'
+      enum: [API_TOKEN, OAUTH]
+    EstadoConexionOauthJira:
+      type: string
+      description: |
+        Estado de la conexión OAuth guardada (D215). «Sin conectar» no es un
+        estado: es `ConfiguracionJira.oauth: null`.
+
+        | Código | Etiqueta | Se puede probar y consultar |
+        | --- | --- | --- |
+        | `CONECTADA` | Conectado con Jira (OAuth) como <cuenta> en <sitio> (o «Lista, sin activar» si el método activo es el API token) | Sí |
+        | `PENDIENTE_SITIO` | Falta elegir el sitio | No: 409 `JIRA_NO_CONFIGURADO` |
+        | `RECONEXION_NECESARIA` | Reconexión necesaria | No: 200 con `JIRA_RECONEXION_NECESARIA` (los tokens ya se borraron) |
+      enum: [CONECTADA, PENDIENTE_SITIO, RECONEXION_NECESARIA]
+    SitioJiraOauth:
+      type: object
+      description: 'Sitio de Jira Cloud de la conexión OAuth (D212). `url` solo se muestra y sirve para los enlaces «Abrir en Jira»: las llamadas van a `https://api.atlassian.com/ex/jira/{id}` (D213).'
+      required: [id, nombre, url]
+      additionalProperties: false
+      properties:
+        id:
+          $ref: '#/components/schemas/Uuid'
+          description: '`cloudid` de Atlassian, validado como UUID antes de armar cualquier dirección saliente.'
+        nombre:
+          type: string
+          minLength: 1
+          maxLength: 150
+        url:
+          type: string
+          maxLength: 100
+          pattern: '^https://[a-z0-9][a-z0-9-]{0,62}\.atlassian\.net$'
+    SitioCandidatoJiraOauth:
+      type: object
+      description: 'Un sitio entre los que la cuenta puede ver, mientras la conexión está `PENDIENTE_SITIO` (D212). `actual` marca el que coincide con el sitio ya configurado (se preselecciona; nunca se elige solo).'
+      required: [id, nombre, url, actual]
+      additionalProperties: false
+      properties:
+        id:
+          $ref: '#/components/schemas/Uuid'
+        nombre:
+          type: string
+          minLength: 1
+          maxLength: 150
+        url:
+          type: string
+          maxLength: 100
+          pattern: '^https://[a-z0-9][a-z0-9-]{0,62}\.atlassian\.net$'
+        actual:
+          type: boolean
+    ConexionOauthJira:
+      type: object
+      description: |
+        Lo único que se informa de la conexión OAuth (D214, D215). Nunca el
+        token de acceso, el de renovación, su cifrado, el `code`, el `state`
+        ni su vencimiento exacto (el portal no muestra cuentas regresivas,
+        diseño §3.2).
+      required: [estado, descifrable, cuenta, sitio, sitiosCandidatos, permisos, conectadoEn, conectadoPor, renovadoEn]
+      additionalProperties: false
+      properties:
+        estado:
+          $ref: '#/components/schemas/EstadoConexionOauthJira'
+        descifrable:
+          type: boolean
+          description: '`false` si los tokens guardados no se pueden descifrar con la llave actual (la llave cambió o falta) y siempre en `RECONEXION_NECESARIA` (no hay tokens). Con `false` y estado `CONECTADA` o `PENDIENTE_SITIO`, las operaciones responden 409 `TOKEN_NO_DESCIFRABLE` y el portal muestra la tarjeta de «Reconexión necesaria».'
+        cuenta:
+          description: 'Cuenta de Atlassian conectada (`displayName` de `/myself`; si no lo trae, el correo o el `accountId`, supuesto S3). `null` mientras falta elegir el sitio. Se conserva en `RECONEXION_NECESARIA` («Última cuenta»).'
+          oneOf:
+            - type: object
+              required: [nombre]
+              additionalProperties: false
+              properties:
+                nombre:
+                  type: string
+                  minLength: 1
+                  maxLength: 150
+            - type: 'null'
+        sitio:
+          description: '`null` en `PENDIENTE_SITIO` (y en `RECONEXION_NECESARIA` si nunca se eligió sitio).'
+          oneOf:
+            - $ref: '#/components/schemas/SitioJiraOauth'
+            - type: 'null'
+        sitiosCandidatos:
+          description: Solo en `PENDIENTE_SITIO`, ordenados por nombre; `null` en los demás estados. Sobrevive a una recarga de la pestaña (diseño §5).
+          oneOf:
+            - type: array
+              minItems: 2
+              maxItems: 50
+              items:
+                $ref: '#/components/schemas/SitioCandidatoJiraOauth'
+            - type: 'null'
+        permisos:
+          type: array
+          description: Permisos concedidos en el canje. El portal los traduce (diseño §3.2).
+          items:
+            $ref: '#/components/schemas/PermisoAtlassian'
+        conectadoEn:
+          $ref: '#/components/schemas/FechaHora'
+        conectadoPor:
+          $ref: '#/components/schemas/Persona'
+        renovadoEn:
+          description: Última renovación del token de acceso; `null` si aún no se renovó.
+          oneOf:
+            - $ref: '#/components/schemas/FechaHora'
+            - type: 'null'
+    InicioAutorizacionOauthJira:
+      type: object
+      description: |
+        Respuesta de `POST …/jira/oauth/iniciar` (D210, D211). El portal
+        navega a `urlAutorizacion` con `window.location.assign` y no la
+        guarda. Es la **única** respuesta que lleva el `state` en claro
+        (dentro de la URL); ni el gateway ni el servicio la registran.
+      required: [urlAutorizacion, expiraEn]
+      additionalProperties: false
+      properties:
+        urlAutorizacion:
+          type: string
+          format: uri
+          maxLength: 2048
+          description: '`https://auth.atlassian.com/authorize?audience=api.atlassian.com&client_id=…&scope=read%3Ajira-work%20read%3Ajira-user%20offline_access&redirect_uri=…&state=…&response_type=code&prompt=consent`. La arma el servidor; el portal no la modifica.'
+          examples: ['https://auth.atlassian.com/authorize?audience=api.atlassian.com&client_id=CLIENTE&scope=read%3Ajira-work%20read%3Ajira-user%20offline_access&redirect_uri=https%3A%2F%2Fquality360-one.vercel.app%2Fadmin%2Fintegraciones%2Fjira%2Foauth%2Fretorno&state=ESTADO&response_type=code&prompt=consent']
+        expiraEn:
+          $ref: '#/components/schemas/FechaHora'
+          description: Vencimiento del `state` (10 minutos, D211).
+    SolicitudRetornoOauthJira:
+      type: object
+      description: |
+        Lo que el portal leyó de la dirección de retorno de Atlassian
+        (D210): **exactamente uno** de `code` y `error`, siempre con `state`
+        (si no, 400 `VALIDACION`). El portal no envía `error_description` ni
+        ningún otro parámetro, y no guarda estos valores en el navegador.
+        `code` y `state` son secretos: no vuelven en ninguna respuesta ni
+        quedan en registros (gateway incluido), auditoría o errores.
+      required: [state]
+      additionalProperties: false
+      properties:
+        state:
+          type: string
+          minLength: 1
+          maxLength: 128
+          writeOnly: true
+          description: 'Se valida por su hash SHA-256 (D211). Uno mal formado responde 400 `JIRA_OAUTH_ESTADO_INVALIDO`, como uno desconocido.'
+        code:
+          type: string
+          minLength: 1
+          maxLength: 4096
+          writeOnly: true
+          pattern: '^[\x21-\x7E]+$'
+        error:
+          type: string
+          minLength: 1
+          maxLength: 64
+          pattern: '^[a-z_]+$'
+          description: '`access_denied` → `JIRA_OAUTH_CONSENTIMIENTO_RECHAZADO`; cualquier otro valor → `JIRA_OAUTH_CANJE_FALLIDO`. Nunca se repite en la respuesta.'
+    SolicitudSitioOauthJira:
+      type: object
+      required: [sitioId]
+      additionalProperties: false
+      properties:
+        sitioId:
+          $ref: '#/components/schemas/Uuid'
+          description: 'Debe ser el `id` de uno de `oauth.sitiosCandidatos`; si no, 400 `JIRA_OAUTH_SITIO_NO_VALIDO`.'
+    ResultadoConexionOauthJira:
+      type: object
+      description: |
+        Resultado de `oauth/retorno` y de `oauth/sitio` (D211–D218). Los
+        errores de Atlassian viajan en 200 con `error` (patrón D105) y un
+        mensaje fijo del servicio, nunca con texto de Atlassian.
+      required: [resultado, oauth, error]
+      additionalProperties: false
+      properties:
+        resultado:
+          type: string
+          description: '`CONECTADA`: conexión lista (un solo sitio, o el sitio elegido). `ELEGIR_SITIO`: varios sitios; la conexión queda `PENDIENTE_SITIO` con `sitiosCandidatos`. `ERROR`: no se guardó nada nuevo.'
+          enum: [CONECTADA, ELEGIR_SITIO, ERROR]
+        oauth:
+          description: 'La conexión después del intento. Con `ERROR` es la que ya había, sin cambios (o `null` si no había ninguna): «el estado anterior no cambia».'
+          oneOf:
+            - $ref: '#/components/schemas/ConexionOauthJira'
+            - type: 'null'
+        error:
+          description: 'Solo con `ERROR`: `JIRA_OAUTH_CONSENTIMIENTO_RECHAZADO`, `JIRA_OAUTH_CANJE_FALLIDO`, `JIRA_OAUTH_SIN_SITIO`, `JIRA_OAUTH_PERMISOS_INSUFICIENTES` (con `permisosFaltantes`), `JIRA_RECONEXION_NECESARIA` (solo en `oauth/sitio`), `JIRA_NO_DISPONIBLE`, `JIRA_TIEMPO_AGOTADO`, `JIRA_LIMITE_DE_TASA` o `JIRA_RESPUESTA_INVALIDA`.'
+          oneOf:
+            - $ref: '#/components/schemas/ErrorIntegracion'
+            - type: 'null'
     SolicitudArchivo:
       type: object
       description: |

@@ -36,6 +36,18 @@ info:
       sin cambios de sesión ni de CORS; el gateway propaga 409, 410 y 422
       con el cuerpo tal cual. «Ir a la HDU» del portal usa `GET
       /v1/hdu/{id}` con `idHistoria` (ruta del portal `/hdu/:id`).
+      Conexión por OAuth 2.0 (D209–D218, ADR 0019): se suman 4 rutas
+      declaradas una por una, todas con sesión y solo para el Administrador
+      (lo decide Integraciones): `POST /v1/integraciones/jira/oauth/iniciar`,
+      `POST …/oauth/retorno`, `POST …/oauth/sitio` y `DELETE
+      /v1/integraciones/jira/oauth`. `/v1/integraciones/*` pasa de 18 rutas
+      y 20 operaciones a 22 y 24. Ninguna es pública: el retorno de
+      Atlassian llega a la página del portal
+      `/admin/integraciones/jira/oauth/retorno`, que envía `code` y `state`
+      con la sesión. El gateway **no registra el cuerpo** de
+      `oauth/retorno` ni la respuesta de `oauth/iniciar` (solo ruta,
+      estado y traza). Las cuatro usan el cubo de escritura general; el
+      `DELETE` responde 204 sin cuerpo.
 
     - **E4.** `/v1/catalogos/tipos-impedimento`, `/v1/impedimentos*`,
       `/v1/riesgo/*`, `/v1/hdu/{id}/impedimentos*`, `/v1/hdu/{id}/riesgo`,
@@ -1406,6 +1418,15 @@ paths:
     $ref: './integraciones.v1.yaml#/paths/~1v1~1integraciones~1jira~1configuracion~1probar'
   /v1/integraciones/jira/configuracion/eventos:
     $ref: './integraciones.v1.yaml#/paths/~1v1~1integraciones~1jira~1configuracion~1eventos'
+  # Conexión por OAuth 2.0 (D209–D218, ADR 0019): 4 rutas, todas con sesión; ninguna pública.
+  /v1/integraciones/jira/oauth/iniciar:
+    $ref: './integraciones.v1.yaml#/paths/~1v1~1integraciones~1jira~1oauth~1iniciar'
+  /v1/integraciones/jira/oauth/retorno:
+    $ref: './integraciones.v1.yaml#/paths/~1v1~1integraciones~1jira~1oauth~1retorno'
+  /v1/integraciones/jira/oauth/sitio:
+    $ref: './integraciones.v1.yaml#/paths/~1v1~1integraciones~1jira~1oauth~1sitio'
+  /v1/integraciones/jira/oauth:
+    $ref: './integraciones.v1.yaml#/paths/~1v1~1integraciones~1jira~1oauth'
   # Consulta y asignación (D132): se retira /v1/integraciones/jira/sincronizaciones (404) y se suman 7 rutas (8 operaciones).
   # Detalle y confirmación por HDU (D200, D202): 2 rutas más (10 operaciones de la consulta).
   /v1/integraciones/jira/consultas:
