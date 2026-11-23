@@ -165,14 +165,15 @@ export class CredencialesJira {
   }
 
   /**
-   * `oauth.descifrable` de la vista (D215): `false` si falta la llave o si los tokens guardados no se descifran con ella.
-   * Sin tokens (`RECONEXION_NECESARIA`) no hay nada que no se pueda descifrar.
+   * `oauth.descifrable` de la vista (contrato `ConexionOauthJira`): siempre `false` en `RECONEXION_NECESARIA` (no hay tokens);
+   * en `CONECTADA` y `PENDIENTE_SITIO`, `true` solo si hay llave y ambos tokens se descifran con ella.
    */
   descifrable(conexion: ConexionOauth): boolean {
-    if (!this.cifrador.disponible) return false;
+    if (conexion.estado === 'RECONEXION_NECESARIA') return false;
+    if (!this.cifrador.disponible || conexion.acceso === null || conexion.renovacion === null) return false;
     try {
-      if (conexion.acceso !== null) this.cifrador.descifrarSecreto(conexion.acceso, DATO_ASOCIADO_ACCESO);
-      if (conexion.renovacion !== null) this.cifrador.descifrarSecreto(conexion.renovacion, DATO_ASOCIADO_RENOVACION);
+      this.cifrador.descifrarSecreto(conexion.acceso, DATO_ASOCIADO_ACCESO);
+      this.cifrador.descifrarSecreto(conexion.renovacion, DATO_ASOCIADO_RENOVACION);
       return true;
     } catch {
       return false;
