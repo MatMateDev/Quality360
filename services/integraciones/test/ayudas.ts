@@ -59,10 +59,14 @@ export const bearer = async (persona: ClavePersona): Promise<string> => `Bearer 
 
 // ------------------------------------------------------------------ base de datos
 /** Superusuario del Supabase local (solo para limpiar entre pruebas, como el arnés de E4 y E5): `svc_integraciones` no puede borrar ni vaciar. */
-const duenio = new PrismaClient({ datasourceUrl: 'postgresql://supabase_admin:postgres@127.0.0.1:54322/postgres?schema=integraciones' });
+
 /** Con el rol del servicio, para comprobar privilegios y restricciones (E5-B01-T12, E5-B04-T10). */
 export const prismaServicio = new PrismaClient();
-
+const duenio = new PrismaClient({
+  datasourceUrl:
+    process.env.TEST_DATABASE_ADMIN_URL ??
+    'postgresql://supabase_admin:postgres@127.0.0.1:54322/postgres?schema=integraciones',
+});
 export async function limpiarIntegraciones(): Promise<void> {
   await duenio.$executeRawUnsafe('TRUNCATE TABLE integraciones.consulta_item, integraciones.consulta_jira, integraciones.detalle_ejecucion, integraciones.ejecucion_integracion, integraciones.evento_configuracion, integraciones.configuracion_jira');
 }

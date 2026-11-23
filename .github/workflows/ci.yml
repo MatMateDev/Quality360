@@ -52,6 +52,7 @@ jobs:
           --health-retries 5
     env:
       DATABASE_URL: postgresql://postgres:postgres@localhost:5432/quality360_ci
+      TEST_DATABASE_ADMIN_URL: postgresql://postgres:postgres@localhost:5432/quality360_ci?schema=integraciones
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -95,13 +96,87 @@ jobs:
 
       - name: Test (workspaces afectados)
         if: steps.afectados.outputs.hay == 'true'
+        shell: bash
         run: |
-          for ws in ${{ steps.afectados.outputs.lista }}; do
-            echo "::group::test $ws"
-            npm run test --workspace "$ws" --if-present
-            echo "::endgroup::"
+          set -euo pipefail
+
+          # Preparar los esquemas en PostgreSQL temporal del CI.
+          for schema in organizacion certificaciones impedimentos integraciones; do
+            echo "CREATE SCHEMA IF NOT EXISTS \"$schema\";" |
+              npx prisma db execute --url "$DATABASE_URL" --stdin
           done
 
+          # Preparar roles en el PostgreSQL temporal del CI.
+          # Impedimentos necesita LOGIN para validar permisos reales.
+          npx prisma db execute --url "$DATABASE_URL" --stdin <<'SQL'
+          DO $$
+          BEGIN
+            IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'svc_organizacion') THEN
+              CREATE ROLE svc_organizacion NOLOGIN;
+            END IF;
+
+            IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'svc_certificaciones') THEN
+              CREATE ROLE svc_certificaciones NOLOGIN;
+            END IF;
+
+            IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'svc_impedimentos') THEN
+              CREATE ROLE svc_impedimentos LOGIN PASSWORD 'quality360_ci_test_only';
+            END IF;
+            IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'svc_integraciones') THEN
+              CREATE ROLE svc_integraciones LOGIN PASSWORD 'quality360_ci_integraciones_test_only';
+            END IF;
+            IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'anon') THEN
+              CREATE ROLE anon NOLOGIN;
+            END IF;
+          END
+          $$;
+          GRANT CONNECT ON DATABASE quality360_ci TO svc_impedimentos;
+          GRANT USAGE ON SCHEMA impedimentos TO svc_impedimentos;
+          GRANT CONNECT ON DATABASE quality360_ci TO svc_integraciones;
+          GRANT USAGE ON SCHEMA integraciones TO svc_integraciones;
+
+          ALTER DEFAULT PRIVILEGES FOR ROLE postgres IN SCHEMA integraciones
+            GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO svc_integraciones;
+
+          ALTER DEFAULT PRIVILEGES FOR ROLE postgres IN SCHEMA integraciones
+            GRANT USAGE, SELECT ON SEQUENCES TO svc_integraciones;
+          ALTER DEFAULT PRIVILEGES FOR ROLE postgres IN SCHEMA impedimentos
+            GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO svc_impedimentos;
+
+          ALTER DEFAULT PRIVILEGES FOR ROLE postgres IN SCHEMA impedimentos
+            GRANT USAGE, SELECT ON SEQUENCES TO svc_impedimentos;
+          SQL
+          # Aplicar migraciones de los microservicios.
+          for ws in services/organizacion services/certificaciones services/impedimentos services/integraciones; do
+            if [[ -f "$ws/prisma/schema.prisma" && -d "$ws/prisma/migrations" ]]; then
+              schema="${ws#services/}"
+              echo "::group::migrate $ws"
+
+              DATABASE_URL="${DATABASE_URL}?schema=${schema}" \
+                npm run migrate:deploy --workspace "$ws"
+              echo "::endgroup::"
+            fi
+          done
+          # Ejecutar las pruebas de los workspaces afectados.
+          for ws in ${{ steps.afectados.outputs.lista }}; do
+            echo "::group::test $ws"
+            if [[ "$ws" == "services/impedimentos" ]]; then
+              # Ejecutar pruebas con permisos restringidos.
+              DATABASE_URL="postgresql://svc_impedimentos:quality360_ci_test_only@localhost:5432/quality360_ci?schema=impedimentos" \
+                npm run test --workspace "$ws" --if-present
+            elif [[ "$ws" == "services/integraciones" ]]; then
+              # Ejecutar E5 con el rol restringido del servicio.
+              DATABASE_URL="postgresql://svc_integraciones:quality360_ci_integraciones_test_only@localhost:5432/quality360_ci?schema=integraciones" \
+                npm run test --workspace "$ws" --if-present
+            elif [[ "$ws" == services/* ]]; then
+              schema="${ws#services/}"
+              DATABASE_URL="${DATABASE_URL}?schema=${schema}" \
+                npm run test --workspace "$ws" --if-present
+            else
+              npm run test --workspace "$ws" --if-present
+            fi
+            echo "::endgroup::"
+          done
       - name: Build (workspaces afectados)
         if: steps.afectados.outputs.hay == 'true'
         run: |

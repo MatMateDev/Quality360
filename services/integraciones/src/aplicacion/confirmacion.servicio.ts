@@ -43,8 +43,19 @@ export class ConfirmacionAplicacion {
     const c = await this.consulta.abierta(id);
     if (c.version !== entrada.version) throw new ErrorDeConsulta('CONSULTA_MODIFICADA', c);
     const pasos = pasosPendientes(await this.consultas.itemsMarcadosPendientes(c.id));
-    if (pasos.length === 0) throw new SinSeleccion();
+    if (pasos.length === 0) {
+      const actual = await this.consulta.existente(c.id);
 
+      if (actual.estado !== 'ABIERTA') {
+        throw await this.consulta.errorActual(c.id, 'CONSULTA_NO_ABIERTA');
+      }
+
+      if (actual.version !== entrada.version) {
+        throw new ErrorDeConsulta('CONSULTA_MODIFICADA', actual);
+      }
+
+      throw new SinSeleccion();
+    }
     // Pre-validación de todas las asignaciones antes de escribir una sola HDU.
     await this.prevalidar(solicitante, c.id, pasos, limite);
 

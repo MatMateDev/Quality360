@@ -11,9 +11,21 @@ import type { Actor } from '../../src/dominio/tipos.js';
 import { PrismaService } from '../../src/infraestructura/prisma/prisma.service.js';
 import { HduPrismaRepositorio } from '../../src/infraestructura/repositorios/hdu.prisma.repositorio.js';
 import { UsuarioPrismaRepositorio } from '../../src/infraestructura/repositorios/usuario.prisma.repositorio.js';
-import { crearUsuarioDePrueba, limpiarBaseDeDatos, prisma } from '../ayudas.js';
+import { borrarCreados, crearUsuarioDePrueba, limpiarBaseDeDatos, nuevosCreados, prisma } from '../ayudas.js';
 
 let sinEsquema: PrismaService;
+
+/**
+ * Lo que crea la prueba, para borrarlo en `after` aunque falle a mitad de camino. Si quedaba la HDU `DEF-1` sin
+ * sprint vigente (fallo antes de `fijarSprintVigente`), `GET /v1/hdu` respondía 500 a todos.
+ */
+const creados = nuevosCreados();
+
+async function crearUsuario(...args: Parameters<typeof crearUsuarioDePrueba>): ReturnType<typeof crearUsuarioDePrueba> {
+  const usuario = await crearUsuarioDePrueba(...args);
+  creados.usuarios.push(usuario.id);
+  return usuario;
+}
 
 before(async () => {
   await limpiarBaseDeDatos();
@@ -24,8 +36,12 @@ before(async () => {
 });
 
 after(async () => {
-  await sinEsquema.$disconnect();
-  await prisma.$disconnect();
+  try {
+    await borrarCreados(creados);
+  } finally {
+    await sinEsquema?.$disconnect();
+    await prisma.$disconnect();
+  }
 });
 
 describe('DEF-E5C-05 · SQL crudas de Organización sin search_path del esquema', () => {
@@ -36,14 +52,16 @@ describe('DEF-E5C-05 · SQL crudas de Organización sin search_path del esquema'
   });
 
   it('bloqueos de usuario (cambiar rol) y de historia (sprint vigente, reasignar QE) funcionan', async () => {
-    const admin = await crearUsuarioDePrueba('ADMINISTRADOR', { nombre: 'Admin DEF' });
-    const qe1 = await crearUsuarioDePrueba('QE', { nombre: 'QE uno' });
-    const qe2 = await crearUsuarioDePrueba('QE', { nombre: 'QE dos' });
+    const admin = await crearUsuario('ADMINISTRADOR', { nombre: 'Admin DEF' });
+    const qe1 = await crearUsuario('QE', { nombre: 'QE uno' });
+    const qe2 = await crearUsuario('QE', { nombre: 'QE dos' });
     const actor: Actor = { tipo: 'USUARIO', id: admin.id, nombre: admin.nombre };
     const celula = await prisma.celula.create({ data: { nombre: 'Célula DEF' } });
+    creados.celulas.push(celula.id);
     const inicio = new Date('2026-01-01');
     const fin = new Date('2026-01-14');
     const sprint = await prisma.sprint.create({ data: { nombre: 'Sprint DEF', inicio, fin, celulaId: celula.id } });
+    creados.sprints.push(sprint.id);
     const hdu = await prisma.hdu.create({
       data: {
         codigo: 'DEF-1',
@@ -57,6 +75,7 @@ describe('DEF-E5C-05 · SQL crudas de Organización sin search_path del esquema'
         creadoPorNombre: admin.nombre,
       },
     });
+    creados.hdus.push(hdu.id);
 
     // usuario.prisma: FOR UPDATE sobre "usuario"
     const cambio = await new UsuarioPrismaRepositorio(sinEsquema).cambiarRolAtomico({

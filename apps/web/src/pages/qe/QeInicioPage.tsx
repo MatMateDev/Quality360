@@ -6,7 +6,7 @@ import { useInicioQe } from "@/api/inicio";
 import { BloqueEstado } from "@/components/BloqueEstado";
 import { TarjetaMetrica } from "@/components/TarjetaMetrica";
 import { BarraFiltros, type CampoFiltro } from "@/components/bandeja/BarraFiltros";
-import { BloqueDatos, EncabezadoBandeja, GrupoContadores, type EstadoDatos } from "@/components/bandeja/Estructura";
+import { BloqueDatos, EncabezadoBandeja, FranjaResumen, GrupoContadores, TemaBandeja, type EstadoDatos } from "@/components/bandeja/Estructura";
 import { Paginacion } from "@/components/bandeja/Paginacion";
 import { TablaBandeja, type Columna } from "@/components/bandeja/TablaBandeja";
 import { BloqueImpedimentosBandeja } from "@/components/impedimentos/BloqueImpedimentosBandeja";
@@ -54,8 +54,9 @@ function textoAntiguedad(dias: number): string {
 }
 
 /**
- * Bandeja del QE (E7-F03): contadores de acción y «Requiere mi acción» arriba (trabajo); debajo, el resumen
- * de equipo certificado de E1-F03 y los accesos rápidos de siempre.
+ * Bandeja del QE (E7-F03): contadores de acción y «Requiere mi acción» arriba (trabajo); debajo, impedimentos
+ * y riesgo. D209: los accesos rápidos van en el encabezado y el resumen de equipo certificado de E1-F03 sube
+ * junto a los contadores de acción; los contadores de impedimentos quedan al lado de su lista.
  */
 export function QeInicioPage() {
   const inicioQuery = useInicioQe();
@@ -158,33 +159,73 @@ export function QeInicioPage() {
 
   return (
     <div data-testid="bandeja-qe">
-      <EncabezadoBandeja etiqueta="Portal QE" descripcion="Lo que requiere tu acción y el resumen de tu equipo." />
+      <EncabezadoBandeja
+        etiqueta="Portal QE"
+        descripcion="Lo que requiere tu acción y el resumen de tu equipo."
+        acciones={
+          <>
+            <Link className="boton boton--secundario" to="/qe/equipo">
+              Ver equipo
+            </Link>
+            <Link className="boton boton--secundario" to="/qe/hdu">
+              Ver historias supervisadas
+            </Link>
+            {/* E3-F03#3: la bandeja de aprobaciones va en accesos rápidos para respetar el menú de E1-F02#3. */}
+            <Link className="boton boton--primario" to="/qe/aprobaciones" data-testid="enlace-aprobaciones-pendientes">
+              Aprobaciones pendientes
+            </Link>
+          </>
+        }
+      />
 
-      <GrupoContadores compacto>
-        <TarjetaContador
-          consulta={bandeja}
-          id="por-aprobar"
-          clave="por-aprobar"
-          titulo="Por aprobar"
-          contador={por}
-          atencion
-          detalle={() => (
-            <span data-testid="contador-por-aprobar-hdu">
-              en {hduPorAprobar} HDU
-            </span>
-          )}
-        />
-        <TarjetaContador consulta={bandeja} id="sin-analista" clave="sin-analista" titulo="Sin analista" contador={datos?.contadores.sinAnalista} atencion />
-        <TarjetaContador
-          consulta={bandeja}
-          id="listas-certificar"
-          clave="listas-certificar"
-          titulo="Listas para certificar"
-          contador={datos?.contadores.listasCertificar}
-          atencion
-        />
-        <TarjetaContador consulta={bandeja} id="listas-cerrar" clave="listas-cerrar" titulo="Listas para cerrar" contador={datos?.contadores.listasCerrar} atencion />
-      </GrupoContadores>
+      <FranjaResumen>
+        <GrupoContadores titulo="Mis pendientes" peso={4}>
+          <TarjetaContador
+            consulta={bandeja}
+            id="por-aprobar"
+            clave="por-aprobar"
+            titulo="Por aprobar"
+            contador={por}
+            atencion
+            detalle={() => (
+              <span data-testid="contador-por-aprobar-hdu">
+                en {hduPorAprobar} HDU
+              </span>
+            )}
+          />
+          <TarjetaContador consulta={bandeja} id="sin-analista" clave="sin-analista" titulo="Sin analista" contador={datos?.contadores.sinAnalista} atencion />
+          <TarjetaContador
+            consulta={bandeja}
+            id="listas-certificar"
+            clave="listas-certificar"
+            titulo="Listas para certificar"
+            contador={datos?.contadores.listasCertificar}
+            atencion
+          />
+          <TarjetaContador consulta={bandeja} id="listas-cerrar" clave="listas-cerrar" titulo="Listas para cerrar" contador={datos?.contadores.listasCerrar} atencion />
+        </GrupoContadores>
+
+        <GrupoContadores titulo="Mi equipo" peso={2}>
+          {inicioQuery.isLoading ? <BloqueEstado id="inicio-qe" estado="cargando" /> : null}
+          {inicioQuery.isError ? <BloqueEstado id="inicio-qe" estado="error" onReintentar={() => inicioQuery.refetch()} /> : null}
+          {inicioQuery.data ? (
+            <>
+              <TarjetaMetrica
+                id="equipo"
+                titulo="Analistas supervisados"
+                estado={inicioQuery.data.equipo.estado}
+                valor={inicioQuery.data.equipo.estado === "ok" ? inicioQuery.data.equipo.datos.analistasVigentes : undefined}
+              />
+              <TarjetaMetrica
+                id="hdu-qe"
+                titulo="HDU bajo supervisión"
+                estado={inicioQuery.data.hdu.estado}
+                valor={inicioQuery.data.hdu.estado === "ok" ? inicioQuery.data.hdu.datos.hduEnAmbito : undefined}
+              />
+            </>
+          ) : null}
+        </GrupoContadores>
+      </FranjaResumen>
 
       <section className="panel" aria-labelledby={idTitulo} aria-busy={estado === "cargando"}>
         <div className="panel-cabecera">
@@ -237,68 +278,32 @@ export function QeInicioPage() {
         </BloqueDatos>
       </section>
 
-      <GrupoContadores titulo="Impedimentos y riesgo" compacto>
-        <TarjetaContador
+      <TemaBandeja>
+        <GrupoContadores titulo="Impedimentos y riesgo">
+          <TarjetaContador
+            consulta={bandeja}
+            id="impedimentos-abiertos"
+            clave="impedimentos-abiertos"
+            titulo="Impedimentos abiertos"
+            contador={datos?.impedimentos?.contadores.impedimentosAbiertos}
+            atencion
+          />
+          <TarjetaContador consulta={bandeja} id="impedimentos-nuevos" clave="impedimentos-nuevos" titulo="Nuevos (24 h)" contador={datos?.impedimentos?.contadores.impedimentosNuevos} />
+          <TarjetaContador consulta={bandeja} id="hdu-riesgo-alto" clave="hdu-riesgo-alto" titulo="HDU en riesgo alto" contador={datos?.impedimentos?.contadores.hduRiesgoAlto} atencion />
+        </GrupoContadores>
+        <BloqueImpedimentosBandeja
+          variante="qe"
+          titulo="Impedimentos de mi equipo"
+          descripcion="Los 10 más recientes, por riesgo y antigüedad."
+          clave="impedimentos"
+          testIdTabla="lista-impedimentos"
           consulta={bandeja}
-          id="impedimentos-abiertos"
-          clave="impedimentos-abiertos"
-          titulo="Impedimentos abiertos"
-          contador={datos?.impedimentos?.contadores.impedimentosAbiertos}
-          atencion
+          bloque={datos?.impedimentos?.lista}
+          vacio="Tu equipo no tiene bloqueos"
+          tonoVacio="exito"
+          verTodos
         />
-        <TarjetaContador consulta={bandeja} id="impedimentos-nuevos" clave="impedimentos-nuevos" titulo="Nuevos (24 h)" contador={datos?.impedimentos?.contadores.impedimentosNuevos} />
-        <TarjetaContador consulta={bandeja} id="hdu-riesgo-alto" clave="hdu-riesgo-alto" titulo="HDU en riesgo alto" contador={datos?.impedimentos?.contadores.hduRiesgoAlto} atencion />
-      </GrupoContadores>
-      <BloqueImpedimentosBandeja
-        variante="qe"
-        titulo="Impedimentos de mi equipo"
-        descripcion="Los 10 más recientes, por riesgo y antigüedad."
-        clave="impedimentos"
-        testIdTabla="lista-impedimentos"
-        consulta={bandeja}
-        bloque={datos?.impedimentos?.lista}
-        vacio="Tu equipo no tiene bloqueos"
-        tonoVacio="exito"
-        verTodos
-      />
-
-      {inicioQuery.isLoading ? <BloqueEstado id="inicio-qe" estado="cargando" /> : null}
-      {inicioQuery.isError ? <BloqueEstado id="inicio-qe" estado="error" onReintentar={() => inicioQuery.refetch()} /> : null}
-
-      {inicioQuery.data ? (
-        <div className="tarjetas-resumen">
-          <TarjetaMetrica
-            id="equipo"
-            titulo="Analistas supervisados"
-            estado={inicioQuery.data.equipo.estado}
-            valor={inicioQuery.data.equipo.estado === "ok" ? inicioQuery.data.equipo.datos.analistasVigentes : undefined}
-          />
-          <TarjetaMetrica
-            id="hdu-qe"
-            titulo="HDU bajo supervisión"
-            estado={inicioQuery.data.hdu.estado}
-            valor={inicioQuery.data.hdu.estado === "ok" ? inicioQuery.data.hdu.datos.hduEnAmbito : undefined}
-          />
-        </div>
-      ) : null}
-
-      <div className="panel">
-        <div className="panel-cabecera">
-          <h2>Accesos rápidos</h2>
-        </div>
-        <div className="enlaces-rapidos">
-          <Link className="boton boton--secundario" to="/qe/equipo">
-            Ver equipo
-          </Link>
-          <Link className="boton boton--secundario" to="/qe/hdu">
-            Ver historias supervisadas
-          </Link>
-          {/* E3-F03#3: la bandeja va en accesos rápidos para respetar el menú de E1-F02#3. */}
-          <Link className="boton boton--primario" to="/qe/aprobaciones" data-testid="enlace-aprobaciones-pendientes">
-            Aprobaciones pendientes
-          </Link>
-        </div>
-      </div>
+      </TemaBandeja>
     </div>
   );
 }
