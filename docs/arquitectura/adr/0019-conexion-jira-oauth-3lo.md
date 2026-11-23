@@ -2,7 +2,7 @@
 
 - **Estado:** aceptada
 - **Fecha:** 2026-11-22
-- **Decisiones base:** D209–D218 (`docs/backlog/e5-oauth-jira.md`, con ajustes en `decisiones-mvp.md`, sección «E5 · Conexión con Jira por OAuth 2.0 (3LO)»). Diseño: `docs/diseno/e5-oauth-jira.md`
+- **Decisiones base:** D209–D218 (`docs/backlog/e5-oauth-jira.md`, con ajustes en `decisiones-mvp.md`, sección «E5 · Conexión con Jira por OAuth 2.0 (3LO)»), precisadas tras la ronda 1 de QA por D219–D223 (misma sección, «Cierre de la corrida»). Diseño: `docs/diseno/e5-oauth-jira.md`
 - **Modifica:** ADR 0015 (enmienda aditiva: el API token, su cifrado y D95 siguen vigentes como método alternativo)
 
 ## Contexto
