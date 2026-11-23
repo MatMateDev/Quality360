@@ -2,6 +2,8 @@
 
 Dueño: `q360-qa`. Cambio certificado: «E5 · Conexión con Jira por OAuth 2.0 (3LO)» (`docs/backlog/e5-oauth-jira.md`, D209–D218, ADR 0019, plan `docs/arquitectura/e5-oauth-plan-construccion.md`), sobre el commit integrado `aac1cd7` (integraciones JO1–JO8 `79e5cfb`, gateway GO1 `bb984ba`, portal FO1–FO7 `64b3ba6`, infra IN1 `a222ab3` y el Atlassian simulado `cbef860`). Ronda 1 de 3.
 
+> **Ronda 2 (sobre `5a059f8`, que contiene `059a8f8`): los 2 defectos están cerrados y las 2 HDU nuevas pasan a CERTIFICADA. Dictamen: CERTIFICADA. Ver «Ronda 2» al final.** Lo que sigue es la ronda 1.
+
 ## Dictamen (ronda 1)
 
 **NO CERTIFICADA.** 25 de los 27 escenarios nuevos (14 de E5-B08 y 13 de E5-F08) pasan y las 2 HDU nuevas quedan **OBSERVADAS**, cada una por un defecto de severidad baja (DEF-E5O-01 de `q360-integraciones` y DEF-E5O-02 de `q360-frontend`). Ninguno toca seguridad: no hay fugas, el aislamiento y los permisos funcionan, la renovación serializada pasa con `connection_limit=1` y la regresión de E5 no cambió de resultado. Las 6 HDU modificadas quedan certificadas.
@@ -172,3 +174,40 @@ Observaciones (no son defectos de producto):
 
 1. Entorno propio: bases nuevas, `psql -f infrastructure/db/001_esquemas_roles.sql`, `npm run migrate:deploy -w services/<servicio>` con las `DATABASE_URL` de esa base (y `&connection_limit=1`), `npm ci` en la raíz y en `tests/`, `npm run build` de auth-nest, los servicios y el gateway, y las semillas con `CERTIFICACIONES_URL` apuntando al servicio propio.
 2. Playwright (con `PORTAL_URL`, `GATEWAY_URL`, `GATEWAY_REAL_URL`, `INTEGRACIONES_URL`, `DATABASE_URL_DUENO` y `PUERTO_ALT_*` propios): `npx playwright test --project=atlassian-falso` y, con el stack, `--project=e5-api --project=e5-e2e --project=e7-e2e` con los filtros `e5-` y `e7-f01`.
+
+## Ronda 2
+
+Código certificado: `059a8f8` (DEF-E5O-01 en `4e4ce2f`, DEF-E5O-02 en `348b877`); `5a059f8` solo suma documentos. Mismo entorno que la ronda 1 (stack propio en 32xx y 5273, bases `q360_qa_e5o` y `q360_qa_e5o_u`, `connection_limit=1`, límites de tasa alzados), con Integraciones recompilado.
+
+**Dictamen: CERTIFICADA.** E5-B08 y E5-F08 pasan en sus 14 y 13 escenarios; las 6 HDU modificadas siguen certificadas. Defectos abiertos: 0 (DEF-E5O-01 y DEF-E5O-02 cerrados).
+
+| HDU | Escenarios | Dictamen | Fundamento |
+| --- | --- | --- | --- |
+| E5-B08 | 14 | **CERTIFICADA** | 27 de 27 pruebas. T18 (`descifrable: false` en `RECONEXION_NECESARIA`) pasa |
+| E5-F08 | 13 | **CERTIFICADA** | 24 de 24 pruebas. T16 (texto de OAuth en «proyecto no encontrado») pasa; accesibilidad 4 de 4 |
+| E5-B01, B02, F01, F02, E5-GW, E7-F01 (ruta de retorno) | — | **CERTIFICADA** | Sin cambios de resultado respecto de la ronda 1 |
+
+### Cifras de la ronda 2
+
+| Corrida | Resultado |
+| --- | --- |
+| E5-B08, E5-F08 y accesibilidad de OAuth, completos | todas pasan |
+| E5 completo más E7-F01 bajo `connection_limit=1` (348 pruebas) | 345 pasan; 3 fallan por tiempo y **pasan al repetirlas** (12 de 12 con sus dependencias): E5-B05 T28, E5-B07 T20 y E5-F03 T14. Son pruebas de «Organización lenta» o de presupuesto corto, sensibles a la carga de la máquina (en la ronda 1 pasaron; E5-F03 T14 es el intermitente conocido OBS-5). Ninguna es de OAuth |
+| Integraciones (base propia, 007 aplicada) | 580 de 580 (con la prueba nueva `e5-b08-descifrable`) |
+| Portal (vitest) | 37 archivos, 488 de 488 (incluye `e5TextoPorMetodo` y `capturaRetornoOauth`) |
+| Build del portal (con typecheck) y typecheck de Integraciones | en verde |
+| Atlassian simulado | 18 de 18 |
+| Gateway, auth-nest, Organización, Certificaciones, Impedimentos | no se repiten: el diff `261465a..059a8f8` solo toca Integraciones (`credenciales-jira.ts`) y 3 componentes del portal |
+| Escaneo de secretos del diff `261465a..059a8f8` | sin hallazgos (sin `.env`, claves, JWT ni secretos) |
+
+### E1-F13 / E1-B13 (recuperación de contraseña por interfaz)
+
+**Verificada: 25 de 25** (en la ronda 1 era NO VERIFICABLE). Sin tocar el portal de :5173 ni la configuración de Supabase: `recuperacion-contrasena-ui.spec.ts` detecta que el portal bajo prueba no está en la lista de `redirect_to` de Supabase (:5173 y :8080) y, solo entonces, atiende el `/auth/v1/verify` real del correo sin seguir la redirección y cambia su destino (el `site_url` de :5173) por `/restablecer-contrasena` del portal propio, conservando el fragmento con los tokens. El enlace, el token y el correo son los reales de Mailpit; lo emulado es solo la lista de permitidos. La aserción de B13#1 espera `redirect_to` igual al portal si está en la lista, o al `site_url` si no. Con el portal en :5173 u :8080 la prueba no cambia. Esto ejercita la captura de `main.tsx` (FO2) con el portal nuevo: abrir el enlace, el formulario, los enlaces vencidos o falsos y el cierre de sesión pasan, es decir, la captura no actúa fuera de la ruta de retorno OAuth.
+
+### Arranque manual de los simulados
+
+`npm run simulados:jira` (script de la raíz, `tests/support/simulados.ts`) levanta el Jira simulado (:4010) y el Atlassian simulado (:4011), lee el `.env` de Integraciones y queda corriendo hasta Ctrl+C. No descarga nada: Node 24 ejecuta el TypeScript directamente, y para eso `atlassian-falso/servidor.ts` importa `../jira-falso/servidor.ts` con extensión (Playwright lo sigue resolviendo). Comprobado: `GET http://127.0.0.1:4011/__solicitudes` responde `"modo":"NORMAL"`, el Jira responde en :4010 (401 sin credenciales), `/authorize` con el client id y la redirect URI del `.env` responde 302 y las 18 pruebas del simulado siguen en verde. `GUIA-LOCAL.md` (paso 2 y fila de problemas frecuentes) apunta al script.
+
+### Sin cubrir
+
+Igual que en la ronda 1: E5-MAN-02 (manual, contra Atlassian real), Organización caída al renovar y el no seguimiento de redirecciones de punta a punta.

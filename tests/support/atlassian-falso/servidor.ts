@@ -3,7 +3,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { CORREO_VALIDO, TOKEN_VALIDO } from "../jira-falso/servidor";
+import { CORREO_VALIDO, TOKEN_VALIDO } from "../jira-falso/servidor.ts";
 
 /**
  * Atlassian simulado (OAuth 2.0 3LO) para la certificación de E5 OAuth (dueño: q360-qa; ADR 0019, backlog e5-oauth-jira.md §9).

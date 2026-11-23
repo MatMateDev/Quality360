@@ -167,7 +167,7 @@ npm run local
 | Al adjuntar un archivo aparece un error de subida | Supabase local sin Storage o sin buckets | `Ctrl+C` y `npm run local` de nuevo: reinicia Supabase con Storage y crea los buckets |
 | «Conectar con Jira» aparece deshabilitado en local | Integraciones arrancó con un `.env` sin las variables `JIRA_OAUTH_*` | `Ctrl+C` y `npm run local`: regenera la configuración si falta alguna |
 | Al pulsar «Conectar con Jira» el navegador no puede abrir `127.0.0.1:4011` | El Atlassian simulado no está corriendo | Levántalo (sección «Conectar con Jira por OAuth en local») |
-| El comando del simulado termina enseguida, sin mensajes | Los puertos 4010 y 4011 ya están en uso, por ejemplo por una corrida de Playwright | Usa los que ya corren o ciérralos y repite |
+| `npm run simulados:jira` termina enseguida, sin mensajes | Los puertos 4010 y 4011 ya están en uso, por ejemplo por una corrida de Playwright | Usa los que ya corren o ciérralos y repite |
 | Al volver de Atlassian el portal dice «Tu sesión se cerró durante la conexión…» | El portal no está en `http://localhost:5173` (por ejemplo, Vite tomó otro puerto porque el 5173 estaba ocupado) | Libera el 5173 y repite `npm run local`: la dirección de retorno es fija |
 | «Atlassian no aceptó la autorización…» justo después de regenerar la configuración | Integraciones sigue con el secreto anterior y el simulado ya lee el nuevo | `Ctrl+C` y `npm run local` |
 
@@ -221,10 +221,10 @@ Si tu `.env` es anterior a E5 OAuth, el siguiente `npm run local` lo regenera so
 **Probar «Conectar con Jira» a mano:**
 
 1. En una terminal, ejecuta `npm run local` y espera el resumen con el portal en `http://localhost:5173`.
-2. En otra terminal, desde la raíz del repositorio, levanta el Jira y el Atlassian simulados. Quedan corriendo hasta `Ctrl+C`, y la primera vez `npx` descarga `tsx`. El comando es el mismo en Git Bash y en PowerShell:
+2. En otra terminal, desde la raíz del repositorio, levanta el Jira y el Atlassian simulados. Quedan corriendo hasta `Ctrl+C`. No descarga nada (Node 24 ejecuta el TypeScript directamente). El comando es el mismo en Git Bash y en PowerShell:
 
    ```
-   npx --yes tsx@4.23.15 --eval "import('./tests/support/globalSetupE5.ts').then((m) => m.default())"
+   npm run simulados:jira
    ```
 
    Para comprobar que responde, abre `http://127.0.0.1:4011/__solicitudes`: debe mostrar `"modo":"NORMAL"`.
