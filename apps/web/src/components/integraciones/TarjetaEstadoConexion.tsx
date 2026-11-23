@@ -125,7 +125,7 @@ export function TarjetaEstadoConexion({ config, tokenDescifrable, conexion, onRe
         onResultado({ tipo: "ok", texto });
         setAnuncio(texto);
       } else if (respuesta.error) {
-        onResultado({ tipo: "error", error: respuesta.error, pie: "No se guardó ningún cambio." });
+        onResultado({ tipo: "error", error: respuesta.error, metodo: config.metodo === "OAUTH" ? "OAUTH" : "API_TOKEN", pie: "No se guardó ningún cambio." });
         if (respuesta.error.codigo === "JIRA_RECONEXION_NECESARIA") void cliente.invalidateQueries({ queryKey: ["integraciones"] });
         setAnuncio("");
       } else {

@@ -1,10 +1,10 @@
-import type { ErrorIntegracion as ErrorIntegracionTipo } from "@/types/dominio";
+import type { ErrorIntegracion as ErrorIntegracionTipo, MetodoConexionJira } from "@/types/dominio";
 import { ErrorIntegracion } from "./ErrorIntegracion";
 
 /** Resultado de una prueba de la conexión, compartido por «Probar conexión» (tarjeta) y «Probar sin guardar» / «Probar y guardar» (formulario). */
 export type ResultadoPrueba =
   | { tipo: "ok"; texto: string }
-  | { tipo: "error"; error: ErrorIntegracionTipo; pie: string }
+  | { tipo: "error"; error: ErrorIntegracionTipo; pie: string; metodo: MetodoConexionJira }
   | { tipo: "global"; texto: string }
   | { tipo: "permiso" };
 
@@ -26,7 +26,7 @@ export function ResultadoConexionJira({ resultado }: { resultado: ResultadoPrueb
       <ErrorIntegracion
         testId="error-conexion"
         codigo={resultado.error.codigo}
-        contexto={{ permisosFaltantes: resultado.error.permisosFaltantes }}
+        contexto={{ metodo: resultado.metodo, permisosFaltantes: resultado.error.permisosFaltantes }}
         titulo="No se pudo probar la conexión"
         sugerencias={resultado.error.sugerencias.filter((s) => s !== "IR_A_CONEXION" && s !== "IMPORTAR_ARCHIVO")}
         pie={resultado.pie}
