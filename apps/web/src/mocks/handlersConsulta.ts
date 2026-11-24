@@ -295,6 +295,7 @@ function falloDelModo(usuario: { id: string; nombre: string }): Ejecucion | null
   const m = modoE5.consulta;
   if (m === "fallida") return fallidaDe("JIRA_NO_DISPONIBLE", usuario);
   if (m === "fallida-credencial") return fallidaDe("JIRA_CREDENCIAL_INVALIDA", usuario);
+  if (m === "fallida-reconexion") return fallidaDe("JIRA_RECONEXION_NECESARIA", usuario);
   if (m === "fallida-organizacion") return fallidaDe("ORGANIZACION_NO_DISPONIBLE", usuario);
   if (m === "fallida-tasa") return { ...fallidaDe("JIRA_LIMITE_DE_TASA", usuario), reintentos429: 3, sugerencias: ["REINTENTAR", "IMPORTAR_ARCHIVO"] };
   return null;

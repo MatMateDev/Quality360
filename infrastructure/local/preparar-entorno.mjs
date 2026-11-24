@@ -32,7 +32,9 @@ const completos = () =>
   readFileSync(join(RAIZ, 'apps/gateway/.env'), 'utf8').includes('INTEGRACIONES_URL=') &&
   // E5 consulta: variables sin valor fijo (vacío = valor por defecto del servicio).
   readFileSync(join(RAIZ, 'services/integraciones/.env'), 'utf8').includes('INTEGRACIONES_CONSULTA_VIGENCIA_MS=') &&
-  readFileSync(join(RAIZ, 'apps/gateway/.env'), 'utf8').includes('LIMITE_TASA_CONSULTA_MAX=');
+  readFileSync(join(RAIZ, 'apps/gateway/.env'), 'utf8').includes('LIMITE_TASA_CONSULTA_MAX=') &&
+  // E5 OAuth (ADR 0019): credenciales de la app OAuth de desarrollo para el Atlassian simulado.
+  readFileSync(join(RAIZ, 'services/integraciones/.env'), 'utf8').includes('JIRA_OAUTH_CLIENT_SECRET=');
 if (!forzar && completos()) {
   console.log('Configuración local ya existe (usa --forzar para regenerarla).');
   process.exit(0);
@@ -129,6 +131,13 @@ escribir('services/integraciones/.env', {
   // se sobreescribe con la variable del proceso (tiene prioridad sobre --env-file), ver infrastructure/README.md.
   INTEGRACIONES_CONSULTA_VIGENCIA_MS: '',
   INTEGRACIONES_CONSULTA_TOPE_ITEMS: '',
+  // E5 OAuth 3LO (ADR 0019): Atlassian simulado de QA en 127.0.0.1:4011. El secreto es aleatorio, se genera
+  // en cada preparación (como el token de servicio) y vive solo en este .env, que no se versiona.
+  JIRA_OAUTH_CLIENT_ID: 'q360-local',
+  JIRA_OAUTH_CLIENT_SECRET: randomBytes(24).toString('hex'),
+  JIRA_OAUTH_REDIRECT_URI: 'http://localhost:5173/admin/integraciones/jira/oauth/retorno',
+  JIRA_OAUTH_URL_AUTORIZACION: 'http://127.0.0.1:4011',
+  JIRA_OAUTH_URL_API: 'http://127.0.0.1:4011',
   X_Q360_SERVICIO_TOKEN: token,
 });
 escribir('apps/gateway/.env', {

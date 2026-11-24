@@ -9,6 +9,7 @@ import { AdminUsuariosPage } from "@/pages/admin/AdminUsuariosPage";
 import { PaginaConexionJira } from "@/pages/admin/integraciones/PaginaConexionJira";
 import { PaginaHistorial } from "@/pages/admin/integraciones/PaginaHistorial";
 import { PaginaImportar } from "@/pages/admin/integraciones/PaginaImportar";
+import { PaginaRetornoOauthJira } from "@/pages/admin/integraciones/PaginaRetornoOauthJira";
 import { PaginaIntegraciones } from "@/pages/admin/integraciones/PaginaIntegraciones";
 import { PaginaConsultarJira } from "@/pages/admin/integraciones/PaginaConsultarJira";
 import { HduDetailPage } from "@/pages/hdu/HduDetailPage";
@@ -64,6 +65,8 @@ export function AppRoutes() {
               <Route path="importar" element={<PaginaImportar />} />
               <Route path="historial" element={<PaginaHistorial />} />
             </Route>
+            {/* E5 OAuth (D210): retorno de Atlassian. Hermana de `admin/integraciones`, sin pestañas; solo el Administrador. */}
+            <Route path="admin/integraciones/jira/oauth/retorno" element={<PaginaRetornoOauthJira />} />
           </Route>
 
           <Route element={<RequireRole roles={["QE"]} />}>

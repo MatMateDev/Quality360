@@ -6,15 +6,15 @@ Plataforma para supervisar la certificación QA de historias de usuario (HDU). E
 
 | Épica | Alcance | Estado |
 | --- | --- | --- |
-| E1 · Acceso, portales y organización QA | 24 HDU, 72 escenarios | Certificada |
+| E1 · Acceso, portales y organización QA | 26 HDU, 78 escenarios (con la recuperación de contraseña) | Certificada |
 | E2 · Gestión de HDU | 8 HDU, 24 escenarios | Certificada |
 | E3 · Certificación y entregables | 8 HDU, 24 escenarios | Certificada |
 | E4 · Impedimentos y riesgos | 8 HDU, 24 escenarios | Certificada |
-| E5 · Integración con Jira Cloud | 14 HDU, 111 escenarios (con consulta, asignación y confirmación por HDU) | Certificada |
+| E5 · Integración con Jira Cloud | 16 HDU, 145 escenarios (con consulta, asignación, confirmación por HDU y conexión por OAuth) | Certificada |
 | E6 · Indicadores y dashboards | 8 HDU | Pendiente |
 | E7 · Bandejas por rol | 12 HDU, 36 escenarios | Certificada |
 
-La certificación de E1, E2, E3, E4, E5 y E7 cubre los 297 escenarios de aceptación del backlog, con 861 pruebas automatizadas contra el stack real, incluidas las que verifican el modelo de datos (tablas, llaves foráneas y aislamiento por esquema) y la accesibilidad de las bandejas. El dictamen por escenario y por HDU está en [`docs/validacion/certificacion-e1-e2.md`](docs/validacion/certificacion-e1-e2.md), [`docs/validacion/certificacion-e3.md`](docs/validacion/certificacion-e3.md), [`docs/validacion/certificacion-modelo-datos.md`](docs/validacion/certificacion-modelo-datos.md), [`docs/validacion/certificacion-e7.md`](docs/validacion/certificacion-e7.md), [`docs/validacion/certificacion-e4.md`](docs/validacion/certificacion-e4.md), [`docs/validacion/certificacion-e5.md`](docs/validacion/certificacion-e5.md) , [`docs/validacion/certificacion-e5-consulta.md`](docs/validacion/certificacion-e5-consulta.md) y [`docs/validacion/certificacion-e5-detalle.md`](docs/validacion/certificacion-e5-detalle.md). La prueba manual contra un Jira Cloud real (E5-MAN-01) la ejecuta el usuario con su propio sitio.
+La certificación de E1, E2, E3, E4, E5 y E7 cubre los 331 escenarios de aceptación del backlog, con 890 pruebas automatizadas contra el stack real, incluidas las que verifican el modelo de datos (tablas, llaves foráneas y aislamiento por esquema) y la accesibilidad de las bandejas. El dictamen por escenario y por HDU está en [`docs/validacion/certificacion-e1-e2.md`](docs/validacion/certificacion-e1-e2.md), [`docs/validacion/certificacion-e3.md`](docs/validacion/certificacion-e3.md), [`docs/validacion/certificacion-modelo-datos.md`](docs/validacion/certificacion-modelo-datos.md), [`docs/validacion/certificacion-e7.md`](docs/validacion/certificacion-e7.md), [`docs/validacion/certificacion-e4.md`](docs/validacion/certificacion-e4.md), [`docs/validacion/certificacion-e5.md`](docs/validacion/certificacion-e5.md) , [`docs/validacion/certificacion-e5-consulta.md`](docs/validacion/certificacion-e5-consulta.md), [`docs/validacion/certificacion-e5-detalle.md`](docs/validacion/certificacion-e5-detalle.md) y [`docs/validacion/certificacion-e5-oauth.md`](docs/validacion/certificacion-e5-oauth.md). Las pruebas manuales contra un Jira Cloud real (E5-MAN-01 con API token y E5-MAN-02 con «Conectar con Jira» por OAuth) las ejecuta el usuario con su propio sitio.
 
 ## Arquitectura
 
@@ -22,7 +22,7 @@ La certificación de E1, E2, E3, E4, E5 y E7 cubre los 297 escenarios de aceptac
 Navegador ── Portal React ── Gateway ──┬── Organización ─┐
                  │                      ├── Certificaciones ├── Postgres (un esquema y un rol por servicio)
                  │                      ├── Impedimentos ──┤
-                 │                      └── Integraciones ─┘── Jira Cloud (API REST, token cifrado)
+                 │                      └── Integraciones ─┘── Jira Cloud (API REST, OAuth 2.0 o API token, cifrados)
                  └── Supabase Auth (identidad)
 ```
 
@@ -102,7 +102,7 @@ npm test
 | `services/organizacion` | Usuarios, supervisión, HDU, células y sprints (E1, E2) |
 | `services/certificaciones` | Checklist de 10 entregables, evidencias, aprobaciones del QE y certificado PDF (E3) |
 | `services/impedimentos` | Impedimentos, escalamiento y riesgo de las HDU (E4) |
-| `services/integraciones` | Conexión con Jira Cloud, consulta manual en dos pasos con el detalle de cada HDU, asignación de célula, QE, Analista y sprint y confirmación por HDU, importación CSV/JSON e historial (E5) |
+| `services/integraciones` | Conexión con Jira Cloud por OAuth 2.0 (3LO, «Conectar con Jira») o API token, consulta manual en dos pasos con el detalle de cada HDU, asignación de célula, QE, Analista y sprint y confirmación por HDU, importación CSV/JSON e historial (E5) |
 | `contracts` | Contratos OpenAPI |
 | `infrastructure` | Supabase local, SQL de esquemas y roles, Docker Compose, semilla y arranque local |
 | `tests` | Suite de certificación E2E y de API |

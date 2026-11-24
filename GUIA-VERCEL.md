@@ -143,8 +143,9 @@ Agrégalas **antes** de pulsar Deploy:
 | `ORGANIZACION_URL` | URL real de `quality360-organizacion` |
 | `INTEGRACIONES_LLAVE_CIFRADO` | La llave del paso 2.5. Solo en el entorno **Production**, marcada como *Sensitive*. Si falta o es inválida, el servicio arranca igual, pero el portal muestra «La integración no está habilitada en el servidor» |
 | `INTEGRACIONES_PRESUPUESTO_MS`, `JIRA_TOPE_ISSUES`, `JIRA_TIEMPO_LIMITE_MS`, `JIRA_ESPERA_MAX_429_MS` | Solo si cambias los valores por defecto (8000, 100, 3000 y 3000) |
+| `JIRA_OAUTH_CLIENT_ID`, `JIRA_OAUTH_CLIENT_SECRET`, `JIRA_OAUTH_REDIRECT_URI` | **Opcionales** (D216): habilitan «Conectar con Jira» por OAuth 2.0 (ADR 0019). Van solo en **Production**, marcadas como *Sensitive*. El registro de la app en Atlassian y los valores están en `docs/arquitectura/guia-oauth-atlassian.md`. Sin ellas, el servicio arranca igual y el API token sigue funcionando |
 
-**No** agregues `NODE_ENV` (Vercel lo define), `INTEGRACIONES_PERMITIR_HOST_PRUEBA` ni `PERMITIR_CARGA_SEMILLA`: son solo para pruebas locales.
+**No** agregues `NODE_ENV` (Vercel lo define), `INTEGRACIONES_PERMITIR_HOST_PRUEBA`, `JIRA_OAUTH_URL_AUTORIZACION`, `JIRA_OAUTH_URL_API` ni `PERMITIR_CARGA_SEMILLA`: son solo para pruebas locales.
 
 ### Variables de `quality360-gateway`
 
@@ -230,6 +231,7 @@ En **Supabase > Authentication > URL Configuration**, pon la URL del portal como
 | Solo «Integraciones» responde 503 «No disponible» | Falta o está mal `INTEGRACIONES_URL` en el gateway, o `quality360-integraciones` no responde (revisa su `/health`; con Supabase pausado también responde 503) | Corrige la variable y haz Redeploy del gateway |
 | «La integración no está habilitada en el servidor» | Falta `INTEGRACIONES_LLAVE_CIFRADO` en `quality360-integraciones`, o no son 32 bytes en Base64 | Genera la llave (paso 2.5), agrégala en Production y haz Redeploy de Integraciones |
 | El portal pide volver a ingresar el API token de Jira | Se cambió la llave de cifrado (`TOKEN_NO_DESCIFRABLE`) | Vuelve a escribir el token en la pestaña Conexión |
+| «Conectar con Jira» aparece deshabilitado | Falta o está mal una de las tres `JIRA_OAUTH_*` en `quality360-integraciones`, o faltó el Redeploy | `docs/arquitectura/guia-oauth-atlassian.md`, pasos 2 y 6 |
 | Importar un archivo responde 413 «El archivo supera el máximo de 1 MB» | El archivo pesa más de 1 MB | Divídelo en archivos más chicos |
 | El build falla con «Cannot find type definition file for 'node'» | La variable `NODE_ENV=production` hace que `npm ci` omita las dependencias de desarrollo | Elimina `NODE_ENV` del proyecto: Vercel ya ejecuta las funciones en producción |
 | Un servicio responde 503 y el log dice «… debe ser http o https» o «no es una URL http(s) válida» | La variable `*_URL` tiene otro valor, por ejemplo la URL de la base de datos | Pon la dirección `https://…vercel.app` del servicio. Si pegaste una URL de base de datos, cambia esa contraseña en Supabase |

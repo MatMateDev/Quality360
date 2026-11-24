@@ -17,7 +17,7 @@ function registrarDatos(page: Page) {
   const respuestas: Array<{ url: string; status: number }> = [];
   page.on("response", (r) => {
     const url = new URL(r.url());
-    if (url.port === "3000" && url.pathname.startsWith("/v1/") && url.pathname !== "/v1/me") respuestas.push({ url: url.pathname, status: r.status() });
+    if (url.origin === new URL(env.gatewayUrl).origin && url.pathname.startsWith("/v1/") && url.pathname !== "/v1/me") respuestas.push({ url: url.pathname, status: r.status() });
   });
   return respuestas;
 }
@@ -107,6 +107,40 @@ test.describe("E7-F01 · Ingreso a la bandeja de cada rol", () => {
       expect(new URL(page.url()).pathname).toBe(ruta);
       await ctx.close();
     }
+  });
+
+  // E5 OAuth (D210): la ruta de retorno de Atlassian entra en la matriz de acceso. Es solo del Administrador (ROLES_MATRIZ.adm1.rutasPortal). Va aparte de T04b
+  // para que la regresión certificada siga verde mientras el portal no tenga esa ruta (FO2); falla hasta entonces y está pendiente de frontend.
+  for (const clave of ["qe1", "ana1", "aud1"] as const) {
+    test(`[E7-F01#3] [E5-F08#12] T04c: ${clave.toUpperCase()} abre la ruta de retorno de OAuth (con y sin code y state) y ve acceso denegado en la URL pedida, sin datos y sin conservar code ni state`, async ({ browser }) => {
+      const ruta = "/admin/integraciones/jira/oauth/retorno";
+      const ctx = await browser.newContext({ storageState: estadoSesion(clave) });
+      for (const consulta of ["", "?code=abc&state=def", "?error=access_denied&state=def"]) {
+        const page = await ctx.newPage();
+        const datos = registrarDatos(page);
+        await page.goto(`${env.portalUrl}${ruta}${consulta}`);
+        await expect(page.getByTestId("acceso-denegado"), `${clave} -> ${ruta}${consulta}`).toContainText("No tienes acceso a esta sección");
+        await expect(page.getByTestId("acceso-denegado").getByRole("link", { name: "Ir a mi bandeja" })).toHaveAttribute("href", USUARIOS_E7[clave].portal);
+        expect(new URL(page.url()).pathname).toBe(ruta);
+        expect(page.url(), "la dirección se limpia aunque no sea Administrador").not.toMatch(/[?&](code|state|error)=/);
+        await page.waitForTimeout(300);
+        expect(datos).toEqual([]);
+        await page.close();
+      }
+      await ctx.close();
+    });
+  }
+
+  test("[E7-F01#3] [E5-F08#12] T04d: el Administrador sí abre la ruta de retorno de OAuth (no ve acceso denegado) y la matriz la lista como suya", async ({ browser }) => {
+    const ruta = "/admin/integraciones/jira/oauth/retorno";
+    expect(ROLES_MATRIZ.find((r) => r.clave === "adm1")?.rutasPortal).toContain(ruta);
+    for (const rol of ROLES_MATRIZ.filter((r) => r.clave !== "adm1")) expect(rol.rutasPortal as readonly string[]).not.toContain(ruta);
+    const ctx = await browser.newContext({ storageState: estadoSesion("adm1") });
+    const page = await ctx.newPage();
+    await page.goto(`${env.portalUrl}${ruta}`);
+    await expect(page.getByTestId("pagina-retorno-oauth")).toBeVisible();
+    await expect(page.getByTestId("acceso-denegado")).toHaveCount(0);
+    await ctx.close();
   });
 
   test("[E7-F01#3] T05: AUD1 abre /admin/usuarios, ve acceso denegado y la pantalla no muestra correos de usuarios", async ({ browser }) => {

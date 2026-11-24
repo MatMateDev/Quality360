@@ -2,7 +2,10 @@ import { useRef, useState, type FormEvent } from "react";
 import { useCelulas } from "@/api/catalogos";
 import { useGuardarConfiguracion, useProbarConexion, useQeActivos, useSprintsDeCelula } from "@/api/integraciones";
 import { BloqueEstado } from "@/components/BloqueEstado";
+import { DialogoConfirmacion } from "@/components/DialogoConfirmacion";
+import { oauthUtilizable } from "@/lib/estadoConexion";
 import { ErrorApi } from "@/lib/httpClient";
+import { mensajeDeError } from "@/lib/mensajesIntegracion";
 import {
   ORDEN_CAMPOS_CONEXION,
   separarTipos,
@@ -11,16 +14,13 @@ import {
   type ClaveCampoConexion,
   type ErroresConexion,
 } from "@/lib/validacionJira";
-import type { ConfiguracionJira, ErrorIntegracion as ErrorIntegracionTipo } from "@/types/dominio";
+import type { ConfiguracionJira, MetodoConexionJira } from "@/types/dominio";
 import { CampoForm } from "./CampoForm";
 import { CampoToken } from "./CampoToken";
-import { ErrorIntegracion } from "./ErrorIntegracion";
-
-type Resultado =
-  | { tipo: "ok"; texto: string }
-  | { tipo: "error"; error: ErrorIntegracionTipo; pie: string }
-  | { tipo: "global"; texto: string }
-  | { tipo: "permiso" };
+import { type ConexionOauth } from "./ConectarJira";
+import { PanelOauthJira } from "./PanelOauthJira";
+import { ResultadoConexionJira, type ResultadoPrueba } from "./ResultadoConexionJira";
+import { SelectorMetodoConexion } from "./SelectorMetodoConexion";
 
 interface Props {
   config: ConfiguracionJira;
@@ -29,17 +29,38 @@ interface Props {
   onIntegracionDeshabilitada: () => void;
   tokenNoDescifrable: boolean;
   deshabilitada: boolean;
+  /** Método elegido en el selector. Elegirlo no cambia el método activo: solo cambia el panel (diseño OAuth §2.2). */
+  opcion: MetodoConexionJira;
+  onOpcion: (metodo: MetodoConexionJira) => void;
+  /** Flujo de «Conectar con Jira», compartido con la tarjeta de estado. */
+  conexion: ConexionOauth;
+  /** Resultado de la última prueba (compartido con «Probar conexión» de la tarjeta: se muestra uno solo). */
+  resultado: ResultadoPrueba | null;
+  onResultado: (resultado: ResultadoPrueba | null) => void;
 }
 
 const TIPOS_POR_DEFECTO = "Story, Historia";
 
 /**
- * Formulario de conexión con Jira (E5-F01). Es un solo `<form noValidate>`: «Probar y guardar» es el submit y
- * «Probar sin guardar» un botón. El campo del token nunca se rellena y se vacía tras CADA intento (D116).
+ * Formulario de conexión con Jira (E5-F01 y E5-F08). Es un solo `<form noValidate>`: «Probar y guardar» es el submit y
+ * «Probar sin guardar» un botón. **`form-jira` envuelve el panel del método, «Proyecto y destino» y los botones en ambos
+ * métodos.** El campo del token nunca se rellena y se vacía tras CADA intento (D116).
  */
-export function FormularioConexionJira({ config, onTokenNoDescifrable, onIntegracionDeshabilitada, tokenNoDescifrable, deshabilitada }: Props) {
+export function FormularioConexionJira({
+  config,
+  onTokenNoDescifrable,
+  onIntegracionDeshabilitada,
+  tokenNoDescifrable,
+  deshabilitada,
+  opcion,
+  onOpcion,
+  conexion,
+  resultado,
+  onResultado,
+}: Props) {
   const [campos, setCampos] = useState<CamposConexion>({
-    sitio: config.sitio ?? "",
+    // Con OAuth, `sitio` es el del sitio OAuth y `correo` es nulo: el sitio solo se rellena para el API token.
+    sitio: config.metodo === "OAUTH" ? "" : (config.sitio ?? ""),
     correo: config.correo ?? "",
     token: "",
     proyecto: config.proyecto ?? "",
@@ -49,8 +70,8 @@ export function FormularioConexionJira({ config, onTokenNoDescifrable, onIntegra
     sprintId: config.sprintRespaldo?.id ?? "",
   });
   const [errores, setErrores] = useState<ErroresConexion>({});
-  const [resultado, setResultado] = useState<Resultado | null>(null);
   const [erroresServidor, setErroresServidor] = useState<ErroresConexion>({});
+  const [confirmandoCambio, setConfirmandoCambio] = useState(false);
   const referencias = useRef<Partial<Record<ClaveCampoConexion, HTMLElement | null>>>({});
 
   const celulas = useCelulas();
@@ -60,10 +81,16 @@ export function FormularioConexionJira({ config, onTokenNoDescifrable, onIntegra
   const probar = useProbarConexion();
   const ocupado = guardar.isPending || probar.isPending;
 
+  const esOauth = opcion === "OAUTH";
+  const oauthLista = oauthUtilizable(config);
   const catalogoCaido = celulas.isError || qes.isError || (campos.celulaId !== "" && sprints.isError);
   const catalogoCargando = celulas.isLoading || qes.isLoading || (campos.celulaId !== "" && sprints.isLoading);
   const puedeConservar = config.token.configurado && config.token.descifrable && !tokenNoDescifrable;
+  // Con OAuth hace falta una conexión lista: sin ella, el servidor respondería 409 `JIRA_NO_CONFIGURADO`.
+  const faltaConexionOauth = esOauth && !oauthLista;
   const sinAccion = deshabilitada || catalogoCaido || ocupado;
+  // Pasar de OAuth a API token borra la conexión OAuth si la prueba pasa: pide confirmación antes de enviar (§6.2).
+  const cambiaAApiToken = !esOauth && config.metodo === "OAUTH";
 
   function cambiar<K extends keyof CamposConexion>(clave: K, valor: CamposConexion[K]) {
     setCampos((previos) => ({ ...previos, [clave]: valor }));
@@ -75,12 +102,12 @@ export function FormularioConexionJira({ config, onTokenNoDescifrable, onIntegra
   }
 
   function validar(incluirDestino: boolean): boolean {
-    const nuevos = validarConexion(campos, { requiereToken: !puedeConservar, incluirDestino });
+    const nuevos = validarConexion(campos, { requiereToken: !puedeConservar, incluirDestino, metodo: opcion });
     setErrores(nuevos);
     setErroresServidor({});
     const primero = ORDEN_CAMPOS_CONEXION.find((clave) => nuevos[clave]);
     if (primero) {
-      setResultado(null);
+      onResultado(null);
       referencias.current[primero]?.focus();
       return false;
     }
@@ -91,16 +118,24 @@ export function FormularioConexionJira({ config, onTokenNoDescifrable, onIntegra
     if (error instanceof ErrorApi) {
       if (error.status === 409 && error.codigo === "TOKEN_NO_DESCIFRABLE") {
         onTokenNoDescifrable();
-        setResultado(null);
+        onResultado(null);
         return;
       }
       if (error.status === 503 && error.codigo === "LLAVE_CIFRADO_NO_DISPONIBLE") {
         onIntegracionDeshabilitada();
-        setResultado(null);
+        onResultado(null);
+        return;
+      }
+      if (error.status === 503 && error.codigo === "JIRA_OAUTH_NO_CONFIGURADO") {
+        onResultado({ tipo: "global", texto: `${mensajeDeError("JIRA_OAUTH_NO_CONFIGURADO")} No se guardó nada.` });
+        return;
+      }
+      if (error.status === 409 && error.codigo === "JIRA_NO_CONFIGURADO") {
+        onResultado({ tipo: "global", texto: "Conecta con Jira antes de guardar el proyecto y el destino." });
         return;
       }
       if (error.status === 403) {
-        setResultado({ tipo: "permiso" });
+        onResultado({ tipo: "permiso" });
         return;
       }
       if (error.status === 400 || error.status === 422) {
@@ -122,39 +157,44 @@ export function FormularioConexionJira({ config, onTokenNoDescifrable, onIntegra
         }
         if (Object.keys(porCampo).length > 0) {
           setErroresServidor(porCampo);
-          setResultado(null);
+          onResultado(null);
           const primero = ORDEN_CAMPOS_CONEXION.find((clave) => porCampo[clave]);
           if (primero) referencias.current[primero]?.focus();
           return;
         }
       }
     }
-    setResultado({ tipo: "global", texto: "No fue posible guardar. Intenta nuevamente." });
+    onResultado({ tipo: "global", texto: "No fue posible guardar. Intenta nuevamente." });
   }
 
-  async function probarYGuardar(evento: FormEvent) {
-    evento.preventDefault();
-    if (sinAccion || !validar(true)) return;
-    setResultado(null);
+  /** Cuerpo de «Probar y guardar» según el método (oneOf del contrato). */
+  function cuerpoGuardado() {
+    const base = {
+      proyecto: campos.proyecto.trim(),
+      tiposIssue: separarTipos(campos.tipos),
+      celulaId: campos.celulaId,
+      qeResponsableId: campos.qeId,
+      sprintRespaldoId: campos.sprintId,
+    };
+    if (esOauth) return { metodo: "OAUTH" as const, ...base };
     const token = campos.token;
+    return { sitio: campos.sitio.trim(), correo: campos.correo.trim(), ...(token !== "" ? { token } : {}), ...base };
+  }
+
+  async function guardarConfiguracion() {
+    onResultado(null);
     try {
-      const respuesta = await guardar.mutateAsync({
-        sitio: campos.sitio.trim(),
-        correo: campos.correo.trim(),
-        ...(token !== "" ? { token } : {}),
-        proyecto: campos.proyecto.trim(),
-        tiposIssue: separarTipos(campos.tipos),
-        celulaId: campos.celulaId,
-        qeResponsableId: campos.qeId,
-        sprintRespaldoId: campos.sprintId,
-      });
+      const respuesta = await guardar.mutateAsync(cuerpoGuardado());
       if (respuesta.guardado && respuesta.prueba.ok) {
         const usuario = respuesta.prueba.usuarioJira ?? "tu cuenta";
-        setResultado({ tipo: "ok", texto: `Conexión exitosa con Jira como ${usuario}. Configuración guardada.` });
+        let texto = `Conexión exitosa con Jira como ${usuario}. Configuración guardada.`;
+        if (esOauth && config.metodo === "API_TOKEN") texto = `Conexión exitosa con Jira como ${usuario}. Ahora Quality360 usa esta conexión en lugar del API token.`;
+        else if (cambiaAApiToken) texto = `${texto} Se borraron las credenciales de la conexión con Jira (OAuth).`;
+        onResultado({ tipo: "ok", texto });
       } else if (respuesta.prueba.error) {
-        setResultado({ tipo: "error", error: respuesta.prueba.error, pie: "No se guardó nada: se conserva la configuración anterior." });
+        onResultado({ tipo: "error", error: respuesta.prueba.error, metodo: opcion, pie: "No se guardó nada: se conserva la configuración anterior." });
       } else {
-        setResultado({ tipo: "global", texto: "No fue posible guardar. Intenta nuevamente." });
+        onResultado({ tipo: "global", texto: "No fue posible guardar. Intenta nuevamente." });
       }
     } catch (error) {
       interpretarFallo(error);
@@ -164,30 +204,41 @@ export function FormularioConexionJira({ config, onTokenNoDescifrable, onIntegra
     }
   }
 
+  function probarYGuardar(evento: FormEvent) {
+    evento.preventDefault();
+    if (sinAccion || faltaConexionOauth || !validar(true)) return;
+    if (cambiaAApiToken) {
+      setConfirmandoCambio(true);
+      return;
+    }
+    void guardarConfiguracion();
+  }
+
   async function probarSinGuardar() {
-    if (sinAccion || !validar(false)) return;
-    setResultado(null);
+    if (sinAccion || faltaConexionOauth || !validar(false)) return;
+    onResultado(null);
     const token = campos.token;
     try {
-      const respuesta = await probar.mutateAsync({
-        sitio: campos.sitio.trim(),
-        correo: campos.correo.trim(),
-        ...(token !== "" ? { token } : {}),
-        proyecto: campos.proyecto.trim(),
-        tiposIssue: separarTipos(campos.tipos),
-      });
+      const proyecto = { proyecto: campos.proyecto.trim(), tiposIssue: separarTipos(campos.tipos) };
+      const respuesta = await probar.mutateAsync(esOauth ? { metodo: "OAUTH", ...proyecto } : { sitio: campos.sitio.trim(), correo: campos.correo.trim(), ...(token !== "" ? { token } : {}), ...proyecto });
       if (respuesta.ok) {
-        setResultado({ tipo: "ok", texto: `Conexión exitosa con Jira como ${respuesta.usuarioJira ?? "tu cuenta"}. No se guardaron cambios.` });
+        onResultado({ tipo: "ok", texto: `Conexión exitosa con Jira como ${respuesta.usuarioJira ?? "tu cuenta"}. No se guardaron cambios.` });
       } else if (respuesta.error) {
-        setResultado({ tipo: "error", error: respuesta.error, pie: "No se guardó ningún cambio." });
+        onResultado({ tipo: "error", error: respuesta.error, metodo: opcion, pie: "No se guardó ningún cambio." });
       } else {
-        setResultado({ tipo: "global", texto: "No fue posible probar la conexión. Intenta nuevamente." });
+        onResultado({ tipo: "global", texto: "No fue posible probar la conexión. Intenta nuevamente." });
       }
     } catch (error) {
       interpretarFallo(error);
     } finally {
       cambiar("token", "");
     }
+  }
+
+  function usarApiToken() {
+    onOpcion("API_TOKEN");
+    // El panel del API token aparece en el siguiente render: el foco va a `campo-sitio` (diseño §2.3).
+    setTimeout(() => referencias.current.sitio?.focus(), 0);
   }
 
   const err = (clave: ClaveCampoConexion) => errores[clave] ?? erroresServidor[clave];
@@ -199,30 +250,7 @@ export function FormularioConexionJira({ config, onTokenNoDescifrable, onIntegra
   return (
     <>
       <div aria-live="off">
-        {resultado?.tipo === "ok" ? (
-          <p className="mensaje-exito" role="status" data-testid="mensaje-conexion-ok">
-            {resultado.texto}
-          </p>
-        ) : null}
-        {resultado?.tipo === "error" ? (
-          <ErrorIntegracion
-            testId="error-conexion"
-            codigo={resultado.error.codigo}
-            titulo="No se pudo probar la conexión"
-            sugerencias={resultado.error.sugerencias.filter((s) => s !== "IR_A_CONEXION" && s !== "IMPORTAR_ARCHIVO")}
-            pie={resultado.pie}
-          />
-        ) : null}
-        {resultado?.tipo === "global" ? (
-          <p className="mensaje-error-global" role="alert" data-testid="mensaje-error-global">
-            {resultado.texto}
-          </p>
-        ) : null}
-        {resultado?.tipo === "permiso" ? (
-          <p className="mensaje-error-global" role="alert" data-testid="mensaje-error-permiso">
-            Ya no tienes permiso para esta acción
-          </p>
-        ) : null}
+        <ResultadoConexionJira resultado={resultado} />
       </div>
 
       {ocupado ? (
@@ -244,41 +272,59 @@ export function FormularioConexionJira({ config, onTokenNoDescifrable, onIntegra
         />
       ) : null}
 
+      <SelectorMetodoConexion elegido={opcion} activo={config.metodo} onElegir={onOpcion} />
+
       <form noValidate onSubmit={probarYGuardar} data-testid="form-jira" aria-label="Conexión con Jira">
         <fieldset className="fieldset-integracion" disabled={deshabilitada}>
           <legend className="sr-only">Configuración de la conexión con Jira</legend>
           <div className="formulario-jira">
-            <section className="panel" aria-labelledby="titulo-conexion-jira">
-              <h2 id="titulo-conexion-jira">Conexión con Jira</h2>
+            {esOauth ? (
+              <PanelOauthJira config={config} conexion={conexion} onUsarApiToken={usarApiToken} />
+            ) : (
+              <section className="panel" aria-labelledby="titulo-conexion-jira" data-testid="panel-api-token">
+                <h2 id="titulo-conexion-jira">Conectar con API token</h2>
+                <p className="campo-ayuda">Úsalo si no puedes conectar con Jira o si tu cuenta no puede aceptar la aplicación.</p>
+                {config.metodo === "OAUTH" ? (
+                  <p className="mensaje-aviso" role="note" data-testid="aviso-cambio-a-api-token">
+                    Si guardas la conexión con API token, se borrarán las credenciales de la conexión con Jira (OAuth) guardadas en Quality360. Mientras no guardes, la conexión con Jira (OAuth) sigue activa.
+                  </p>
+                ) : null}
+                <div className="campos-columna">
+                  <CampoForm id="campo-sitio" clave="sitio" etiqueta="Sitio de Jira" error={err("sitio")} ayuda="Dirección de tu Jira Cloud, por ejemplo https://su-empresa.atlassian.net">
+                    {(props) => (
+                      <input
+                        {...props}
+                        ref={referenciar("sitio")}
+                        data-testid="campo-sitio"
+                        type="url"
+                        inputMode="url"
+                        autoComplete="off"
+                        value={campos.sitio}
+                        onChange={(e) => cambiar("sitio", e.target.value)}
+                      />
+                    )}
+                  </CampoForm>
+                  <CampoForm id="campo-correo" clave="correo" etiqueta="Correo de la cuenta de Jira" error={err("correo")}>
+                    {(props) => (
+                      <input
+                        {...props}
+                        ref={referenciar("correo")}
+                        data-testid="campo-correo"
+                        type="email"
+                        autoComplete="off"
+                        value={campos.correo}
+                        onChange={(e) => cambiar("correo", e.target.value)}
+                      />
+                    )}
+                  </CampoForm>
+                  <CampoToken valor={campos.token} onCambio={(v) => cambiar("token", v)} puedeConservar={puedeConservar} error={err("token")} inputRef={referenciar("token")} />
+                </div>
+              </section>
+            )}
+
+            <section className="panel" aria-labelledby="titulo-destino-jira">
+              <h2 id="titulo-destino-jira">Proyecto y destino de las HDU nuevas</h2>
               <div className="campos-columna">
-                <CampoForm id="campo-sitio" clave="sitio" etiqueta="Sitio de Jira" error={err("sitio")} ayuda="Dirección de tu Jira Cloud, por ejemplo https://su-empresa.atlassian.net">
-                  {(props) => (
-                    <input
-                      {...props}
-                      ref={referenciar("sitio")}
-                      data-testid="campo-sitio"
-                      type="url"
-                      inputMode="url"
-                      autoComplete="off"
-                      value={campos.sitio}
-                      onChange={(e) => cambiar("sitio", e.target.value)}
-                    />
-                  )}
-                </CampoForm>
-                <CampoForm id="campo-correo" clave="correo" etiqueta="Correo de la cuenta de Jira" error={err("correo")}>
-                  {(props) => (
-                    <input
-                      {...props}
-                      ref={referenciar("correo")}
-                      data-testid="campo-correo"
-                      type="email"
-                      autoComplete="off"
-                      value={campos.correo}
-                      onChange={(e) => cambiar("correo", e.target.value)}
-                    />
-                  )}
-                </CampoForm>
-                <CampoToken valor={campos.token} onCambio={(v) => cambiar("token", v)} puedeConservar={puedeConservar} error={err("token")} inputRef={referenciar("token")} />
                 <div className="campos-fila">
                   <CampoForm id="campo-proyecto" clave="proyecto" etiqueta="Clave del proyecto" error={err("proyecto")} ayuda="Por ejemplo, QTY">
                     {(props) => (
@@ -298,12 +344,6 @@ export function FormularioConexionJira({ config, onTokenNoDescifrable, onIntegra
                     )}
                   </CampoForm>
                 </div>
-              </div>
-            </section>
-
-            <section className="panel" aria-labelledby="titulo-destino-jira">
-              <h2 id="titulo-destino-jira">Destino por defecto (archivos y sprint de respaldo)</h2>
-              <div className="campos-columna">
                 <CampoForm id="campo-celula" clave="celula" etiqueta="Célula" error={err("celula")}>
                   {(props) => (
                     <select {...props} ref={referenciar("celula")} data-testid="campo-celula" value={campos.celulaId} onChange={(e) => cambiarCelula(e.target.value)}>
@@ -350,16 +390,41 @@ export function FormularioConexionJira({ config, onTokenNoDescifrable, onIntegra
             </section>
           </div>
 
+          {faltaConexionOauth ? (
+            <p className="campo-ayuda" data-testid="nota-conectar-primero">
+              Conecta con Jira para poder probar y guardar el proyecto y el destino.
+            </p>
+          ) : null}
           <div className="acciones-formulario acciones-formulario--integracion">
-            <button type="submit" className="boton boton--primario" data-testid="boton-probar-guardar" disabled={sinAccion || catalogoCargando}>
+            <button type="submit" className="boton boton--primario" data-testid="boton-probar-guardar" disabled={sinAccion || catalogoCargando || faltaConexionOauth}>
               {guardar.isPending ? "Probando…" : "Probar y guardar"}
             </button>
-            <button type="button" className="boton boton--secundario" data-testid="boton-probar" disabled={sinAccion || catalogoCargando} onClick={() => void probarSinGuardar()}>
+            <button type="button" className="boton boton--secundario" data-testid="boton-probar" disabled={sinAccion || catalogoCargando || faltaConexionOauth} onClick={() => void probarSinGuardar()}>
               {probar.isPending ? "Probando…" : "Probar sin guardar"}
             </button>
           </div>
         </fieldset>
       </form>
+
+      <DialogoConfirmacion
+        abierto={confirmandoCambio}
+        titulo="Cambiar a API token"
+        rol="alertdialog"
+        etiquetaConfirmar="Probar y cambiar"
+        cerrarAlClicFuera={false}
+        testId="confirmar-cambio-a-api-token"
+        testIdConfirmar="boton-confirmar-cambio"
+        testIdCancelar="boton-cancelar-cambio"
+        onCancelar={() => setConfirmandoCambio(false)}
+        onConfirmar={() => {
+          setConfirmandoCambio(false);
+          void guardarConfiguracion();
+        }}
+      >
+        <p>
+          Si la prueba funciona, se borrarán las credenciales de la conexión con Jira (OAuth) y dejará de usarse. Si la prueba falla, no cambia nada. Para volver a OAuth tendrás que conectar con Jira otra vez.
+        </p>
+      </DialogoConfirmacion>
     </>
   );
 }

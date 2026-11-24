@@ -93,5 +93,10 @@ export const env = {
   databaseUrlOrganizacion: process.env.DATABASE_URL_ORGANIZACION ?? envOrganizacion.DATABASE_URL ?? "",
   databaseUrlCertificaciones: process.env.DATABASE_URL_CERTIFICACIONES ?? envCertificaciones.DATABASE_URL ?? "",
   databaseUrlIntegraciones: process.env.DATABASE_URL_INTEGRACIONES ?? envIntegraciones.DATABASE_URL ?? "",
+  // Credenciales de la app de Atlassian de la prueba (el `.env` local de Integraciones que genera q360-infra). Solo para que las pruebas sepan
+  // si el entorno trae OAuth y para afirmar que el secreto no se filtra; el Atlassian falso las lee por su cuenta.
+  jiraOauthClientId: process.env.JIRA_OAUTH_CLIENT_ID ?? envIntegraciones.JIRA_OAUTH_CLIENT_ID ?? "",
+  jiraOauthClientSecret: process.env.JIRA_OAUTH_CLIENT_SECRET ?? envIntegraciones.JIRA_OAUTH_CLIENT_SECRET ?? "",
+  jiraOauthRedirectUri: process.env.JIRA_OAUTH_REDIRECT_URI ?? envIntegraciones.JIRA_OAUTH_REDIRECT_URI ?? "",
   databaseUrlImpedimentos: process.env.DATABASE_URL_IMPEDIMENTOS ?? envImpedimentos.DATABASE_URL ?? "",
 };

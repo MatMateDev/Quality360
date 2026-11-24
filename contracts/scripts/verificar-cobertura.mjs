@@ -1,4 +1,4 @@
-// Verifica que los contratos cubren los escenarios de E1, E2, E3, E4, E5 (con sus complementos de consulta y asignación, y de detalle y asignación por HDU) y E7 del backlog.
+// Verifica que los contratos cubren los escenarios de E1, E2, E3, E4, E5 (con sus complementos de consulta y asignación, de detalle y asignación por HDU y de conexión OAuth) y E7 del backlog.
 // Uso: npm run contracts:check
 // Un escenario está cubierto si su ID aparece en `x-hdu` de alguna operación,
 // en `x-hdu-transversal` o en `x-escenarios-sin-operacion` de algún contrato.
@@ -9,15 +9,16 @@ import { fileURLToPath } from 'node:url';
 const raiz = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 // Escenarios esperados por épica: protege contra un backlog mal leído (3 por HDU).
 // E5 = 24 certificados + 5 agregados a F02/B02/F04/B04 + 27 de F05/B05 (e5-consulta-asignacion.md, sección 11)
-//      + 48 de F06/F07/B06/B07 y 7 agregados a F05/B05/B02/F04/B04 (e5-detalle-asignacion-por-hdu.md, sección 12).
+//      + 48 de F06/F07/B06/B07 y 7 agregados a F05/B05/B02/F04/B04 (e5-detalle-asignacion-por-hdu.md, sección 12)
+//      + 27 de F08/B08 y 7 agregados a F01 (#4, #5), F02 (#6), B01 (#4–#6) y B02 (#7) (e5-oauth-jira.md, secciones 10 y 11).
 // E7 = 36 − 6 retirados con el rol Líder QA (D208): E7-F04#1-3, E7-F07#2, E7-F07#3 y E7-B02#1 (número tachado en el backlog).
-const ESPERADOS_POR_EPICA = { E1: 78, E2: 24, E3: 24, E4: 24, E5: 111, E7: 30 };
+const ESPERADOS_POR_EPICA = { E1: 78, E2: 24, E3: 24, E4: 24, E5: 145, E7: 30 };
 const EPICAS = Object.keys(ESPERADOS_POR_EPICA);
 const ID = /E\d-[FB]\d{2}#\d+/g;
 
 // 1. Escenarios del backlog: el principal más los complementos que agregan o reescriben escenarios
 //    (mismo formato: `### <HDU> ·` y filas `| n |`). Un escenario repetido cuenta una vez.
-const ARCHIVOS_BACKLOG = ['historias-quality360.md', 'e5-consulta-asignacion.md', 'e5-detalle-asignacion-por-hdu.md'];
+const ARCHIVOS_BACKLOG = ['historias-quality360.md', 'e5-consulta-asignacion.md', 'e5-detalle-asignacion-por-hdu.md', 'e5-oauth-jira.md'];
 const esperados = new Set();
 let hdu = null;
 const lineasBacklog = ARCHIVOS_BACKLOG.flatMap((archivo) => [

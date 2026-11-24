@@ -144,7 +144,7 @@ function Cabecera({ ejecucion: e, titulo, soloLectura, continuarId }: { ejecucio
       {e.archivo ? <p className="campo-ayuda">Quality360 guarda la huella y el nombre del archivo, no su contenido.</p> : null}
 
       {e.codigoError ? (
-        <ErrorIntegracion testId="error-ejecucion" codigo={e.codigoError} contexto={{ conError: e.conError }} sugerencias={e.sugerencias} acciones={acciones} enfocar={false} />
+        <ErrorIntegracion testId="error-ejecucion" codigo={e.codigoError} contexto={{ conError: e.conError }} sugerencias={e.sugerencias} acciones={acciones} enfocar={false} avisarAdministrador={soloLectura} />
       ) : null}
       {!soloLectura && continuarId === e.id && e.fase !== "DIRECTA" ? (
         <p className="mensaje-aviso" role="note">

@@ -11,7 +11,7 @@ import { Inject, Injectable } from '@nestjs/common';
 import { CifradorToken } from '../../aplicacion/puertos.js';
 import { CONFIGURACION, type ConfiguracionIntegraciones } from '../../configuracion.js';
 import { LlaveCifradoNoDisponible, TokenNoDescifrable } from '../../dominio/errores.js';
-import type { TokenCifradoGuardado } from '../../dominio/tipos.js';
+import type { SecretoCifrado, TokenCifradoGuardado } from '../../dominio/tipos.js';
 
 export const DATO_ASOCIADO_TOKEN = 'q360:jira:token:v1';
 const ALGORITMO = 'aes-256-gcm';
@@ -30,23 +30,33 @@ export class CifradorAesGcm extends CifradorToken {
   }
 
   cifrar(token: string): TokenCifradoGuardado {
-    if (!this.disponible) throw new LlaveCifradoNoDisponible();
-    const iv = randomBytes(LARGO_IV);
-    const cifrador = createCipheriv(ALGORITMO, this.llave as Buffer, iv, { authTagLength: LARGO_TAG });
-    cifrador.setAAD(Buffer.from(DATO_ASOCIADO_TOKEN, 'utf8'));
-    const cifrado = Buffer.concat([cifrador.update(token, 'utf8'), cifrador.final()]);
-    return { cifrado, iv, tag: cifrador.getAuthTag(), ultimos4: token.slice(-4), llaveVersion: VERSION_LLAVE };
+    const s = this.cifrarSecreto(token, DATO_ASOCIADO_TOKEN);
+    return { ...s, ultimos4: token.slice(-4) };
   }
 
   descifrar(token: TokenCifradoGuardado): string {
+    return this.descifrarSecreto(token, DATO_ASOCIADO_TOKEN);
+  }
+
+  /** D214: IV de 12 bytes nuevo en cada cifrado, etiqueta de 16 y el dato asociado que se pida (uno por tipo de token). */
+  cifrarSecreto(texto: string, datoAsociado: string): SecretoCifrado {
+    if (!this.disponible) throw new LlaveCifradoNoDisponible();
+    const iv = randomBytes(LARGO_IV);
+    const cifrador = createCipheriv(ALGORITMO, this.llave as Buffer, iv, { authTagLength: LARGO_TAG });
+    cifrador.setAAD(Buffer.from(datoAsociado, 'utf8'));
+    const cifrado = Buffer.concat([cifrador.update(texto, 'utf8'), cifrador.final()]);
+    return { cifrado, iv, tag: cifrador.getAuthTag(), llaveVersion: VERSION_LLAVE };
+  }
+
+  descifrarSecreto(secreto: SecretoCifrado, datoAsociado: string): string {
     if (!this.disponible) throw new LlaveCifradoNoDisponible();
     try {
-      const descifrador = createDecipheriv(ALGORITMO, this.llave as Buffer, token.iv, { authTagLength: LARGO_TAG });
-      descifrador.setAAD(Buffer.from(DATO_ASOCIADO_TOKEN, 'utf8'));
-      descifrador.setAuthTag(token.tag);
-      return Buffer.concat([descifrador.update(token.cifrado), descifrador.final()]).toString('utf8');
+      const descifrador = createDecipheriv(ALGORITMO, this.llave as Buffer, secreto.iv, { authTagLength: LARGO_TAG });
+      descifrador.setAAD(Buffer.from(datoAsociado, 'utf8'));
+      descifrador.setAuthTag(secreto.tag);
+      return Buffer.concat([descifrador.update(secreto.cifrado), descifrador.final()]).toString('utf8');
     } catch {
-      // Llave distinta, etiqueta alterada o datos dañados: nunca se propaga el error de `crypto`.
+      // Llave distinta, etiqueta alterada, dato asociado de otro token o datos dañados: nunca se propaga el error de `crypto`.
       throw new TokenNoDescifrable();
     }
   }

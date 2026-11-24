@@ -14,6 +14,25 @@ info:
     confirmación por HDU: D196–D207 y ADR 0018). Lo consume el gateway, que publica
     estas mismas rutas (`INTEGRACIONES_URL`, D127).
 
+    - **Conexión con Jira por OAuth 2.0 (3LO) (D209–D218, ADR 0019).** Dos
+      métodos excluyentes en `configuracion_jira.metodo`: `OAUTH`
+      (recomendado) y `API_TOKEN` (sin cambios). Cuatro rutas, solo
+      Administrador y todas con sesión: `POST …/jira/oauth/iniciar`,
+      `POST …/jira/oauth/retorno`, `POST …/jira/oauth/sitio` y `DELETE
+      …/jira/oauth`. El retorno de Atlassian cae en el portal
+      (`/admin/integraciones/jira/oauth/retorno`), que limpia la dirección
+      y envía `code` y `state` con la sesión: no hay ninguna ruta pública.
+      `state` de un solo uso, ligado al Administrador, 10 minutos, guardado
+      solo como hash SHA-256. El canje y la renovación ocurren solo aquí,
+      con el Client secret que solo vive en este servicio; hosts salientes
+      fijos (`auth.atlassian.com`, `api.atlassian.com`), sin seguir
+      redirecciones y sin leer el cuerpo de los errores de Atlassian. Los
+      tokens se cifran con la misma llave de D94. La renovación se
+      serializa con `SELECT … FOR UPDATE` en una transacción. Sin las
+      credenciales de la app, 503 `JIRA_OAUTH_NO_CONFIGURADO` en `iniciar`,
+      `retorno` y `sitio`, y en probar, guardar, consultar y continuar con
+      el método OAuth (sin ellas no se puede renovar); `GET configuracion`,
+      `DELETE …/jira/oauth`, el resto del servicio y el API token funcionan.
     - **Detalle y confirmación por HDU (D196–D207).** El detalle de cada
       issue viaja en la **misma** `search/jql` de «Consultar Jira» (más
       campos en `fields`, sin `GET /issue/{clave}` ni `expand`), se sanea a
@@ -68,7 +87,7 @@ tags:
   - name: Salud
     description: Estado del proceso.
   - name: Conexión
-    description: Configuración cifrada de Jira Cloud y prueba de conexión (E5-F01, E5-B01).
+    description: Configuración cifrada de Jira Cloud, prueba de conexión y conexión por OAuth 2.0 (E5-F01, E5-B01, E5-F08, E5-B08).
   - name: Consulta
     description: Consultar Jira, revisar, asignar y confirmar (E5-F02, E5-F05, E5-B02, E5-B05).
   - name: Archivos
@@ -79,6 +98,8 @@ tags:
 x-escenarios-sin-operacion:
   - id: E5-F01#3
     motivo: 'Además de `GET /v1/integraciones/jira/configuracion` (que no trae el token), el campo del portal es de tipo contraseña, nunca se rellena y se vacía tras cada intento (D116).'
+  - id: E5-F08#13
+    motivo: 'Accesibilidad y móvil de la pestaña Conexión, la página de retorno y el diálogo de desconexión: teclado, foco, `aria-disabled`, regiones `role="status"`/`alert`, 375 px y axe (diseño E5 OAuth §8). No depende de una operación.'
 
 paths:
   /health:
@@ -120,8 +141,15 @@ paths:
         `configurado: false`. No necesita la llave de cifrado: informa
         `llaveDisponible` y `token.descifrable` (con la llave ausente,
         ambos `false`, y el portal muestra `aviso-integracion-deshabilitada`).
+
+        OAuth (D209, D215, D216): suma `metodo` (el activo), `oauthDisponible`
+        y `oauth` (estado, cuenta, sitio, candidatos si falta elegir el sitio,
+        permisos y fechas; nunca tokens ni su vencimiento). Informa a la vez
+        el método activo y la conexión OAuth «lista, sin activar» (diseño
+        §6.1). No llama a Atlassian ni a Jira y no renueva nada. Sin las
+        credenciales de la app responde igual, con `oauthDisponible: false`.
       x-roles: [ADMINISTRADOR]
-      x-hdu: [E5-F01#3, E5-B01#1, E5-B01#3]
+      x-hdu: [E5-F01#3, E5-B01#1, E5-B01#3, E5-F01#4, E5-F01#5, E5-F08#4, E5-F08#7, E5-F08#8, E5-F08#9, E5-B08#11]
       responses:
         '200':
           description: Configuración.
@@ -151,14 +179,33 @@ paths:
         anterior intacta; se actualiza solo `estadoConexion`. Con `token`
         cifra con AES-256-GCM e IV nuevo (D94); sin `token` conserva el
         guardado. Registra un `EventoConfiguracionJira` (D111) solo si guarda.
+
+        **Método (D209, E5-B01#4, #5).** El cuerpo es
+        `SolicitudConfiguracionJira` (API token; sin `metodo` equivale a
+        `API_TOKEN`) o `SolicitudConfiguracionJiraOauth` (`metodo: OAUTH`).
+        Con `OAUTH`: 503 `JIRA_OAUTH_NO_CONFIGURADO` sin las credenciales de
+        la app (D216); 409 `JIRA_NO_CONFIGURADO` sin conexión OAuth o con el
+        sitio pendiente; la prueba usa `api.atlassian.com/ex/jira/{cloudid}`
+        con Bearer y renueva antes si hace falta (D214); con
+        `RECONEXION_NECESARIA`, 200 `guardado: false` y
+        `JIRA_RECONEXION_NECESARIA`. Si guarda: `metodo = OAUTH`, `sitio` el
+        del sitio OAuth, `correo` y el API token cifrado quedan nulos y el
+        evento trae `metodo` en `camposCambiados`. De OAuth a API token:
+        `sitio`, `correo` y `token` obligatorios (400); si la prueba pasa,
+        se borra la conexión OAuth y se registra además el evento
+        `DESCONECTAR`. **Si la prueba falla, nada cambia**: se conservan las
+        dos credenciales y, cuando el guardado intentaba cambiar de método,
+        tampoco se toca `estadoConexion` (el método activo no se probó).
       x-roles: [ADMINISTRADOR]
-      x-hdu: [E5-F01#1, E5-F01#2, E5-F01#3, E5-B01#1, E5-B01#2, E5-B01#3, E5-B06#3]
+      x-hdu: [E5-F01#1, E5-F01#2, E5-F01#3, E5-B01#1, E5-B01#2, E5-B01#3, E5-B06#3, E5-B01#4, E5-B01#5, E5-B01#6, E5-F08#9, E5-F08#10, E5-B08#7, E5-B08#8, E5-B08#9, E5-B08#10, E5-B08#11]
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              $ref: './comun.v1.yaml#/components/schemas/SolicitudConfiguracionJira'
+              oneOf:
+                - $ref: './comun.v1.yaml#/components/schemas/SolicitudConfiguracionJira'
+                - $ref: './comun.v1.yaml#/components/schemas/SolicitudConfiguracionJiraOauth'
       responses:
         '200':
           description: Resultado de la prueba y de la configuración vigente después del intento.
@@ -173,7 +220,7 @@ paths:
         '403':
           $ref: './comun.v1.yaml#/components/responses/AccesoDenegado'
         '409':
-          $ref: '#/components/responses/TokenNoDescifrable'
+          $ref: '#/components/responses/ConflictoCredencialJira'
         '422':
           $ref: '#/components/responses/DestinoInvalido'
         '500':
@@ -194,14 +241,34 @@ paths:
         cambia la configuración ni registra eventos. Errores de Jira: 200 con
         `ok: false` y `error`. Sin token en el cuerpo y token guardado no
         descifrable: 409 `TOKEN_NO_DESCIFRABLE` sin llamar a Jira.
+
+        **Ambos métodos (E5-B01#2, D215, diseño §3.3).** Sin cuerpo o sin
+        `metodo` es `API_TOKEN`, exactamente como hoy. Con
+        `SolicitudPruebaJiraOauth` (`metodo: OAUTH`) prueba la conexión OAuth
+        guardada aunque no sea la activa: las mismas dos llamadas contra
+        `api.atlassian.com/ex/jira/{cloudid}` con Bearer, renovando antes si
+        faltan menos de 5 minutos (D214); sin proyecto en el cuerpo ni
+        guardado, solo `myself` y `proyecto: null`. Es la llamada de
+        «Probar conexión» de la tarjeta de estado (el portal manda el método
+        activo y nada más) y de «Probar sin guardar» con OAuth. 503
+        `JIRA_OAUTH_NO_CONFIGURADO` sin las credenciales de la app (D216); 409
+        `JIRA_NO_CONFIGURADO` sin conexión OAuth o con el sitio pendiente;
+        con `RECONEXION_NECESARIA`, 200 `ok: false` y
+        `JIRA_RECONEXION_NECESARIA`. Renovar no es «cambiar la
+        configuración»: puede actualizar la conexión OAuth, nunca
+        `configuracion_jira`.
       x-roles: [ADMINISTRADOR]
-      x-hdu: [E5-F01#2, E5-B01#2, E5-B01#3]
+      x-hdu: [E5-F01#2, E5-B01#2, E5-B01#3, E5-B01#6, E5-F08#10, E5-B08#7, E5-B08#8, E5-B08#9, E5-B08#10, E5-B08#11]
       requestBody:
         required: false
         content:
           application/json:
             schema:
-              $ref: './comun.v1.yaml#/components/schemas/SolicitudPruebaJira'
+              # Se distinguen por `metodo` (ausente o `API_TOKEN` frente a `OAUTH`); `anyOf` porque en el
+              # esquema del API token `metodo` es opcional (compatibilidad) y el linter no puede probar la exclusión.
+              anyOf:
+                - $ref: './comun.v1.yaml#/components/schemas/SolicitudPruebaJira'
+                - $ref: './comun.v1.yaml#/components/schemas/SolicitudPruebaJiraOauth'
       responses:
         '200':
           description: Resultado de la prueba.
@@ -216,7 +283,7 @@ paths:
         '403':
           $ref: './comun.v1.yaml#/components/responses/AccesoDenegado'
         '409':
-          $ref: '#/components/responses/TokenNoDescifrable'
+          $ref: '#/components/responses/ConflictoCredencialJira'
         '500':
           $ref: './comun.v1.yaml#/components/responses/ErrorInterno'
         '503':
@@ -227,9 +294,14 @@ paths:
       operationId: listarEventosConfiguracionJira
       tags: [Conexión]
       summary: Cambios de configuración
-      description: Quién, cuándo y qué campos cambió; nunca valores ni el token (D111). El portal muestra los 10 últimos.
+      description: |
+        Quién, cuándo y qué campos cambió; nunca valores ni el token (D111). El
+        portal muestra los 10 últimos. Desde D217 mezcla, por fecha, los
+        guardados (`tipo: CONFIGURACION`) y los eventos de la conexión OAuth
+        de `evento_oauth_jira` (`CONECTAR_OAUTH`, `RECONECTAR`, `DESCONECTAR`,
+        `REFRESCO_FALLIDO`), sin tokens, `code`, `state` ni secretos.
       x-roles: [ADMINISTRADOR]
-      x-hdu: [E5-F01#1, E5-B01#1]
+      x-hdu: [E5-F01#1, E5-B01#1, E5-F08#11, E5-B08#2, E5-B08#9, E5-B08#12]
       parameters:
         - $ref: './comun.v1.yaml#/components/parameters/Pagina'
         - $ref: './comun.v1.yaml#/components/parameters/TamanoPagina'
@@ -246,6 +318,250 @@ paths:
           $ref: './comun.v1.yaml#/components/responses/NoAutenticado'
         '403':
           $ref: './comun.v1.yaml#/components/responses/AccesoDenegado'
+        '500':
+          $ref: './comun.v1.yaml#/components/responses/ErrorInterno'
+        '503':
+          $ref: './comun.v1.yaml#/components/responses/ServicioNoDisponible'
+
+  # ------------------------------------- Conexión OAuth 2.0 (3LO) con Atlassian (D209–D218, ADR 0019)
+  # Las cuatro rutas son solo del Administrador y todas exigen sesión: el retorno de Atlassian llega al
+  # portal, nunca a una ruta pública (D210). Orden de validación: 401 → 403 → 400 → 503 → 409 → ejecución.
+  /v1/integraciones/jira/oauth/iniciar:
+    post:
+      operationId: iniciarConexionOauthJira
+      tags: [Conexión]
+      summary: Iniciar la autorización en Atlassian
+      description: |
+        «Conectar con Jira» y «Reconectar». Orden: 401 → 403 → 503
+        (`JIRA_OAUTH_NO_CONFIGURADO` si faltan las credenciales de la app,
+        `LLAVE_CIFRADO_NO_DISPONIBLE` si falta la llave) → crear el `state`.
+        Genera 32 bytes aleatorios (base64url) y guarda **solo** su hash
+        SHA-256 en `oauth_estado_jira`, con el id del Administrador y
+        vencimiento a 10 minutos; purga los estados de más de 1 día (D211).
+        Devuelve la dirección de autorización armada por el servidor:
+        `audience=api.atlassian.com`, `client_id`, los permisos de D218
+        (`read:jira-work read:jira-user offline_access`), la `redirect_uri`
+        de la configuración del servidor (el cliente no la manda), `state`,
+        `response_type=code` y `prompt=consent`. No llama a Atlassian, no
+        tiene cuerpo y no cambia la conexión guardada.
+      x-roles: [ADMINISTRADOR]
+      x-hdu: [E5-F08#1, E5-F08#7, E5-F08#12, E5-B08#1, E5-B08#11, E5-B08#13, E5-B08#14]
+      responses:
+        '200':
+          description: Dirección de autorización de Atlassian.
+          content:
+            application/json:
+              schema:
+                $ref: './comun.v1.yaml#/components/schemas/InicioAutorizacionOauthJira'
+        '401':
+          $ref: './comun.v1.yaml#/components/responses/NoAutenticado'
+        '403':
+          $ref: './comun.v1.yaml#/components/responses/AccesoDenegado'
+        '500':
+          $ref: './comun.v1.yaml#/components/responses/ErrorInterno'
+        '503':
+          $ref: '#/components/responses/OauthNoDisponible'
+
+  /v1/integraciones/jira/oauth/retorno:
+    post:
+      operationId: completarConexionOauthJira
+      tags: [Conexión]
+      summary: Completar la conexión con lo que devolvió Atlassian
+      description: |
+        Lo llama la página del portal `/admin/integraciones/jira/oauth/retorno`
+        con la sesión del Administrador (D210). Orden: 401 → 403 → 400
+        `VALIDACION` → 503 → `state`: una sola sentencia atómica marca
+        `usado_en` solo si el hash existe, es de este Administrador, no está
+        usado y no venció; si no, 400 `JIRA_OAUTH_ESTADO_INVALIDO` sin llamar
+        a Atlassian (de dos retornos simultáneos con el mismo `state`, solo
+        uno pasa) → `error` de Atlassian: 200 con
+        `JIRA_OAUTH_CONSENTIMIENTO_RECHAZADO` (`access_denied`) o
+        `JIRA_OAUTH_CANJE_FALLIDO` → canje del `code` (`POST
+        https://auth.atlassian.com/oauth/token`, JSON, con el Client secret)
+        → permisos concedidos contra los requeridos (D218) → sitios (`GET
+        https://api.atlassian.com/oauth/token/accessible-resources`, filtro de
+        D212) → con un sitio, `GET /rest/api/3/myself` en
+        `api.atlassian.com/ex/jira/{cloudid}` y se guarda `CONECTADA`; con
+        varios, se guarda `PENDIENTE_SITIO` con los candidatos (`ELEGIR_SITIO`).
+        Al quedar `CONECTADA`, evento `CONECTAR_OAUTH` (la primera vez) o
+        `RECONECTAR`. Todo error anterior al guardado deja intacta la
+        conexión que hubiera; el `state` queda consumido en todos los casos
+        que pasan su validación. Los tokens se guardan cifrados, cada uno con
+        su IV y su etiqueta (D214). Ningún `code`, `state`, token ni texto de
+        Atlassian vuelve en la respuesta ni queda en registros.
+      x-roles: [ADMINISTRADOR]
+      x-hdu: [E5-F08#1, E5-F08#2, E5-F08#3, E5-F08#4, E5-F08#5, E5-F08#6, E5-F08#12, E5-B08#2, E5-B08#3, E5-B08#4, E5-B08#5, E5-B08#6, E5-B08#11, E5-B08#13, E5-B08#14]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: './comun.v1.yaml#/components/schemas/SolicitudRetornoOauthJira'
+      responses:
+        '200':
+          description: Conectada, falta elegir el sitio, o un error de Atlassian con la conexión anterior intacta.
+          content:
+            application/json:
+              schema:
+                $ref: './comun.v1.yaml#/components/schemas/ResultadoConexionOauthJira'
+              examples:
+                conectada:
+                  summary: Un solo sitio de Jira (E5-B08#2)
+                  value:
+                    resultado: CONECTADA
+                    oauth:
+                      estado: CONECTADA
+                      descifrable: true
+                      cuenta:
+                        nombre: Ana Pérez
+                      sitio:
+                        id: 1b2c3d4e-5f60-4a71-8b92-a3b4c5d6e7f8
+                        nombre: empresa
+                        url: https://empresa.atlassian.net
+                      sitiosCandidatos: null
+                      permisos: [read:jira-work, read:jira-user, offline_access]
+                      conectadoEn: '2026-11-22T13:15:00Z'
+                      conectadoPor:
+                        id: 0b9a6a2e-7c6f-4d4b-9a3e-1f2d3c4b5a69
+                        nombre: Admin Uno
+                      renovadoEn: null
+                    error: null
+                elegirSitio:
+                  summary: Varios sitios; queda PENDIENTE_SITIO (E5-B08#5)
+                  value:
+                    resultado: ELEGIR_SITIO
+                    oauth:
+                      estado: PENDIENTE_SITIO
+                      descifrable: true
+                      cuenta: null
+                      sitio: null
+                      sitiosCandidatos:
+                        - id: 1b2c3d4e-5f60-4a71-8b92-a3b4c5d6e7f8
+                          nombre: empresa
+                          url: https://empresa.atlassian.net
+                          actual: true
+                        - id: 2c3d4e5f-6071-4b82-9ca3-b4c5d6e7f809
+                          nombre: laboratorio
+                          url: https://laboratorio.atlassian.net
+                          actual: false
+                      permisos: [read:jira-work, read:jira-user, offline_access]
+                      conectadoEn: '2026-11-22T13:15:00Z'
+                      conectadoPor:
+                        id: 0b9a6a2e-7c6f-4d4b-9a3e-1f2d3c4b5a69
+                        nombre: Admin Uno
+                      renovadoEn: null
+                    error: null
+                consentimientoRechazado:
+                  summary: El Administrador canceló en Atlassian; nada cambia (E5-B08#4)
+                  value:
+                    resultado: ERROR
+                    oauth: null
+                    error:
+                      codigo: JIRA_OAUTH_CONSENTIMIENTO_RECHAZADO
+                      mensaje: No aceptaste los permisos en Atlassian. No se conectó nada.
+                      sugerencias: [REINTENTAR]
+                permisosInsuficientes:
+                  summary: Atlassian concedió menos permisos de los pedidos; nada se guarda (E5-B08#6)
+                  value:
+                    resultado: ERROR
+                    oauth: null
+                    error:
+                      codigo: JIRA_OAUTH_PERMISOS_INSUFICIENTES
+                      mensaje: 'Faltan permisos en Atlassian: read:jira-work. Acepta todos los permisos solicitados.'
+                      sugerencias: [REINTENTAR]
+                      permisosFaltantes: [read:jira-work]
+        '400':
+          $ref: '#/components/responses/RetornoOauthInvalido'
+        '401':
+          $ref: './comun.v1.yaml#/components/responses/NoAutenticado'
+        '403':
+          $ref: './comun.v1.yaml#/components/responses/AccesoDenegado'
+        '500':
+          $ref: './comun.v1.yaml#/components/responses/ErrorInterno'
+        '503':
+          $ref: '#/components/responses/OauthNoDisponible'
+
+  /v1/integraciones/jira/oauth/sitio:
+    post:
+      operationId: elegirSitioOauthJira
+      tags: [Conexión]
+      summary: Elegir el sitio de Jira de la conexión pendiente
+      description: |
+        «Usar este sitio» (D212, diseño §5). Orden: 401 → 403 → 400
+        `VALIDACION` → 503 → 409 (`JIRA_OAUTH_SIN_CONEXION` si la conexión no
+        está `PENDIENTE_SITIO`; `TOKEN_NO_DESCIFRABLE`) → 400
+        `JIRA_OAUTH_SITIO_NO_VALIDO` si `sitioId` no es candidato → token de
+        acceso vigente (renueva si hace falta, D214) → `GET
+        /rest/api/3/myself` en `api.atlassian.com/ex/jira/{sitioId}` → la
+        conexión queda `CONECTADA` con cuenta y sitio, sin candidatos, y se
+        registra `CONECTAR_OAUTH` o `RECONECTAR`. Si `myself` o la renovación
+        fallan de forma pasajera: 200 `ERROR` y la conexión sigue
+        `PENDIENTE_SITIO` (se puede volver a elegir); si la renovación falla
+        de forma definitiva: 200 `ERROR` con `JIRA_RECONEXION_NECESARIA` y la
+        conexión pasa a `RECONEXION_NECESARIA` (D215).
+      x-roles: [ADMINISTRADOR]
+      x-hdu: [E5-F08#4, E5-B08#5, E5-B08#13, E5-B08#14]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: './comun.v1.yaml#/components/schemas/SolicitudSitioOauthJira'
+      responses:
+        '200':
+          description: Conexión lista con el sitio elegido, o un error con la conexión todavía pendiente.
+          content:
+            application/json:
+              schema:
+                $ref: './comun.v1.yaml#/components/schemas/ResultadoConexionOauthJira'
+        '400':
+          $ref: '#/components/responses/SitioOauthNoValido'
+        '401':
+          $ref: './comun.v1.yaml#/components/responses/NoAutenticado'
+        '403':
+          $ref: './comun.v1.yaml#/components/responses/AccesoDenegado'
+        '409':
+          $ref: '#/components/responses/ConflictoSitioOauth'
+        '500':
+          $ref: './comun.v1.yaml#/components/responses/ErrorInterno'
+        '503':
+          $ref: '#/components/responses/OauthNoDisponible'
+
+  /v1/integraciones/jira/oauth:
+    delete:
+      operationId: desconectarOauthJira
+      tags: [Conexión]
+      summary: Desconectar la conexión OAuth
+      description: |
+        Borra la conexión OAuth en cualquier estado (tokens cifrados, sitio,
+        cuenta y candidatos) y registra `DESCONECTAR` (D217). No llama a
+        Atlassian: el permiso se quita desde la cuenta de Atlassian
+        (`ayuda-revocar-jira`). **No** borra HDU, historial de asignación,
+        ejecuciones, eventos, la consulta abierta ni la fila de
+        configuración (diseño §3.4: «Lo ya importado no se borra»). Si el
+        método activo era OAuth, la configuración queda sin credencial:
+        probar y guardar con OAuth, consultar y continuar responden 409
+        `JIRA_NO_CONFIGURADO` hasta reconectar o pasar a API token; confirmar
+        la consulta abierta sigue funcionando porque no llama a Jira (D140).
+        Con el API token activo, se borra la conexión «lista, sin activar» y
+        el API token sigue en uso. No necesita las credenciales de la app ni
+        la llave de cifrado: siempre se puede borrar lo guardado. El API
+        token no tiene esta acción: se reemplaza al guardar otro o al pasar
+        a OAuth.
+      x-roles: [ADMINISTRADOR]
+      x-hdu: [E5-F08#11, E5-B08#12, E5-B08#13]
+      responses:
+        '204':
+          description: Desconectado. Sin cuerpo.
+          headers:
+            x-trace-id:
+              $ref: './comun.v1.yaml#/components/headers/XTraceId'
+        '401':
+          $ref: './comun.v1.yaml#/components/responses/NoAutenticado'
+        '403':
+          $ref: './comun.v1.yaml#/components/responses/AccesoDenegado'
+        '409':
+          $ref: '#/components/responses/SinConexionOauth'
         '500':
           $ref: './comun.v1.yaml#/components/responses/ErrorInterno'
         '503':
@@ -288,8 +604,26 @@ paths:
         campo raro queda `null` y nunca pasa la fila a `CON_ERROR`. La
         clasificación guarda `yaAsignada` (QE y Analista actuales, D204) e
         `idHistoria` para toda fila cuya HDU exista.
+
+        **Método OAuth (E5-B02#7, D214, D215).** La credencial sale del
+        método activo. Con OAuth: 503 `JIRA_OAUTH_NO_CONFIGURADO` si faltan
+        las credenciales de la app (D216), 409 `JIRA_NO_CONFIGURADO` sin
+        conexión o con el sitio pendiente y 409 `TOKEN_NO_DESCIFRABLE` si los
+        tokens no se descifran, todos sin ejecución. Después de insertar la ejecución
+        `EN_CURSO` se obtiene el token de acceso vigente (renueva si faltan
+        menos de 5 minutos, con el candado de fila y dentro del presupuesto
+        de 8 s); búsqueda, campos y detalle van a
+        `api.atlassian.com/ex/jira/{cloudid}` con Bearer, con la misma
+        consulta, página, tope y política de 429. Un 401 provoca una
+        renovación y un reintento por tanda, nunca más. Con
+        `RECONEXION_NECESARIA` (o si la renovación falla de forma
+        definitiva) la tanda termina `FALLIDA` con
+        `JIRA_RECONEXION_NECESARIA`, sin guardar nada de esa tanda, y la
+        consulta abierta queda intacta, igual que un `JIRA_CREDENCIAL_INVALIDA`
+        con API token. Los enlaces «Abrir en Jira» usan la URL del sitio
+        OAuth y `sitioHost` es su host.
       x-roles: [ADMINISTRADOR]
-      x-hdu: [E5-F02#1, E5-F02#2, E5-F02#3, E5-F02#4, E5-B02#1, E5-B02#2, E5-B02#3, E5-B02#4, E5-B02#5, E5-B02#6, E5-B05#2, E5-B05#10, E5-B05#14, E5-B04#1, E5-B04#3, E5-B06#1, E5-B06#2, E5-B06#3, E5-B06#4, E5-B06#5, E5-B06#8, E5-F07#5, E5-F05#14]
+      x-hdu: [E5-F02#1, E5-F02#2, E5-F02#3, E5-F02#4, E5-B02#1, E5-B02#2, E5-B02#3, E5-B02#4, E5-B02#5, E5-B02#6, E5-B05#2, E5-B05#10, E5-B05#14, E5-B04#1, E5-B04#3, E5-B06#1, E5-B06#2, E5-B06#3, E5-B06#4, E5-B06#5, E5-B06#8, E5-F07#5, E5-F05#14, E5-F02#6, E5-B02#7, E5-F08#8, E5-B08#7, E5-B08#8, E5-B08#9, E5-B08#10, E5-B08#11]
       requestBody:
         required: false
         content:
@@ -399,9 +733,12 @@ paths:
         `CONSULTA_COMPLETA` si `hayMas` es `false`, `JIRA_NO_CONFIGURADO`,
         `TOKEN_NO_DESCIFRABLE`, `INTEGRACION_EN_CURSO`) → ejecución. Usa la
         credencial de la configuración vigente y el proyecto guardado en la
-        consulta; sin configuración → 409 `JIRA_NO_CONFIGURADO`.
+        consulta; sin configuración → 409 `JIRA_NO_CONFIGURADO`. Con el
+        método OAuth, las mismas reglas de `POST /consultas` (renovación,
+        un solo reintento ante 401 y `JIRA_RECONEXION_NECESARIA` como tanda
+        `FALLIDA` que no toca la consulta, E5-B02#7).
       x-roles: [ADMINISTRADOR]
-      x-hdu: [E5-F02#5, E5-B02#2, E5-B02#3, E5-B02#5, E5-B05#12, E5-B06#8]
+      x-hdu: [E5-F02#5, E5-B02#2, E5-B02#3, E5-B02#5, E5-B05#12, E5-B06#8, E5-F02#6, E5-B02#7, E5-B08#7, E5-B08#9, E5-B08#11]
       responses:
         '200':
           description: Tanda cerrada y la consulta con los acumulados. Si la tanda es `FALLIDA`, `consulta` es la misma, sin cambios.
@@ -1158,9 +1495,34 @@ components:
         $ref: './comun.v1.yaml#/components/schemas/Uuid'
 
   responses:
-    TokenNoDescifrable:
-      description: El token guardado no se puede descifrar con la llave actual (D94). Hay que volver a ingresarlo.
-      x-codigos: [TOKEN_NO_DESCIFRABLE]
+    ConflictoCredencialJira:
+      description: '`TOKEN_NO_DESCIFRABLE`: el API token o los tokens OAuth guardados no se pueden descifrar con la llave actual (D94, D214); hay que volver a ingresar el token o reconectar. `JIRA_NO_CONFIGURADO`: se pidió el método OAuth sin conexión o con el sitio pendiente (D215). Ninguno llama a Jira ni a Atlassian.'
+      x-codigos: [TOKEN_NO_DESCIFRABLE, JIRA_NO_CONFIGURADO]
+      headers:
+        x-trace-id:
+          $ref: './comun.v1.yaml#/components/headers/XTraceId'
+      content:
+        application/json:
+          schema:
+            $ref: './comun.v1.yaml#/components/schemas/Error'
+          examples:
+            tokenNoDescifrable:
+              summary: La llave cambió desde que se guardó el API token (E5-B01#3)
+              value:
+                codigo: TOKEN_NO_DESCIFRABLE
+                mensaje: Vuelve a ingresar el API token.
+                traceId: 4bf92f3577b34da6a3ce929d0e0e4736
+                detalles: []
+            oauthSinConexion:
+              summary: 'Probar o guardar con `metodo: OAUTH` sin conexión OAuth lista (E5-B01#4)'
+              value:
+                codigo: JIRA_NO_CONFIGURADO
+                mensaje: Configura la conexión con Jira antes de consultar.
+                traceId: 4bf92f3577b34da6a3ce929d0e0e4736
+                detalles: []
+    OauthNoDisponible:
+      description: '`JIRA_OAUTH_NO_CONFIGURADO` si faltan las credenciales de la app de Atlassian en el servidor (D216, sin nombrar variables ni valores); `LLAVE_CIFRADO_NO_DISPONIBLE` si falta la llave de cifrado (no se puede guardar ningún token); `SERVICIO_NO_DISPONIBLE` si Organización no responde al resolver el acceso. Nada se guarda ni se llama a Atlassian.'
+      x-codigos: [JIRA_OAUTH_NO_CONFIGURADO, LLAVE_CIFRADO_NO_DISPONIBLE, SERVICIO_NO_DISPONIBLE]
       headers:
         x-trace-id:
           $ref: './comun.v1.yaml#/components/headers/XTraceId'
@@ -1169,8 +1531,68 @@ components:
           schema:
             $ref: './comun.v1.yaml#/components/schemas/Error'
           example:
-            codigo: TOKEN_NO_DESCIFRABLE
-            mensaje: Vuelve a ingresar el API token.
+            codigo: JIRA_OAUTH_NO_CONFIGURADO
+            mensaje: La conexión automática con Jira no está habilitada en el servidor.
+            traceId: 4bf92f3577b34da6a3ce929d0e0e4736
+            detalles: []
+    RetornoOauthInvalido:
+      description: '`JIRA_OAUTH_ESTADO_INVALIDO`: `state` desconocido, mal formado, vencido (más de 10 minutos), ya usado o creado por otro Administrador; un único mensaje que no revela la causa y ninguna llamada a Atlassian (D211). `VALIDACION`: el cuerpo no trae exactamente uno de `code` y `error`, o un campo excede su formato.'
+      x-codigos: [JIRA_OAUTH_ESTADO_INVALIDO, VALIDACION]
+      headers:
+        x-trace-id:
+          $ref: './comun.v1.yaml#/components/headers/XTraceId'
+      content:
+        application/json:
+          schema:
+            $ref: './comun.v1.yaml#/components/schemas/Error'
+          example:
+            codigo: JIRA_OAUTH_ESTADO_INVALIDO
+            mensaje: La autorización venció o no es válida. Vuelve a pulsar «Conectar con Jira».
+            traceId: 4bf92f3577b34da6a3ce929d0e0e4736
+            detalles: []
+    SitioOauthNoValido:
+      description: '`JIRA_OAUTH_SITIO_NO_VALIDO`: `sitioId` no está entre los candidatos guardados de la conexión `PENDIENTE_SITIO` (D212). `VALIDACION`: `sitioId` ausente o que no es UUID. Nada cambia.'
+      x-codigos: [JIRA_OAUTH_SITIO_NO_VALIDO, VALIDACION]
+      headers:
+        x-trace-id:
+          $ref: './comun.v1.yaml#/components/headers/XTraceId'
+      content:
+        application/json:
+          schema:
+            $ref: './comun.v1.yaml#/components/schemas/Error'
+          example:
+            codigo: JIRA_OAUTH_SITIO_NO_VALIDO
+            mensaje: El sitio elegido no es válido.
+            traceId: 4bf92f3577b34da6a3ce929d0e0e4736
+            detalles: []
+    ConflictoSitioOauth:
+      description: '`JIRA_OAUTH_SIN_CONEXION`: no hay una conexión `PENDIENTE_SITIO` (D217). `TOKEN_NO_DESCIFRABLE`: los tokens de la conexión pendiente no se pueden descifrar con la llave actual; hay que reconectar. Nada cambia.'
+      x-codigos: [JIRA_OAUTH_SIN_CONEXION, TOKEN_NO_DESCIFRABLE]
+      headers:
+        x-trace-id:
+          $ref: './comun.v1.yaml#/components/headers/XTraceId'
+      content:
+        application/json:
+          schema:
+            $ref: './comun.v1.yaml#/components/schemas/Error'
+          example:
+            codigo: JIRA_OAUTH_SIN_CONEXION
+            mensaje: No hay una conexión pendiente.
+            traceId: 4bf92f3577b34da6a3ce929d0e0e4736
+            detalles: []
+    SinConexionOauth:
+      description: '`JIRA_OAUTH_SIN_CONEXION`: no hay ninguna conexión OAuth que desconectar (D217). Nada cambia.'
+      x-codigos: [JIRA_OAUTH_SIN_CONEXION]
+      headers:
+        x-trace-id:
+          $ref: './comun.v1.yaml#/components/headers/XTraceId'
+      content:
+        application/json:
+          schema:
+            $ref: './comun.v1.yaml#/components/schemas/Error'
+          example:
+            codigo: JIRA_OAUTH_SIN_CONEXION
+            mensaje: No hay una conexión pendiente.
             traceId: 4bf92f3577b34da6a3ce929d0e0e4736
             detalles: []
     DestinoInvalido:
@@ -1192,8 +1614,8 @@ components:
                 codigo: NO_PERMITIDO
                 mensaje: El sprint de respaldo debe pertenecer a la célula elegida.
     IntegracionNoDisponible:
-      description: '`LLAVE_CIFRADO_NO_DISPONIBLE` si falta o es inválida `INTEGRACIONES_LLAVE_CIFRADO` (sin nombrar ni mostrar la variable); `SERVICIO_NO_DISPONIBLE` si Organización no responde.'
-      x-codigos: [LLAVE_CIFRADO_NO_DISPONIBLE, SERVICIO_NO_DISPONIBLE]
+      description: '`LLAVE_CIFRADO_NO_DISPONIBLE` si falta o es inválida `INTEGRACIONES_LLAVE_CIFRADO` (sin nombrar ni mostrar la variable); `SERVICIO_NO_DISPONIBLE` si Organización no responde; con el método OAuth (el del cuerpo en probar y guardar, el activo en consultar y continuar), `JIRA_OAUTH_NO_CONFIGURADO` si faltan las credenciales de la app de Atlassian (D216): sin ellas no se puede renovar, así que no se llama a Jira, no se registra ejecución y la conexión guardada no cambia.'
+      x-codigos: [LLAVE_CIFRADO_NO_DISPONIBLE, SERVICIO_NO_DISPONIBLE, JIRA_OAUTH_NO_CONFIGURADO]
       headers:
         x-trace-id:
           $ref: './comun.v1.yaml#/components/headers/XTraceId'
@@ -1207,7 +1629,7 @@ components:
             traceId: 4bf92f3577b34da6a3ce929d0e0e4736
             detalles: []
     ConflictoConsultar:
-      description: 'Sin configuración, token no descifrable, otra ejecución en curso o una consulta abierta sin `reemplazar` (`ErrorConsultaAbierta`). No se llama a Jira ni se registra ejecución.'
+      description: 'Sin configuración, token no descifrable, otra ejecución en curso o una consulta abierta sin `reemplazar` (`ErrorConsultaAbierta`). Con el método OAuth, `JIRA_NO_CONFIGURADO` también es «sin conexión» o «falta elegir el sitio», y `TOKEN_NO_DESCIFRABLE` vale para los tokens OAuth (D215). No se llama a Jira ni se registra ejecución.'
       x-codigos: [JIRA_NO_CONFIGURADO, TOKEN_NO_DESCIFRABLE, INTEGRACION_EN_CURSO, CONSULTA_ABIERTA]
       headers:
         x-trace-id:
@@ -1230,7 +1652,7 @@ components:
             creadaEn: '2026-11-02T13:20:00Z'
             asignadas: 3
     ConflictoContinuar:
-      description: 'Consulta cerrada (`ErrorConsulta`), llena (500 filas), completa (`hayMas: false`), sin configuración, token no descifrable u otra ejecución en curso. No se llama a Jira ni se registra ejecución.'
+      description: 'Consulta cerrada (`ErrorConsulta`), llena (500 filas), completa (`hayMas: false`), sin configuración (con OAuth: sin conexión o con el sitio pendiente), token no descifrable (API token o tokens OAuth) u otra ejecución en curso. No se llama a Jira ni se registra ejecución.'
       x-codigos: [CONSULTA_NO_ABIERTA, CONSULTA_LLENA, CONSULTA_COMPLETA, JIRA_NO_CONFIGURADO, TOKEN_NO_DESCIFRABLE, INTEGRACION_EN_CURSO]
       headers:
         x-trace-id:

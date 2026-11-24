@@ -6,10 +6,13 @@
  * cabecera Authorization se arma al momento y no sale de este archivo; el cuerpo de un error de Jira
  * NUNCA se lee ni se propaga (puede repetir el token): los errores son solo un código fijo.
  */
+import { URL_API_ATLASSIAN } from '../../configuracion.js';
 import { validarSitio } from '../../dominio/mapeo/sitio.js';
 import { PATRON_CODIGO } from '../../dominio/mapeo/tipos.js';
+import { endpointDeRuta, PERMISOS_POR_ENDPOINT, permisosFaltantes } from '../../dominio/oauth/permisos.js';
+import { esUuid } from '../../dominio/oauth/sitios.js';
 import type {
-  CamposDetectados, CodigoErrorJira, CredencialJira, EventoEspera, FuenteJira, IssueJira, OpcionesLlamada,
+  CamposDetectados, CodigoErrorJira, CredencialFuenteJira, CredencialJiraOauth, EventoEspera, FuenteJira, IssueJira, OpcionesLlamada,
   PaginaJira, PadreJira, ResultadoJira, SprintJira,
 } from '../../dominio/puertos/fuente-jira.js';
 
@@ -41,7 +44,16 @@ export interface DependenciasCliente {
   ahora?: () => Date;
   /** Issues por página (D196). Entre 10 y 100; fuera de rango o ausente, 50. */
   tamanoPagina?: number;
+  /**
+   * Base de `/ex/jira/{cloudId}` con OAuth (D213). Por defecto `https://api.atlassian.com`; otra solo vale con
+   * `permitirHostPrueba` y con la forma `http://127.0.0.1:<puerto>`, si no se usa la fija.
+   */
+  urlApiOauth?: string;
 }
+
+const PATRON_BASE_PRUEBA = /^http:\/\/127\.0\.0\.1:([1-9][0-9]{0,4})$/;
+
+const esOauth = (c: CredencialFuenteJira): c is CredencialJiraOauth => 'tipo' in c && c.tipo === 'OAUTH';
 
 /** El tamaño de página efectivo: el pedido si es un entero entre 10 y 100; si no, 50. */
 export function tamanoPaginaEfectivo(valor: number | undefined): number {
@@ -50,7 +62,7 @@ export function tamanoPaginaEfectivo(valor: number | undefined): number {
 
 type Respuesta =
   | { ok: true; json: unknown; eventos: EventoEspera[] }
-  | { ok: false; codigo: CodigoErrorJira; eventos: EventoEspera[] };
+  | { ok: false; codigo: CodigoErrorJira; eventos: EventoEspera[]; permisosFaltantes?: string[] };
 
 /** Cómo se interpreta un 404 según el recurso consultado. */
 type Recurso = 'sitio' | 'proyecto';
@@ -61,16 +73,19 @@ export class ClienteJiraHttp implements FuenteJira {
   private readonly dormir: (ms: number) => Promise<void>;
   private readonly ahora: () => Date;
   private readonly tamanoPagina: number;
+  private readonly urlApiOauth: string;
 
   constructor(d: DependenciasCliente = {}) {
     this.tamanoPagina = tamanoPaginaEfectivo(d.tamanoPagina);
     this.http = d.fetch ?? globalThis.fetch.bind(globalThis);
     this.permitirHostPrueba = d.permitirHostPrueba === true;
+    const puertoPrueba = d.urlApiOauth === undefined ? undefined : PATRON_BASE_PRUEBA.exec(d.urlApiOauth)?.[1];
+    this.urlApiOauth = this.permitirHostPrueba && d.urlApiOauth !== undefined && puertoPrueba !== undefined && Number(puertoPrueba) <= 65535 ? d.urlApiOauth : URL_API_ATLASSIAN;
     this.dormir = d.dormir ?? ((ms) => new Promise((r) => setTimeout(r, ms)));
     this.ahora = d.ahora ?? (() => new Date());
   }
 
-  async probar(c: CredencialJira, proyecto: string, o: OpcionesLlamada) {
+  async probar(c: CredencialFuenteJira, proyecto: string, o: OpcionesLlamada) {
     this.exigir(PATRON_PROYECTO.test(proyecto), 'proyecto');
     const eventos: EventoEspera[] = [];
 
@@ -89,14 +104,26 @@ export class ClienteJiraHttp implements FuenteJira {
     return exito({ usuarioJira, proyecto: { clave, nombre } }, eventos);
   }
 
+  /** Una sola llamada a `GET /rest/api/3/myself` (E5 OAuth): «Probar conexión» sin proyecto y el retorno de la conexión. */
+  async probarCuenta(c: CredencialFuenteJira, o: OpcionesLlamada): Promise<ResultadoJira<{ usuarioJira: string; cuentaId: string }>> {
+    const eventos: EventoEspera[] = [];
+    const yo = await this.pedir(c, '/rest/api/3/myself', null, o, 'sitio', eventos);
+    if (!yo.ok) return yo;
+    const cuenta = objeto(yo.json);
+    const cuentaId = texto(cuenta?.accountId);
+    const usuarioJira = texto(cuenta?.displayName) ?? texto(cuenta?.emailAddress) ?? cuentaId;
+    if (usuarioJira === null || cuentaId === null) return fallo('JIRA_RESPUESTA_INVALIDA', eventos);
+    return exito({ usuarioJira, cuentaId }, eventos);
+  }
+
   /** Delega en `detectarCampos`: la misma llamada a `/field`, solo con el campo Sprint (la firma no cambia). */
-  async detectarCampoSprint(c: CredencialJira, o: OpcionesLlamada): Promise<ResultadoJira<string | null>> {
+  async detectarCampoSprint(c: CredencialFuenteJira, o: OpcionesLlamada): Promise<ResultadoJira<string | null>> {
     const r = await this.detectarCampos(c, o);
     return r.ok ? exito(r.valor.sprint, r.eventos) : r;
   }
 
   /** Una sola llamada a `GET /rest/api/3/field`: el campo Sprint y el de Criterios de aceptación (D199). */
-  async detectarCampos(c: CredencialJira, o: OpcionesLlamada): Promise<ResultadoJira<CamposDetectados>> {
+  async detectarCampos(c: CredencialFuenteJira, o: OpcionesLlamada): Promise<ResultadoJira<CamposDetectados>> {
     const eventos: EventoEspera[] = [];
     const r = await this.pedir(c, '/rest/api/3/field', null, o, 'sitio', eventos);
     if (!r.ok) return r;
@@ -119,7 +146,7 @@ export class ClienteJiraHttp implements FuenteJira {
   }
 
   async buscarPagina(
-    c: CredencialJira,
+    c: CredencialFuenteJira,
     q: { proyecto: string; tipos: string[]; despuesDe?: string; nextPageToken?: string; campoSprint: string | null; campoCriterios?: string | null },
     o: OpcionesLlamada,
   ): Promise<ResultadoJira<PaginaJira>> {
@@ -155,12 +182,27 @@ export class ClienteJiraHttp implements FuenteJira {
 
   /** GET con límite de tiempo, reintentos de 429 y el mapa de errores fijo. */
   private async pedir(
-    c: CredencialJira, ruta: string, consulta: URLSearchParams | null, o: OpcionesLlamada,
+    c: CredencialFuenteJira, ruta: string, consulta: URLSearchParams | null, o: OpcionesLlamada,
     recurso: Recurso, eventos: EventoEspera[],
   ): Promise<Respuesta> {
-    const sitio = validarSitio(c.sitio, { permitirHostPrueba: this.permitirHostPrueba });
-    if (!sitio.ok) return fallo('JIRA_SITIO_NO_ENCONTRADO', eventos); // sin salir a la red (D95)
-    const url = `${sitio.sitio}${ruta}${consulta ? `?${consulta.toString()}` : ''}`;
+    let base: string;
+    let permisosDeLaLlamada: readonly string[] | null = null;
+    if (esOauth(c)) {
+      // OAuth (D213, D214): la base sale del `cloudId` (UUID validado), nunca de la URL del sitio, que solo se muestra.
+      if (!esUuid(c.cloudId)) return fallo('JIRA_SITIO_NO_ENCONTRADO', eventos); // sin salir a la red
+      const endpoint = endpointDeRuta(ruta);
+      if (endpoint === null) throw new ParametroJiraInvalido('ruta');
+      permisosDeLaLlamada = PERMISOS_POR_ENDPOINT[endpoint];
+      const faltan = permisosFaltantes(c.permisos, permisosDeLaLlamada);
+      // Se comprueba ANTES de llamar: sin el permiso Jira devolvería 401 o 403 (D218).
+      if (faltan.length > 0) return fallo('JIRA_OAUTH_PERMISOS_INSUFICIENTES', eventos, faltan);
+      base = `${this.urlApiOauth}/ex/jira/${c.cloudId.toLowerCase()}`;
+    } else {
+      const sitio = validarSitio(c.sitio, { permitirHostPrueba: this.permitirHostPrueba });
+      if (!sitio.ok) return fallo('JIRA_SITIO_NO_ENCONTRADO', eventos); // sin salir a la red (D95)
+      base = sitio.sitio;
+    }
+    const url = `${base}${ruta}${consulta ? `?${consulta.toString()}` : ''}`;
 
     for (let intento = 0; ; intento++) {
       const limite = Math.min(o.tiempoLimiteMs, o.restanteMs());
@@ -169,7 +211,7 @@ export class ClienteJiraHttp implements FuenteJira {
       let respuesta: Response;
       let texto: string | null = null;
       try {
-        const autorizacion = `Basic ${Buffer.from(`${c.correo}:${c.token}`, 'utf8').toString('base64')}`;
+        const autorizacion = esOauth(c) ? `Bearer ${c.tokenAcceso}` : `Basic ${Buffer.from(`${c.correo}:${c.token}`, 'utf8').toString('base64')}`;
         respuesta = await this.http(url, {
           method: 'GET',
           headers: { Authorization: autorizacion, Accept: 'application/json' },
@@ -199,7 +241,8 @@ export class ClienteJiraHttp implements FuenteJira {
         await this.dormir(esperaMs);
         continue;
       }
-      return fallo(codigoPorEstado(estado, recurso), eventos);
+      // Un 401 con OAuth informa los permisos de esa llamada; la renovación y el reintento los decide la aplicación (JO5).
+      return fallo(codigoPorEstado(estado, recurso), eventos, estado === 401 && permisosDeLaLlamada !== null ? [...permisosDeLaLlamada] : undefined);
     }
   }
 }
@@ -319,5 +362,5 @@ const objeto = (v: unknown): Record<string, unknown> | null =>
   typeof v === 'object' && v !== null && !Array.isArray(v) ? (v as Record<string, unknown>) : null;
 const texto = (v: unknown): string | null => (typeof v === 'string' && v.trim() !== '' ? v : null);
 const exito = <T>(valor: T, eventos: EventoEspera[]): ResultadoJira<T> => ({ ok: true, valor, eventos });
-const fallo = (codigo: CodigoErrorJira, eventos: EventoEspera[]): { ok: false; codigo: CodigoErrorJira; eventos: EventoEspera[] } =>
-  ({ ok: false, codigo, eventos });
+const fallo = (codigo: CodigoErrorJira, eventos: EventoEspera[], permisosFaltantes?: string[]): { ok: false; codigo: CodigoErrorJira; eventos: EventoEspera[]; permisosFaltantes?: string[] } =>
+  permisosFaltantes === undefined ? { ok: false, codigo, eventos } : { ok: false, codigo, eventos, permisosFaltantes };

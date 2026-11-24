@@ -32,10 +32,14 @@ export function separarTipos(texto: string): string[] {
   return [...vistos];
 }
 
-export function validarConexion(campos: CamposConexion, opciones: { requiereToken: boolean; incluirDestino: boolean }): ErroresConexion {
+/** Con `metodo: "OAUTH"` no hay sitio, correo ni token que validar: el sitio y la cuenta salen de la conexión (D209). */
+export function validarConexion(campos: CamposConexion, opciones: { requiereToken: boolean; incluirDestino: boolean; metodo?: "API_TOKEN" | "OAUTH" }): ErroresConexion {
   const errores: ErroresConexion = {};
+  const conCredenciales = opciones.metodo !== "OAUTH";
   const sitio = campos.sitio.trim();
-  if (!sitio) errores.sitio = "Ingresa la dirección del sitio de Jira";
+  if (!conCredenciales) {
+    // Sin campos de sitio, correo ni token.
+  } else if (!sitio) errores.sitio = "Ingresa la dirección del sitio de Jira";
   else {
     let valido = false;
     try {
@@ -47,9 +51,11 @@ export function validarConexion(campos: CamposConexion, opciones: { requiereToke
     if (!valido) errores.sitio = "Ingresa una dirección web válida";
   }
   const correo = campos.correo.trim();
-  if (!correo) errores.correo = "Ingresa el correo de la cuenta de Jira";
+  if (!conCredenciales) {
+    // idem
+  } else if (!correo) errores.correo = "Ingresa el correo de la cuenta de Jira";
   else if (!CORREO_RE.test(correo)) errores.correo = "Ingresa un correo con formato válido";
-  if (opciones.requiereToken && campos.token === "") errores.token = "Ingresa el API token";
+  if (conCredenciales && opciones.requiereToken && campos.token === "") errores.token = "Ingresa el API token";
   const proyecto = campos.proyecto.trim();
   if (!proyecto) errores.proyecto = "Ingresa la clave del proyecto";
   else if (!CLAVE_PROYECTO_RE.test(proyecto))

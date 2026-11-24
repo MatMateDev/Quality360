@@ -20,6 +20,15 @@
 //  - Índices: (iniciada_en DESC), (origen, iniciada_en DESC), (resultado, iniciada_en DESC),
 //    (id_ejecucion, resultado, fila) e (id_historia).
 //
+// Lo que Prisma no expresa vive en la migración 20261122000000_e5_oauth_jira (E5 OAuth, ADR 0019):
+//  - configuracion_jira: `metodo` con CHECK (`API_TOKEN`, `OAUTH`) y `configuracion_jira_metodo_credencial_ck` (correo y
+//    API token cifrado nulos si y solo si `OAUTH`).
+//  - conexion_oauth_jira: una sola fila; CHECK de estado, formato de `cloud_id` y `sitio_url`, candidatos (2 a 50), largo de
+//    IV y etiqueta, `conexion_oauth_tokens_ck`, `conexion_oauth_pendiente_ck` y `conexion_oauth_conectada_ck`. REVOKE TRUNCATE.
+//  - oauth_estado_jira: CHECK del hash y de la vigencia; disparador `oauth_estado_solo_consumo` (solo `usado_en`, una vez,
+//    23001). Conserva DELETE para la purga. REVOKE TRUNCATE.
+//  - evento_oauth_jira: solo inserción; CHECK de `tipo` y de `codigo`. REVOKE UPDATE, DELETE, TRUNCATE.
+//
 // Lo que Prisma no expresa vive en la migración 20261102000000_e5_consulta_asignacion (E5 · consulta y asignación):
 //  - consulta_jira: CHECK de catálogo (`estado`), `version >= 1`, `consulta_cierre_ck`
 //    ((estado = 'ABIERTA') = (cerrada_en IS NULL)), formato de `proyecto_clave`, contadores >= 0 con
@@ -62,7 +71,8 @@ datasource db {
 model ConfiguracionJira {
   id                   Int       @id @default(1) @db.SmallInt
   sitioUrl             String    @map("sitio_url") @db.VarChar(100)
-  correo               String    @db.VarChar(150)
+  /// `null` con `metodo = OAUTH`.
+  correo               String?   @db.VarChar(150)
   proyectoClave        String    @map("proyecto_clave") @db.VarChar(10)
   /// Lista separada por comas, hasta 5 tipos.
   tiposIssue           String    @default("Story,Historia") @map("tipos_issue") @db.VarChar(200)
@@ -73,11 +83,14 @@ model ConfiguracionJira {
   celulaId             String    @map("celula_id") @db.Uuid
   qeResponsableId      String    @map("qe_responsable_id") @db.Uuid
   sprintRespaldoId     String    @map("sprint_respaldo_id") @db.Uuid
-  tokenCifrado         Bytes     @map("token_cifrado")
-  tokenIv              Bytes     @map("token_iv")
-  tokenTag             Bytes     @map("token_tag")
+  /// El API token cifrado; los cinco campos son nulos si y solo si `metodo = OAUTH` (CHECK de la migración E5 OAuth).
+  tokenCifrado         Bytes?    @map("token_cifrado")
+  tokenIv              Bytes?    @map("token_iv")
+  tokenTag             Bytes?    @map("token_tag")
   llaveVersion         Int       @default(1) @map("llave_version") @db.SmallInt
-  tokenUltimos4        String    @map("token_ultimos4") @db.Char(4)
+  tokenUltimos4        String?   @map("token_ultimos4") @db.Char(4)
+  /// Método activo (D209): `API_TOKEN` u `OAUTH`.
+  metodo               String    @default("API_TOKEN") @db.VarChar(9)
   estadoConexion       String    @map("estado_conexion") @db.VarChar(12)
   ultimaPruebaEn       DateTime? @map("ultima_prueba_en") @db.Timestamptz(6)
   ultimaPruebaCodigo   String?   @map("ultima_prueba_codigo") @db.VarChar(40)
@@ -86,6 +99,66 @@ model ConfiguracionJira {
   actualizadoEn        DateTime  @default(now()) @map("actualizado_en") @db.Timestamptz(6)
 
   @@map("configuracion_jira")
+}
+
+/// Conexión OAuth 2.0 (3LO) con Atlassian: una sola fila (D214, D215, ADR 0019). Los tokens se guardan cifrados con
+/// AES-256-GCM, cada uno con su IV, su etiqueta y su dato asociado. «Sin conectar» es la ausencia de la fila.
+model ConexionOauthJira {
+  id                 Int       @id @default(1) @db.SmallInt
+  /// `CONECTADA`, `PENDIENTE_SITIO` o `RECONEXION_NECESARIA`.
+  estado             String    @db.VarChar(20)
+  cloudId            String?   @map("cloud_id") @db.VarChar(36)
+  sitioUrl           String?   @map("sitio_url") @db.VarChar(100)
+  sitioNombre        String?   @map("sitio_nombre") @db.VarChar(150)
+  /// Solo `{id, nombre, url}`, de 2 a 50, y solo con `PENDIENTE_SITIO`.
+  sitiosCandidatos   Json?     @map("sitios_candidatos")
+  cuentaId           String?   @map("cuenta_id") @db.VarChar(128)
+  cuentaNombre       String?   @map("cuenta_nombre") @db.VarChar(150)
+  scopesConcedidos   String    @map("scopes_concedidos") @db.VarChar(400)
+  accesoCifrado      Bytes?    @map("acceso_cifrado")
+  accesoIv           Bytes?    @map("acceso_iv")
+  accesoTag          Bytes?    @map("acceso_tag")
+  renovacionCifrada  Bytes?    @map("renovacion_cifrada")
+  renovacionIv       Bytes?    @map("renovacion_iv")
+  renovacionTag      Bytes?    @map("renovacion_tag")
+  accesoExpiraEn     DateTime? @map("acceso_expira_en") @db.Timestamptz(6)
+  renovadoEn         DateTime? @map("renovado_en") @db.Timestamptz(6)
+  llaveVersion       Int       @default(1) @map("llave_version") @db.SmallInt
+  conectadoPorId     String    @map("conectado_por_id") @db.Uuid
+  conectadoPorNombre String    @map("conectado_por_nombre") @db.VarChar(150)
+  conectadoEn        DateTime  @map("conectado_en") @db.Timestamptz(6)
+  actualizadoEn      DateTime  @default(now()) @map("actualizado_en") @db.Timestamptz(6)
+
+  @@map("conexion_oauth_jira")
+}
+
+/// `state` de un solo uso (D211): solo se guarda su SHA-256 en hexadecimal, nunca el valor.
+model OauthEstadoJira {
+  id         String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  estadoHash String    @unique(map: "oauth_estado_jira_estado_hash_key") @map("estado_hash") @db.Char(64)
+  actorId    String    @map("actor_id") @db.Uuid
+  creadoEn   DateTime  @default(now()) @map("creado_en") @db.Timestamptz(6)
+  expiraEn   DateTime  @map("expira_en") @db.Timestamptz(6)
+  usadoEn    DateTime? @map("usado_en") @db.Timestamptz(6)
+
+  @@map("oauth_estado_jira")
+}
+
+/// Auditoría de la conexión OAuth (D217). Solo inserción. Nunca guarda tokens, `code`, `state` ni el secreto.
+model EventoOauthJira {
+  id           String   @id @default(dbgenerated("gen_random_uuid()")) @map("id_evento") @db.Uuid
+  fecha        DateTime @default(now()) @db.Timestamptz(6)
+  actorId      String   @map("actor_id") @db.Uuid
+  actorNombre  String   @map("actor_nombre") @db.VarChar(150)
+  /// `CONECTAR_OAUTH`, `RECONECTAR`, `DESCONECTAR` o `REFRESCO_FALLIDO`.
+  tipo         String   @db.VarChar(20)
+  sitioNombre  String?  @map("sitio_nombre") @db.VarChar(150)
+  cuentaNombre String?  @map("cuenta_nombre") @db.VarChar(150)
+  /// Solo con `REFRESCO_FALLIDO`.
+  codigo       String?  @db.VarChar(40)
+
+  @@index([fecha(sort: Desc)], map: "evento_oauth_jira_fecha_idx")
+  @@map("evento_oauth_jira")
 }
 
 /// Cambios de configuración (D111). Solo inserción. `campos_cambiados` son nombres de campo, nunca valores.

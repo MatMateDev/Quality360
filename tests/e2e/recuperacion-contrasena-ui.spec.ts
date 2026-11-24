@@ -21,6 +21,31 @@ test.use({ storageState: { cookies: [], origins: [] }, viewport: { width: 1280, 
 const CONTRASENA_INICIAL = "Quality360Inicial#1";
 const CONTRASENA_NUEVA = `Nueva#${Date.now()}`;
 const RESTABLECER = `${env.portalUrl}/restablecer-contrasena`;
+/**
+ * Supabase Auth local solo admite como `redirect_to` los portales de config.toml (:5173 y :8080); con otro origen vuelve a `site_url`
+ * (http://127.0.0.1:5173). Cuando el portal bajo prueba corre en otro puerto (p. ej. otra sesión ocupa :5173), la prueba no toca esa
+ * configuración compartida: el enlace sigue siendo el real de Mailpit y solo se emula la lista de permitidos, redirigiendo en el navegador lo que
+ * Auth manda a :5173 hacia `/restablecer-contrasena` del portal propio (el fragmento con los tokens se conserva en la redirección).
+ */
+const PORTAL_EN_LISTA = ["5173", "8080"].includes(new URL(env.portalUrl).port);
+const FALLBACK_AUTH = "http://127.0.0.1:5173";
+async function abrirEnlace(page: Page, enlace: URL | string): Promise<void> {
+  if (!PORTAL_EN_LISTA) {
+    // Se atiende el `/auth/v1/verify` real sin seguir la redirección y se cambia solo su destino (:5173 → portal propio), conservando el
+    // fragmento con los tokens o con el error del enlace.
+    await page.route("**/auth/v1/verify**", async (route) => {
+      const respuesta = await route.fetch({ maxRedirects: 0 });
+      const destino = respuesta.headers()["location"];
+      if (destino && /^https?:\/\/(127\.0\.0\.1|localhost):5173/.test(destino)) {
+        const u = new URL(destino);
+        return route.fulfill({ response: respuesta, headers: { ...respuesta.headers(), location: `${env.portalUrl}/restablecer-contrasena${u.search}${u.hash}` } });
+      }
+      return route.fulfill({ response: respuesta });
+    });
+  }
+  await page.goto(enlace.toString());
+}
+
 /** Solo el gateway (no las rutas `/auth/v1/` de Supabase Auth). */
 const GATEWAY = `${env.gatewayUrl}/v1/`;
 
@@ -175,7 +200,7 @@ test.describe("E1-F13 / E1-B13 · Recuperación de contraseña de punta a punta 
     expect(enlace.pathname).toBe("/auth/v1/verify");
     expect(enlace.searchParams.get("type")).toBe("recovery");
     expect(enlace.searchParams.get("token")).toBeTruthy();
-    expect(enlace.searchParams.get("redirect_to")).toBe(RESTABLECER);
+    expect(enlace.searchParams.get("redirect_to")).toBe(PORTAL_EN_LISTA ? RESTABLECER : FALLBACK_AUTH); // si el portal no está en la lista de Auth, vuelve a su site_url (ver abrirEnlace)
 
     // El correo inexistente no generó ningún envío: no hay ni una pista en el buzón.
     for (const correo of correosInexistentes) expect(await contarCorreos(correo)).toBe(0);
@@ -186,7 +211,7 @@ test.describe("E1-F13 / E1-B13 · Recuperación de contraseña de punta a punta 
     page,
   }) => {
     const gateway = registrarSolicitudes(page, [GATEWAY]);
-    await page.goto((enlaceUnico as URL).toString());
+    await abrirEnlace(page, enlaceUnico as URL);
 
     // supabase-js retira el hash con `location.hash = ""`, que deja un «#» final en la URL.
     await expect(page).toHaveURL(/\/restablecer-contrasena#?$/);
@@ -224,7 +249,7 @@ test.describe("E1-F13 / E1-B13 · Recuperación de contraseña de punta a punta 
     const enlace = await enlaceNuevo();
     const cambios = registrarSolicitudes(page, ["/auth/v1/user"]);
     const gateway = registrarSolicitudes(page, [GATEWAY]);
-    await page.goto(enlace.toString());
+    await abrirEnlace(page, enlace);
     const { nueva, repetida, guardar } = campos(page);
     await expect(nueva).toBeVisible();
 
@@ -276,7 +301,7 @@ test.describe("E1-F13 / E1-B13 · Recuperación de contraseña de punta a punta 
   }) => {
     const enlace = await enlaceNuevo();
     const gateway = registrarSolicitudes(page, [GATEWAY]);
-    await page.goto(enlace.toString());
+    await abrirEnlace(page, enlace);
     const { nueva, repetida, guardar } = campos(page);
     await expect(nueva).toBeVisible();
 
@@ -345,7 +370,7 @@ test.describe("E1-F13 / E1-B13 · Recuperación de contraseña de punta a punta 
   test("[E1-F13#3] un segundo uso del mismo enlace muestra «enlace expirado» y ofrece pedir uno nuevo", async ({ page }) => {
     const gateway = registrarSolicitudes(page, [GATEWAY]);
     // El enlace de #1 se consumió al abrirlo en #3: un segundo uso es el caso «ya se usó».
-    await page.goto((enlaceUnico as URL).toString());
+    await abrirEnlace(page, enlaceUnico as URL);
 
     await expect(page).toHaveURL(/\/restablecer-contrasena/);
     const invalido = page.getByTestId("enlace-invalido");
@@ -366,12 +391,12 @@ test.describe("E1-F13 / E1-B13 · Recuperación de contraseña de punta a punta 
     const enlace = await enlaceNuevo();
     const contextoA = await browser.newContext({ baseURL: env.portalUrl });
     const paginaA = await contextoA.newPage();
-    await paginaA.goto(enlace.toString());
+    await abrirEnlace(paginaA, enlace);
     await expect(campos(paginaA).nueva).toBeVisible();
 
     const contextoB = await browser.newContext({ baseURL: env.portalUrl });
     const paginaB = await contextoB.newPage();
-    await paginaB.goto(enlace.toString());
+    await abrirEnlace(paginaB, enlace);
     await expect(paginaB.getByTestId("enlace-invalido")).toBeVisible();
     await expect(campos(paginaB).nueva).toHaveCount(0);
 
@@ -386,7 +411,7 @@ test.describe("E1-F13 / E1-B13 · Recuperación de contraseña de punta a punta 
     // Otra sesión del usuario (otro dispositivo), con la contraseña que fijó `[E1-F13#2]`.
     const otraSesion = await iniciarSesion(usuario.correo, CONTRASENA_NUEVA);
     const enlace = await enlaceNuevo();
-    await page.goto(enlace.toString());
+    await abrirEnlace(page, enlace);
     await expect(campos(page).nueva).toBeVisible();
 
     const cierre = page.waitForRequest((r) => r.url().includes("/auth/v1/logout"));
@@ -433,7 +458,7 @@ test.describe("E1-F13 / E1-B13 · Recuperación de contraseña de punta a punta 
     // después puede volver atrás y recuperarlo mientras la sesión siga viva.
     const enlace = await enlaceNuevo();
     await page.goto("about:blank");
-    await page.goto(enlace.toString());
+    await abrirEnlace(page, enlace);
     await expect(campos(page).nueva).toBeVisible();
 
     const visitadas: string[] = [];
@@ -454,7 +479,7 @@ test.describe("E1-F13 / E1-B13 · Recuperación de contraseña de punta a punta 
     // Sin cerrar la pantalla de restablecimiento ni su sesión por la interfaz: se escribe otra dirección del
     // portal en el navegador (carga completa), como al cerrar la pestaña y volver más tarde.
     const enlace = await enlaceNuevo();
-    await page.goto(enlace.toString());
+    await abrirEnlace(page, enlace);
     await expect(campos(page).nueva).toBeVisible();
 
     await page.goto(`${env.portalUrl}/qa`);

@@ -126,6 +126,50 @@ export async function proxyOrganizacion(destino: string, puerto: number, cortarE
   };
 }
 
+/**
+ * Variantes de Integraciones para E5 OAuth (dueño: q360-qa). Las variables van sobrescritas: `node --env-file` no pisa lo que ya está en el
+ * entorno del proceso, así que un valor vacío equivale a «ausente» (el patrón de `levantarIntegraciones(…, { INTEGRACIONES_LLAVE_CIFRADO: "" })`).
+ */
+export const SIN_VARIABLES_OAUTH = { JIRA_OAUTH_CLIENT_ID: "", JIRA_OAUTH_CLIENT_SECRET: "", JIRA_OAUTH_REDIRECT_URI: "" } as const;
+
+/** Integraciones sin `JIRA_OAUTH_*` (:3108): «Conectar con Jira» deshabilitado y 503 `JIRA_OAUTH_NO_CONFIGURADO` (E5-F08#7, E5-B08#11). Lo demás sigue igual (API token incluido). */
+export function levantarIntegracionesSinOauth(puerto = 3108, overrides: Record<string, string> = {}): Promise<InstanciaE5> {
+  return levantarIntegraciones(puerto, { ...SIN_VARIABLES_OAUTH, ...overrides });
+}
+
+/**
+ * Pila completa sin las variables OAuth para la prueba de interfaz de E5-F08#7: Integraciones sin `JIRA_OAUTH_*` (:3108), un gateway que apunta a ella
+ * (:3100) y su portal (:5180). El stack principal no se toca.
+ */
+export async function pilaSinOauth(): Promise<{ integracionesUrl: string; gatewayUrl: string; portalUrl: string; detener: () => Promise<void> }> {
+  const integraciones = await levantarIntegracionesSinOauth(3108);
+  let gateway;
+  try {
+    gateway = await levantarGatewayConFuenteCaida({ INTEGRACIONES_URL: integraciones.url });
+  } catch (e) {
+    await integraciones.detener();
+    throw e;
+  }
+  let portal;
+  try {
+    portal = await levantarPortalCaido(gateway.url);
+  } catch (e) {
+    await gateway.detener();
+    await integraciones.detener();
+    throw e;
+  }
+  return {
+    integracionesUrl: integraciones.url,
+    gatewayUrl: gateway.url,
+    portalUrl: portal.url,
+    detener: async () => {
+      await portal.detener();
+      await gateway.detener();
+      await integraciones.detener();
+    },
+  };
+}
+
 /** Pila con Integraciones caída para el gateway (:3100) y su portal (:5180): lo demás sigue arriba (E5-F01-T10, E5-F04-T10). */
 export async function integracionesCaida(): Promise<{ gatewayUrl: string; portalUrl: string; detener: () => Promise<void> }> {
   const gateway = await levantarGatewayConFuenteCaida({ INTEGRACIONES_URL: `http://127.0.0.1:${env.fuenteMuertaPuerto}` });

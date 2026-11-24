@@ -345,4 +345,4 @@ export async function iniciarJiraFalso(puerto = Number(process.env.JIRA_FALSO_PU
   return { puerto, cerrar: () => new Promise<void>((ok) => { servidor.closeAllConnections?.(); servidor.close(() => ok()); }) };
 }
 
-/** Arranque manual: `node --experimental-strip-types tests/support/jira-falso/servidor.ts` (útil para la prueba manual y el axe). */
+/** Arranque manual (junto con el Atlassian simulado): `npm run simulados:jira` desde la raíz (ver tests/support/simulados.ts). */

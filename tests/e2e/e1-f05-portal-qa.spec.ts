@@ -30,7 +30,7 @@ test.describe("E1-F05 · Portal Analista QA", () => {
       const datos: string[] = [];
       page.on("request", (solicitud) => {
         const url = new URL(solicitud.url());
-        if (url.port === "3000" && url.pathname.startsWith("/v1/") && url.pathname !== "/v1/me") datos.push(url.pathname);
+        if (url.origin === new URL(env.gatewayUrl).origin && url.pathname.startsWith("/v1/") && url.pathname !== "/v1/me") datos.push(url.pathname);
       });
       await page.goto(`${env.portalUrl}${ruta}`);
       const denegado = page.getByTestId("acceso-denegado");
