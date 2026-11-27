@@ -123,8 +123,12 @@ main:focus {
 }
 
 /* ------------------------------------------------------- grupos de contadores (D209) */
-/* Cada grupo es un panel con su tema; las tarjetas van dentro, sobre un fondo sutil. */
+/* Cada grupo es un panel con su tema; las tarjetas van dentro, sobre un fondo sutil.
+   D224: el grupo es una columna flexible y su rejilla de tarjetas ocupa el alto que sobra (las filas se estiran),
+   así que en una franja todas las tarjetas miden lo mismo aunque una traiga detalle (p. ej. el desglose por rol). */
 .grupo-contadores {
+  display: flex;
+  flex-direction: column;
   margin-bottom: 24px;
   padding: 16px 18px 18px;
   background-color: var(--q360-color-superficie);
@@ -149,6 +153,7 @@ main:focus {
 }
 
 .grupo-contadores .tarjetas-resumen {
+  flex: 1 1 auto;
   grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
   gap: 12px;
   margin: 0;
@@ -194,22 +199,8 @@ main:focus {
   margin: 0;
 }
 
-/* Rejilla: dos paneles lado a lado (p. ej. pendientes y últimos cambios). */
-.rejilla-bandeja {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 24px;
-  align-items: start;
-  margin-bottom: 24px;
-}
-
-.rejilla-bandeja > .panel {
-  margin: 0;
-}
-
 @media (max-width: 1100px) {
-  .tema-bandeja,
-  .rejilla-bandeja {
+  .tema-bandeja {
     grid-template-columns: minmax(0, 1fr);
   }
 }
@@ -459,6 +450,16 @@ main:focus {
 
   .grupo-contadores {
     padding: 14px 14px 16px;
+  }
+
+  /* D224: en móvil, dos columnas fijas; si el grupo tiene un número impar de tarjetas, la última ocupa la fila
+     completa en vez de quedar sola en media fila. */
+  .grupo-contadores .tarjetas-resumen {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .grupo-contadores .tarjetas-resumen > .tarjeta-resumen:last-child:nth-child(odd) {
+    grid-column: 1 / -1;
   }
 
   .grupo-contadores .tarjeta-resumen {

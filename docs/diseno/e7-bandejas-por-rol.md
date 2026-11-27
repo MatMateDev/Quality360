@@ -377,6 +377,8 @@ La bandeja no ejecuta ninguna acción. Nombre accesible: «Aprobar entregables d
  └───────────────────────────────────────────────────────────────────────────────────────────┘
 ```
 
+**Actualización D224 (orden y simetría).** El wireframe de arriba es el original. Desde D224 el orden es: estado («Usuarios» | «Supervisión y organización», dos mitades iguales de tres tarjetas), «Pendientes de configuración», «Impedimentos y riesgo» con «HDU totales» como referencia y la lista «Impedimentos escalados a mí», y al final «Últimos cambios». Cada fila ocupa todo el ancho o se reparte en partes iguales. El detalle está en `decisiones-mvp.md`, D224.
+
 **Contadores** (todos de Organización; no dependen de Certificaciones, E7-B03-T11). Para no duplicar ni romper lo certificado, las 4 tarjetas de E1-F08 se conservan con su `id`, título y texto y reciben además `clave`: `tarjeta-usuarios-activos` pasa a contener `contador-usuarios-activos` (con el desglose por rol), `tarjeta-supervision-sin-supervisor` contiene `contador-analistas-sin-qe`.
 
 | Clave | Título (visible) | Detalle |

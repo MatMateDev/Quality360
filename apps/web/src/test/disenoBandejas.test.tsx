@@ -66,6 +66,34 @@ describe("Diseño de las bandejas [D209]", () => {
     expect(screen.getByText("Solo consulta. Los gestiona el QE responsable de cada HDU.")).toBeInTheDocument();
   });
 
+  it("Administrador [D224]: estado, pendientes, impedimentos y, al final, el historial de cambios", async () => {
+    await abrirComo(ADMIN, "/admin");
+    await screen.findByTestId("lista-pendientes");
+    await screen.findByTestId("lista-ultimos-cambios");
+    const bandeja = screen.getByTestId("bandeja-admin");
+    const secciones = Array.from(bandeja.querySelectorAll(".grupo-contadores > h2, .panel-cabecera h2, .panel-cabecera h3")).map(
+      (h) => h.textContent,
+    );
+    expect(secciones).toEqual([
+      "Usuarios",
+      "Supervisión y organización",
+      "Pendientes de configuración",
+      "Impedimentos y riesgo",
+      "Impedimentos escalados a mí",
+      "Últimos cambios",
+    ]);
+    // Simetría: usuarios y supervisión comparten la franja con el mismo peso y tres tarjetas cada uno.
+    const franja = Array.from(bandeja.querySelectorAll(".franja-resumen > .grupo-contadores"));
+    expect(franja).toHaveLength(2);
+    for (const grupo of franja) {
+      expect(grupo.getAttribute("style")).toMatch(/--q360-peso:\s*3/);
+      expect(grupo.querySelectorAll(".tarjetas-resumen > .tarjeta-resumen")).toHaveLength(3);
+    }
+    // «HDU totales» acompaña a los contadores de riesgo, y no quedan columnas de anchos distintos.
+    expect(screen.getByTestId("contador-hdu-total").closest(".grupo-contadores")?.querySelector("h2")).toHaveTextContent("Impedimentos y riesgo");
+    expect(bandeja.querySelector(".tema-bandeja, .rejilla-bandeja")).toBeNull();
+  });
+
   it("Auditor: los seis contadores quedan en «Registros», «Actividad reciente» e «Impedimentos», sin accesos de escritura", async () => {
     await abrirComo(AUDITOR, "/auditor");
     await screen.findByTestId("bandeja-auditor");
