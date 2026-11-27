@@ -84,11 +84,6 @@ export function TemaBandeja({ children }: { children: ReactNode }) {
   return <div className="tema-bandeja">{children}</div>;
 }
 
-/** Dos paneles lado a lado en escritorio; se apilan bajo 1100 px (D209). */
-export function RejillaBandeja({ children }: { children: ReactNode }) {
-  return <div className="rejilla-bandeja">{children}</div>;
-}
-
 export type EstadoDatos = "cargando" | "error" | "indisponible" | "vacio" | "ok";
 
 interface PropsBloque {

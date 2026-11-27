@@ -4,15 +4,7 @@ import { useBandejaAdmin } from "@/api/bandejas";
 import { useInicioAdmin } from "@/api/inicio";
 import { BloqueEstado } from "@/components/BloqueEstado";
 import { TarjetaMetrica } from "@/components/TarjetaMetrica";
-import {
-  BloqueDatos,
-  EncabezadoBandeja,
-  FranjaResumen,
-  GrupoContadores,
-  RejillaBandeja,
-  TemaBandeja,
-  type EstadoDatos,
-} from "@/components/bandeja/Estructura";
+import { BloqueDatos, EncabezadoBandeja, FranjaResumen, GrupoContadores, type EstadoDatos } from "@/components/bandeja/Estructura";
 import { TablaBandeja, type Columna } from "@/components/bandeja/TablaBandeja";
 import { TarjetaContador } from "@/components/bandeja/TarjetaContador";
 import { Paginacion } from "@/components/bandeja/Paginacion";
@@ -49,8 +41,11 @@ function accionPendiente(p: PendienteConfiguracion): { a: string; texto: string;
 /**
  * Bandeja del Administrador (E7-F05) sobre el inicio certificado de E1-F08: se conservan las cuatro tarjetas
  * y los accesos, y se agregan contadores de configuración, «Pendientes» y «Últimos cambios».
- * D209: los accesos van en el encabezado; los contadores en una franja (usuarios | supervisión); «Pendientes» y
- * «Últimos cambios» lado a lado; al final, los impedimentos de solo consulta junto a su lista.
+ * D209: los accesos van en el encabezado.
+ * D224: el orden sigue el objetivo de la bandeja, que es tener configurados a los usuarios y la supervisión.
+ * Primero el estado (usuarios | supervisión: dos grupos de tres tarjetas del mismo tamaño), luego los pendientes
+ * de configuración, después los impedimentos y el riesgo (solo consulta, con «HDU totales» como referencia) y al
+ * final el historial de cambios. Cada fila ocupa todo el ancho o se reparte en partes iguales.
  */
 export function AdminInicioPage() {
   const inicioQuery = useInicioAdmin();
@@ -128,6 +123,7 @@ export function AdminInicioPage() {
       {inicioQuery.isError ? <BloqueEstado id="inicio-admin" estado="error" onReintentar={() => inicioQuery.refetch()} /> : null}
       {bandeja.isError && !inicioQuery.isError ? <BloqueEstado id="bandeja-admin" estado="error" onReintentar={() => bandeja.refetch()} /> : null}
 
+      {/* 1 · Estado: usuarios y supervisión, en dos mitades iguales. */}
       {inicioQuery.data ? (
         <FranjaResumen>
           <GrupoContadores titulo="Usuarios" peso={3}>
@@ -148,7 +144,7 @@ export function AdminInicioPage() {
             <TarjetaContador consulta={bandeja} id="usuarios-inactivos" clave="usuarios-inactivos" titulo="Usuarios inactivos" contador={datos?.contadores.usuariosInactivos} />
           </GrupoContadores>
 
-          <GrupoContadores titulo="Supervisión y organización" peso={4}>
+          <GrupoContadores titulo="Supervisión y organización" peso={3}>
             <TarjetaMetrica
               id="supervision-vigentes"
               titulo="Relaciones vigentes"
@@ -164,78 +160,60 @@ export function AdminInicioPage() {
               valor={inicioQuery.data.supervision.estado === "ok" ? inicioQuery.data.supervision.datos.analistasSinSupervisor : undefined}
             />
             <TarjetaContador consulta={bandeja} id="qe-sin-analistas" clave="qe-sin-analistas" titulo="QE sin analistas" contador={datos?.contadores.qeSinAnalistas} atencion />
-            <TarjetaContador consulta={bandeja} id="hdu-total" clave="hdu-total" titulo="HDU totales" contador={datos?.contadores.hduTotal} />
           </GrupoContadores>
         </FranjaResumen>
       ) : null}
 
+      {/* 2 · Acción: lo que el Administrador debe configurar. */}
       {inicioQuery.isError ? null : (
-        <RejillaBandeja>
-          <section className="panel" aria-labelledby={idPendientes}>
-            <div className="panel-cabecera">
-              <h2 id={idPendientes}>Pendientes de configuración</h2>
-            </div>
-            <BloqueDatos
-              clave="pendientes"
-              estado={estadoPend}
-              tonoVacio="exito"
-              mensajeVacio="No hay pendientes de configuración"
-              onReintentar={() => bandeja.refetch()}
-            >
-              {pend?.estado === "ok" ? (
-                <p role="status" data-testid="total-pendientes" style={{ margin: "0 0 8px" }}>
-                  {pend.datos.total} {pend.datos.total === 1 ? "pendiente" : "pendientes"} en total
-                </p>
-              ) : null}
-              {pend?.estado === "ok" ? (
-                <TablaBandeja
-                  testId="lista-pendientes"
-                  caption="Usuarios con configuración pendiente"
-                  columnas={columnasPend}
-                  items={pend.datos.items}
-                  clave={(p) => `${p.tipo}-${p.usuario.id}`}
-                  testIdFila={(p) => `fila-pendiente-${SEGMENTO_TIPO[p.tipo]}-${p.usuario.id}`}
-                  focoPagina={filtros.pagina}
-                />
-              ) : null}
-              {pend?.estado === "ok" && pend.datos.total > pend.datos.tamanoPagina ? (
-                <Paginacion
-                  clave="pendientes"
-                  etiqueta="pendientes de configuración"
-                  total={pend.datos.total}
-                  pagina={pend.datos.pagina}
-                  tamano={pend.datos.tamanoPagina}
-                  onPagina={(p) => filtros.set({ pagina: String(p) })}
-                  onTamano={(t) => filtros.set({ tamano: t === 25 ? undefined : String(t) })}
-                />
-              ) : null}
-            </BloqueDatos>
-          </section>
-
-          <section className="panel" aria-labelledby={idCambios}>
-            <div className="panel-cabecera">
-              <h2 id={idCambios}>Últimos cambios</h2>
-            </div>
-            <BloqueDatos clave="ultimos-cambios" estado={estadoCambios} mensajeVacio="Aún no hay cambios registrados" onReintentar={() => bandeja.refetch()}>
-              {cambios?.estado === "ok" ? (
-                <TablaBandeja
-                  testId="lista-ultimos-cambios"
-                  caption="Los 10 cambios de usuarios más recientes"
-                  columnas={columnasCambios}
-                  items={cambios.datos.items.slice(0, 10)}
-                  clave={(r) => r.id}
-                  testIdFila={(r) => `fila-cambio-${cambios.datos.items.indexOf(r)}`}
-                />
-              ) : null}
-            </BloqueDatos>
-          </section>
-        </RejillaBandeja>
+        <section className="panel" aria-labelledby={idPendientes}>
+          <div className="panel-cabecera">
+            <h2 id={idPendientes}>Pendientes de configuración</h2>
+          </div>
+          <BloqueDatos
+            clave="pendientes"
+            estado={estadoPend}
+            tonoVacio="exito"
+            mensajeVacio="No hay pendientes de configuración"
+            onReintentar={() => bandeja.refetch()}
+          >
+            {pend?.estado === "ok" ? (
+              <p role="status" data-testid="total-pendientes" style={{ margin: "0 0 8px" }}>
+                {pend.datos.total} {pend.datos.total === 1 ? "pendiente" : "pendientes"} en total
+              </p>
+            ) : null}
+            {pend?.estado === "ok" ? (
+              <TablaBandeja
+                testId="lista-pendientes"
+                caption="Usuarios con configuración pendiente"
+                columnas={columnasPend}
+                items={pend.datos.items}
+                clave={(p) => `${p.tipo}-${p.usuario.id}`}
+                testIdFila={(p) => `fila-pendiente-${SEGMENTO_TIPO[p.tipo]}-${p.usuario.id}`}
+                focoPagina={filtros.pagina}
+              />
+            ) : null}
+            {pend?.estado === "ok" && pend.datos.total > pend.datos.tamanoPagina ? (
+              <Paginacion
+                clave="pendientes"
+                etiqueta="pendientes de configuración"
+                total={pend.datos.total}
+                pagina={pend.datos.pagina}
+                tamano={pend.datos.tamanoPagina}
+                onPagina={(p) => filtros.set({ pagina: String(p) })}
+                onTamano={(t) => filtros.set({ tamano: t === 25 ? undefined : String(t) })}
+              />
+            ) : null}
+          </BloqueDatos>
+        </section>
       )}
 
+      {/* 3 · Riesgo, solo consulta (E4, D57 y D83): sin tono de atención, porque el Administrador no gestiona su contenido.
+          «HDU totales» va aquí como referencia de cuántas están bloqueadas o en riesgo alto. */}
       {inicioQuery.data ? (
-        <TemaBandeja>
-          {/* E4: solo consulta (D57, D83): sin tono de atención, porque el Administrador no gestiona su contenido. */}
+        <>
           <GrupoContadores titulo="Impedimentos y riesgo" descripcion="Solo consulta. Los gestiona el QE responsable de cada HDU.">
+            <TarjetaContador consulta={bandeja} id="hdu-total" clave="hdu-total" titulo="HDU totales" contador={datos?.contadores.hduTotal} />
             <TarjetaContador consulta={bandeja} id="impedimentos-abiertos" clave="impedimentos-abiertos" titulo="Impedimentos abiertos" contador={datos?.impedimentos?.contadores.impedimentosAbiertos} />
             <TarjetaContador consulta={bandeja} id="hdu-bloqueadas" clave="hdu-bloqueadas" titulo="HDU bloqueadas" contador={datos?.impedimentos?.contadores.hduBloqueadas} />
             <TarjetaContador consulta={bandeja} id="hdu-riesgo-alto" clave="hdu-riesgo-alto" titulo="HDU en riesgo alto" contador={datos?.impedimentos?.contadores.hduRiesgoAlto} />
@@ -249,8 +227,29 @@ export function AdminInicioPage() {
             bloque={datos?.impedimentos?.escalados}
             vacio="No tienes impedimentos escalados"
           />
-        </TemaBandeja>
+        </>
       ) : null}
+
+      {/* 4 · Historial: los últimos cambios van al final. */}
+      {inicioQuery.isError ? null : (
+        <section className="panel" aria-labelledby={idCambios}>
+          <div className="panel-cabecera">
+            <h2 id={idCambios}>Últimos cambios</h2>
+          </div>
+          <BloqueDatos clave="ultimos-cambios" estado={estadoCambios} mensajeVacio="Aún no hay cambios registrados" onReintentar={() => bandeja.refetch()}>
+            {cambios?.estado === "ok" ? (
+              <TablaBandeja
+                testId="lista-ultimos-cambios"
+                caption="Los 10 cambios de usuarios más recientes"
+                columnas={columnasCambios}
+                items={cambios.datos.items.slice(0, 10)}
+                clave={(r) => r.id}
+                testIdFila={(r) => `fila-cambio-${cambios.datos.items.indexOf(r)}`}
+              />
+            ) : null}
+          </BloqueDatos>
+        </section>
+      )}
     </div>
   );
 }
